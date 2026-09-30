@@ -39,10 +39,14 @@ jobs:
       - name: Test Python engine and API
         run: python -m unittest discover -s tests -p "test_*.py"
       - name: Check interface syntax
-        run: node --check queue-app.js
+        run: |
+          node --check queue-app.js
+          node --check production-features.js
       - name: Test queue and physical units
         run: node tests/test_queue.cjs
       - name: Test shop profiles
         run: node tests/test_shop_profiles.cjs
+      - name: Test production-file queue and presets
+        run: node tests/test_production_features.cjs
       - name: Test legacy boundary policy
         run: node tests/test_boundaries.cjs

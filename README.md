@@ -1,47 +1,46 @@
 # eznest
 
-A local nesting tool for Windows: **add SVG artwork → set roll width and quantities → nest → export**.
+**Add artwork → set material width and quantities → nest → review → export.**
 
-**0.10.0-beta.1 · SVG nesting beta.** The material fixes the roll width; eznest calculates the needed length. Files stay on your computer. Illustrator is not required for this workflow.
+**0.11.0-beta.1 · Windows production-file beta.** Standalone local nesting for
+complete kits, decals and stickers. Illustrator, a printer model and an account
+are not required. Width comes from the material; length comes from the layout.
 
 ## What works
 
-- Nest one or several jobs on a roll, preserving each job's complete sets.
-- Set material width, contour gap, edge margin, allowed rotation and search time.
-- Work in inches, millimeters or centimeters without resizing artwork.
-- Fill spare space with complete optional sticker sets, up to the chosen maximum.
-- Review the layout and locate pieces by job. Sorting IDs belong to a separate map.
-- Export an SVG package to Downloads or a selected local folder. Reopen exported batches and restore jobs to the queue.
-- Share material presets and shop output requirements as JSON files.
+- PDF and PDF-compatible AI with existing closed named spot-color cut contours.
+- Original PDF drawing objects retained in PDF export, with a named CutContour
+  spot separation and separate cut layer. Preview PNGs never become print artwork.
+- SVG import/export in separate batches.
+- Review detected pieces, physical sizes and existing bleed before nesting.
+- Complete-set quantities, mixed jobs, customer/order/kit identity and sorting maps.
+- Optional whole-piece sheet splitting and numbered print files.
+- Complete-set sticker fill, reusable material presets and configurable units.
+- Optional material cost per job with explicit allocation of shared unused material.
+- Frozen ZIP/folder export, history, re-queueing and an MX comparison worksheet.
 
-The MVP handles one material and up to 100 pieces per batch. Its search is heuristic; it does not guarantee the global optimum.
+One material and up to 100 pieces per batch. Nesting and sheet allocation are
+heuristic, not guaranteed global optima. Read [supported files and limits](docs/PRODUCTION-FILES.md).
 
-## Run the Windows download
+## Important limits
 
-If a Windows release has been attached to this repository, open **Releases** and download `eznest-0.10.0-beta.1-windows-x64.zip`. Extract the whole ZIP and open `eznest.exe`. Keep `_internal` beside it. This unsigned portable beta includes Python and its engine.
+PDF import needs real named Separation cut strokes. Enter existing bleed; eznest
+does not generate it or certify ink coverage. Unsupported hidden layers,
+annotations and ambiguous contours are rejected. Arbitrary native AI and DeviceN
+cut colors are not supported. PDF import is limited to 20 MB and 25 pages.
 
-The GitHub **Code → Download ZIP** button downloads source code. Use the attached **Windows ZIP under Releases** when you want the runnable app.
+PDF and SVG jobs cannot be mixed in one batch. Watched folders remain SVG-only.
+Use Preserve source colors; configure printer ICC/color conversion and registration
+marks in ONYX/your RIP. No EPS, automatic bleed, inventory or printer/cutter dispatch.
+**Physical ONYX/GoProduce validation and controlled MX comparison remain outstanding.**
 
-Your browser opens `http://127.0.0.1:8765/`. Drop SVG artwork, check width and quantities, select **Nest**, then **Export SVG**. **Help → Quit eznest** stops the app; closing the tab alone leaves it running. See [the operator guide](START%20HERE.txt).
+## Run on Windows
 
-## Current format limits
+Extract the entire portable ZIP and open eznest.exe. Keep _internal beside it.
+This unsigned beta includes its runtime. GitHub's Code → Download ZIP is source,
+not the runnable application. See [START HERE.txt](START%20HERE.txt).
 
-SVG is the only implemented artwork format. Outline text, embed images and provide complete pieces with unambiguous boundaries. Export includes:
-
-| File | Purpose |
-| --- | --- |
-| `artwork.svg` | Nested artwork at physical size |
-| `sheet-map.svg` | Separate piece IDs and job map |
-| `sorting-guide.html` | Human-readable sorting guide |
-| `piece-checklist.csv` | Piece counts and identities |
-| `batch.json` | Batch metadata and output requirements |
-| `READ ME.txt` | Export notes |
-
-**AI/PDF artwork import, production PDF/EPS output, CMYK conversion, automatic bleed, named cut-spot export and multi-sheet splitting are unfinished.** ONYX profiles expose those missing requirements; their exports are working SVG files and jobs stay active. This is not yet a verified ONYX/GoProduce print-and-cut handoff.
-
-## Run from source
-
-Use **Python 3.12, 64-bit, on Windows**. Double-click `Start EZ Nest.cmd`; it creates a local environment and installs the pinned dependencies on first use. Or run from the repository folder:
+For source, use **Python 3.12 x64** and run Start EZ Nest.cmd, or:
 
 ```powershell
 py -3.12 -m venv .local/venv
@@ -49,60 +48,57 @@ py -3.12 -m venv .local/venv
 .local/venv/Scripts/python.exe launcher.py
 ```
 
-Stop an older eznest version before starting another on port 8765. Developer options include `--no-browser`, `--port 8766`, and `--data-dir "path to test data"`.
+The browser opens http://127.0.0.1:8765/. Stop an older version on that port first.
+Developer options: --no-browser, --port 8767, --data-dir "isolated test folder".
 
 ## Test and build
 
-Node is needed only for the JavaScript checks; there are no npm dependencies.
+Node is only needed for checks; there are no npm dependencies.
 
 ```powershell
 .local/venv/Scripts/python.exe -m unittest discover -s tests -p "test_*.py"
 node --check queue-app.js
+node --check production-features.js
 node tests/test_queue.cjs
 node tests/test_shop_profiles.cjs
+node tests/test_production_features.cjs
 node tests/test_boundaries.cjs
-```
-
-The included GitHub Actions workflow runs these checks on Windows for pushes and pull requests. Its first hosted result will be available after the repository is uploaded.
-
-To build the portable Windows folder:
-
-```powershell
 .local/venv/Scripts/python.exe -m pip install -r requirements-build.txt
 .local/venv/Scripts/python.exe build_windows.py --out ../eznest-build
 ```
 
-Choose a **new build directory outside the source tree**. The output is `../eznest-build/dist/eznest`. Zip that complete folder for a release. Preserve its runtime, license notices and covered source.
+GitHub Actions runs the checks on Windows, Python 3.12 and Node 24. Use a new
+build directory outside the source tree. Zip its complete dist/eznest folder.
 
 ## Repository map
 
-| Location | Responsibility |
+| Files | Purpose |
 | --- | --- |
-| `production.html`, `queue.css`, `queue-app.js` | Main interface and browser queue |
-| `svg-io.js`, `queue-core.js` | SVG pieces, quantities, units and material composition |
-| `engine.py`, `nesting.py` | Required nesting, validation and optional sticker fill |
-| `server.py`, `launcher.py` | Local API, startup and isolated worker processes |
-| `production.py` | Sorting manifest and frozen export packages |
-| `folder_queue.py`, `output_folder.py` | Optional source watching and destination saves |
-| `shop-profiles.js`, `shop_profiles.py` | Shared shop requirements and capability checks |
-| `tests/` | Synthetic engine, API and queue fixtures |
-| `jsx/`, `classic.html`, `app.js` | Earlier experimental Illustrator bridge; outside the standalone MVP |
-| `licenses/` | Third-party notices and required upstream source |
-| `.github/workflows/test.yml` | Windows CI checks |
+| production.html, queue.css, queue-app.js, production-features.js | Interface and production controls |
+| queue-core.js, svg-io.js | Identity, quantities, units, presets and SVG |
+| pdf_io.py | PDF cut detection, previews and original-object PDF output |
+| engine.py, nesting.py, sheets.py | Nesting, validation, filler and sheets |
+| production.py, costing.py | Packages, sorting and material estimates |
+| server.py, launcher.py | Local API and isolated workers |
+| folder_queue.py, output_folder.py | SVG source watching and safe folder saves |
+| shop-profiles.js, shop_profiles.py | Configurable output requirements |
+| tests/ | Geometry, renderer, HTTP API and queue checks |
 
-`production.html` is the served entry point; `index.html` mirrors it. There is no bundled Illustrator extension installer in this repository.
+production.html is served; index.html mirrors it. jsx/, classic.html and app.js
+are an earlier Illustrator experiment outside this standalone MVP.
 
-## Data and handoff
+## Data and ownership
 
-Browser storage holds queue, presets and history. The local server stores its latest result and frozen exports in `.local/` for source builds or `data/` beside the portable executable. Keep exports backed up and use the same browser/address. Changing browsers does not transfer the queue.
+Queue/history use IndexedDB; settings use localStorage. Server data lives in
+.local/ for source builds or data/ beside the portable executable. Preserve
+documents/, frozen batches and browser storage when upgrading. Changing browsers
+or ports does not transfer the queue. Exported never means physically printed.
 
-The source handoff excludes workstation state, customer artwork, generated print packs, installed environments and private shop notes. The `.gitignore` excludes common local data and build output; place new customer files outside the repo or inside `customer-files/`.
+Keep customer files outside the repo or in customer-files/. Runtime state,
+environments and build outputs are ignored. Read [HANDOFF.md](HANDOFF.md),
+[production behavior](docs/PRODUCTION-FILES.md), [validation](docs/PRODUCTION-VALIDATION.md)
+and [third-party notices](THIRD_PARTY.md). PACKAGED-VALIDATION.md records the older 0.10 release.
 
-- [GitHub walkthrough](docs/GITHUB-WALKTHROUGH.md)
-- [Architecture and developer handoff](HANDOFF.md)
-- [Packaged-app validation](PACKAGED-VALIDATION.md)
-- [Repository handoff checks](docs/REPOSITORY-CHECK.md)
-- [Release notes to paste into GitHub](RELEASE-NOTES.md)
-- [Third-party notices](THIRD_PARTY.md)
-
-No open-source license has been selected for the original eznest code. Keep the initial repository private while that choice is made. Included third-party components retain their own licenses. No MX Production Suite code, assets or binaries are included.
+No open-source license has been selected for original eznest code. Keep the repo
+private pending that decision. Dependencies retain their licenses. No MX source,
+assets or binaries are included.

@@ -71,6 +71,9 @@ def placed_polygon(part, placement):
 
 
 def validate_result(job, result):
+    if 'sheets' in result:
+        from sheets import validate_sheets
+        return validate_sheets(job, result)
     width, length, gap, margin, _ = validate_job(job)
     expected = Counter({p['id']: p.get('quantity', 1) for p in job['parts']})
     actual = Counter(p['id'] for p in result['placements'])

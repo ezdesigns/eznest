@@ -10,6 +10,10 @@ from app_info import VERSION
 
 
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == '--document-worker':
+        from pdf_io import worker
+        worker(sys.argv[2],sys.argv[3])
+        return 0
     if len(sys.argv) == 4 and sys.argv[1] == '--nest-worker':
         from nesting import worker
         worker(sys.argv[2], sys.argv[3])
@@ -54,7 +58,7 @@ if __name__ == '__main__':
         message = str(error)
         if sys.stderr:
             print(message, file=sys.stderr)
-        if os.name == 'nt' and '--no-browser' not in sys.argv and '--nest-worker' not in sys.argv:
+        if os.name == 'nt' and '--no-browser' not in sys.argv and '--nest-worker' not in sys.argv and '--document-worker' not in sys.argv:
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, message, 'eznest could not start', 0x10)
         raise SystemExit(1)

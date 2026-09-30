@@ -38,10 +38,10 @@ For later changes: edit files in this same repository folder, review Changes in 
 ## 5. Add the runnable Windows download
 
 1. On GitHub, open your repository's **Releases** page and choose **Draft a new release** or **Create a new release**.
-2. Create tag `v0.10.0-beta.1`, targeting the branch containing the uploaded source.
-3. Title: `eznest 0.10.0-beta.1 — Windows SVG nesting beta`.
+2. Create tag `v0.11.0-beta.1`, targeting the branch containing the uploaded source.
+3. Title: `eznest 0.11.0-beta.1 — Windows production-file beta`.
 4. Copy the content of `RELEASE-NOTES.md` into the description.
-5. Attach `eznest-0.10.0-beta.1-windows-x64.zip` and `eznest-github-handoff-SHA256.txt` as release assets. Keep the Windows ZIP intact; do not extract it into the source repository.
+5. Attach `eznest-0.11.0-beta.1-windows-x64.zip` and `eznest-0.11.0-beta.1-SHA256.txt` as release assets. Keep the Windows ZIP intact; do not extract it into the source repository.
 6. Check **This is a pre-release**. Click **Publish release**, or **Save draft** if you want to review it first.
 
 GitHub documents this flow in [Managing releases](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository). In a private repo, recipients need repository access to get the release. To offer a download to everyone, make a deliberate public-release/source-visibility decision first.

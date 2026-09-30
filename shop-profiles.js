@@ -2,7 +2,8 @@
 (function(root){
   function defaults(){return [
     {id:'generic-svg',name:'Generic SVG handoff',rip:'Other / manual',format:'svg',acceptedFormats:['svg'],colorMode:'preserve',iccProfile:'',bleedMm:0,cutSpot:'',cutLayer:'',registrationOwner:'none',finishingSoftware:'',mediaOwner:'rip',jobLogOwner:'rip'},
-    {id:'onyx-goproduce',name:'ONYX / GoProduce',rip:'ONYX',format:'pdf',acceptedFormats:['pdf','eps','ai'],colorMode:'cmyk',iccProfile:'',bleedMm:null,cutSpot:'CutContour',cutLayer:'CutContour',registrationOwner:'rip',finishingSoftware:'GoProduce',mediaOwner:'rip',jobLogOwner:'rip'}
+    {id:'generic-pdf',name:'PDF / CutContour',rip:'Other / manual',format:'pdf',acceptedFormats:['pdf','ai'],colorMode:'preserve',iccProfile:'',bleedMm:0,cutSpot:'CutContour',cutLayer:'CutContour',registrationOwner:'rip',finishingSoftware:'',mediaOwner:'rip',jobLogOwner:'rip'},
+    {id:'onyx-goproduce',name:'ONYX / GoProduce',rip:'ONYX',format:'pdf',acceptedFormats:['pdf','eps','ai'],colorMode:'preserve',iccProfile:'',bleedMm:null,cutSpot:'CutContour',cutLayer:'CutContour',registrationOwner:'rip',finishingSoftware:'GoProduce',mediaOwner:'rip',jobLogOwner:'rip'}
   ];}
   function validate(p){
     if(!p||typeof p!=='object'||Array.isArray(p))throw Error('Choose a shop profile.');
@@ -18,7 +19,7 @@
   }
   function inspect(profile){
     const p=validate(profile),issues=[];
-    if(p.format!=='svg')issues.push(p.format.toUpperCase()+' export is not available in this build.');
+    if(p.format!=='svg')issues.push(p.format.toUpperCase()+' output is not supported for SVG source jobs.');
     if(p.colorMode!=='preserve')issues.push(p.colorMode.toUpperCase()+' conversion and verification are not available.');
     if(p.iccProfile)issues.push('ICC profile '+p.iccProfile+' has not been applied or verified.');
     if(p.bleedMm===null)issues.push('Confirm the required bleed.');else if(p.bleedMm>0)issues.push('Artwork bleed has not been generated or verified.');

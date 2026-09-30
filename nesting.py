@@ -14,6 +14,10 @@ from production import validate_identity
 
 
 def validate_request(job):
+    if job['settings'].get('sheetLength') is not None:
+        number(job['settings']['sheetLength'],'Maximum sheet length',10,5000)
+        if job.get('fillJobs') and job.get('fillArea')=='length':
+            raise ValueError('For automatic sheets, fill only leftover space. Use a single length for fixed-area sticker fill.')
     fills = job.get('fillJobs', [])
     if not isinstance(fills, list) or len(fills) > 100:
         raise ValueError('Choose up to 100 sticker designs.')
@@ -49,7 +53,7 @@ def validate_request(job):
         raise ValueError('This build supports 100 different piece designs.')
 
 
-def fill_stickers(job, result, budget=None):
+def fill_stickers(job, result, budget=None, copy_limit=100):
     """Greedy contact/grid search; preserve all required placements and quantities.
 
     Attempts complete sets in queue order, one per job per round. The finite
@@ -102,11 +106,11 @@ def fill_stickers(job, result, budget=None):
                         return candidate, {'id':part['id'], 'x':x-x0, 'y':y-y0, 'rotation':angle}
         return None
 
-    while len(placed) < 100 and time.monotonic() < deadline:
+    while len(placed) < copy_limit and time.monotonic() < deadline:
         progress = False
         for index, fill in enumerate(fills):
             per_set = sum(p['perSet'] for p in fill['parts'])
-            if index in failed or counts[index] >= fill['maxSets'] or len(placed)+per_set > 100:
+            if index in failed or counts[index] >= fill['maxSets'] or len(placed)+per_set > copy_limit:
                 continue
             trial_shapes, trial_placements = [], []
             for part in fill['parts']:
@@ -146,13 +150,60 @@ def fill_stickers(job, result, budget=None):
     return resolved, final
 
 
-def run(job):
+def _run(job):
     validate_request(job)
+    if job['settings'].get('sheetLength') is not None:
+        from sheets import split_nest, subset
+        if not job.get('parts'):
+            raise ValueError('For sticker-only fill, use a roll length and leave automatic sheets off.')
+        result = split_nest(job)
+        if job.get('fillJobs'):
+            # Fill each sheet without extending it; carry remaining whole-set limits.
+            merged=copy.deepcopy(job); merged.pop('fillJobs',None)
+            summaries={f['source']['id']:{'id':f['source']['id'],'name':f['source']['name'],'code':f['source']['code'],'sets':0,'maxSets':f['maxSets'],'pieces':0} for f in job['fillJobs']}
+            placements=[]; remaining=100-len(result['placements'])
+            for sheet in result['sheets']:
+                local=[{**p,'y':p['y']-sheet['offset']} for p in result['placements'] if p['sheet']==sheet['index']]
+                local_job=subset(job,local); local_job['settings']={**job['settings'],'maxLength':sheet['usedLength']}; local_job['fillArea']='gaps'
+                local_job['productionJobs']=[]
+                local_job['fillJobs']=[]
+                for fill in job['fillJobs']:
+                    available=min(fill['maxSets']-summaries[fill['source']['id']]['sets'],remaining//sum(p['perSet'] for p in fill['parts']))
+                    if available>0: local_job['fillJobs'].append({**fill,'maxSets':available})
+                # fill_stickers validates identities; sheet subsets are incomplete
+                # sets, so run geometry fill with a per-sheet synthetic identity.
+                if local_job['fillJobs']:
+                    local_job['productionJobs']=[{**s,'sets':1,'partIds':[p['id'] for p in local_job['parts'] if p['sourceJobId']==s['id']]} for s in job['productionJobs'] if any(p['sourceJobId']==s['id'] for p in local_job['parts'])]
+                    local_job['parts']=[{**p,'perSet':p['quantity']} for p in local_job['parts']]
+                    resolved,filled=fill_stickers(local_job,{'width':result['width'],'usedLength':sheet['usedLength'],'placements':local},budget=max(1,min(5,job['settings']['seconds']/len(result['sheets']))),copy_limit=len(local)+remaining)
+                    local=filled['placements']
+                    for summary in filled['fillSummary']:
+                        target=summaries[summary['id']]; target['sets']+=summary['sets']; target['pieces']+=summary['pieces']; remaining-=summary['pieces']
+                placements.extend({**p,'sheet':sheet['index'],'y':p['y']+sheet['offset']} for p in local)
+            for fill in job['fillJobs']:
+                count=summaries[fill['source']['id']]['sets']
+                if count:
+                    merged['productionJobs'].append({**fill['source'],'sets':count})
+                    merged['parts'].extend({**p,'quantity':p['perSet']*count} for p in fill['parts'])
+            result.update(placements=placements,fillSummary=list(summaries.values()),fillLimited=remaining<=0)
+            shapes=validate_result(merged,result); result['area']=sum(s.area for s in shapes); result['utilization']=result['area']/(result['width']*result['usedLength'])
+            for sheet in result['sheets']:
+                sheet['pieces']=sum(p['sheet']==sheet['index'] for p in result['placements'])
+                sheet['area']=sum(shape.area for p,shape in zip(result['placements'],shapes) if p['sheet']==sheet['index'])
+            return {'ok':True,'job':merged,'result':result,'requestJob':job}
+        return {'ok':True,'result':result}
     result = solve(job) if job.get('parts') else {'placements':[], 'usedLength':job['settings']['maxLength'], 'elapsed':0, 'engine':'eznest sticker fill'}
     if job.get('fillJobs'):
         resolved, result = fill_stickers(job, result)
         return {'ok':True, 'job':resolved, 'result':result, 'requestJob':job}
     return {'ok':True, 'result':result}
+
+
+def run(job):
+    started=time.monotonic()
+    payload=_run(job)
+    payload['result']['elapsed']=time.monotonic()-started
+    return payload
 
 
 def worker(request, output):

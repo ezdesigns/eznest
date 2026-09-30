@@ -17,3 +17,14 @@ jagua-rs is an unmodified MPL-2.0 component. Its covered source is included in l
 Shapely's separate GEOS 3.13.1 runtime remains in _internal/shapely.libs, with the wheel's LGPL-2.1 GEOS notices. Its unmodified upstream source is included as licenses/geos-3.13.1-source.tar.bz2, obtained from https://download.osgeo.org/geos/geos-3.13.1.tar.bz2 (SHA-256 df2c50503295f325e7c8d7b783aca8ba4773919cde984193850cf9e361dfd28c). Interface-compatible GEOS DLLs may be replaced in that folder; source build instructions are at https://libgeos.org/usage/download/.
 
 NumPy's bundled numerical-library notices are retained with its license. Runtime library notices are in the corresponding licenses subfolders. Preserve all notices and covered source when redistributing the package.
+
+PDF production additions in 0.11:
+- pypdf 6.19.0 (BSD-3-Clause): https://github.com/py-pdf/pypdf
+- pypdfium2 5.13.0 and its PDFium binary: https://github.com/pypdfium2-team/pypdfium2
+  Preserve its Apache/BSD notices, documentation attribution and bundled PDFium
+  dependency notices under licenses/pypdfium2. PDFium renders review previews only.
+- Pillow 12.3.0 (MIT-CMU and bundled notices): https://github.com/python-pillow/Pillow
+- charset-normalizer 3.5.2 (MIT): https://github.com/jawah/charset_normalizer
+  Included for pypdf's optional character-encoding support; pinned for reproducible builds.
+These packages are unmodified. All installed license files are included below and
+copied to the portable build. PDF print artwork is handled by pypdf, not rasterized.

@@ -3,6 +3,7 @@ import io
 import json
 import shutil
 import tempfile
+import re
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -45,9 +46,11 @@ class OutputFolder:
             raise ValueError('Invalid batch identity.')
         destination = root / ('eznest-'+run_id)
         with ZipFile(io.BytesIO(content)) as archive:
-            if set(archive.namelist()) != FILES:
+            names=archive.namelist(); base=FILES-{'artwork.svg'}
+            artwork=set(names)-base
+            if len(names)!=len(set(names)) or not base.issubset(names) or not artwork or len(artwork)>100 or any(not re.fullmatch(r'(?:artwork\.(?:svg|pdf)|sheet-\d{3}\.(?:svg|pdf))',name) for name in artwork):
                 raise ValueError('Unexpected batch files.')
-            files = {name:archive.read(name) for name in FILES}
+            files = {name:archive.read(name) for name in names}
         if destination.exists():
             if destination.is_symlink() or destination.is_junction() or not destination.is_dir():
                 raise ValueError('The output name is already in use.')

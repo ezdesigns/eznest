@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),Q=require('../queue-core.js');
+const preset={id:'stock',name:'Vinyl',units:'in',settings:{width:100,maxLength:null,gap:2,margin:3,seconds:5,rotations:[0,90,180,270],sheetLength:200,costPerSquareMeter:17.5,currency:'USD'}};
+const entry={id:'a',name:'Kit.ai',revision:'hash',selected:true,status:'ready',sets:3,materialId:'stock',customer:'Customer',order:'ORD-10',kit:'MX',data:{format:'pdf',documentId:'a'.repeat(64),bleedMm:1,reviewed:true,parts:[{id:'pdf-1',points:[[0,0],[10,0],[10,10],[0,10]],documentId:'a'.repeat(64),pdfPieceId:'pdf-1'}]}};
+const job=Q.compose([entry],preset);
+assert.equal(job.parts[0].quantity,3);assert.equal(job.productionJobs[0].order,'ORD-10');assert.equal(job.productionJobs[0].customer,'Customer');assert.equal(job.documentSources.a.documentId,entry.data.documentId);
+assert.equal(Q.groupName(entry,'order'),'Customer / ORD-10');assert.equal(Q.groupName(entry,'customer'),'Customer');
+assert.throws(()=>Q.compose([{...entry,data:{...entry.data,reviewed:false}}],preset),/Review/);
+assert.throws(()=>Q.compose([entry,{...entry,id:'b',data:{svgSource:{},parts:entry.data.parts}}],preset),/separate/);
+const imported=Q.importPresets({format:'eznest.material-presets',version:1,presets:[preset]})[0];
+assert.equal(imported.settings.sheetLength,200);assert.equal(imported.settings.costPerSquareMeter,17.5);
+assert.throws(()=>Q.validatePreset({...preset,settings:{...preset.settings,sheetLength:2}}),/Sheet/);
+assert.throws(()=>Q.validatePreset({...preset,settings:{...preset.settings,costPerSquareMeter:-1}}),/cost/);
+console.log('PDF review gates, job identity, mixed-format rejection and production presets passed.');

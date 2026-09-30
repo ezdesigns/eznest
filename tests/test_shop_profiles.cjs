@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const P=require('../shop-profiles.js'),Q=require('../queue-core.js');
-const [generic,onyx]=P.defaults();
+const generic=P.defaults().find(p=>p.id==='generic-svg'),onyx=P.defaults().find(p=>p.id==='onyx-goproduce');
 assert.equal(P.inspect(generic).ready,true);
 assert.equal(P.inspect(onyx).ready,false);
 assert.equal(onyx.cutSpot,'CutContour');assert.equal(onyx.registrationOwner,'rip');

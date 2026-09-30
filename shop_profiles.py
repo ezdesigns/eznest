@@ -32,7 +32,7 @@ def inspect_output(profile):
     p = validate_profile(profile)
     issues = []
     if p['format']!='svg':
-        issues.append(p['format'].upper()+' export is not available in this build.')
+        issues.append(p['format'].upper()+' output is not supported for SVG source jobs.')
     if p['colorMode']!='preserve':
         issues.append(p['colorMode'].upper()+' conversion and verification are not available.')
     if p['iccProfile']:

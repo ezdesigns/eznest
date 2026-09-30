@@ -5,15 +5,20 @@
     const selected=entries.filter(e=>e.selected&&!isPrepared(e));
     if(!selected.length)throw Error('Select at least one ready job.');
     if(mode==='single'&&selected.length!==1)throw Error('Choose one job for this print.');
+    const formats=new Set(selected.map(e=>e.data?.format==='pdf'?'pdf':'svg'));
+    if(formats.size>1)throw Error('Nest PDF/AI jobs together, and SVG jobs in a separate batch. This preserves the original print artwork.');
     const job={name:selected.length===1?selected[0].name:selected.length+' production jobs',materialId:preset.id,materialName:preset.name,settings:{...preset.settings},parts:[],productionJobs:[],svgSources:{},fillJobs:[],fillArea:options.fillArea||'gaps'};
     if(options.maxLength!==undefined)job.settings.maxLength=options.maxLength;
     for(const [index,entry] of selected.entries()){
-      if(entry.status!=='ready'||!entry.data?.svgSource)throw Error(entry.name+' is not ready.');
+      const pdf=entry.data?.format==='pdf';
+      if(entry.status!=='ready'||(!pdf&&!entry.data?.svgSource))throw Error(entry.name+' is not ready.');
+      if(pdf&&!entry.data.reviewed)throw Error('Review detected pieces and bleed in Job options for '+entry.name+'.');
       if(entry.materialId!==preset.id)throw Error('Use one material preset per batch. Change the selected jobs or their assigned material.');
       if(!Number.isInteger(entry.sets)||entry.sets<1||entry.sets>100)throw Error('Sets must be a whole number from 1 to 100.');
-      const source={id:entry.id,code:codeFor(index),name:entry.name,sourceFile:entry.sourceFile||entry.name,revision:entry.revision,sets:entry.sets,materialId:entry.materialId,partIds:[],role:entry.role==='fill'?'fill':'required'};
+      const source={id:entry.id,code:codeFor(index),name:entry.name,sourceFile:entry.sourceFile||entry.name,revision:entry.revision,sets:entry.sets,materialId:entry.materialId,partIds:[],role:entry.role==='fill'?'fill':'required',customer:entry.customer||'',order:entry.order||'',kit:entry.kit||''};
       const parts=[];
-      job.svgSources[entry.id]=entry.data.svgSource;
+      if(pdf){job.documentSources=job.documentSources||{};job.documentSources[entry.id]={documentId:entry.data.documentId,reviewed:entry.data.reviewed,bleedMm:entry.data.bleedMm};}
+      else job.svgSources[entry.id]=entry.data.svgSource;
       for(const part of entry.data.parts){
         const id=entry.id+':'+part.id,perSet=part.quantity||1;
         source.partIds.push(id);parts.push({...part,id,sourceJobId:entry.id,originalPartId:part.id,perSet,quantity:perSet*entry.sets});
@@ -43,6 +48,8 @@
   }
   function restorePrepared(entry){delete entry.preparedRevision;delete entry.exportedRevision;entry.selected=false;}
   function groupName(entry,mode,presets=[]){
+    if(mode==='customer')return entry.customer?.trim()||'No customer assigned';
+    if(mode==='order')return [entry.customer?.trim(),entry.order?.trim()].filter(Boolean).join(' / ')||'No order assigned';
     if(mode==='material')return presets.find(p=>p.id===entry.materialId)?.name||'Unassigned material';
     if(mode==='category')return entry.category?.trim()||'Uncategorized';
     if(entry.origin==='folder'){
@@ -57,7 +64,12 @@
     const s=p.settings||{},finite=(k,lo,hi)=>typeof s[k]==='number'&&Number.isFinite(s[k])&&s[k]>=lo&&s[k]<=hi;
     if(!finite('width',10,5000)||(s.maxLength!==null&&!finite('maxLength',10,5000))||!finite('gap',0,100)||!finite('margin',0,100)||!finite('seconds',1,120)||s.margin*2>=s.width||(s.maxLength!==null&&s.margin*2>=s.maxLength))throw Error('Invalid material dimensions, margins or search time.');
     if(s.rotations!==null&&!['[0]','[0,180]','[0,90,180,270]'].includes(JSON.stringify(s.rotations)))throw Error('Invalid preset rotation rules.');
-    return {name:p.name.trim(),units:p.units,settings:Object.fromEntries(['width','maxLength','gap','margin','seconds','rotations'].map(k=>[k,s[k]]))};
+    if(s.sheetLength!=null&&(!finite('sheetLength',10,5000)||s.sheetLength<=s.margin*2))throw Error('Sheet length must leave room inside the margins.');
+    if(s.costPerSquareMeter!=null&&!finite('costPerSquareMeter',0,1000000))throw Error('Enter a nonnegative material cost.');
+    if(s.currency!=null&&!/^[A-Za-z]{3}$/.test(s.currency))throw Error('Use a three-letter currency code.');
+    const settings=Object.fromEntries(['width','maxLength','gap','margin','seconds','rotations'].map(k=>[k,s[k]]));
+    for(const k of ['sheetLength','costPerSquareMeter','currency'])if(s[k]!==undefined)settings[k]=s[k];
+    return {name:p.name.trim(),units:p.units,settings};
   }
   function importPresets(document){
     if(document?.format!=='eznest.material-presets'||document.version!==1||!Array.isArray(document.presets)||!document.presets.length||document.presets.length>100)throw Error('Choose an eznest material preset file (version 1).');

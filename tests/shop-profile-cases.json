@@ -83,7 +83,7 @@
       "ready": false,
       "actualFormat": "svg",
       "issues": [
-        "PDF export is not available in this build.",
+        "PDF output is not supported for SVG source jobs.",
         "CMYK conversion and verification are not available.",
         "Confirm the required bleed.",
         "A named CutContour spot separation on layer CutContour has not been generated or verified."
@@ -133,7 +133,7 @@
       "ready": false,
       "actualFormat": "svg",
       "issues": [
-        "EPS export is not available in this build.",
+        "EPS output is not supported for SVG source jobs.",
         "CMYK conversion and verification are not available.",
         "ICC profile Shop ICC has not been applied or verified.",
         "Artwork bleed has not been generated or verified.",

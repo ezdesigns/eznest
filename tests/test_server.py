@@ -62,6 +62,9 @@ class ServerTests(unittest.TestCase):
                 self.assertFalse(server.STATE.get('released',False));self.assertEqual(package.call_count,0)
                 response=release(True)
                 self.assertFalse(response['outputCheck']['ready'])
+                self.assertFalse(server.STATE['deliveryCompleted'])
+                req=Request(f'http://127.0.0.1:{server.PORT}/api/delivery/complete',data=json.dumps({'id':'b'*32}).encode(),headers={'Content-Type':'application/json','X-EZ-Token':server.TOKEN})
+                with urlopen(req,timeout=5) as delivered:self.assertTrue(json.load(delivered)['ok'])
                 self.assertTrue(server.STATE['deliveryCompleted'])
                 self.assertFalse(server.STATE['manifest']['outputCheck']['ready'])
         finally:

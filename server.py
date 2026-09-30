@@ -30,6 +30,14 @@ PORT = int(os.environ.get('EZ_NEST_PORT', '8765'))
 FOLDER = FolderQueue(WORK / 'production-folder.json')
 FOLDER_LOCK = threading.Lock()
 OUTPUT = OutputFolder(WORK / 'output-folder.json')
+DOCUMENT_LOCK = threading.Lock()
+
+
+def batch_output_check(job):
+    if job.get('documentSources'):
+        from pdf_io import output_check
+        return output_check(job, WORK/'documents')
+    return inspect_output(job['outputProfile']) if job.get('outputProfile') else None
 
 
 def persist_state():
@@ -66,6 +74,8 @@ def finish_search(payload):
             STATE['note'] = 'Found a better layout.'
     if STATE.get('status') == 'ready' and STATE.get('job', {}).get('productionJobs'):
         STATE['manifest'] = manifest(STATE['job'], STATE['result'], STATE['id'])
+        check=batch_output_check(STATE['job'])
+        if check: STATE['manifest']['outputCheck']=check
     persist_state()
 
 
@@ -138,6 +148,7 @@ class Handler(BaseHTTPRequestHandler):
         static = {'/': ('production.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
         static.update({'/svg-io.js': ('svg-io.js', 'text/javascript'), '/sample-artwork.svg': ('sample-artwork.svg', 'image/svg+xml')})
         static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css'), '/classic': ('classic.html','text/html')})
+        static['/production-features.js']=('production-features.js','text/javascript')
         static['/shop-profiles.js'] = ('shop-profiles.js','text/javascript')
         if os.environ.get('EZ_NEST_TEST_UI') == '1':
             static.update({'/tests/svg-tests.html': ('tests/svg-tests.html', 'text/html'), '/tests/svg-tests.js': ('tests/svg-tests.js', 'text/javascript')})
@@ -158,6 +169,23 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 <= size <= 48_000_000:
                 raise ValueError('Job is too large.')
             data = json.loads(self.rfile.read(size) or '{}')
+            if self.path == '/api/document/import':
+                if not DOCUMENT_LOCK.acquire(blocking=False):
+                    raise ValueError('Wait for the current document import to finish.')
+                ident=uuid.uuid4().hex
+                request,output=WORK/(ident+'-import.json'),WORK/(ident+'-import-result.json')
+                try:
+                    request.write_text(json.dumps(data),encoding='utf-8')
+                    worker=[sys.executable,'--document-worker'] if getattr(sys,'frozen',False) else [sys.executable,str(ROOT/'pdf_io.py')]
+                    subprocess.run([*worker,str(request),str(output)],cwd=WORK,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=120,check=True,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+                    payload=json.loads(output.read_text(encoding='utf-8'))
+                    if not payload['ok']: raise ValueError(payload['error'])
+                    return self.send(200,payload['document'])
+                except subprocess.TimeoutExpired:
+                    raise ValueError('PDF import took too long. Use a smaller print-only document.')
+                finally:
+                    request.unlink(missing_ok=True); output.unlink(missing_ok=True)
+                    DOCUMENT_LOCK.release()
             if self.path in ('/api/output/connect', '/api/output/pick'):
                 if self.path.endswith('/pick'):
                     data = {'path': pick_folder('Select where eznest will save print packs')}
@@ -201,6 +229,11 @@ class Handler(BaseHTTPRequestHandler):
                         data = copy.deepcopy(STATE.get('requestJob', STATE['job']))
                         data['settings']['seed'] = secrets.randbelow(2147483647)
                     validate_request(data)
+                    if data.get('documentSources'):
+                        from pdf_io import load_documents
+                        complete={**data,'productionJobs':data.get('productionJobs',[])+[f['source'] for f in data.get('fillJobs',[])],
+                                  'parts':data['parts']+[p for f in data.get('fillJobs',[]) for p in f['parts']]}
+                        load_documents(complete,WORK/'documents')
                     if 'outputProfile' in data:
                         data['outputProfile'] = validate_profile(data['outputProfile'])
                     run_id = uuid.uuid4().hex
@@ -234,11 +267,15 @@ class Handler(BaseHTTPRequestHandler):
                 elif self.path == '/api/release':
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('Calculate and review the current layout before exporting.')
-                    check = inspect_output(STATE['job']['outputProfile']) if STATE.get('job',{}).get('outputProfile') else None
+                    check = batch_output_check(STATE['job'])
                     if check and not check['ready'] and data.get('workingOnly') is not True:
-                        raise ValueError('This layout does not meet the shop output requirements. Save working SVG files explicitly or use a supported output profile.')
+                        raise ValueError('This layout does not meet the shop output requirements. Save working files explicitly or use a supported output profile.')
                     if not STATE.get('released'):
-                        content, details = make_package(STATE['job'],STATE['result'],STATE['id'],data['artwork'],data['map'])
+                        documents=None
+                        if STATE['job'].get('documentSources'):
+                            from pdf_io import load_documents
+                            documents=load_documents(STATE['job'],WORK/'documents')
+                        content, details = make_package(STATE['job'],STATE['result'],STATE['id'],data.get('artwork'),data['map'],documents,check)
                         directory = WORK / 'batches'
                         directory.mkdir(exist_ok=True)
                         temporary = directory / (STATE['id']+'.tmp')
@@ -248,9 +285,15 @@ class Handler(BaseHTTPRequestHandler):
                         persist_state()
                     with FOLDER_LOCK:
                         saved = OUTPUT.save(STATE['id'], (WORK/'batches'/(STATE['id']+'.zip')).read_bytes(), FOLDER.root)
-                    STATE.update(deliveryCompleted=True, savedPath=saved)
+                    STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved)
                     persist_state()
-                    return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check})
+                    return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check,'deliveryCompleted':STATE['deliveryCompleted']})
+                elif self.path == '/api/delivery/complete':
+                    if STATE.get('status')!='ready' or data.get('id')!=STATE.get('id') or not STATE.get('released') or not (WORK/'batches'/(STATE['id']+'.zip')).is_file():
+                        raise ValueError('Download the current frozen batch before completing its delivery.')
+                    STATE['deliveryCompleted']=True
+                    persist_state()
+                    return self.send(200,{'ok':True})
                 elif self.path == '/api/prepare-apply':
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('Calculate a current validated layout first.')

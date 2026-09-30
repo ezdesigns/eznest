@@ -1,3 +1,5 @@
+> Historical 0.10 preparation record. The repository was subsequently pushed to ezdesigns/eznest and its first hosted tests passed. Current behavior and checks are in PRODUCTION-VALIDATION.md and PRODUCTION-FILES.md.
+
 # Repository handoff check — 2026-09-30
 
 This handoff prepares eznest 0.10.0-beta.1 for a new source repository. It adds repository documentation, ignore rules, line-ending settings and a Windows test workflow. Application code and the existing Windows executable are unchanged.

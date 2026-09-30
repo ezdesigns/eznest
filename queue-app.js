@@ -16,9 +16,10 @@ if(!preferences.rollLengthDefaultsMigrated){for(const p of preferences.presets){
 for(const p of preferences.presets){if(p.id==='demo'&&p.name==='Demo material · 180 mm')p.name='Example material';if(p.id==='shop53'&&p.name==='53 in roll · review settings')p.name='Shop roll · check width';}
 
 preferences.shopProfiles=preferences.shopProfiles||EZNProfiles.defaults();preferences.shopProfile=preferences.shopProfile||'generic-svg';
+if(!preferences.shopProfiles.some(p=>p.id==='generic-pdf'))preferences.shopProfiles.push(EZNProfiles.defaults().find(p=>p.id==='generic-pdf'));
 const activeShop=()=>preferences.shopProfiles.find(p=>p.id===preferences.shopProfile)||preferences.shopProfiles[0];
 const outputIncomplete=state=>state?.manifest?.outputCheck?.ready===false;
-let queue=[],preparedBatches=[],token='',current=null,busy=false,saving=false,folder=null,folderBusy=false,folderTimer=null,runSignature='',autoAttempts=0,noBetter=0,autoTimer=null,db=null,saveTimer=null,settingsUnit='mm',highlightJob='',editingJob=null,hadSelectedFill=false;
+let queue=[],preparedBatches=[],token='',current=null,busy=false,saving=false,importing=false,folder=null,folderBusy=false,folderTimer=null,runSignature='',autoAttempts=0,noBetter=0,autoTimer=null,db=null,saveTimer=null,settingsUnit='mm',highlightJob='',editingJob=null,hadSelectedFill=false;
 
 const activePreset=()=>preferences.presets.find(p=>p.id===preferences.active)||preferences.presets[0];
 
@@ -39,7 +40,7 @@ function remember(){localStorage.setItem('eznest.production.settings',JSON.strin
 
 async function openStorage(){return new Promise(resolve=>{const request=indexedDB.open('eznest-production',1);request.onupgradeneeded=()=>request.result.createObjectStore('state');request.onerror=()=>resolve();request.onsuccess=()=>{db=request.result;const transaction=db.transaction('state'),store=transaction.objectStore('state'),jobs=store.get('queue'),prepared=store.get('prepared');jobs.onsuccess=()=>queue=Array.isArray(jobs.result)?jobs.result:[];prepared.onsuccess=()=>preparedBatches=Array.isArray(prepared.result)?prepared.result:[];transaction.oncomplete=()=>resolve();transaction.onerror=()=>resolve();};});}
 
-function signature(){return JSON.stringify({jobs:activeEntries().filter(e=>e.selected).map(e=>[e.id,e.revision,e.sets,e.materialId,e.status,e.role]),preset:activePreset(),outputProfile:EZNProfiles.validate(activeShop()),fillArea:preferences.fillArea,maxLength:readPhysicalField('batch-length',displayUnit())});}
+function signature(){return JSON.stringify({jobs:activeEntries().filter(e=>e.selected).map(e=>[e.id,e.revision,e.sets,e.materialId,e.status,e.role,e.customer,e.order,e.kit,e.data?.reviewed]),preset:activePreset(),outputProfile:EZNProfiles.validate(activeShop()),fillArea:preferences.fillArea,maxLength:readPhysicalField('batch-length',displayUnit())});}
 
 function svgText(text,tag){const el=document.createElement(tag);el.textContent=text;return el;}
 
@@ -47,10 +48,10 @@ function clearPreview(){
 
   $('preview').setAttribute('hidden','');$('empty').hidden=false;
   const hasJobs=activeEntries().length>0,actions=document.createElement('div');actions.className='empty-actions';
-  const add=svgText('Choose SVG files','button');add.className='primary';add.disabled=busy||saving;add.onclick=()=>$('files').click();actions.append(add);
+  const add=svgText('Choose artwork files','button');add.className='primary';add.disabled=busy||saving;add.onclick=()=>$('files').click();actions.append(add);
   if(!hasJobs){const example=svgText('Try an example','button');example.disabled=busy||saving;example.onclick=()=>$('demo').click();actions.append(example);}
-  const formats=svgText('SVG import and export in this beta. AI/PDF artwork is not supported yet.','p');formats.className='empty-format';
-  $('empty').replaceChildren(svgText(hasJobs?'Your layout will appear here.':'Drop SVG artwork to begin.','strong'),svgText(hasJobs?'Check the width and quantities, then select Nest.':'Choose your roll width, then nest the selected jobs.','p'),actions,formats);
+  const formats=svgText('PDF / compatible AI with cut contours, or SVG. Original print artwork stays local.','p');formats.className='empty-format';
+  $('empty').replaceChildren(svgText(hasJobs?'Your layout will appear here.':'Drop PDF, AI or SVG artwork to begin.','strong'),svgText(hasJobs?'Check the width and quantities, then select Nest.':'Choose your roll width, then nest the selected jobs.','p'),actions,formats);
 
   for(const id of ['metrics','review-tools','completeness','job-key','export-bar','batch-status','output-check'])$(id).hidden=true;
 
@@ -103,6 +104,8 @@ function renderQueue(){
 
     detail.textContent=entry.status==='ready'?(entry.role==='fill'?perSet+' '+(perSet===1?'sticker':'stickers')+' per set':perSet+(perSet===1?' piece per set':' pieces per set')):(entry.error||'Waiting for the file to finish saving…');
 
+    if(entry.data?.format==='pdf'&&!entry.data.reviewed)detail.textContent+=' · review pieces';
+    if(entry.customer||entry.order)detail.textContent+=' · '+[entry.customer,entry.order].filter(Boolean).join(' / ');
     if(entry.status==='error'||entry.status==='missing')detail.className='job-error';
 
     if(entry.materialId!==activePreset().id&&entry.status==='ready')detail.textContent+=' · '+(preferences.presets.find(p=>p.id===entry.materialId)?.name||'Choose material');
@@ -137,9 +140,9 @@ function renderQueue(){
 
   $('nest').disabled=locked||!selected.length||!!mismatched.length||invalidQuantity||pieces>100;
 
-  $('nest').textContent=busy?'Nesting…':current?'Nest again':'Nest selected jobs';$('nest').classList.toggle('primary',!current);
+  $('nest').textContent=importing?'Importing…':busy?'Nesting…':current?'Nest again':'Nest selected jobs';$('nest').classList.toggle('primary',!current);
 
-  ['files','fill-files','demo','preset','quick-width','batch-length','fill-area','connect','settings-open','paths-open','change-output','prepared-open','shop-shortcut','quit'].forEach(id=>$(id).disabled=locked);$('cancel').hidden=!busy;
+  ['files','fill-files','demo','preset','quick-width','batch-length','fill-area','connect','settings-open','paths-open','change-output','prepared-open','shop-shortcut','quit'].forEach(id=>$(id).disabled=locked);$('cancel').hidden=!busy||importing;
 
   $('queue').scrollTop=scroll;if(focus){const field=[...document.querySelectorAll('[data-focus]')].find(e=>e.dataset.focus===focus);field?.focus();}
 
@@ -147,7 +150,7 @@ function renderQueue(){
 
 function openJobOptions(entry){
 
-  editingJob=entry.id;$('job-settings-title').textContent=entry.name.replace(/\.svg$/i,'');$('job-source').textContent=entry.sourceFile||entry.name;$('job-category').value=entry.category||'';
+  editingJob=entry.id;$('job-settings-title').textContent=entry.name.replace(/\.svg$/i,'');$('job-source').textContent=entry.sourceFile||entry.name;$('job-category').value=entry.category||'';for(const field of ['customer','order','kit'])$('job-'+field).value=entry[field]||'';showDocumentReview(entry);
 
   $('job-role').value=entry.role||'required';$('job-quantity').value=entry.sets;
 
@@ -194,16 +197,26 @@ async function importFiles(files,role='required'){
   if(busy||saving)return;
 
   let added=0,unsupported=0;const failures=[];
-  for(const file of files){if(!/\.svg$/i.test(file.name)){unsupported++;continue;}if(file.size>8_000_000){failures.push(file.name+' exceeds the 8 MB limit.');continue;}try{if(await importText(await file.text(),file.name,{role}))added++;}catch(e){failures.push(file.name+': '+e.message);}}
+  const documentOptions=files.some(f=>/\.(pdf|ai)$/i.test(f.name))?await requestDocumentOptions():null;
+  if(files.some(f=>/\.(pdf|ai)$/i.test(f.name))&&!documentOptions)return;
+  busy=true;importing=true;renderQueue();
+  try{for(const file of files){
+    if(!/\.(svg|pdf|ai)$/i.test(file.name)){unsupported++;continue;}
+    const pdf=/\.(pdf|ai)$/i.test(file.name);
+    if(file.size>(pdf?20_000_000:8_000_000)){failures.push(file.name+' exceeds the '+(pdf?'20':'8')+' MB limit.');continue;}
+    status('Importing '+file.name+'…');
+    try{if(pdf?await importDocument(file,role,documentOptions):await importText(await file.text(),file.name,{role}))added++;}catch(e){failures.push(file.name+': '+e.message);}
+  }}finally{busy=false;importing=false;renderQueue();}
   if(added)invalidate();
-  const messages=[];if(added)messages.push(added+' '+(added===1?'file':'files')+' loaded. Select ready jobs, then Nest.');if(unsupported)messages.push(unsupported+' '+(unsupported===1?'file was':'files were')+' skipped. This beta accepts SVG artwork; export an SVG from your design app first.');messages.push(...failures);
-  if(messages.length)status(messages.join(' '),!added);
+  const messages=[];if(added)messages.push(added+' file(s) loaded. Review PDF pieces in Job options, then Nest.');if(unsupported)messages.push(unsupported+' unsupported file(s). Use PDF, PDF-compatible AI or SVG.');messages.push(...failures);
+  if(messages.length)status(messages.join(' '),!!failures.length||!added);
+  const review=queue.find(e=>e.selected&&e.data?.format==='pdf'&&!e.data.reviewed);if(review)openJobOptions(review);
 
 }
 
 function svgNode(tag,attrs={},text){const n=document.createElementNS(NS,tag);for(const [k,v]of Object.entries(attrs))n.setAttribute(k,v);if(text!==undefined)n.textContent=text;return n;}
 
-function artworkSVG(state){return EZNSVG.buildSVG(state.job,state.result);}
+function artworkSVG(state){return state.job.documentSources?documentSVG(state):EZNSVG.buildSVG(state.job,state.result);}
 
 function mapSVG(state,withLegend=false,labels=true,outlines=true){
 
@@ -223,7 +236,8 @@ function mapSVG(state,withLegend=false,labels=true,outlines=true){
 
   }
 
-  if(withLegend){const rows=m.jobs.length,extra=10+rows*7;out.setAttribute('height',(r.usedLength+extra)+'mm');out.setAttribute('viewBox',`0 0 ${r.width} ${r.usedLength+extra}`);m.jobs.forEach((job,i)=>out.append(svgNode('text',{x:3,y:r.usedLength+8+i*7,'font-family':'Arial, sans-serif','font-size':3.2,fill:colors[i%colors.length]},`${job.code} · ${job.name} · ${job.sets} sets · ${job.placed}/${job.expected} pieces`)));}
+  for(const sheet of r.sheets||[])if(sheet.index>0)out.append(svgNode('line',{x1:0,x2:r.width,y1:sheet.offset,y2:sheet.offset,stroke:'#222','stroke-width':.5,'stroke-dasharray':'3 2'}));
+  if(withLegend){const rows=m.jobs.length,extra=10+rows*7;out.setAttribute('height',(r.usedLength+extra)+'mm');out.setAttribute('viewBox',`0 0 ${r.width} ${r.usedLength+extra}`);m.jobs.forEach((job,i)=>out.append(svgNode('text',{x:3,y:r.usedLength+8+i*7,'font-family':'Arial, sans-serif','font-size':3.2,fill:colors[i%colors.length]},`${job.code} · ${[job.customer,job.order,job.kit,job.name].filter(Boolean).join(" / ")} · ${job.sets} sets · ${job.placed}/${job.expected} pieces`)));}
 
   return out;
 
@@ -259,13 +273,15 @@ function showResult(state){
 
   $('completeness').replaceChildren();for(const [index,job] of m.jobs.entries()){const el=document.createElement('button');el.className='complete-job color-'+(index%colors.length);el.dataset.jobId=job.id;el.setAttribute('aria-label','Highlight '+job.name);el.onclick=()=>{highlightJob=highlightJob===job.id?'':job.id;renderLayout();};const code=document.createElement('span');code.textContent=job.code;el.append(code,document.createTextNode(`${job.name.replace(/\.svg$/i,'')} · ${job.placed}`));$('completeness').append(el);}for(const fill of state.result.fillSummary||[])if(!fill.pieces){const el=document.createElement('span');el.className='muted';el.textContent=fill.code+' · '+fill.name+': no complete set fitted';$('completeness').append(el);}$('completeness').hidden=false;
 
-  $('export').disabled=busy||saving;$('export').textContent=outputIncomplete(state)?(state.deliveryCompleted?'Export working SVG again':'Export working SVG'):wasPrepared(state)?'Export SVG again':'Export SVG';$('improve').disabled=busy||!!state.released;
+  $('export').disabled=busy||saving;$('improve').disabled=busy||!!state.released;
 
   $('export-note').textContent=outputIncomplete(state)?'Does not meet '+state.manifest.outputProfile.rip+' requirements. Jobs stay in queue.':wasPrepared(state)?'Saved in Exports. Choose jobs for your next nest.':'Includes artwork, a piece map and a checklist.';
   $('output-check').hidden=!outputIncomplete(state);$('output-issues').replaceChildren();if(outputIncomplete(state)){$('output-check-title').textContent='Still needed for '+state.manifest.outputProfile.name;for(const issue of state.manifest.outputCheck.issues)$('output-issues').append(svgText(issue,'li'));}
 
   $('result-explanation').textContent='All required sets are complete. Coverage measures piece area against the material used. '+(state.result.fillSummary?'Sticker fill is the best found within the search and 100-piece limits.':'');$('nest').classList.remove('primary');$('nest').textContent='Nest again';
 
+  updateProductionResult(state);
+  const format=state.job.documentSources?'PDF':'SVG';$('export').textContent=(outputIncomplete(state)?'Export working ':'Export ')+format+(state.released?' again':'');
   renderLayout();
 
 }
@@ -373,7 +389,7 @@ function setDimensionField(key,mm,unit){const field=$(key);field.value=mm===null
 function readPhysicalField(key,unit){const field=$(key);if(!field.value.trim())return null;return field.value===field.dataset.display?Number(field.dataset.mm):Number(field.value)*scale(unit);}
 function readDimensionField(key){return readPhysicalField(key,settingsUnit);}
 
-function fillSettings(){const p=activePreset();settingsUnit=displayUnit();$('units').value=settingsUnit;$('precision').value=preferences.precision??2;$('group-by').value=preferences.groupBy||'folder';$('preset-name').value=p.name;for(const key of ['width','maxLength','gap','margin'])setDimensionField(key,p.settings[key],settingsUnit);for(const label of document.querySelectorAll('.field-unit'))label.textContent=settingsUnit;$('rotations').value=p.settings.rotations===null?'free':p.settings.rotations.join(',');$('seconds').value=p.settings.seconds;$('auto-nest').checked=preferences.autoNest;$('auto-improve').checked=preferences.autoImprove;$('settings-status').textContent='';}
+function fillSettings(){const p=activePreset();settingsUnit=displayUnit();$('units').value=settingsUnit;$('precision').value=preferences.precision??2;$('group-by').value=preferences.groupBy||'folder';$('preset-name').value=p.name;for(const key of ['width','maxLength','gap','margin'])setDimensionField(key,p.settings[key],settingsUnit);fillProductionSettings(p);for(const label of document.querySelectorAll('.field-unit'))label.textContent=settingsUnit;$('rotations').value=p.settings.rotations===null?'free':p.settings.rotations.join(',');$('seconds').value=p.settings.seconds;$('auto-nest').checked=preferences.autoNest;$('auto-improve').checked=preferences.autoImprove;$('settings-status').textContent='';}
 
 function saveSettings(asNew){
 
@@ -381,7 +397,7 @@ function saveSettings(asNew){
 
   const settings={};for(const key of ['width','maxLength','gap','margin'])settings[key]=readDimensionField(key);settings.seconds=Number($('seconds').value);settings.rotations=$('rotations').value==='free'?null:$('rotations').value.split(',').map(Number);
 
-  const clean=EZNQueue.validatePreset({name,units:$('units').value,settings});
+  readProductionSettings(settings);const clean=EZNQueue.validatePreset({name,units:$('units').value,settings});
 
   const previous=activePreset(),changed=asNew||name!==previous.name||JSON.stringify(settings)!==JSON.stringify(previous.settings);
 
@@ -418,7 +434,7 @@ $('show-labels').onchange=renderLayout;$('job-colors').onchange=renderLayout;$('
 
 $('settings-open').onclick=()=>{fillSettings();$('settings').showModal();};$('settings-close').onclick=()=>$('settings').close();
 
-$('units').onchange=()=>{const next=$('units').value;for(const key of ['width','maxLength','gap','margin'])setDimensionField(key,readDimensionField(key),next);settingsUnit=next;for(const label of document.querySelectorAll('.field-unit'))label.textContent=next;};
+$('units').onchange=()=>{const next=$('units').value;for(const key of ['width','maxLength','gap','margin','sheet-length'])setDimensionField(key,readDimensionField(key),next);settingsUnit=next;for(const label of document.querySelectorAll('.field-unit'))label.textContent=next;};
 
 $('settings-form').onsubmit=e=>{e.preventDefault();try{saveSettings(false);}catch(error){$('settings-status').textContent=error.message;$('settings-status').className='error';}};
 
@@ -431,17 +447,28 @@ $('connect-path').onclick=async()=>{try{await api('/api/folder/connect',{path:$(
 $('disconnect').onclick=async()=>{try{await api('/api/folder/disconnect',{});$('folder-path').value='';await refreshFolder();$('paths-status').textContent='Disconnected. Loaded files remain in the queue.';}catch(e){$('paths-status').textContent=e.message;}};
 
 $('export').onclick=async()=>{
-
-  if(!current||busy||saving)return;clearTimeout(autoTimer);saving=true;renderQueue();$('export').disabled=true;
-
-  try{const released=await api('/api/release',{id:current.id,workingOnly:outputIncomplete(current),artwork:EZNSVG.serialize(artworkSVG(current)),map:EZNSVG.serialize(mapSVG(current,true))});current.released=true;current.deliveryCompleted=true;current.savedPath=released.savedPath;if(released.outputCheck)current.manifest.outputCheck=released.outputCheck;recordPrepared(current);EZNQueue.markPrepared(queue,current);remember();renderQueue();showResult(current);if(released.savedPath){status(outputIncomplete(current)?'Working SVG files saved. Jobs remain in the queue.':'SVG files saved. Jobs moved to Exports.');$('output-status').textContent='Saved to '+pathName($('output-path').value);$('output-status').title=released.savedPath;return;}const response=await fetch(released.url);if(!response.ok)throw Error('The batch is saved, but the download failed. Select Export SVG again to retry.');const a=document.createElement('a');a.href=URL.createObjectURL(await response.blob());a.download='EZ-Nest-Batch-'+released.id.slice(0,8)+'.zip';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);status(outputIncomplete(current)?'Working SVG downloaded. Jobs remain in the queue.':'SVG package downloaded. Jobs moved to Exports.');}
-
-  catch(e){try{const saved=await api('/api/state');if(saved.id===current?.id&&saved.released){if(saved.deliveryCompleted===true){recordPrepared(saved);EZNQueue.markPrepared(queue,saved);remember();}showResult(saved);}}catch{}$('export').disabled=false;status(e.message,true);}
-
-  finally{saving=false;renderQueue();if(current)showResult(current);}
-
+  if(!current||busy||saving)return;
+  clearTimeout(autoTimer);saving=true;renderQueue();$('export').disabled=true;
+  try{
+    const released=await api('/api/release',{id:current.id,workingOnly:outputIncomplete(current),artwork:current.job.documentSources?null:EZNSVG.serialize(artworkSVG(current)),map:EZNSVG.serialize(mapSVG(current,true))});
+    current.released=true;current.deliveryCompleted=released.deliveryCompleted===true;current.savedPath=released.savedPath;
+    if(released.outputCheck)current.manifest.outputCheck=released.outputCheck;
+    if(!released.savedPath){
+      const response=await fetch(released.url);
+      if(!response.ok)throw Error('The frozen batch is saved, but the download failed. Select Export again to retry.');
+      const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');
+      link.href=url;link.download='EZ-Nest-Batch-'+released.id.slice(0,8)+'.zip';link.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      await api('/api/delivery/complete',{id:current.id});current.deliveryCompleted=true;
+    }
+    recordPrepared(current);EZNQueue.markPrepared(queue,current);remember();renderQueue();showResult(current);
+    status(outputIncomplete(current)?'Working package saved. Jobs remain in the queue.':released.savedPath?'Files saved. Jobs moved to Exports.':'Download started. The frozen batch is also available in Exports.');
+    if(released.savedPath){$('output-status').textContent='Saved to '+pathName($('output-path').value);$('output-status').title=released.savedPath;}
+  }catch(e){
+    try{const saved=await api('/api/state');if(saved.id===current?.id&&saved.released){if(saved.deliveryCompleted===true){recordPrepared(saved);EZNQueue.markPrepared(queue,saved);remember();}showResult(saved);}}catch{}
+    $('export').disabled=false;status(e.message,true);
+  }finally{saving=false;renderQueue();if(current)showResult(current);}
 };
-
 
 
 async function refreshOutput(){const out=await api('/api/output');$('output-path').value=out.path||'';showDestination();}
@@ -454,7 +481,7 @@ $('output-save').onclick=async()=>{try{await api('/api/output/connect',{path:$('
 
 $('output-browse').onclick=async()=>{try{const out=await api('/api/output/pick',{});if(!out.cancelled){await refreshOutput();$('paths-status').textContent='Save destination updated.';}}catch(e){$('paths-status').textContent=e.message;}};
 
-function presetFromForm(){const settings={};for(const key of ['width','maxLength','gap','margin'])settings[key]=readDimensionField(key);settings.seconds=Number($('seconds').value);settings.rotations=$('rotations').value==='free'?null:$('rotations').value.split(',').map(Number);return EZNQueue.validatePreset({name:$('preset-name').value.trim(),units:$('units').value,settings});}
+function presetFromForm(){const settings={};for(const key of ['width','maxLength','gap','margin'])settings[key]=readDimensionField(key);settings.seconds=Number($('seconds').value);settings.rotations=$('rotations').value==='free'?null:$('rotations').value.split(',').map(Number);readProductionSettings(settings);return EZNQueue.validatePreset({name:$('preset-name').value.trim(),units:$('units').value,settings});}
 
 $('share-preset').onclick=()=>{try{const preset=presetFromForm(),blob=new Blob([JSON.stringify({format:'eznest.material-presets',version:1,presets:[preset]},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='eznest-material-preset.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);$('settings-status').textContent='Preset exported. Import this file on another workstation.';}catch(e){$('settings-status').textContent=e.message;}};
 
@@ -472,7 +499,7 @@ $('job-close').onclick=()=>$('job-settings').close();
 
 $('job-role').onchange=()=>{if($('job-role').value==='fill'&&Number($('job-quantity').value)===1)$('job-quantity').value=100;else if($('job-role').value==='required'&&Number($('job-quantity').value)===100)$('job-quantity').value=1;jobQuantityHelp();};
 
-$('job-form').onsubmit=e=>{e.preventDefault();const entry=queue.find(e=>e.id===editingJob);if(!entry)return;if(entry.status!=='ready'){ $('job-error').textContent=entry.error||'Wait for the source file to finish saving.';return;}const quantity=Number($('job-quantity').value);if(!Number.isInteger(quantity)||quantity<1||quantity>100){$('job-error').textContent='Enter a whole number from 1 to 100.';return;}entry.category=$('job-category').value.trim();entry.role=$('job-role').value;entry.sets=quantity;entry.materialId=$('job-material').value;$('job-settings').close();invalidate();};
+$('job-form').onsubmit=e=>{e.preventDefault();const entry=queue.find(e=>e.id===editingJob);if(!entry)return;if(entry.status!=='ready'){ $('job-error').textContent=entry.error||'Wait for the source file to finish saving.';return;}const quantity=Number($('job-quantity').value);if(!Number.isInteger(quantity)||quantity<1||quantity>100){$('job-error').textContent='Enter a whole number from 1 to 100.';return;}for(const field of ['customer','order','kit'])entry[field]=$('job-'+field).value.trim();if(entry.data?.format==='pdf')entry.data.reviewed=$('document-reviewed').checked;entry.category=$('job-category').value.trim();entry.role=$('job-role').value;entry.sets=quantity;entry.materialId=$('job-material').value;$('job-settings').close();invalidate();};
 
 $('job-remove').onclick=()=>{const entry=queue.find(e=>e.id===editingJob);if(!entry)return;if(entry.origin==='folder'){preferences.dismissed=preferences.dismissed||{};preferences.dismissed[entry.id]=entry.revision;}queue=queue.filter(e=>e!==entry);$('job-settings').close();invalidate();};
 
@@ -496,7 +523,7 @@ function renderPrepared(){
 
   if(legacy.length)batches.push({id:'earlier',jobs:legacy.map(e=>({id:e.id,revision:e.revision,name:e.name,placed:e.savedPieces,group:EZNQueue.groupName(e,'folder',preferences.presets)}))});
 
-  if(!batches.length){list.append(svgText('No exports yet. Your saved SVG batches will appear here.','p'));return;}
+  if(!batches.length){list.append(svgText('No exports yet. Your saved batches will appear here.','p'));return;}
 
   for(const batch of batches){const section=document.createElement('section');section.className='prepared-batch';const head=document.createElement('div');head.className='prepared-head';head.append(svgText(batch.createdAt?new Date(batch.createdAt).toLocaleString():'Saved earlier','h3'));if(/^[a-f0-9]{32}$/.test(batch.id)){const link=document.createElement('a');link.className='button';link.href='/api/batch/'+batch.id;link.download='eznest-'+batch.id.slice(0,8)+'.zip';link.textContent='Download batch';head.append(link);}section.append(head);list.append(section);
 
@@ -530,7 +557,7 @@ function fillShopForm(profile=activeShop()){
   if(profile.bleedMm===null){$('shop-bleed').value='';delete $('shop-bleed').dataset.mm;delete $('shop-bleed').dataset.display;}else setDimensionField('shop-bleed',profile.bleedMm,displayUnit());$('shop-status').textContent='';
 }
 function shopFromForm(){return EZNProfiles.validate({name:$('shop-name').value,rip:$('shop-rip').value,format:$('shop-format').value,acceptedFormats:$('shop-accepted').value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean),colorMode:$('shop-color').value,iccProfile:$('shop-icc').value,bleedMm:$('shop-bleed').value===''?null:readPhysicalField('shop-bleed',displayUnit()),cutSpot:$('shop-cut-spot').value,cutLayer:$('shop-cut-layer').value,registrationOwner:$('shop-registration').value,finishingSoftware:$('shop-finishing').value,mediaOwner:$('shop-media').value,jobLogOwner:$('shop-joblog').value});}
-function saveShopProfile(asNew){const previous=JSON.stringify(EZNProfiles.validate(activeShop())),profile={...shopFromForm(),id:asNew?'shop-'+crypto.randomUUID():$('shop-select').value};if(asNew)preferences.shopProfiles.push(profile);else preferences.shopProfiles[preferences.shopProfiles.findIndex(p=>p.id===profile.id)]=profile;preferences.shopProfile=profile.id;renderPresets();if(previous!==JSON.stringify(EZNProfiles.validate(profile)))invalidate();else remember();$('shop-settings').close();status('Shop requirements saved. '+(EZNProfiles.inspect(profile).ready?'They will be included with the next batch.':'Current exports are working SVG files; print preparation is still required.'));}
+function saveShopProfile(asNew){const previous=JSON.stringify(EZNProfiles.validate(activeShop())),profile={...shopFromForm(),id:asNew?'shop-'+crypto.randomUUID():$('shop-select').value};if(asNew)preferences.shopProfiles.push(profile);else preferences.shopProfiles[preferences.shopProfiles.findIndex(p=>p.id===profile.id)]=profile;preferences.shopProfile=profile.id;renderPresets();if(previous!==JSON.stringify(EZNProfiles.validate(profile)))invalidate();else remember();$('shop-settings').close();status('Shop requirements saved. Readiness is checked against the next batch.');}
 function downloadText(text,name,type='text/plain'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
 $('shop-open').onclick=$('shop-shortcut').onclick=()=>{fillShopForm();$('shop-settings').showModal();};$('shop-close').onclick=()=>$('shop-settings').close();
 $('shop-select').onchange=()=>fillShopForm(preferences.shopProfiles.find(p=>p.id===$('shop-select').value));

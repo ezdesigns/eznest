@@ -1618,5 +1618,6 @@
       "bytes": 72,
       "sha256": "21142f8fa5fe8446582bb9e36992aababa6f29975608efbfb9ebbc573767a6eb"
     }
-  ]
+  ],
+  "scope": "Historical 0.10.0-beta.1 source archive only. Not a checksum manifest for current main."
 }
