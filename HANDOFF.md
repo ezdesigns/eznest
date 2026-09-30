@@ -1,19 +1,23 @@
-# eznest 0.11.0-beta.1 developer handoff
+# eznest 0.12.0-beta.1 developer handoff
 
 Read README.md and docs/PRODUCTION-FILES.md first. This standalone local Windows
-beta adds production files, order identity, optional sheets and material estimates
+beta adds mixed cut operations to production files, order identity, optional sheets and material estimates
 to the existing simple nesting workflow. A printer/cutter model is not required.
 Real ONYX/GoProduce and MX validation remain outstanding.
 
-The next mixed thru/kiss milestone and reported shop mappings are documented in
-[docs/CUT-WORKFLOW-NEXT.md](docs/CUT-WORKFLOW-NEXT.md). These are pending requirements,
-not active presets or capabilities of the 0.11 importer.
+Mixed thru/kiss implementation and reported shop evidence are documented in
+[docs/CUT-WORKFLOW-NEXT.md](docs/CUT-WORKFLOW-NEXT.md). Starter aliases are editable;
+they are not proof of the shop's source names or active cutter settings.
 
 The browser stores queue/history in IndexedDB and settings in localStorage.
 PDF imports run in an isolated --document-worker process. Original PDF drawing
 objects are preserved; preview PNGs never become print art. pdf_io.py extracts
-closed Separation strokes, preserves Bezier cuts and transforms source artwork
-and contours together. Unsupported structures fail with a visible explanation.
+mapped spot/layer strokes, groups contained cuts under outer closed boundaries,
+preserves Bezier paths, and applies one transform to art and every owned operation.
+Open interior cuts are retained; duplicates, conflicts and orphan paths reject.
+Cut rules, generic handling and output names live in cut_mapping.py/cut-mapping.js.
+Source visible OCGs are flattened after validation; output operations get new OCGs.
+Known registration paint is removed; no tool commands or new marks are generated. Unsupported structures fail with a visible explanation.
 Server-side metadata prevents altered browser contours replacing imported geometry.
 
 engine.py wraps spyrrow and validates counts, bounds, rotations and spacing.
@@ -39,7 +43,8 @@ New tests cover curves, CMYK objects, transformed forms, spot/layer output,
 rendered placement, sheets, costs, and actual HTTP import/nest/export workers.
 
 Keep original shop files outside source control. Preserve data/documents and browser
-storage on upgrades. Source clipping is not confidential-content redaction.
+storage on upgrades. Metadata modelVersion 2 is required: old active PDF jobs must
+be re-imported/reviewed, while frozen batches remain unchanged. Source clipping is not confidential-content redaction.
 
 Next evidence: representative shop files with before/after rendering and dimensions,
 then CutContour recognition, registration/cutting through the actual workflow,

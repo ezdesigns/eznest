@@ -25,6 +25,9 @@ def validate_profile(profile):
     result['bleedMm'] = bleed
     if result['cutLayer'] and not result['cutSpot']:
         raise ValueError('Name the cut spot color, or clear the cut layer.')
+    if 'cutMapping' in profile:
+        from cut_mapping import validate
+        result['cutMapping']=validate(profile['cutMapping'])
     return result
 
 

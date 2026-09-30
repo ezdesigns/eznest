@@ -149,6 +149,7 @@ class Handler(BaseHTTPRequestHandler):
         static.update({'/svg-io.js': ('svg-io.js', 'text/javascript'), '/sample-artwork.svg': ('sample-artwork.svg', 'image/svg+xml')})
         static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css'), '/classic': ('classic.html','text/html')})
         static['/production-features.js']=('production-features.js','text/javascript')
+        static['/cut-mapping.js']=('cut-mapping.js','text/javascript')
         static['/shop-profiles.js'] = ('shop-profiles.js','text/javascript')
         if os.environ.get('EZ_NEST_TEST_UI') == '1':
             static.update({'/tests/svg-tests.html': ('tests/svg-tests.html', 'text/html'), '/tests/svg-tests.js': ('tests/svg-tests.js', 'text/javascript')})

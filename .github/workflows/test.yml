@@ -42,10 +42,13 @@ jobs:
         run: |
           node --check queue-app.js
           node --check production-features.js
+          node --check cut-mapping.js
       - name: Test queue and physical units
         run: node tests/test_queue.cjs
       - name: Test shop profiles
         run: node tests/test_shop_profiles.cjs
+      - name: Test cut mappings and profile sharing
+        run: node tests/test_cut_mapping.cjs
       - name: Test production-file queue and presets
         run: node tests/test_production_features.cjs
       - name: Test legacy boundary policy

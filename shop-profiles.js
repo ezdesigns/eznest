@@ -15,6 +15,7 @@
     if(p.bleedMm!==null&&(typeof p.bleedMm!=='number'||!Number.isFinite(p.bleedMm)||p.bleedMm<0||p.bleedMm>100))throw Error('Bleed must be blank or between 0 and 100 mm.');
     result.bleedMm=p.bleedMm;
     if(result.cutLayer&&!result.cutSpot)throw Error('Name the cut spot color, or clear the cut layer.');
+    if(p.cutMapping!==undefined)result.cutMapping=(typeof module!=='undefined'?require('./cut-mapping.js'):root.EZNCuts).validate(p.cutMapping);
     return result;
   }
   function inspect(profile){

@@ -2,15 +2,17 @@
 
 **Add artwork → set material width and quantities → nest → review → export.**
 
-**0.11.0-beta.1 · Windows production-file beta.** Standalone local nesting for
+**0.12.0-beta.1 · Windows mixed-cut beta.** Standalone local nesting for
 complete kits, decals and stickers. Illustrator, a printer model and an account
 are not required. Width comes from the material; length comes from the layout.
 
 ## What works
 
-- PDF and PDF-compatible AI with existing closed named spot-color cut contours.
-- Original PDF drawing objects retained in PDF export, with a named CutContour
-  spot separation and separate cut layer. Preview PNGs never become print artwork.
+- PDF and PDF-compatible AI with mapped spot/layer cut strokes and closed piece boundaries.
+- Original PDF drawing objects retained. Thru-cut, kiss-cut and generic cuts have
+  separate configurable output spots/layers. Preview pixels never become print art.
+- Interior open/closed cuts move with their piece through rotation, copies and sheets.
+- Shareable cut mappings, per-piece counts and removal of recognized old registration marks.
 - SVG import/export in separate batches.
 - Review detected pieces, physical sizes and existing bleed before nesting.
 - Complete-set quantities, mixed jobs, customer/order/kit identity and sorting maps.
@@ -24,7 +26,9 @@ heuristic, not guaranteed global optima. Read [supported files and limits](docs/
 
 ## Important limits
 
-PDF import needs real named Separation cut strokes. Enter existing bleed; eznest
+PDF import needs cut strokes mapped by Separation spot or visible PDF layer.
+An outer closed path owns contained interior cuts; unrelated nested pieces are not
+inferred. Unknown/conflicting cut names stop import. Enter existing bleed; eznest
 does not generate it or certify ink coverage. Unsupported hidden layers,
 annotations and ambiguous contours are rejected. Arbitrary native AI and DeviceN
 cut colors are not supported. PDF import is limited to 20 MB and 25 pages.
@@ -61,6 +65,7 @@ node --check queue-app.js
 node --check production-features.js
 node tests/test_queue.cjs
 node tests/test_shop_profiles.cjs
+node tests/test_cut_mapping.cjs
 node tests/test_production_features.cjs
 node tests/test_boundaries.cjs
 .local/venv/Scripts/python.exe -m pip install -r requirements-build.txt
@@ -76,7 +81,8 @@ build directory outside the source tree. Zip its complete dist/eznest folder.
 | --- | --- |
 | production.html, queue.css, queue-app.js, production-features.js | Interface and production controls |
 | queue-core.js, svg-io.js | Identity, quantities, units, presets and SVG |
-| pdf_io.py | PDF cut detection, previews and original-object PDF output |
+| pdf_io.py | Piece ownership, cut detection, previews and original-object PDF output |
+| cut_mapping.py, cut-mapping.js | Shareable cut rules, names and validation |
 | engine.py, nesting.py, sheets.py | Nesting, validation, filler and sheets |
 | production.py, costing.py | Packages, sorting and material estimates |
 | server.py, launcher.py | Local API and isolated workers |
@@ -91,13 +97,14 @@ are an earlier Illustrator experiment outside this standalone MVP.
 
 Queue/history use IndexedDB; settings use localStorage. Server data lives in
 .local/ for source builds or data/ beside the portable executable. Preserve
-documents/, frozen batches and browser storage when upgrading. Changing browsers
+documents/, frozen batches and browser storage when upgrading. Re-add active PDF/AI
+jobs imported before 0.12 to review their cut types; old frozen packages stay intact. Changing browsers
 or ports does not transfer the queue. Exported never means physically printed.
 
 Keep customer files outside the repo or in customer-files/. Runtime state,
 environments and build outputs are ignored. Read [HANDOFF.md](HANDOFF.md),
 [production behavior](docs/PRODUCTION-FILES.md), [validation](docs/PRODUCTION-VALIDATION.md)
-and [third-party notices](THIRD_PARTY.md). PACKAGED-VALIDATION.md records the older 0.10 release.
+and [mixed-cut workflow](docs/CUT-WORKFLOW-NEXT.md), [0.12 validation](docs/MIXED-CUT-VALIDATION.md), plus [third-party notices](THIRD_PARTY.md). PACKAGED-VALIDATION.md and HANDOFF-MANIFEST.json record the older 0.10 release.
 
 No open-source license has been selected for original eznest code. Keep the repo
 private pending that decision. Dependencies retain their licenses. No MX source,

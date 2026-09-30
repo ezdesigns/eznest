@@ -228,3 +228,9 @@ dialog a { color: var(--accent); }
 #queue-count:empty { display: none; }
 
 #document-piece-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;max-height:300px;overflow:auto}#document-piece-list figure{margin:0;padding:8px;border:1px solid var(--line)}#document-piece-list img{width:100%;height:110px;object-fit:contain}#document-piece-list figcaption{font-size:11px;line-height:1.5}#document-review[hidden]{display:none}
+
+/* Advanced cut mappings stay in the output profile, away from the nest flow. */
+textarea { font: inherit; color: inherit; width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid var(--line, #d6d6d2); border-radius: 6px; background: var(--surface, #fff); resize: vertical; }
+#cut-mapping-fields details { margin: 12px 0; }
+#cut-mapping-fields .fields { margin-top: 12px; }
+#document-piece-list figure p { margin: 6px 0; font-size: 12px; }

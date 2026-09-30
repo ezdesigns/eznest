@@ -13,6 +13,8 @@ from zipfile import ZipFile
 from unittest.mock import patch
 import server
 from test_pdf_production import pdf_fixture,document_job
+from test_mixed_cuts import mixed_fixture
+from cut_mapping import defaults
 
 
 class DocumentServerTests(unittest.TestCase):
@@ -27,7 +29,7 @@ class DocumentServerTests(unittest.TestCase):
                 with urlopen(req,timeout=30) as response:return json.load(response) if response.headers.get_content_type()=='application/json' else response.read()
             try:
                 server.STATE.clear();server.STATE.update(status='idle')
-                parsed=request('/api/document/import',{'content':base64.b64encode(pdf_fixture()).decode(),'bleedMm':1,'cutSpot':'CutContour'})
+                parsed=request('/api/document/import',{'content':base64.b64encode(mixed_fixture()).decode(),'bleedMm':1,'cutSpot':'CutContour','cutMapping':defaults()})
                 self.assertEqual(parsed['format'],'pdf');self.assertFalse(parsed['reviewed'])
                 job=document_job(parsed);job['settings'].update(sheetLength=45,costPerSquareMeter=20,currency='USD')
                 request('/api/solve',job)
@@ -38,6 +40,7 @@ class DocumentServerTests(unittest.TestCase):
                 self.assertEqual(state['status'],'ready',state.get('error'))
                 self.assertTrue(state['manifest']['outputCheck']['ready'])
                 self.assertIn('materialCost',state['manifest'])
+                self.assertEqual(state['manifest']['cutSummary'],{'thru':2,'kiss':4,'contour':0})
                 svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 45"/>'
                 with patch.object(server.OUTPUT,'save',return_value=None):
                     released=request('/api/release',{'id':state['id'],'map':svg})

@@ -1,4 +1,4 @@
-eznest 0.11.0-beta.1 | Windows x64 | Production-file beta
+eznest 0.12.0-beta.1 | Windows x64 | Mixed-cut beta
 
 START
 Extract the complete ZIP into a writable folder and open eznest.exe.
@@ -7,8 +7,10 @@ The local browser opens http://127.0.0.1:8765/. Stop an older version first.
 
 NEST
 1. Drop PDF, PDF-compatible AI, or SVG files.
-2. PDF/AI requires existing closed spot-color cut contours, normally CutContour.
-   Enter existing bleed to retain, then review every detected piece and its size.
+2. PDF/AI needs mapped cut strokes with a closed outer boundary for each piece.
+   Thru-cut and kiss-cut paths stay together. If plain CutContour has no type,
+   choose its operation at import or map its source layer in Output profile.
+   Enter existing bleed, then review each piece, its cuts and size.
    Zero bleed clips at the cut. eznest does not generate missing bleed.
 3. Choose usable roll width and complete-set quantities. Length is automatic.
 4. Optional: enter customer/order/kit in job options. Set per-sheet length and
@@ -16,8 +18,9 @@ NEST
 5. Nest, review, and export. Multiple sheets become numbered print files.
    The separate map/checklist identifies pieces without printing sorting labels.
 
-PDF/AI jobs export original-object PDF with a real named cut spot and separate
-layer. SVG jobs export SVG. Keep these formats in separate batches. Use Preserve
+PDF/AI jobs export original-object PDF with separate named cut spots and layers
+for thru-cut, kiss-cut and generic cuts. Edit/share mappings in Output profile.
+Recognized old registration marks are removed; the RIP must generate new marks. SVG jobs export SVG. Keep these formats in separate batches. Use Preserve
 source colors and let the RIP handle printer color management and registration.
 The ONYX profile may need its bleed requirement confirmed before it can be met.
 
@@ -37,7 +40,8 @@ not mean printed. Failed browser fetches leave jobs active for retry.
 
 YOUR DATA
 Queue/settings live in the same browser/address. Imported documents and frozen
-batches live in data/ beside the executable. Keep both when upgrading. Back up
+batches live in data/ beside the executable. Keep both when upgrading. Re-add
+active PDF/AI jobs from before 0.12 to review cut types. Frozen exports stay intact. Back up
 exports. Originals are never edited or deleted. Watched folders still use SVG.
 
 STOP

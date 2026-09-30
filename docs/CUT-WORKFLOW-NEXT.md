@@ -1,9 +1,10 @@
-# Next cut-workflow milestone
+# Mixed cut-workflow milestone — 0.12
 
 Recorded 2026-09-30 from the shop's supplied recon summary and a review of the
-current eznest importer. This is a design brief, not a claim of implemented support
-or an active shop preset. The recon files and matched production originals have
-not yet been inspected in this task.
+eznest importer. The generic mixed-operation workflow below is now implemented
+and covered by synthetic tests. Reported shop names remain unverified starter
+aliases, not a certified active shop preset. The recon files and matched production
+originals have not yet been inspected in this task.
 
 ## Reported shop evidence
 
@@ -54,19 +55,27 @@ mapping, and downstream method/tool selection separately. Do not require every s
 to encode both a spot and a layer, or assume one plain CutContour spot distinguishes
 two methods in every RIP configuration.
 
-## Current implementation gap
+## Implemented in 0.12
 
-pdf_io.py selects strokes by one exact Separation name. Each selected closed path
-becomes a piece; nested/overlapping contours are rejected. Export recreates the
-selected contours using one configured output spot and layer. It does not classify
-or account for multiple cut operations per piece. Other spot strokes can remain in
-copied drawing streams without being counted as cut operations. That is not verified
-support for mixed thru/kiss jobs.
+The importer records an outer packing boundary separately from each owned cut
+path, including source layer/spot, exact curve commands and resolved operation.
+Contained interior closed/open cuts no longer become independent pieces. Both
+layer-only and spot-only classification work, with explicit conflict errors.
+One rigid transform moves artwork and all cuts through copies, rotations and
+whole-piece sheet splitting. Output has one configured spot and layer per type.
+Known old registration paint is stripped; ONYX/finishing owns new sheet marks.
 
-The existing single-operation tests and 0.11 validation report remain valid within
-their documented scope. Adding names to a preset alone will not fix this gap.
+Output profile contains shareable matching rules and output names. Generic paths
+require an operator choice in the UI unless a rule resolves them. Existing API
+clients omitting cutMapping retain generic-contour behavior for compatibility;
+this does not silently assign a thru/kiss method. Old active PDF imports require
+re-import because metadata modelVersion 2 stores the complete cut model.
 
-## Required model and behavior
+The review screen, layout details, CSV checklist and JSON manifest show cut counts.
+No SP commands are generated. Starter output names need matching RIP settings.
+Unknown marks inside ordinary art and separate nested pieces are not inferred.
+
+## Model and behavior contract
 
 1. A piece owns its artwork references, nesting boundary, bleed allowance, and a
    list of cut paths. Each path retains a stable ID, original geometry, source

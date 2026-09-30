@@ -77,6 +77,7 @@ def manifest(job, result, run_id):
                           'partId': part['id'], 'partName': part.get('name', part['id']), 'set': set_number + 1,
                           'copy': copy_number + 1, 'placementIndex': index, 'x': placement['x'], 'y': placement['y'],
                           'rotation': placement['rotation'], 'labelX': center.x, 'labelY': center.y})
+        instances[-1]['cutCounts']=part.get('cutCounts',{})
     summaries = []
     for source in sources.values():
         per_set = sum(parts[p].get('perSet', 1) for p in source['partIds'])
@@ -84,12 +85,15 @@ def manifest(job, result, run_id):
                           'placed': sum(i['jobId'] == source['id'] for i in instances), 'complete': True})
     profile = validate_profile(job['outputProfile']) if 'outputProfile' in job else None
     requirements = {'outputProfile':profile,'outputCheck':inspect_output(profile)} if profile else {}
+    from cut_mapping import OPERATIONS,output_mapping
+    cut_summary={op:sum(p['cutCounts'].get(op,0) for p in instances) for op in OPERATIONS}
     return {'batchId': run_id, 'createdAt': datetime.now(timezone.utc).isoformat(), 'material': job.get('materialName'),
             'settings': job['settings'], 'width': result['width'], 'usedLength': result['usedLength'],
             'jobs': summaries, 'pieces': instances, 'totalPieces': len(instances), 'complete': True,
             'stickerFill': result.get('fillSummary', []), 'fillLimited': result.get('fillLimited', False),
             'sheets':result.get('sheets',[{'index':0,'offset':0,'usedLength':result['usedLength'],'pieces':len(instances)}]),
-            'materialCost':material_cost(job,result,shapes), **requirements}
+            'materialCost':material_cost(job,result,shapes), 'cutSummary':cut_summary,
+            'cutOutputs':output_mapping(profile or {})['outputs'] if job.get('documentSources') else None, **requirements}
 
 
 def validate_svg_payload(text):
@@ -130,12 +134,13 @@ def make_package(job, result, run_id, artwork, sheet_map, pdf_documents=None, ou
         raise ValueError('Exported artwork does not contain every placed piece.')
     data['releasedAt'] = datetime.now(timezone.utc).isoformat()
     listing = io.StringIO(newline='')
-    columns = ['label','customer','order','kit','sheet','sheetX','sheetY', 'jobName', 'sourceFile', 'sourceRevision', 'set', 'partName', 'copy', 'x', 'y', 'rotation']
+    columns = ['label','customer','order','kit','sheet','sheetX','sheetY', 'jobName', 'sourceFile', 'sourceRevision', 'set', 'partName', 'copy', 'x', 'y', 'rotation','thruPaths','kissPaths','genericPaths']
     writer = csv.DictWriter(listing, fieldnames=columns, extrasaction='ignore')
     writer.writeheader()
     for item in data['pieces']:
         # Avoid spreadsheet formula interpretation of user-provided file names.
-        writer.writerow({k: "'" + v if isinstance(v, str) and v.lstrip().startswith(('=', '+', '-', '@')) else v for k, v in item.items()})
+        row={**item,'thruPaths':item['cutCounts'].get('thru',0),'kissPaths':item['cutCounts'].get('kiss',0),'genericPaths':item['cutCounts'].get('contour',0)}
+        writer.writerow({k: "'" + v if isinstance(v, str) and v.lstrip().startswith(('=', '+', '-', '@')) else v for k, v in row.items()})
     rows = ''.join('<tr><td>☐</td><td>'+html.escape(p['label'])+'</td><td>'+html.escape(' / '.join(filter(None,[p['customer'],p['order'],p['kit'],p['jobName']])))+'</td><td>'+str(p['sheet'])+'</td><td>'+str(p['set'])+'</td><td>'+html.escape(p['partName'])+'</td></tr>' for p in sorted(data['pieces'], key=lambda p:(p['customer'],p['order'],p['jobCode'],p['set'],p['label'])))
     readiness = data.get('outputCheck',{})
     notice = '<p><strong>Working files only.</strong> These files do not meet the selected shop requirements.</p>' if readiness.get('ready') is False else ''
@@ -151,6 +156,10 @@ def make_package(job, result, run_id, artwork, sheet_map, pdf_documents=None, ou
         for item in cost['jobs']:
             source=next(s for s in data['jobs'] if s['id']==item['jobId'])
             guide+='<p>'+html.escape(' / '.join(filter(None,[source.get('customer'),source.get('order'),source['name']])))+': '+html.escape(cost['currency'])+' '+format(item['cost'],'.2f')+'</p>'
+    if data.get('cutOutputs'):
+        guide+='<h2>Cut operations</h2><p>'+html.escape(', '.join(f'{count} {operation} paths' for operation,count in data['cutSummary'].items() if count))+'</p>'
+        for operation,names in data['cutOutputs'].items():
+            if data['cutSummary'].get(operation):guide+='<p>'+html.escape(operation+': spot '+names['spot']+'; layer '+names['layer']+(' (shop reference '+names['toolHint']+'; not a cutter command)' if names['toolHint'] else ''))+'</p>'
     guide+='</html>'
     print_files={}
     if pdf_documents is not None:
@@ -158,8 +167,13 @@ def make_package(job, result, run_id, artwork, sheet_map, pdf_documents=None, ou
         profile=job.get('outputProfile',{})
         for sheet in data['sheets']:
             name='artwork.pdf' if len(data['sheets'])==1 else f"sheet-{sheet['index']+1:03}.pdf"
-            print_files[name]=export_pdf(job,result,pdf_documents,profile.get('cutSpot') or 'CutContour',profile.get('cutLayer') or 'CutContour',sheet['index'])
+            print_files[name]=export_pdf(job,result,pdf_documents,profile.get('cutSpot') or 'CutContour',profile.get('cutLayer') or 'CutContour',sheet['index'],profile.get('cutMapping'))
         instructions='PDF artwork preserves source drawing objects and named cut contours. Color conversion and registration marks belong in your RIP.\nBleed coverage was reviewed by the operator, not automatically certified. Verify this beta in your RIP before production.\n'
+        instructions+='Output profile: '+profile.get('name','PDF')+'; registration owner: '+profile.get('registrationOwner','rip')+'\n'
+        for operation,names in data['cutOutputs'].items():
+            if data['cutSummary'].get(operation):
+                instructions+=f"{operation}: {data['cutSummary'][operation]} paths; spot {names['spot']}; layer {names['layer']}\n"
+                if names['toolHint']:instructions+='Operator reference: '+names['toolHint']+' (not a cutter command)\n'
         if readiness.get('ready') is False: instructions='WORKING PDF PACKAGE - REQUIREMENTS NOT MET\n'+'\n'.join(readiness['issues'])+'\n'+instructions
     elif len(data['sheets'])==1:
         print_files['artwork.svg']=artwork

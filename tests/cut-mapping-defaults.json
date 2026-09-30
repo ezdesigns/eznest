@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "source": "layer",
+      "match": "exact",
+      "name": "Thru-cut",
+      "operation": "thru"
+    },
+    {
+      "source": "layer",
+      "match": "exact",
+      "name": "thru-cut",
+      "operation": "thru"
+    },
+    {
+      "source": "layer",
+      "match": "exact",
+      "name": "LNThru-cut",
+      "operation": "thru"
+    },
+    {
+      "source": "spot",
+      "match": "exact",
+      "name": "CutContour_Thru-cut",
+      "operation": "thru"
+    },
+    {
+      "source": "spot",
+      "match": "exact",
+      "name": "CutContourThruCut",
+      "operation": "thru"
+    },
+    {
+      "source": "layer",
+      "match": "exact",
+      "name": "Kiss-cut",
+      "operation": "kiss"
+    },
+    {
+      "source": "layer",
+      "match": "exact",
+      "name": "kiss-cut",
+      "operation": "kiss"
+    },
+    {
+      "source": "layer",
+      "match": "exact",
+      "name": "LNKiss-cut",
+      "operation": "kiss"
+    },
+    {
+      "source": "layer",
+      "match": "exact",
+      "name": "CutContour_Kiss-cut",
+      "operation": "kiss"
+    },
+    {
+      "source": "spot",
+      "match": "exact",
+      "name": "CutContour_Kiss-cut",
+      "operation": "kiss"
+    },
+    {
+      "source": "spot",
+      "match": "exact",
+      "name": "CutContourKissCut",
+      "operation": "kiss"
+    },
+    {
+      "source": "layer",
+      "match": "exact",
+      "name": "Regmark",
+      "operation": "regmark"
+    },
+    {
+      "source": "layer",
+      "match": "exact",
+      "name": "LNRegmark",
+      "operation": "regmark"
+    },
+    {
+      "source": "spot",
+      "match": "exact",
+      "name": "Regmark",
+      "operation": "regmark"
+    },
+    {
+      "source": "spot",
+      "match": "exact",
+      "name": "LNRegmark",
+      "operation": "regmark"
+    }
+  ],
+  "genericOperation": "",
+  "outputs": {
+    "thru": {
+      "spot": "CutContour_Thru-cut",
+      "layer": "Thru-cut",
+      "toolHint": ""
+    },
+    "kiss": {
+      "spot": "CutContour_Kiss-cut",
+      "layer": "Kiss-cut",
+      "toolHint": ""
+    },
+    "contour": {
+      "spot": "CutContour",
+      "layer": "CutContour",
+      "toolHint": ""
+    }
+  },
+  "suspectPrefixes": [
+    "CutContour",
+    "Thru-cut",
+    "Kiss-cut",
+    "LNThru-cut",
+    "LNKiss-cut",
+    "Regmark",
+    "LNRegmark"
+  ]
+}

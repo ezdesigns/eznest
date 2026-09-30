@@ -20,6 +20,8 @@ from zipfile import ZipFile
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from pypdf import PdfReader
 from test_pdf_production import pdf_fixture, document_job
+from test_mixed_cuts import mixed_fixture
+from cut_mapping import defaults
 from pdf_io import read_document, MM
 
 
@@ -53,7 +55,7 @@ def main():
         assert b'importDocument' in request('/production-features.js')
         parsed=[]
         for forms in (False,True):
-            parsed.append(request('/api/document/import',{'content':base64.b64encode(pdf_fixture(forms=forms)).decode(),'bleedMm':1,'cutSpot':'CutContour'}))
+            parsed.append(request('/api/document/import',{'content':base64.b64encode(mixed_fixture(forms=forms)).decode(),'bleedMm':1,'cutSpot':'CutContour','cutMapping':defaults()}))
         job=document_job(parsed[0]);job['settings'].update(width=80,sheetLength=40,gap=3,margin=5,costPerSquareMeter=17.5,currency='USD')
         second=document_job(parsed[1]);source=second['productionJobs'][0]
         source.update(id='second',code='B',customer='Customer Two',order='ORDER-13',partIds=['second:'+p['pdfPieceId'] for p in second['parts']])
@@ -70,6 +72,7 @@ def main():
         assert state['status']=='ready',state.get('error')
         assert state['manifest']['outputCheck']['ready']
         assert state['manifest']['totalPieces']==8
+        assert state['manifest']['cutSummary']=={'thru':8,'kiss':16,'contour':0}
         assert len(state['manifest']['sheets'])>1
         (work/'delivered').mkdir()
         request('/api/output/connect',{'path':str(work/'delivered')})
@@ -86,9 +89,12 @@ def main():
                 assert len(reader.pages)==1
                 assert abs(float(page.mediabox.width)*MM-80)<.001
                 assert float(page.mediabox.height)*MM<=40.001
-                assert page['/Resources']['/ColorSpace']['/EZCut'][1]=='/CutContour'
-                assert reader.root_object['/OCProperties']['/OCGs'][-1].get_object()['/Name']=='CutContour'
-                contour_count+=len(read_document(raw)[1]['pieces'])
+                assert page['/Resources']['/ColorSpace']['/EZCut'][1]=='/CutContour_Thru-cut'
+                assert {g.get_object()['/Name'] for g in reader.root_object['/OCProperties']['/OCGs']}=={'Thru-cut','Kiss-cut'}
+                checked=read_document(raw,cut_mapping=defaults())[1]
+                assert checked['registrationPaintRemoved']==0
+                assert all(p['cutCounts']=={'thru':1,'kiss':2,'contour':0} for p in checked['pieces'])
+                contour_count+=len(checked['pieces'])
                 assert (Path(released['savedPath'])/name).read_bytes()==raw
             assert {p['order'] for p in manifest['pieces']}=={'ORDER-12','ORDER-13'}
             assert abs(sum(j['cost'] for j in manifest['materialCost']['jobs'])-manifest['materialCost']['total'])<.001
