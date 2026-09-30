@@ -1,0 +1,45 @@
+# Local application state, queues, watched-folder paths and installed runtimes
+.local/
+/data/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.aws/
+.codex/
+*.pem
+*.key
+
+# Generated builds, release downloads and export batches
+/build/
+/dist/
+*.spec
+*.exe
+*.dll
+*.pyd
+*.zip
+*.log
+*.tmp
+/exports/
+/print-ready/
+/customer-files/
+/validation/
+/SHOP_NOTES.md
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Keep third-party covered source and notices under licenses/ tracked.
+# These are intentional dependencies, not generated app exports.

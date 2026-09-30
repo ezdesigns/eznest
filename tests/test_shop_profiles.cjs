@@ -1,0 +1,20 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path');
+const P=require('../shop-profiles.js'),Q=require('../queue-core.js');
+const [generic,onyx]=P.defaults();
+assert.equal(P.inspect(generic).ready,true);
+assert.equal(P.inspect(onyx).ready,false);
+assert.equal(onyx.cutSpot,'CutContour');assert.equal(onyx.registrationOwner,'rip');
+assert.equal(onyx.bleedMm,null);assert.equal(onyx.iccProfile,'');
+const custom={...onyx,name:'Another shop',rip:'Custom RIP',cutSpot:'Knife',cutLayer:'Cutting',registrationOwner:'finishing',finishingSoftware:'Other cutter software',bleedMm:2};
+assert.equal(P.validate(custom).cutSpot,'Knife');assert.ok(P.inspect(custom).issues.some(i=>i.includes('Knife')));
+const clean=P.importProfiles({format:'eznest.shop-profiles',version:1,profiles:[{...custom,id:'never-import',folderPath:'private',ready:true}]})[0];
+assert.equal(clean.id,undefined);assert.equal(clean.folderPath,undefined);assert.equal(clean.ready,undefined);
+assert.throws(()=>P.validate({...custom,bleedMm:-1}));assert.throws(()=>P.validate({...custom,bleedMm:Infinity}));
+assert.throws(()=>P.validate({...custom,cutSpot:''}));assert.throws(()=>P.validate({...custom,registrationOwner:'automatic'}));
+assert.throws(()=>P.importProfiles({format:'eznest.shop-profiles',version:2,profiles:[custom]}));
+const entry={id:'a',revision:'r',selected:true};
+const state={released:true,deliveryCompleted:true,id:'batch',job:{productionJobs:[{id:'a',revision:'r'}]},manifest:{outputCheck:P.inspect(onyx),jobs:[{id:'a',placed:1}]}};
+assert.equal(Q.markPrepared([entry],state),0);assert.equal(entry.selected,true);
+for(const fixture of JSON.parse(fs.readFileSync(path.join(__dirname,'shop-profile-cases.json'),'utf8'))){assert.deepEqual(P.validate(fixture.profile),fixture.clean);assert.deepEqual(P.inspect(fixture.profile),fixture.check);}
+console.log('Portable custom shop profiles, incomplete output retention, and Python/JS contract fixtures passed.');

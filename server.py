@@ -1,0 +1,300 @@
+"""Loopback-only prototype server; each native search runs in an isolated process."""
+import json
+import os
+import secrets
+import subprocess
+import sys
+import threading
+import uuid
+import copy
+import socket
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlparse, parse_qs
+from engine import validate_job
+from production import validate_identity, manifest, make_package
+from folder_queue import FolderQueue
+from output_folder import OutputFolder
+from nesting import validate_request
+from shop_profiles import validate_profile, inspect_output
+from app_info import VERSION
+
+ROOT = Path(__file__).resolve().parent
+WORK = Path(os.environ.get('EZ_NEST_DATA', ROOT / '.local')).resolve()
+WORK.mkdir(parents=True, exist_ok=True)
+TOKEN = secrets.token_urlsafe(32)
+LOCK = threading.Lock()
+STATE = {'status': 'idle'}
+PROCESS = None
+PORT = int(os.environ.get('EZ_NEST_PORT', '8765'))
+FOLDER = FolderQueue(WORK / 'production-folder.json')
+FOLDER_LOCK = threading.Lock()
+OUTPUT = OutputFolder(WORK / 'output-folder.json')
+
+
+def persist_state():
+    if STATE.get('status') == 'ready':
+        snapshot = {k:v for k,v in STATE.items() if k not in ('output','incumbent')}
+        temporary = WORK / 'session.tmp'
+        temporary.write_text(json.dumps(snapshot), encoding='utf-8')
+        temporary.replace(WORK / 'session.json')
+
+
+def restore_state():
+    try:
+        saved = json.loads((WORK / 'session.json').read_text(encoding='utf-8'))
+        if saved.get('status') == 'ready':
+            from engine import validate_result
+            validate_result(saved['job'], saved['result'])
+            STATE.update(saved)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+
+
+def finish_search(payload):
+    incumbent = STATE.pop('incumbent', None)
+    def score(result):
+        fillers = sum(s['pieces'] for s in result.get('fillSummary', []))
+        return (-fillers, result['usedLength'])
+    if incumbent and (not payload.get('ok') or score(payload['result']) >= score(incumbent['result'])):
+        STATE.clear()
+        STATE.update(incumbent)
+        STATE['note'] = 'Kept your best layout; this search did not improve it.' if payload.get('ok') else 'Kept your best layout; the new search could not return a valid improvement.'
+    else:
+        STATE.update(status='ready' if payload['ok'] else 'error', **payload)
+        if incumbent:
+            STATE['note'] = 'Found a better layout.'
+    if STATE.get('status') == 'ready' and STATE.get('job', {}).get('productionJobs'):
+        STATE['manifest'] = manifest(STATE['job'], STATE['result'], STATE['id'])
+    persist_state()
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def send(self, status, data, mime='application/json', filename=None):
+        body = json.dumps(data).encode() if mime == 'application/json' else data
+        self.send_response(status)
+        self.send_header('Content-Type', mime)
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        if filename:
+            self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
+        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def allowed(self):
+        return self.headers.get('Host') in [f'127.0.0.1:{PORT}', f'localhost:{PORT}']
+
+    def do_GET(self):
+        if not self.allowed():
+            return self.send(403, {'error': 'Invalid host'})
+        path = urlparse(self.path).path
+        if path == '/api/session':
+            return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION})
+        if path == '/api/output':
+            return self.send(200, OUTPUT.status())
+        if path == '/api/folder':
+            with FOLDER_LOCK:
+                return self.send(200, FOLDER.scan())
+        if path == '/api/folder/file':
+            try:
+                query = parse_qs(urlparse(self.path).query)
+                with FOLDER_LOCK:
+                    content = FOLDER.read(query.get('id',[''])[0], query.get('revision',[''])[0])
+                return self.send(200, {'text': content})
+            except (ValueError, OSError) as error:
+                return self.send(409, {'error': str(error)})
+        if path.startswith('/api/batch/'):
+            ident = path.rsplit('/',1)[-1]
+            if len(ident) != 32 or any(c not in '0123456789abcdef' for c in ident):
+                return self.send(404, {'error':'Batch not found'})
+            source = WORK / 'batches' / (ident+'.zip')
+            if not source.exists():
+                return self.send(404, {'error':'Batch not found'})
+            return self.send(200, source.read_bytes(), 'application/zip', 'EZ-Nest-Batch-'+ident[:8]+'.zip')
+        if path == '/api/state':
+            with LOCK:
+                if STATE.get('status') == 'running' and PROCESS.poll() is not None:
+                    output = Path(STATE['output'])
+                    if output.exists():
+                        payload = json.loads(output.read_text())
+                        finish_search(payload)
+                    else:
+                        finish_search({'ok': False, 'error': 'The engine stopped without returning a layout.'})
+                public = {k: v for k, v in STATE.items() if k not in ('output', 'incumbent')}
+            return self.send(200, public)
+        if path == '/api/selection':
+            source = WORK / 'selection.json'
+            if not source.exists():
+                return self.send(404, {'error': 'Capture paths in Illustrator first, or load the sample job.'})
+            try:
+                return self.send(200, json.loads(source.read_text(encoding='utf-8-sig')))
+            except Exception:
+                return self.send(400, {'error': 'Illustrator capture could not be read.'})
+        static = {'/': ('production.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
+        static.update({'/svg-io.js': ('svg-io.js', 'text/javascript'), '/sample-artwork.svg': ('sample-artwork.svg', 'image/svg+xml')})
+        static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css'), '/classic': ('classic.html','text/html')})
+        static['/shop-profiles.js'] = ('shop-profiles.js','text/javascript')
+        if os.environ.get('EZ_NEST_TEST_UI') == '1':
+            static.update({'/tests/svg-tests.html': ('tests/svg-tests.html', 'text/html'), '/tests/svg-tests.js': ('tests/svg-tests.js', 'text/javascript')})
+        if path not in static:
+            return self.send(404, {'error': 'Not found'})
+        name, mime = static[path]
+        return self.send(200, (ROOT / name).read_bytes(), mime)
+
+    def do_POST(self):
+        global PROCESS
+        if not self.allowed() or self.headers.get('X-EZ-Token') != TOKEN:
+            return self.send(403, {'error': 'Invalid session'})
+        origin = self.headers.get('Origin')
+        if origin and origin not in [f'http://127.0.0.1:{PORT}', f'http://localhost:{PORT}']:
+            return self.send(403, {'error': 'Invalid origin'})
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 <= size <= 48_000_000:
+                raise ValueError('Job is too large.')
+            data = json.loads(self.rfile.read(size) or '{}')
+            if self.path in ('/api/output/connect', '/api/output/pick'):
+                if self.path.endswith('/pick'):
+                    data = {'path': pick_folder('Select where eznest will save print packs')}
+                    if not data['path']:
+                        return self.send(200, {'cancelled': True})
+                with FOLDER_LOCK:
+                    return self.send(200, OUTPUT.connect(data.get('path',''), FOLDER.root))
+            if self.path.startswith('/api/folder/'):
+                if self.path == '/api/folder/pick':
+                    if os.name != 'nt':
+                        raise ValueError('Use the folder path field on this platform.')
+                    script = "Add-Type -AssemblyName System.Windows.Forms; $picker=New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description='Select your print-ready SVG production folder'; $picker.ShowNewFolderButton=$false; if($picker.ShowDialog() -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($picker.SelectedPath)}"
+                    selected = subprocess.run(['powershell.exe','-NoProfile','-STA','-Command',script],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=300)
+                    folder_path = selected.stdout.decode('utf-8-sig').strip()
+                    if not folder_path:
+                        return self.send(200, {'cancelled': True})
+                    data = {'path':folder_path}
+                with FOLDER_LOCK:
+                    if self.path in ('/api/folder/connect','/api/folder/pick'):
+                        root = Path(data['path']).expanduser().resolve(strict=True)
+                        if OUTPUT.root and OUTPUT.root.resolve().is_relative_to(root):
+                            raise ValueError('The source folder must not contain your output folder.')
+                        result = FOLDER.connect(data['path'])
+                    elif self.path == '/api/folder/disconnect':
+                        FOLDER.disconnect()
+                        result = {'connected':False,'files':[]}
+                    else:
+                        raise ValueError('Unknown folder action.')
+                return self.send(200,result)
+            with LOCK:
+                if self.path in ('/api/solve', '/api/improve'):
+                    if STATE.get('status') == 'running':
+                        raise ValueError('Cancel the current search before starting another.')
+                    incumbent = None
+                    if self.path == '/api/improve':
+                        if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
+                            raise ValueError('Calculate a current layout before improving it.')
+                        if STATE.get('released'):
+                            raise ValueError('This batch is frozen. Start a new layout to make changes.')
+                        incumbent = copy.deepcopy(STATE)
+                        data = copy.deepcopy(STATE.get('requestJob', STATE['job']))
+                        data['settings']['seed'] = secrets.randbelow(2147483647)
+                    validate_request(data)
+                    if 'outputProfile' in data:
+                        data['outputProfile'] = validate_profile(data['outputProfile'])
+                    run_id = uuid.uuid4().hex
+                    directory = WORK / run_id
+                    directory.mkdir()
+                    request, output = directory / 'job.json', directory / 'result.json'
+                    request.write_text(json.dumps(data), encoding='utf-8')
+                    worker = [sys.executable, '--nest-worker'] if getattr(sys, 'frozen', False) else [sys.executable, str(ROOT / 'nesting.py')]
+                    PROCESS = subprocess.Popen([*worker, str(request), str(output)], cwd=directory, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+                    STATE.clear()
+                    STATE.update(status='running', id=run_id, output=str(output), job=data)
+                    if incumbent:
+                        STATE['incumbent'] = incumbent
+                elif self.path == '/api/cancel':
+                    if PROCESS and PROCESS.poll() is None:
+                        PROCESS.terminate()
+                        PROCESS.wait(timeout=5)
+                    incumbent = STATE.get('incumbent')
+                    STATE.clear()
+                    STATE.update(incumbent or {'status': 'cancelled'})
+                    if incumbent:
+                        STATE['note'] = 'Search cancelled; your best layout is retained.'
+                    persist_state()
+                elif self.path == '/api/shutdown':
+                    if STATE.get('status') == 'running':
+                        raise ValueError('Stop the current search before closing eznest.')
+                    persist_state()
+                    self.send(200, {'ok': True})
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
+                    return
+                elif self.path == '/api/release':
+                    if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
+                        raise ValueError('Calculate and review the current layout before exporting.')
+                    check = inspect_output(STATE['job']['outputProfile']) if STATE.get('job',{}).get('outputProfile') else None
+                    if check and not check['ready'] and data.get('workingOnly') is not True:
+                        raise ValueError('This layout does not meet the shop output requirements. Save working SVG files explicitly or use a supported output profile.')
+                    if not STATE.get('released'):
+                        content, details = make_package(STATE['job'],STATE['result'],STATE['id'],data['artwork'],data['map'])
+                        directory = WORK / 'batches'
+                        directory.mkdir(exist_ok=True)
+                        temporary = directory / (STATE['id']+'.tmp')
+                        temporary.write_bytes(content)
+                        temporary.replace(directory / (STATE['id']+'.zip'))
+                        STATE.update(released=True, manifest=details, deliveryCompleted=False)
+                        persist_state()
+                    with FOLDER_LOCK:
+                        saved = OUTPUT.save(STATE['id'], (WORK/'batches'/(STATE['id']+'.zip')).read_bytes(), FOLDER.root)
+                    STATE.update(deliveryCompleted=True, savedPath=saved)
+                    persist_state()
+                    return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check})
+                elif self.path == '/api/prepare-apply':
+                    if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
+                        raise ValueError('Calculate a current validated layout first.')
+                    if not STATE['job'].get('captureId'):
+                        raise ValueError('Sample jobs cannot be applied to Illustrator. Capture your own paths first.')
+                    payload = {'captureId': STATE['job']['captureId'], 'runId': STATE['id'], 'result': STATE['result']}
+                    (WORK / 'apply.json').write_text(json.dumps(payload), encoding='utf-8')
+                else:
+                    return self.send(404, {'error': 'Not found'})
+            self.send(200, {'ok': True})
+        except Exception as error:
+            self.send(400, {'error': str(error)})
+
+
+def pick_folder(description):
+    if os.name != 'nt':
+        raise ValueError('Enter the folder path on this platform.')
+    script = "Add-Type -AssemblyName System.Windows.Forms; $picker=New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description='"+description+"'; if($picker.ShowDialog() -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($picker.SelectedPath)}"
+    selected = subprocess.run(['powershell.exe','-NoProfile','-STA','-Command',script],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=300)
+    return selected.stdout.decode('utf-8-sig').strip()
+
+
+class LocalServer(ThreadingHTTPServer):
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if os.name == 'nt':
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def serve(open_browser=False):
+    restore_state()
+    service = LocalServer(('127.0.0.1', PORT), Handler)
+    if open_browser:
+        import webbrowser
+        webbrowser.open(f'http://127.0.0.1:{PORT}')
+    if sys.stdout:
+        print(f'eznest ready: http://127.0.0.1:{PORT}', flush=True)
+    try:
+        service.serve_forever()
+    finally:
+        service.server_close()
+
+
+if __name__ == '__main__':
+    serve()

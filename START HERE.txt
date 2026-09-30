@@ -1,0 +1,58 @@
+eznest 0.10.0-beta.1 | Windows x64 | SVG nesting beta
+
+START
+1. Extract the ENTIRE zip into a folder you can write to, such as Documents.
+2. Double-click eznest.exe. Keep the _internal folder beside it.
+3. Your default browser opens the local workspace at http://127.0.0.1:8765/.
+No Python installation, account, subscription or Internet connection is needed
+to use this package. It is an unsigned beta, not a signed installer.
+
+MAKE YOUR FIRST NEST
+1. Drop SVG artwork, or click Try an example.
+2. Check the roll width. Select jobs and enter how many complete sets you need.
+   Length is automatic. Units, gap, margins and rotation are in Settings.
+3. Click Nest selected jobs. Review the preview, quantities and length used.
+4. Click Export SVG. Your browser downloads a zip containing artwork.svg,
+   sheet-map.svg, sorting-guide.html, piece-checklist.csv, batch.json and READ ME.txt.
+   Use Change beside the destination to save each batch to a chosen folder.
+
+The artwork keeps its physical dimensions. Sorting IDs stay on the separate map.
+Click a job below the preview to find its pieces. Exports contains saved batches
+and lets you add a job back to the queue. Exported does not mean printed.
+Optional: add sticker files under Fill spare space with stickers; only complete
+sets that fit are included, up to your maximum and the 100-piece batch limit.
+
+SUPPORTED IN THIS BETA
+SVG in / SVG out, one material per batch, up to 100 pieces. Outline text and
+embed images. Use print-only artwork at actual size. Each complete grouped
+piece needs its clipping outline, recognized CutContour or EZN_BOUNDARY.
+Keep originals; eznest never deletes or edits them.
+
+NOT YET SUPPORTED
+Native AI/PDF artwork, production PDF/EPS output, CMYK conversion, automatic
+bleed and reliable named cut-spot export. ONYX profiles expose these gaps and
+export a WORKING SVG package; those jobs stay in the queue. This beta is not
+a verified ONYX print-and-cut handoff. Nesting is heuristic, not a guarantee
+of the mathematically best layout. Check exported dimensions before printing.
+
+STOP / REOPEN
+Help > Quit eznest stops the app. Stop EZ Nest.cmd does the same for port 8765.
+Closing the browser tab alone leaves the local engine running. Double-click
+eznest.exe again to reopen the same running version.
+If an older eznest is using the port, close that build first. Do not run two
+different releases against the same workspace at the same time.
+
+YOUR DATA
+Queue and presets live in your browser's storage for http://127.0.0.1:8765/.
+Use the SAME browser and address next time; private browsing is temporary.
+Frozen export zips and the latest result live in data/ beside eznest.exe.
+Keep that folder, browser data and exported zips. Moving the program does not
+move browser storage; changing browsers does not transfer the queue.
+When upgrading, keep a backup and move the data folder to the new package.
+Material presets and shop requirements can be shared using Settings export.
+Files are processed locally. The app does not send anything to ONYX or a printer.
+
+FOR THE DEVELOPER
+See the separate source zip for architecture, tests and rebuild instructions.
+Third-party license notices and covered source are included in licenses/.
+No MX Production Suite source, assets or binaries are included.

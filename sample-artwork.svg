@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240mm" height="160mm" viewBox="0 0 240 160">
+  <defs>
+    <clipPath id="panel-clip"><path d="M0 0H68V23H25V67H0Z"/></clipPath>
+    <linearGradient id="panel-ink" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#27685d"/><stop offset="1" stop-color="#badb74"/></linearGradient>
+  </defs>
+  <g id="clipped-panel" transform="translate(10 10)" clip-path="url(#panel-clip)">
+    <rect x="-5" y="-5" width="80" height="80" fill="url(#panel-ink)"/>
+    <path d="M-5 60L70 -5M-5 78L80 -5" stroke="#f1eee4" stroke-width="7"/>
+    <path d="M0 0H68V23H25V67H0Z" fill="none" stroke="#dd38b8" stroke-width="0.15"/>
+  </g>
+  <g id="rounded-badge" transform="translate(95 12)">
+    <path id="EZN_BOUNDARY_badge" d="M0 17C0 -5 66 -5 66 17V51H0Z" fill="#5262ba" stroke="#dd38b8" stroke-width="0.15"/>
+    <circle cx="33" cy="26" r="15" fill="#f5c168"/>
+    <path d="M22 27L30 35L45 19" fill="none" stroke="#253a35" stroke-width="4"/>
+  </g>
+  <g id="triangular-panel" transform="translate(12 93)">
+    <path id="CutContour_Kiss-cut" d="M0 0L62 55H0Z" fill="#eb9f62" stroke="#dd38b8" stroke-width="0.15"/>
+    <path d="M6 17L40 48H6Z" fill="#823e49"/>
+  </g>
+  <rect id="small-label" x="105" y="100" width="72" height="25" rx="6" fill="#81c6c5" stroke="#dd38b8" stroke-width="0.15" transform="rotate(-8 140 113)"/>
+</svg>
