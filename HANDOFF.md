@@ -5,6 +5,10 @@ beta adds production files, order identity, optional sheets and material estimat
 to the existing simple nesting workflow. A printer/cutter model is not required.
 Real ONYX/GoProduce and MX validation remain outstanding.
 
+The next mixed thru/kiss milestone and reported shop mappings are documented in
+[docs/CUT-WORKFLOW-NEXT.md](docs/CUT-WORKFLOW-NEXT.md). These are pending requirements,
+not active presets or capabilities of the 0.11 importer.
+
 The browser stores queue/history in IndexedDB and settings in localStorage.
 PDF imports run in an isolated --document-worker process. Original PDF drawing
 objects are preserved; preview PNGs never become print art. pdf_io.py extracts
