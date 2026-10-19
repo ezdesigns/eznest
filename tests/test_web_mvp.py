@@ -86,6 +86,8 @@ class WebMvpTests(unittest.TestCase):
         page.locator('#settings').evaluate('node => { node.open = true }')
         self.assertEqual(page.locator('#material option:checked').inner_text(), 'White gloss, 54" roll, 51.5" printable')
         self.assertEqual(page.input_value('#width'), '51.5')
+        self.assertEqual(page.input_value('#nest-width'), '51.5')
+        self.assertIn('on 51.5" wide', page.locator('#used-width').inner_text())
         self.assertEqual(page.input_value('#roll'), '54')
         self.assertEqual(page.input_value('#mark-margin'), '0.5')
         self.assertEqual(page.input_value('#sheet'), '96')
@@ -114,6 +116,7 @@ class WebMvpTests(unittest.TestCase):
         page.fill('#width', '220')
         page.fill('#gap', '3')
         page.fill('#margin', '5')
+        page.fill('#nest-width', f'{220 / 25.4:.8f}')
         page.fill('#sets', '1')
         return browser, page
 
@@ -269,6 +272,69 @@ class WebMvpTests(unittest.TestCase):
                 page.wait_for_function("() => /8 pieces/i.test(document.querySelector('#checks')?.textContent || '')", timeout=90000)
                 self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
                 self.assertNotIn('problem', page.locator('#gate').get_attribute('class') or '')
+            finally:
+                browser.close()
+
+
+    def test_chosen_width_nests_and_blocks(self):
+        from playwright.sync_api import sync_playwright
+        sample = str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg')
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True).new_page()
+            try:
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                page.locator('#settings').evaluate('node => { node.open = false }')
+                self.assertEqual(page.input_value('#nest-width'), '51.5')
+                page.screenshot(path='/tmp/eznest-desktop-empty.png', full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path='/tmp/eznest-mobile-empty.png', full_page=True)
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.set_input_files('#file', sample)
+                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
+                full = json.load(urlopen(self.url() + '/api/state', timeout=10))['result']['width']
+                self.assertAlmostEqual(full, 51.5 * 25.4, places=1)
+                page.fill('#nest-width', '30')
+                page.wait_for_function(
+                    """() => {
+                      const gate = document.querySelector('#gate');
+                      const width = Number(document.body.dataset.nestWidth);
+                      return Math.abs(width - 762) < 1 && /cuts ok/i.test(gate?.textContent || '')
+                        && !gate.classList.contains('problem');
+                    }""",
+                    timeout=90000)
+                narrow = json.load(urlopen(self.url() + '/api/state', timeout=10))
+                self.assertAlmostEqual(narrow['result']['width'], 30 * 25.4, places=1)
+                self.assertLess(narrow['result']['width'], full - 100)
+                self.assertGreater(narrow['job']['settings']['sheetLength'], 2400)
+                self.assertEqual(page.locator('#used-width').inner_text(), 'on 30" wide')
+                self.assertFalse(page.locator('#export').is_disabled())
+                page.locator('#settings').evaluate('node => { node.open = false }')
+                page.screenshot(path='/tmp/eznest-desktop-ready.png', full_page=True)
+                page.screenshot(path='/tmp/eznest-width-desktop.png', full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path='/tmp/eznest-mobile-ready.png', full_page=True)
+                page.screenshot(path='/tmp/eznest-width-mobile.png', full_page=True)
+                box = page.locator('#nest-width').bounding_box()
+                self.assertLessEqual(box['x'] + box['width'], 390)
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.fill('#nest-width', '60')
+                page.wait_for_selector('#gate.problem', timeout=15000)
+                self.assertIn('printable', page.locator('#gate').inner_text().casefold())
+                self.assertTrue(page.locator('#export').is_disabled())
+                self.assertNotIn('cuts ok', page.locator('#gate').inner_text().casefold())
+                page.screenshot(path='/tmp/eznest-desktop-blocked.png', full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path='/tmp/eznest-mobile-blocked.png', full_page=True)
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.fill('#nest-width', '2')
+                page.wait_for_function("() => /wider than this width/i.test(document.querySelector('#gate')?.textContent || '')", timeout=15000)
+                self.assertTrue(page.locator('#gate').evaluate("el => el.classList.contains('problem')"))
+                self.assertTrue(page.locator('#export').is_disabled())
+                page.fill('#nest-width', '0')
+                page.wait_for_function("() => /greater than 0/i.test(document.querySelector('#gate')?.textContent || '')", timeout=15000)
+                self.assertTrue(page.locator('#export').is_disabled())
             finally:
                 browser.close()
 

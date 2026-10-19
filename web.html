@@ -22,7 +22,7 @@
       <label>Roll width
         <span class="measure"><input id="roll" type="number" min="0" step="any" value="54" inputmode="decimal"><span data-unit>in</span></span>
       </label>
-      <label>Printable width
+      <label>Max printable
         <span class="measure"><input id="width" type="number" min="0" step="any" value="51.5" inputmode="decimal"><span data-unit>in</span></span>
       </label>
       <label>Mark margin
@@ -116,6 +116,10 @@
       <option value="vinyl" data-width="54" data-unit="in">Vinyl · 54 in</option>
       <option value="custom">Custom roll</option>
     </select>
+    <label class="width">Width
+      <input id="nest-width" type="number" min="0" step="any" value="51.5" inputmode="decimal">
+      <span>in</span>
+    </label>
     <div class="sets">
       <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
       <input id="sets" type="number" min="1" max="100" step="1" value="1" inputmode="numeric" aria-label="Sets">
@@ -126,6 +130,7 @@
     <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong></span>
     <span class="metric"><span class="label">Waste</span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
     <span class="metric"><span class="label">Sheets</span> <strong id="sheets"><span class="num">–</span></strong></span>
+    <span id="used-width" class="used-width">on 51.5" wide</span>
   </p>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
   <div id="choice" class="choice" hidden>

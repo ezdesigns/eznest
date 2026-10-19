@@ -85,14 +85,82 @@ function cutMapping() {
   return EZNCuts.validate(mapping);
 }
 
+function chosenWidthInches() {
+  return Number($('nest-width').value);
+}
+
+function maxPrintableMm() {
+  const option = $('material').selectedOptions[0];
+  if (option && option.dataset.width) {
+    return Number(option.dataset.width) * EZNQueue.unitScale(option.dataset.unit || 'in');
+  }
+  const width = Number($('width').value);
+  return Number.isFinite(width) ? width * scale() : NaN;
+}
+
+function marginsMm() {
+  const factor = scale();
+  const edge = Number($('margin').value) * factor;
+  const mark = $('mark-margin').value.trim() ? Number($('mark-margin').value) * factor : 0;
+  return {edge, mark, total: edge + mark};
+}
+
+function rotatedSpan(points, degrees) {
+  const rad = degrees * Math.PI / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (const point of points) {
+    const x = point[0] * c - point[1] * s;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+  }
+  return maxX - minX;
+}
+
+function widestPieceMm() {
+  const angles = $('rotations').value === 'free'
+    ? Array.from({length: 36}, (_, index) => index * 5)
+    : $('rotations').value.split(',').map(Number);
+  let widest = 0;
+  for (const entry of kits) {
+    for (const part of entry.data?.parts || []) {
+      if (!part.points || part.points.length < 2) continue;
+      let best = Infinity;
+      for (const angle of angles) best = Math.min(best, rotatedSpan(part.points, angle));
+      if (best > widest) widest = best;
+    }
+  }
+  return widest;
+}
+
+function widthLabel() {
+  const width = chosenWidthInches();
+  if (!Number.isFinite(width) || width <= 0) return 'on — wide';
+  return 'on ' + String(Number(width.toFixed(4))) + '" wide';
+}
+
+function showWidth() {
+  const node = $('used-width');
+  if (node) node.textContent = widthLabel();
+}
+
+function shortProblem(message) {
+  const text = message || '';
+  if (/too large|wider than/i.test(text)) return 'A piece is wider than this width';
+  if (/one sheet|sheet length|maximum sheet/i.test(text)) return 'Material is over the sheet length';
+  return text;
+}
+
 function preset() {
   const factor = scale();
   const number = id => Number($(id).value) * factor;
-  const printable = number('width');
+  const printable = chosenWidthInches() * 25.4;
   const edge = number('margin');
   const mark = $('mark-margin').value.trim() ? number('mark-margin') : 0;
-  // Sheet width is the printable width. Mark clearance is reserved inside it,
-  // so pieces nest on printable width minus the mark margins (and the edge).
+  // The operator's width is the sheet. Mark clearance (and the edge) is reserved
+  // inside it, so pieces nest on that width minus the mark margins.
   const settings = {
     width: printable,
     maxLength: null,
@@ -170,16 +238,21 @@ function renderKit() {
 }
 
 function inputIssue() {
-  const width = Number($('width').value);
+  const chosen = chosenWidthInches();
+  const chosenMm = chosen * 25.4;
+  const maxMm = maxPrintableMm();
+  const {edge, mark, total} = marginsMm();
   const gap = Number($('gap').value);
-  const margin = Number($('margin').value);
-  const mark = $('mark-margin').value.trim() ? Number($('mark-margin').value) : 0;
   const count = Number($('sets').value);
-  if (!Number.isFinite(width) || width <= 0) return 'Enter a printable width';
+  if (!Number.isFinite(chosen) || chosen <= 0) return 'Width must be greater than 0';
+  if (!Number.isFinite(maxMm) || maxMm <= 0) return 'Enter a printable width';
   if (!Number.isFinite(gap) || gap < 0) return 'Check the spacing';
-  if (!Number.isFinite(margin) || margin < 0) return 'Check the edge margin';
+  if (!Number.isFinite(edge) || edge < 0) return 'Check the edge margin';
   if (!Number.isFinite(mark) || mark < 0) return 'Check the mark margin';
-  if ((margin + mark) * 2 >= width) return 'Mark margins leave no room on this printable width';
+  if (chosenMm > maxMm + 0.05) return "Width is over this material's printable width";
+  if (total * 2 >= chosenMm) return 'Mark margins leave no room on this width';
+  const widest = widestPieceMm();
+  if (widest > chosenMm - total * 2 + 0.2) return 'A piece is wider than this width';
   if (!Number.isInteger(count) || count < 1 || count > 100) return 'Sets must be from 1 to 100';
   return '';
 }
@@ -562,6 +635,7 @@ function showMetrics(state) {
   const sheets = sheetList(state);
   setNum('sheets', String(sheets.length));
   $('readout').classList.remove('pending');
+  showWidth();
   $('length').classList.toggle('over', lengthOver(state));
   const tabs = $('sheet-tabs');
   tabs.replaceChildren();
@@ -588,8 +662,9 @@ function showSent() {
 }
 
 function showBlocked(message) {
-  blockReason = message || 'Nesting stopped. Change the roll or the file and try again.';
+  blockReason = shortProblem(message) || 'Nesting stopped. Change the width or the file and try again.';
   showScreen('blocked');
+  showWidth();
   if (!current?.result) {
     setNum('length', '–', 'ft');
     setNum('waste', '–', '%');
@@ -605,6 +680,7 @@ function showBlocked(message) {
 function showResult(state) {
   current = state;
   blockReason = '';
+  document.body.dataset.nestWidth = state.result ? String(state.result.width) : '';
   showMetrics(state);
   showLock(state);
   renderPreview(Math.min(activeSheet, sheetsIndex(state)));
@@ -642,6 +718,7 @@ function showLive(state) {
   setNum('waste', String(Math.round((1 - (live.utilization || 0)) * 100)), '%');
   setNum('sheets', '1');
   $('readout').classList.remove('pending');
+  showWidth();
   setSentence('Nesting… ' + placed + ' of ' + (expected || placed), false);
   if (state.job) renderSheet($('preview'), {job: state.job, result: live, manifest: null}, 0);
 }
@@ -696,7 +773,8 @@ async function nest() {
     job.media = {
       name: option.dataset.name || roll.name,
       rollWidthMm: $('roll').value.trim() ? Number($('roll').value) * scale() : null,
-      printableWidthMm: Number($('width').value) * scale(),
+      printableWidthMm: chosenWidthInches() * 25.4,
+      maxPrintableMm: maxPrintableMm(),
       markMarginMm: $('mark-margin').value.trim() ? Number($('mark-margin').value) * scale() : 0,
       printer: option.dataset.printer || '',
       quickSet: option.dataset.quickset || '',
@@ -709,7 +787,7 @@ async function nest() {
     showScreen('nest');
     showLive({job});
     renderActions();
-    status('Nesting on ' + $('width').value + ' ' + $('unit').value + '…');
+    status('Nesting on ' + $('nest-width').value + ' in…');
     await api('/api/solve', job);
     setTimeout(poll, 300);
   } catch (error) {
@@ -880,6 +958,7 @@ function applyMaterial() {
   $('unit').value = option.dataset.unit || 'in';
   $('unit').dataset.current = $('unit').value;
   $('width').value = option.dataset.width;
+  $('nest-width').value = String(Number((Number(option.dataset.width) * EZNQueue.unitScale(option.dataset.unit || 'in') / 25.4).toFixed(4)));
   $('roll').value = option.dataset.roll || option.dataset.width;
   for (const node of document.querySelectorAll('[data-unit]')) node.textContent = $('unit').value;
   savePrefs({material: option.value});
@@ -1064,6 +1143,8 @@ document.addEventListener('DOMContentLoaded', () => {
   $('unit').addEventListener('change', () => { convertUnit($('unit').value); watchWidth(); requestNest(); });
   $('material').addEventListener('change', () => { applyMaterial(); requestNest(); });
   $('width').addEventListener('input', () => { watchWidth(); requestNest(); });
+  $('nest-width').addEventListener('input', () => { showWidth(); requestNest(); });
+  $('nest-width').addEventListener('change', requestNest);
   for (const id of ['gap', 'margin', 'sheet', 'mark-margin']) $(id).addEventListener('input', requestNest);
   for (const id of ['width', 'gap', 'margin', 'sheet', 'mark-margin', 'rotations']) $(id).addEventListener('change', requestNest);
   $('cut-preset').addEventListener('change', applyCutPreset);

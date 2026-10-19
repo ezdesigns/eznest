@@ -89,8 +89,12 @@ Send to ONYX writes one frozen package. Sending again, or opening the page again
 restart, returns that same file and the same SHA-256. The layout id and hash stay in that
 package. The page shows material used, waste, and sheets.
 
-The gear holds the shop handoff. Nesting uses the material's printable width, with
-a mark margin reserved around the sheet so ONYX CutServer can add registration
+The gear holds the shop handoff. Width, next to the material and the sets, is the
+nest width in inches. It starts at the material's printable width and can be
+lowered. Nesting uses that width minus the mark margins. A width above the
+material, a width that cannot hold the widest piece, or a blank width is one red
+sentence and Send stays off. Sheets still split at 96 in unless you change it.
+A mark margin is reserved around the sheet so ONYX CutServer can add registration
 marks and barcodes. Those marks are not drawn unless Draw registration marks is
 on. Cut spots default to LNThru-cut and LNKiss-cut; CutContour_Thru-cut and
 CutContour_Kiss-cut are the alternate preset, pending Ez Ink's ONYX mapping.

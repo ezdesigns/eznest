@@ -89,6 +89,9 @@ main {
 body.dragging .drop { opacity: .55; }
 .quiet { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
 .quiet select { width: auto; max-width: 100%; background: transparent; padding: 0 4px; }
+.width { display: flex; align-items: center; gap: 4px; font-size: 16px; }
+.width span { color: var(--muted); }
+.width input { width: 58px; text-align: center; background: transparent; padding: 0; }
 .sets { display: flex; align-items: center; }
 .sets button, .sets input { background: transparent; border: 0; min-height: 36px; }
 .sets button { width: 32px; padding: 0; font-size: 18px; }
@@ -102,6 +105,7 @@ body.dragging .drop { opacity: .55; }
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%; margin: 0; gap: 16px;
 }
+.used-width { grid-column: 1 / -1; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); }
 .metric { display: grid; justify-items: center; text-align: center; gap: 2px; }
 .metrics .label { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .metrics strong { font-weight: 700; }
