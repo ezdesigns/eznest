@@ -186,7 +186,7 @@ window.EZNSVG = (() => {
     const live=mount.firstElementChild;
     try {
       const nodes=partsOf(live);
-      if(!nodes.length||nodes.length>100)fail('SVG needs between 1 and 100 visible parts.');
+      if(!nodes.length||nodes.length>800)fail('SVG needs between 1 and 800 visible parts.');
       const definitions=[...live.querySelectorAll('defs')].filter(n=>!n.parentElement.closest('defs')).map(serialize).join('');
       const parts=nodes.map((part,index)=>{
         const b=boundary(part,live), points=flatten(b.node,b.matrix), origin=[Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1]))];

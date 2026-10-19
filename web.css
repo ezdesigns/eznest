@@ -96,6 +96,13 @@ body.dragging .drop { opacity: .55; }
 .sets button, .sets input { background: transparent; border: 0; min-height: 36px; }
 .sets button { width: 32px; padding: 0; font-size: 18px; }
 .sets input { width: 36px; text-align: center; padding: 0; }
+.files { list-style: none; width: 100%; margin: 0; padding: 0; display: grid; gap: 8px; }
+.files li { display: flex; align-items: center; gap: 12px; width: 100%; }
+.files .file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.files input { width: 52px; text-align: center; background: transparent; padding: 0; }
+.files button { flex: none; }
+#add-files { position: relative; cursor: pointer; }
+#add-files input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .sheet-frame { width: 100%; background: var(--canvas); border-radius: 8px; padding: 8px; overflow: auto; max-height: 54vh; }
 .sheet-frame svg { display: block; width: 100%; height: auto; max-width: 100%; background: var(--canvas); }
 .key { display: flex; gap: 16px; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
@@ -123,7 +130,7 @@ button.primary {
   background: #111; color: #fff; font-size: 16px; font-weight: 700; white-space: nowrap;
 }
 button.primary:disabled { background: #ececea; color: #8a8a86; cursor: default; }
-button.link {
+button.link, #add-files {
   border: 0; background: transparent; padding: 0; min-height: 32px;
   font-size: 14px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px;
 }

@@ -2,7 +2,7 @@
 
 **Add artwork → set material width and quantities → nest → review → export.**
 
-**0.12.0-beta.1 · Windows mixed-cut beta.** Standalone local nesting for
+**1.0.0-rc.1 · shop release candidate.** Standalone local nesting for
 complete kits, decals and stickers. Illustrator, a printer model and an account
 are not required. Width comes from the material; length comes from the layout.
 
@@ -21,7 +21,7 @@ are not required. Width comes from the material; length comes from the layout.
 - Optional material cost per job with explicit allocation of shared unused material.
 - Frozen ZIP/folder export, history, re-queueing and an MX comparison worksheet.
 
-One material and up to 100 pieces per batch. Nesting and sheet allocation are
+One material and up to 800 pieces per batch. Nesting and sheet allocation are
 heuristic, not guaranteed global optima. Read [supported files and limits](docs/PRODUCTION-FILES.md).
 
 ## Important limits
@@ -38,6 +38,30 @@ Use Preserve source colors; configure printer ICC/color conversion and registrat
 marks in ONYX/your RIP. No EPS, inventory, or printer/cutter dispatch. The web page
 can offset full-bleed artwork past the cut; it does not certify ink coverage.
 **Physical ONYX/GoProduce validation and controlled MX comparison remain outstanding.**
+
+## Run eznest in the shop
+
+The shop page is one screen. Double-click starts it. There is no terminal and no account.
+
+Packaged app (the folder that contains `eznest.exe`):
+
+1. Copy the whole folder onto the shop PC. Keep `eznest.exe`, `_internal`, and `eznest-web.bat` together.
+2. Double-click `eznest-web.bat`.
+3. The browser opens http://127.0.0.1:8765/web. Drop the day's files, set each quantity, and Send to ONYX.
+
+Source folder (this repository, with 64-bit Python 3.12 installed):
+
+1. Double-click `eznest-web.bat`.
+2. The first time, it creates `.local\venv` and installs the engine. That window can sit for a minute. Later double-clicks open straight away.
+3. The browser opens the same address, http://127.0.0.1:8765/web.
+
+If a message says another version is using port 8765, double-click `Stop EZ Nest.cmd`, or open the old window and use Help → Quit eznest. Then double-click `eznest-web.bat` again. A 0.12 server will not share the port with 1.0.0-rc.1.
+
+Closing the browser leaves eznest running. Double-click `Stop EZ Nest.cmd` to stop it. Help → Quit eznest does the same from the full workspace.
+
+Material, width, and cut spot names stay in that browser for http://127.0.0.1:8765. The hot-folder path stays there too, and on disk in `data\` (packaged) or `.local\` (source). Keep that folder when you update.
+
+`eznest.exe` without the bat still opens the full workspace at http://127.0.0.1:8765/.
 
 ## Run on Windows
 
@@ -58,7 +82,7 @@ Developer options: --no-browser, --port 8767, --data-dir "isolated test folder".
 
 ## Run the web page
 
-The simple page is one screen: drop a file and it nests. Change the material or the sets and it nests again, then Send to ONYX.
+The simple page is one screen: drop files and they nest together. Each file keeps its own quantity. Change the material, the width, or a quantity and it nests again, then Send to ONYX. While it nests, the page shows progress and Stop · keep best. A PDF-compatible `.ai` file imports as PDF. If it cannot be read, the page says Save as PDF. Material, width, hot-folder path, and cut names stay between sessions.
 It uses the same local Python server as the Windows app. Nesting stays on this computer.
 There is no account. SVG is the first format. PDF and PDF-compatible AI use the existing
 cut-spot importer. The full workspace remains at `/`.
@@ -104,10 +128,10 @@ ONYX writes the frozen pack into the hot-folder path labeled EPSON SureColor
 S80600 ONYX Input, or downloads it when that path is empty. The page does not
 build OXF files, manifests for the cutter, or cut recipes.
 
-Not in this page: an ONYX or GoProduce proof, laminate cost, and
-the later pro pass that batches work by time. PDF import is still 20 MB, 25 pages,
-named spots or layers, and no DeviceN, native AI, or EPS. SVG and PDF cannot share
-a batch. One batch holds 100 pieces. See [supported files](docs/PRODUCTION-FILES.md).
+Not in v1: job history, order intake, AI batching, cost tracking, an ONYX or GoProduce proof, and laminate cost.
+The nest, the file import, and the saved shop settings stay separate so those can be added later.
+PDF import is still 20 MB, 25 pages, named spots or layers, and no DeviceN, non-PDF AI, or EPS.
+SVG and PDF cannot share a batch. One batch holds 800 pieces. See [supported files](docs/PRODUCTION-FILES.md).
 
 ## Test and build
 

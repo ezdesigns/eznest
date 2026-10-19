@@ -99,7 +99,7 @@
 </details>
 <main>
   <div id="drop-screen">
-    <label id="drop" class="drop">Drop your file
+    <label id="drop" class="drop">Drop your files
       <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
     </label>
   </div>
@@ -122,10 +122,14 @@
     </label>
     <div class="sets">
       <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
-      <input id="sets" type="number" min="1" max="100" step="1" value="1" inputmode="numeric" aria-label="Sets">
+      <input id="sets" type="number" min="1" max="800" step="1" value="1" inputmode="numeric" aria-label="Sets">
       <button id="sets-inc" type="button" aria-label="More sets">+</button>
     </div>
   </div>
+  <ul id="files" class="files" hidden></ul>
+  <label id="add-files" class="link" hidden>Add files
+    <input id="more" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
+  </label>
   <p class="metrics pending" id="readout" hidden>
     <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong></span>
     <span class="metric"><span class="label">Waste</span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
@@ -138,6 +142,7 @@
     <button id="choose-kiss" type="button">Kiss</button>
   </div>
   <button id="export" class="primary" type="button" hidden disabled>Send to ONYX</button>
+  <button id="stop" class="link" type="button" hidden>Stop · keep best</button>
   <button id="start-over" class="link" type="button" hidden>Start over</button>
   <button id="undo" class="link" type="button" hidden>Undo send</button>
   <input id="layout-id" hidden readonly tabindex="-1" aria-label="Layout ID">

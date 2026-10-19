@@ -2,8 +2,10 @@
 const NS = 'http://www.w3.org/2000/svg';
 const $ = id => document.getElementById(id);
 const PREF = 'eznest-placeholders';
+const PIECE_CAP = 800;
 let token = '';
 let kits = [];
+let fileSerial = 0;
 let current = null;
 let busy = false;
 let saving = false;
@@ -47,7 +49,7 @@ async function api(path, data) {
 
 function sets() {
   const count = Number($('sets').value);
-  if (!Number.isInteger(count) || count < 1 || count > 100) throw Error('Sets must be a whole number from 1 to 100.');
+  if (!Number.isInteger(count) || count < 1 || count > PIECE_CAP) throw Error('Sets must be a whole number from 1 to ' + PIECE_CAP + '.');
   return count;
 }
 
@@ -253,7 +255,18 @@ function inputIssue() {
   if (total * 2 >= chosenMm) return 'Mark margins leave no room on this width';
   const widest = widestPieceMm();
   if (widest > chosenMm - total * 2 + 0.2) return 'A piece is wider than this width';
-  if (!Number.isInteger(count) || count < 1 || count > 100) return 'Sets must be from 1 to 100';
+  return quantityIssue() || (Number.isInteger(count) && count >= 1 && count <= PIECE_CAP ? '' : 'Sets must be from 1 to ' + PIECE_CAP);
+}
+
+function quantityIssue() {
+  if (!kits.length) return '';
+  let total = 0;
+  for (const entry of kits) {
+    if (!Number.isInteger(entry.sets) || entry.sets < 1 || entry.sets > PIECE_CAP) return 'Quantity must be from 1 to ' + PIECE_CAP;
+    const per = (entry.data?.parts || []).reduce((sum, part) => sum + (part.quantity || 1), 0);
+    total += per * entry.sets;
+  }
+  if (total > PIECE_CAP) return 'This batch holds ' + PIECE_CAP + ' pieces';
   return '';
 }
 
@@ -304,9 +317,9 @@ function cutProblem() {
   if (!unresolved()) return null;
   const names = [];
   let count = 0;
-  const copies = Number($('sets').value) || 1;
   for (const entry of kits) {
     if (!entry.unresolved) continue;
+    const copies = entry.sets || 1;
     for (const part of entry.data.parts || []) {
       const found = part.cutCounts?.contour || 0;
       if (!found) continue;
@@ -329,12 +342,83 @@ function showScreen(name) {
   $('export').hidden = idle;
   $('start-over').hidden = idle;
   $('choice').hidden = name !== 'blocked' || !unresolved();
+  syncFiles();
   if (idle) {
     clearReadout();
     $('sheet-tabs').hidden = true;
     $('preview').replaceChildren();
     setSentence('', false);
   }
+}
+
+function syncFiles() {
+  const show = kits.length > 0 && document.body.dataset.step !== 'drop';
+  $('files').hidden = !show;
+  $('add-files').hidden = !show || document.body.dataset.step === 'nest';
+  $('stop').hidden = document.body.dataset.step !== 'nest';
+  const locked = busy || document.body.dataset.step === 'nest';
+  for (const node of $('files').querySelectorAll('input, button')) node.disabled = locked;
+}
+
+function renderFiles() {
+  const list = $('files');
+  list.replaceChildren();
+  for (const entry of kits) {
+    const row = document.createElement('li');
+    const name = document.createElement('span');
+    name.className = 'file-name';
+    name.textContent = entry.name;
+    const qty = document.createElement('input');
+    qty.type = 'number';
+    qty.min = '1';
+    qty.max = String(PIECE_CAP);
+    qty.step = '1';
+    qty.value = String(entry.sets);
+    qty.setAttribute('aria-label', 'Quantity for ' + entry.name);
+    const commitQty = () => {
+      const count = Number(qty.value);
+      if (!Number.isInteger(count) || count < 1 || count > PIECE_CAP) {
+        if (document.activeElement !== qty) qty.value = String(entry.sets);
+        return;
+      }
+      if (count === entry.sets) return;
+      entry.sets = count;
+      requestNest();
+    };
+    qty.addEventListener('input', commitQty);
+    qty.addEventListener('change', () => {
+      if (!Number.isInteger(Number(qty.value)) || Number(qty.value) < 1) qty.value = String(entry.sets);
+      commitQty();
+    });
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'link';
+    remove.textContent = 'Remove';
+    remove.setAttribute('aria-label', 'Remove ' + entry.name);
+    remove.addEventListener('click', () => removeFile(entry.id));
+    row.append(name, qty, remove);
+    list.append(row);
+  }
+  syncFiles();
+}
+
+function removeFile(id) {
+  if (saving) return;
+  kits = kits.filter(entry => entry.id !== id);
+  if (!kits.length) { startOver(); return; }
+  renderFiles();
+  requestNest();
+}
+
+function applySetsToFiles() {
+  let count = Number($('sets').value);
+  if (!Number.isInteger(count) || count < 1 || count > PIECE_CAP) {
+    $('sets').value = '1';
+    count = 1;
+    status('Sets must be from 1 to ' + PIECE_CAP + '.', true);
+  }
+  for (const entry of kits) entry.sets = count;
+  if (kits.length) renderFiles();
 }
 
 function renderActions() {
@@ -764,7 +848,6 @@ async function nest() {
   if (busy || saving || !kits.length) return;
   if (inputIssue()) { showBlocked(inputIssue()); return; }
   try {
-    for (const entry of kits) entry.sets = sets();
     const roll = preset();
     const job = EZNQueue.compose(kits, roll, 'combined');
     job.outputProfile = profileFor(kits);
@@ -924,8 +1007,16 @@ function nextKit() {
   activeSheet = 0;
   pendingRenest = false;
   renderKit();
+  renderFiles();
   showScreen('drop');
-  status('Drop your file.');
+  status('Drop your files.');
+}
+
+async function stopNest() {
+  if (!busy) return;
+  pendingRenest = false;
+  try { await api('/api/cancel', {keepBest: true}); }
+  catch (error) { status(error.message, true); }
 }
 
 async function startOver() {
@@ -947,21 +1038,33 @@ function convertUnit(next) {
     $(id).value = String(Number((Number($(id).value) * factor).toFixed(4)));
   }
   $('unit').dataset.current = next;
-  for (const node of document.querySelectorAll('[data-unit]')) node.textContent = next;
+  for (const node of document.querySelectorAll('span[data-unit]')) node.textContent = next;
 }
 
-function applyMaterial() {
+function applyMaterial(quiet) {
   const option = $('material').selectedOptions[0];
   const named = option.dataset.name || (option.dataset.width ? option.textContent.split('·')[0].trim() : '');
   $('preset-name').value = named || ($('preset-name').value || 'Custom roll');
-  if (!option.dataset.width) return;
-  $('unit').value = option.dataset.unit || 'in';
-  $('unit').dataset.current = $('unit').value;
-  $('width').value = option.dataset.width;
-  $('nest-width').value = String(Number((Number(option.dataset.width) * EZNQueue.unitScale(option.dataset.unit || 'in') / 25.4).toFixed(4)));
-  $('roll').value = option.dataset.roll || option.dataset.width;
-  for (const node of document.querySelectorAll('[data-unit]')) node.textContent = $('unit').value;
-  savePrefs({material: option.value});
+  if (option.dataset.width) {
+    $('unit').value = option.dataset.unit || 'in';
+    $('unit').dataset.current = $('unit').value;
+    $('width').value = option.dataset.width;
+    $('nest-width').value = String(Number((Number(option.dataset.width) * EZNQueue.unitScale(option.dataset.unit || 'in') / 25.4).toFixed(4)));
+    $('roll').value = option.dataset.roll || option.dataset.width;
+    for (const node of document.querySelectorAll('span[data-unit]')) node.textContent = $('unit').value;
+  }
+  if (!quiet) saveShop();
+}
+
+function saveShop() {
+  savePrefs({
+    nestWidth: $('nest-width').value,
+    material: $('material').value,
+    thru: $('thru-name').value,
+    kiss: $('kiss-name').value,
+    cutPreset: $('cut-preset').value,
+    hotFolder: $('hot-folder').value
+  });
 }
 
 function applyCutPreset() {
@@ -1003,7 +1106,7 @@ async function saveHotFolder() {
   try {
     const result = await api('/api/output/connect', {path});
     $('hot-folder').value = result.path || '';
-    savePrefs({hotFolder: $('hot-folder').value});
+    saveShop();
     status(result.path ? 'Hot folder set. Send writes the frozen pack there.' : 'No hot folder. Send downloads the pack.');
   } catch (error) {
     status(error.message, true);
@@ -1021,7 +1124,7 @@ async function importPdf(file, operation) {
   return api('/api/document/import', {content: btoa(binary), bleedMm: bleed, cutSpot: 'CutContour', cutMapping: EZNCuts.validate(mapping)});
 }
 
-async function readEntry(file, index) {
+async function readEntry(file) {
   const pdf = /\.(pdf|ai)$/i.test(file.name);
   if (!pdf && !/\.svg$/i.test(file.name)) throw Error(file.name + ' is not SVG, PDF, or PDF-compatible AI.');
   if (file.size > (pdf ? 20_000_000 : 8_000_000)) throw Error(file.name + ' is over the ' + (pdf ? '20' : '8') + ' MB limit.');
@@ -1034,7 +1137,8 @@ async function readEntry(file, index) {
       if (!chosen && /unspecified cut type/i.test(error.message)) {
         data = await importPdf(file, 'contour');
         unresolvedCut = true;
-      } else throw error;
+      } else if (/\.ai$/i.test(file.name)) throw Error('Save as PDF');
+      else throw error;
     }
     data.reviewed = true;
     data.format = 'pdf';
@@ -1046,25 +1150,30 @@ async function readEntry(file, index) {
     revision = await sha256(new TextEncoder().encode(text));
   }
   return {
-    id: 'web-' + revision.slice(0, 18) + '-' + index, name: file.name, sourceFile: file.name, revision,
+    id: 'web-' + revision.slice(0, 12) + '-' + (fileSerial++), name: file.name, sourceFile: file.name, revision,
     origin: 'files', role: 'required', customer: '', order: '', kit: '', materialId: 'web-roll',
     sets: sets(), selected: true, status: 'ready', data, file, unresolved: unresolvedCut
   };
 }
 
-async function importFiles(fileList) {
+async function importFiles(fileList, replace) {
   const files = [...fileList].filter(Boolean);
   if (!files.length || busy || saving) return;
-  const pdf = files.some(file => /\.(pdf|ai)$/i.test(file.name));
-  const svg = files.some(file => /\.svg$/i.test(file.name));
-  if (pdf && svg) throw Error('Nest SVG files in one batch and PDF files in another. That keeps the original artwork.');
+  const incomingPdf = files.some(file => /\.(pdf|ai)$/i.test(file.name));
+  const incomingSvg = files.some(file => /\.svg$/i.test(file.name));
+  const havePdf = !replace && kits.some(entry => entry.data?.format === 'pdf');
+  const haveSvg = !replace && kits.some(entry => entry.data?.format === 'svg');
+  if ((incomingPdf && incomingSvg) || (incomingPdf && haveSvg) || (incomingSvg && havePdf)) {
+    throw Error('Nest SVG files in one batch and PDF files in another. That keeps the original artwork.');
+  }
   status('Reading ' + files.length + (files.length === 1 ? ' file…' : ' files…'));
   const entries = [];
-  for (const [index, file] of files.entries()) entries.push(await readEntry(file, index));
-  kits = entries;
+  for (const file of files) entries.push(await readEntry(file));
+  kits = replace ? entries : kits.concat(entries);
   current = null;
   blockReason = '';
   leaving = false;
+  renderFiles();
   showScreen('nest');
   status('Nesting…');
   requestNest();
@@ -1075,7 +1184,7 @@ async function chooseCut(operation) {
   const files = kits.map(entry => entry.file).filter(Boolean);
   $('generic-cut').value = operation;
   try {
-    await importFiles(files);
+    await importFiles(files, true);
     $('generic-cut').value = '';
   } catch (error) {
     $('generic-cut').value = '';
@@ -1094,6 +1203,17 @@ async function boot() {
       if (saved.unit) option.dataset.unit = saved.unit;
     }
   }
+  if (stored.material && [...$('material').options].some(option => option.value === stored.material)) {
+    $('material').value = stored.material;
+    applyMaterial(true);
+  }
+  if (stored.nestWidth) {
+    $('nest-width').value = stored.nestWidth;
+    showWidth();
+  }
+  if (stored.thru) $('thru-name').value = stored.thru;
+  if (stored.kiss) $('kiss-name').value = stored.kiss;
+  if (stored.thru || stored.kiss) matchCutPreset();
   $('allow-undo').checked = stored.undo === true;
   $('allow-hold').checked = stored.hold === true;
   const session = await (await fetch('/api/session')).json();
@@ -1101,11 +1221,12 @@ async function boot() {
   try {
     const folder = await (await fetch('/api/output')).json();
     if (folder.path) $('hot-folder').value = folder.path;
+    else if (stored.hotFolder) $('hot-folder').value = stored.hotFolder;
   } catch { /* The folder status is optional. */ }
   const state = await (await fetch('/api/state')).json();
   if (state.status === 'running') { busy = true; showScreen('nest'); renderActions(); setTimeout(poll, 300); }
   else if (state.status === 'ready' && state.manifest) showResult(state);
-  else { showScreen('drop'); status('Drop your file.'); }
+  else { showScreen('drop'); status('Drop your files.'); }
   renderActions();
 }
 
@@ -1127,15 +1248,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('sets-dec').addEventListener('click', () => {
     $('sets').value = String(Math.max(1, (Number($('sets').value) || 1) - 1));
+    applySetsToFiles();
     requestNest();
   });
   $('sets-inc').addEventListener('click', () => {
-    $('sets').value = String(Math.min(100, (Number($('sets').value) || 1) + 1));
+    $('sets').value = String(Math.min(PIECE_CAP, (Number($('sets').value) || 1) + 1));
+    applySetsToFiles();
     requestNest();
   });
   const renestFromSets = () => {
-    const count = Number($('sets').value);
-    if (!Number.isInteger(count) || count < 1 || count > 100) { $('sets').value = '1'; status('Sets must be from 1 to 100.', true); }
+    applySetsToFiles();
     requestNest();
   };
   $('sets').addEventListener('input', renestFromSets);
@@ -1143,13 +1265,13 @@ document.addEventListener('DOMContentLoaded', () => {
   $('unit').addEventListener('change', () => { convertUnit($('unit').value); watchWidth(); requestNest(); });
   $('material').addEventListener('change', () => { applyMaterial(); requestNest(); });
   $('width').addEventListener('input', () => { watchWidth(); requestNest(); });
-  $('nest-width').addEventListener('input', () => { showWidth(); requestNest(); });
-  $('nest-width').addEventListener('change', requestNest);
+  $('nest-width').addEventListener('input', () => { showWidth(); saveShop(); requestNest(); });
+  $('nest-width').addEventListener('change', () => { saveShop(); requestNest(); });
   for (const id of ['gap', 'margin', 'sheet', 'mark-margin']) $(id).addEventListener('input', requestNest);
   for (const id of ['width', 'gap', 'margin', 'sheet', 'mark-margin', 'rotations']) $(id).addEventListener('change', requestNest);
-  $('cut-preset').addEventListener('change', applyCutPreset);
-  $('thru-name').addEventListener('input', matchCutPreset);
-  $('kiss-name').addEventListener('input', matchCutPreset);
+  $('cut-preset').addEventListener('change', () => { applyCutPreset(); saveShop(); });
+  $('thru-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
+  $('kiss-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
   $('auto-bleed').addEventListener('change', () => { if (current && current.result && !busy && !saving) renderPreview(activeSheet); });
   $('preset-name').addEventListener('change', rememberPreset);
   $('hot-folder').addEventListener('change', saveHotFolder);
@@ -1159,6 +1281,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('choose-thru').addEventListener('click', () => chooseCut('thru'));
   $('choose-kiss').addEventListener('click', () => chooseCut('kiss'));
   $('start-over').addEventListener('click', startOver);
+  $('more').addEventListener('change', async event => {
+    try { await importFiles(event.target.files); }
+    catch (error) { showBlocked(error.message); }
+    finally { event.target.value = ''; }
+  });
+  $('stop').addEventListener('click', stopNest);
   $('undo').addEventListener('click', async () => {
     if (!current?.savedPath) return;
     try {
@@ -1174,7 +1302,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #sets-dec, #sets-inc, #sheet-tabs')) return;
+    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

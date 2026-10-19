@@ -1,9 +1,11 @@
-eznest 0.12.0-beta.1 | Windows x64 | Mixed-cut beta
+eznest 1.0.0-rc.1 | Windows x64 | Shop release candidate
 
 START
-Extract the complete ZIP into a writable folder and open eznest.exe.
-Keep _internal beside it. No separate Python installation or account is needed.
-The local browser opens http://127.0.0.1:8765/. Stop an older version first.
+Extract the complete ZIP into a writable folder.
+For the shop page, double-click eznest-web.bat. It opens http://127.0.0.1:8765/web.
+eznest.exe opens the full workspace at http://127.0.0.1:8765/.
+Keep _internal beside the exe. No separate Python installation or account is needed.
+Stop an older version on that port first. See README, "Run eznest in the shop".
 
 NEST
 1. Drop PDF, PDF-compatible AI, or SVG files.
@@ -25,7 +27,7 @@ source colors and let the RIP handle printer color management and registration.
 The ONYX profile may need its bleed requirement confirmed before it can be met.
 
 LIMITS
-One material, up to 100 pieces. PDF: 20 MB, 25 pages. AI must have Create PDF
+One material, up to 800 pieces. PDF: 20 MB, 25 pages. AI must have Create PDF
 Compatible File enabled. Hidden/conditional PDF layers, annotations, ambiguous
 contours and some other structures are rejected. DeviceN cut colors are unsupported.
 No EPS, automatic bleed, color conversion, inventory or printer/cutter dispatch.

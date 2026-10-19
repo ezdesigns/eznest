@@ -73,6 +73,10 @@ class WebMvpTests(unittest.TestCase):
         self.assertIn('Nest selected jobs', desktop)
         self.assertIn('href="/web"', desktop)
         self.assertIn('Drop your file', page)
+        self.assertIn('Stop · keep best', page)
+        self.assertIn('id="files"', page)
+        self.assertIn('Add files', page)
+        self.assertIn('max="800"', page)
         self.assertNotIn('id="nest"', page)
         self.assertIn('/svg-io.js', page)
         self.assertNotIn('<script>', page.lower().split('<body', 1)[-1].replace('src=', ''))
@@ -336,6 +340,132 @@ class WebMvpTests(unittest.TestCase):
                 page.wait_for_function("() => /greater than 0/i.test(document.querySelector('#gate')?.textContent || '')", timeout=15000)
                 self.assertTrue(page.locator('#export').is_disabled())
             finally:
+                browser.close()
+
+
+    def test_gang_sheet_keeps_each_files_quantity(self):
+        from playwright.sync_api import sync_playwright
+        sample = (Path(__file__).resolve().parents[1] / 'sample-artwork.svg').read_text(encoding='utf-8')
+        badge = Path(self.tmp.name) / 'badge.svg'
+        label = Path(self.tmp.name) / 'label.svg'
+        badge.write_text(sample, encoding='utf-8')
+        label.write_text(sample, encoding='utf-8')
+        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots.mkdir(parents=True, exist_ok=True)
+
+        def ready(count):
+            return (
+                "() => { const text = document.querySelector('#checks')?.textContent || '';"
+                " const gate = document.querySelector('#gate');"
+                f" return /^\\s*{count} pieces/i.test(text) && gate && !gate.classList.contains('problem'); }}"
+            )
+
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                page.locator('#settings').evaluate('node => { node.open = false }')
+                page.set_input_files('#file', [str(badge), str(label)])
+                page.wait_for_function(ready(8), timeout=90000)
+                self.assertEqual(page.locator('#files li').count(), 2)
+                self.assertIn('badge.svg', page.locator('#files').inner_text())
+                self.assertIn('label.svg', page.locator('#files').inner_text())
+                self.assertEqual(page.locator('#files input').nth(0).input_value(), '1')
+                self.assertEqual(page.locator('#files input').nth(1).input_value(), '1')
+                self.assertEqual(page.locator('#files button').count(), 2)
+                page.locator('#files input').nth(1).fill('2')
+                self.assertEqual(page.locator('#files input').nth(1).input_value(), '2')
+                self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
+                page.screenshot(path=str(shots / 'gang-desktop.png'), full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path=str(shots / 'gang-mobile.png'), full_page=True)
+                remove = page.locator('#files button').first.bounding_box()
+                self.assertLessEqual(remove['x'] + remove['width'], 390)
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.locator('#files button').first.click()
+                page.wait_for_function(ready(8), timeout=90000)
+                self.assertEqual(page.locator('#files li').count(), 1)
+                self.assertIn('label.svg', page.locator('#files').inner_text())
+                self.assertNotIn('badge.svg', page.locator('#files').inner_text())
+                page.set_input_files('#more', str(badge))
+                page.wait_for_function(ready(12), timeout=90000)
+                self.assertEqual(page.locator('#files li').count(), 2)
+                self.assertFalse(page.locator('#add-files').is_hidden())
+                self.assertTrue(page.locator('#stop').is_hidden())
+                self.assertEqual(page.locator('#stop').text_content().strip(), 'Stop · keep best')
+            finally:
+                browser.close()
+
+    def test_pdf_compatible_ai_imports_and_unreadable_ai_says_save_as_pdf(self):
+        from playwright.sync_api import sync_playwright
+        good = Path(self.tmp.name) / 'kit.ai'
+        bad = Path(self.tmp.name) / 'poster.ai'
+        good.write_bytes(mixed_fixture())
+        bad.write_bytes(b'%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 200 100\n')
+        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots.mkdir(parents=True, exist_ok=True)
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                page.locator('#settings').evaluate('node => { node.open = false }')
+                page.set_input_files('#file', str(bad))
+                page.wait_for_selector('#gate.problem', timeout=20000)
+                self.assertEqual(page.locator('#checks').inner_text().strip(), 'Save as PDF')
+                self.assertTrue(page.locator('#export').is_disabled())
+                self.assertEqual(page.locator('#gate').inner_text().strip(), 'Save as PDF')
+                page.screenshot(path=str(shots / 'ai-desktop.png'), full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path=str(shots / 'ai-mobile.png'), full_page=True)
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.set_input_files('#file', str(good))
+                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
+                self.assertIn('thru', page.locator('#checks').inner_text().casefold())
+                self.assertIn('kiss', page.locator('#checks').inner_text().casefold())
+                packed = self.download(page)
+                with ZipFile(io.BytesIO(packed)) as archive:
+                    pdf = archive.read('artwork.pdf')
+                self.assertIn(b'LNThru-cut', pdf)
+                self.assertIn(b'LNKiss-cut', pdf)
+            finally:
+                browser.close()
+
+    def test_shop_settings_persist(self):
+        from playwright.sync_api import sync_playwright
+        folder = Path(self.tmp.name) / 'hot'
+        folder.mkdir()
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+            try:
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                page.select_option('#material', 'vinyl')
+                page.fill('#nest-width', '30')
+                page.locator('#settings').evaluate('node => { node.open = true }')
+                page.fill('#preset-name', 'Shop vinyl')
+                page.locator('#preset-name').dispatch_event('change')
+                page.fill('#thru-name', 'ShopThru')
+                page.fill('#kiss-name', 'ShopKiss')
+                page.fill('#hot-folder', str(folder))
+                page.locator('#hot-folder').dispatch_event('change')
+                page.wait_for_function("() => /Hot folder set/i.test(document.querySelector('#status').textContent)", timeout=10000)
+                page.reload()
+                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                self.assertEqual(page.input_value('#material'), 'vinyl')
+                self.assertIn('Shop vinyl', page.locator('#material option:checked').inner_text())
+                self.assertEqual(page.input_value('#preset-name'), 'Shop vinyl')
+                self.assertEqual(page.input_value('#nest-width'), '30')
+                self.assertEqual(page.input_value('#thru-name'), 'ShopThru')
+                self.assertEqual(page.input_value('#kiss-name'), 'ShopKiss')
+                self.assertEqual(Path(page.input_value('#hot-folder')), folder.resolve())
+                self.assertEqual(page.input_value('#cut-preset'), 'custom')
+            finally:
+                try:
+                    page.locator('#settings').evaluate('node => { node.open = true }')
+                    page.fill('#hot-folder', '')
+                    page.locator('#hot-folder').dispatch_event('change')
+                    page.wait_for_function("() => /No hot folder/i.test(document.querySelector('#status').textContent)", timeout=10000)
+                except Exception:
+                    pass
                 browser.close()
 
 

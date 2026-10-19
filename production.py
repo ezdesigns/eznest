@@ -28,8 +28,8 @@ def validate_identity(job):
         ident, code = source['id'], source['code']
         if ident in by_id or code in codes:
             raise ValueError('Duplicate production job identity.')
-        if type(source['sets']) is not int or not 1 <= source['sets'] <= 100:
-            raise ValueError('Sets must be an integer from 1 to 100.')
+        if type(source['sets']) is not int or not 1 <= source['sets'] <= 800:
+            raise ValueError('Sets must be an integer from 1 to 800.')
         if source.get('materialId') != job.get('materialId'):
             raise ValueError('Only jobs assigned to the same material preset can be combined.')
         if not source.get('partIds') or len(source['partIds']) != len(set(source['partIds'])):
@@ -45,7 +45,7 @@ def validate_identity(job):
     for part in job['parts']:
         source = by_id.get(part.get('sourceJobId'))
         base = part.get('perSet', 1)
-        if not source or part['id'] not in source['partIds'] or type(base) is not int or not 1 <= base <= 100:
+        if not source or part['id'] not in source['partIds'] or type(base) is not int or not 1 <= base <= 800:
             raise ValueError('A part has an invalid source job or per-set quantity.')
         if part['quantity'] != base * source['sets']:
             raise ValueError('Part quantities do not make complete requested sets.')

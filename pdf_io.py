@@ -283,7 +283,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None):
                          clipCommands=[('m',list(envelope.exterior.coords[0]))]+[('l',list(p)) for p in envelope.exterior.coords[1:]]+[('h',[])])
             if not bleed_mm:piece['clipCommands']=piece['commands']
             piece['cutCounts']=counts(piece);pieces.append(piece)
-        if len(pieces)>100:raise ValueError('Use no more than 100 pieces per file.')
+        if len(pieces)>800:raise ValueError('Use no more than 800 pieces per file.')
     if '/OutputIntents' in reader.root_object:writer.root_object[NameObject('/OutputIntents')]=reader.root_object['/OutputIntents'].clone(writer)
     # Source optional-content wrappers were flattened only after visibility checks.
     writer.root_object.pop('/OCProperties',None)

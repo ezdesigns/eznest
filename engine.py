@@ -1,5 +1,8 @@
 """Original EZ Nest adapter. No commercial suite code is used."""
 import math
+
+# Shop v1 cap. Search time still bounds a nest; history and intake stay outside this module.
+PIECE_CAP = 800
 import time
 from collections import Counter
 import spyrrow
@@ -27,8 +30,8 @@ def validate_job(job):
         raise ValueError('Choose a supported rotation mode.')
     number(settings.get('seed', 42), 'Search seed', 0, 2147483647)
     parts = job.get('parts', [])
-    if not 1 <= len(parts) <= 100:
-        raise ValueError('Select between 1 and 100 closed paths.')
+    if not 1 <= len(parts) <= PIECE_CAP:
+        raise ValueError(f'Select between 1 and {PIECE_CAP} closed paths.')
     seen = set()
     total = 0
     for part in parts:
@@ -37,8 +40,8 @@ def validate_job(job):
             raise ValueError('Each part needs a unique ID.')
         seen.add(ident)
         quantity = part.get('quantity', 1)
-        if type(quantity) is not int or not 1 <= quantity <= 100:
-            raise ValueError('Quantity must be an integer from 1 to 100.')
+        if type(quantity) is not int or not 1 <= quantity <= PIECE_CAP:
+            raise ValueError(f'Quantity must be an integer from 1 to {PIECE_CAP}.')
         total += quantity
         points = part['points']
         if not 3 <= len(points) <= 5000:
@@ -61,8 +64,8 @@ def validate_job(job):
                 fits = True
         if not fits:
             raise ValueError(f'{ident}: part is too large for this material and rotation mode.')
-    if total > 100:
-        raise ValueError('This prototype is limited to 100 total copies.')
+    if total > PIECE_CAP:
+        raise ValueError(f'This build supports {PIECE_CAP} pieces.')
     return width, length, gap, margin, seconds
 
 

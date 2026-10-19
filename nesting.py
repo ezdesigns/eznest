@@ -9,7 +9,7 @@ from shapely.geometry import Polygon
 from shapely.affinity import rotate, translate
 from shapely.ops import unary_union
 from shapely.prepared import prep
-from engine import solve, validate_job, validate_result, number
+from engine import PIECE_CAP, solve, validate_job, validate_result, number
 from production import validate_identity
 
 
@@ -19,8 +19,8 @@ def validate_request(job):
         if job.get('fillJobs') and job.get('fillArea')=='length':
             raise ValueError('For automatic sheets, fill only leftover space. Use a single length for fixed-area sticker fill.')
     fills = job.get('fillJobs', [])
-    if not isinstance(fills, list) or len(fills) > 100:
-        raise ValueError('Choose up to 100 sticker designs.')
+    if not isinstance(fills, list) or len(fills) > PIECE_CAP:
+        raise ValueError(f'Choose up to {PIECE_CAP} sticker designs.')
     if job.get('fillArea', 'gaps') not in ('gaps', 'length'):
         raise ValueError('Choose a supported sticker fill area.')
     if not job.get('parts') and not fills:
@@ -35,8 +35,8 @@ def validate_request(job):
             validate_identity(job)
     for fill in fills:
         limit = fill['maxSets']
-        if type(limit) is not int or not 1 <= limit <= 100:
-            raise ValueError('Sticker fill limit must be 1–100 complete sets.')
+        if type(limit) is not int or not 1 <= limit <= PIECE_CAP:
+            raise ValueError(f'Sticker fill limit must be 1–{PIECE_CAP} complete sets.')
         source = fill['source']
         if source.get('role') != 'fill' or source['sets'] != limit:
             raise ValueError('Invalid sticker fill identity.')
@@ -49,11 +49,11 @@ def validate_request(job):
         if group['id'] in identities or group['code'] in codes or part_ids.intersection(group['partIds']):
             raise ValueError('Repeated job or piece identity in the queue.')
         identities.add(group['id']); codes.add(group['code']); part_ids.update(group['partIds'])
-    if len(part_ids) > 100:
-        raise ValueError('This build supports 100 different piece designs.')
+    if len(part_ids) > PIECE_CAP:
+        raise ValueError(f'This build supports {PIECE_CAP} different piece designs.')
 
 
-def fill_stickers(job, result, budget=None, copy_limit=100):
+def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
     """Greedy contact/grid search; preserve all required placements and quantities.
 
     Attempts complete sets in queue order, one per job per round. The finite
@@ -143,7 +143,7 @@ def fill_stickers(job, result, budget=None, copy_limit=100):
     area = sum(p.area for p in shapes)
     final = {**result, 'placements':placed, 'width':width, 'usedLength':used, 'area':area,
              'utilization':area/(width*used), 'validated':True, 'fillSummary':summaries,
-             'fillLimited': len(placed) >= 100 or time.monotonic() >= deadline,
+             'fillLimited': len(placed) >= copy_limit or time.monotonic() >= deadline,
              'fillElapsed':time.monotonic()-started}
     validate_result(resolved, final)
     validate_identity(resolved)
@@ -162,7 +162,7 @@ def _run(job):
             # Fill each sheet without extending it; carry remaining whole-set limits.
             merged=copy.deepcopy(job); merged.pop('fillJobs',None)
             summaries={f['source']['id']:{'id':f['source']['id'],'name':f['source']['name'],'code':f['source']['code'],'sets':0,'maxSets':f['maxSets'],'pieces':0} for f in job['fillJobs']}
-            placements=[]; remaining=100-len(result['placements'])
+            placements=[]; remaining=PIECE_CAP-len(result['placements'])
             for sheet in result['sheets']:
                 local=[{**p,'y':p['y']-sheet['offset']} for p in result['placements'] if p['sheet']==sheet['index']]
                 local_job=subset(job,local); local_job['settings']={**job['settings'],'maxLength':sheet['usedLength']}; local_job['fillArea']='gaps'

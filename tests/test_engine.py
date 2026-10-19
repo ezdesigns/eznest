@@ -87,6 +87,16 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(result['validated'])
         self.assertEqual(len(validate_result(job,result)),1)
 
+    def test_several_hundred_copies_pass_the_shop_cap(self):
+        job=self.job()
+        job['parts']=[{'id':'dot','points':[[0,0],[10,0],[10,10],[0,10]],'quantity':200}]
+        job['settings'].update(width=500,maxLength=None,gap=1,margin=1,seconds=1,rotations=[0])
+        width, *_ = validate_job(job)
+        self.assertEqual(width,500)
+        job['parts'][0]['quantity']=801
+        with self.assertRaisesRegex(ValueError,'800'):
+            validate_job(job)
+
     def test_fixed_rotation_rejects_arbitrary_angle(self):
         job=self.job();job['parts']=[{'id':'a','points':[[0,0],[10,0],[10,10],[0,10]]}]
         with self.assertRaisesRegex(ValueError,'disallowed'):

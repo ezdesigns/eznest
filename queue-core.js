@@ -14,7 +14,7 @@
       if(entry.status!=='ready'||(!pdf&&!entry.data?.svgSource))throw Error(entry.name+' is not ready.');
       if(pdf&&!entry.data.reviewed)throw Error('Review detected pieces and bleed in Job options for '+entry.name+'.');
       if(entry.materialId!==preset.id)throw Error('Use one material preset per batch. Change the selected jobs or their assigned material.');
-      if(!Number.isInteger(entry.sets)||entry.sets<1||entry.sets>100)throw Error('Sets must be a whole number from 1 to 100.');
+      if(!Number.isInteger(entry.sets)||entry.sets<1||entry.sets>800)throw Error('Sets must be a whole number from 1 to 800.');
       const source={id:entry.id,code:codeFor(index),name:entry.name,sourceFile:entry.sourceFile||entry.name,revision:entry.revision,sets:entry.sets,materialId:entry.materialId,partIds:[],role:entry.role==='fill'?'fill':'required',customer:entry.customer||'',order:entry.order||'',kit:entry.kit||''};
       const parts=[];
       if(pdf){job.documentSources=job.documentSources||{};job.documentSources[entry.id]={documentId:entry.data.documentId,reviewed:entry.data.reviewed,bleedMm:entry.data.bleedMm};}
@@ -26,7 +26,7 @@
       if(source.role==='fill')job.fillJobs.push({source,parts,maxSets:entry.sets});
       else {job.productionJobs.push(source);job.parts.push(...parts);}
     }
-    if(job.parts.reduce((sum,p)=>sum+p.quantity,0)>100)throw Error('This build supports 100 pieces per batch. Select fewer jobs or sets.');
+    if(job.parts.reduce((sum,p)=>sum+p.quantity,0)>800)throw Error('This build supports 800 pieces per batch. Select fewer jobs or sets.');
     if(job.fillJobs.length&&(!job.parts.length||job.fillArea==='length')&&job.settings.maxLength==null)throw Error('Enter a roll length to fill with stickers, or add required jobs and fill only their leftover space.');
     return job;
   }

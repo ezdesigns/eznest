@@ -112,7 +112,7 @@ function renderQueue(){
 
     name.append(detail);row.append(checked,name);
 
-    if(entry.status==='ready'&&entry.selected){const label=document.createElement('label');label.className='job-quantity';label.textContent=entry.role==='fill'?'Up to':'Sets';const qty=document.createElement('input');qty.type='number';qty.min=1;qty.max=100;qty.value=entry.sets;qty.disabled=locked;qty.dataset.focus=entry.id+'-quantity';qty.setAttribute('aria-label',(entry.role==='fill'?'Maximum sets for ':'Sets for ')+entry.name);qty.onchange=()=>{entry.sets=Number(qty.value);invalidate();};label.append(qty);row.append(label);}
+    if(entry.status==='ready'&&entry.selected){const label=document.createElement('label');label.className='job-quantity';label.textContent=entry.role==='fill'?'Up to':'Sets';const qty=document.createElement('input');qty.type='number';qty.min=1;qty.max=800;qty.value=entry.sets;qty.disabled=locked;qty.dataset.focus=entry.id+'-quantity';qty.setAttribute('aria-label',(entry.role==='fill'?'Maximum sets for ':'Sets for ')+entry.name);qty.onchange=()=>{entry.sets=Number(qty.value);invalidate();};label.append(qty);row.append(label);}
 
     const options=document.createElement('button');options.textContent='•••';options.className='job-options';options.disabled=locked;options.setAttribute('aria-label','Options for '+entry.name);options.title='Job options';options.onclick=()=>openJobOptions(entry);row.append(options);
 
@@ -136,9 +136,9 @@ function renderQueue(){
 
   $('selection-summary').textContent=selected.length?(required.length?pieces+' pieces to print'+(fill.length?' + sticker fill':''):'Fill the sheet with stickers'):'Select jobs to begin.';
 
-  const invalidQuantity=selected.some(e=>!Number.isInteger(e.sets)||e.sets<1||e.sets>100);if(invalidQuantity)$('selection-summary').textContent='Enter a quantity from 1 to 100.';else if(pieces>100)$('selection-summary').textContent='Select no more than 100 required pieces.';
+  const invalidQuantity=selected.some(e=>!Number.isInteger(e.sets)||e.sets<1||e.sets>800);if(invalidQuantity)$('selection-summary').textContent='Enter a quantity from 1 to 800.';else if(pieces>800)$('selection-summary').textContent='Select no more than 800 required pieces.';
 
-  $('nest').disabled=locked||!selected.length||!!mismatched.length||invalidQuantity||pieces>100;
+  $('nest').disabled=locked||!selected.length||!!mismatched.length||invalidQuantity||pieces>800;
 
   $('nest').textContent=importing?'Importing…':busy?'Nesting…':current?'Nest again':'Nest selected jobs';$('nest').classList.toggle('primary',!current);
 
@@ -278,7 +278,7 @@ function showResult(state){
   $('export-note').textContent=outputIncomplete(state)?'Does not meet '+state.manifest.outputProfile.rip+' requirements. Jobs stay in queue.':wasPrepared(state)?'Saved in Exports. Choose jobs for your next nest.':'Includes artwork, a piece map and a checklist.';
   $('output-check').hidden=!outputIncomplete(state);$('output-issues').replaceChildren();if(outputIncomplete(state)){$('output-check-title').textContent='Still needed for '+state.manifest.outputProfile.name;for(const issue of state.manifest.outputCheck.issues)$('output-issues').append(svgText(issue,'li'));}
 
-  $('result-explanation').textContent='All required sets are complete. Coverage measures piece area against the material used. '+(state.result.fillSummary?'Sticker fill is the best found within the search and 100-piece limits.':'');$('nest').classList.remove('primary');$('nest').textContent='Nest again';
+  $('result-explanation').textContent='All required sets are complete. Coverage measures piece area against the material used. '+(state.result.fillSummary?'Sticker fill is the best found within the search and 800-piece limits.':'');$('nest').classList.remove('primary');$('nest').textContent='Nest again';
 
   updateProductionResult(state);
   const format=state.job.documentSources?'PDF':'SVG';$('export').textContent=(outputIncomplete(state)?'Export working ':'Export ')+format+(state.released?' again':'');
@@ -499,7 +499,7 @@ $('job-close').onclick=()=>$('job-settings').close();
 
 $('job-role').onchange=()=>{if($('job-role').value==='fill'&&Number($('job-quantity').value)===1)$('job-quantity').value=100;else if($('job-role').value==='required'&&Number($('job-quantity').value)===100)$('job-quantity').value=1;jobQuantityHelp();};
 
-$('job-form').onsubmit=e=>{e.preventDefault();const entry=queue.find(e=>e.id===editingJob);if(!entry)return;if(entry.status!=='ready'){ $('job-error').textContent=entry.error||'Wait for the source file to finish saving.';return;}const quantity=Number($('job-quantity').value);if(!Number.isInteger(quantity)||quantity<1||quantity>100){$('job-error').textContent='Enter a whole number from 1 to 100.';return;}for(const field of ['customer','order','kit'])entry[field]=$('job-'+field).value.trim();if(entry.data?.format==='pdf')entry.data.reviewed=$('document-reviewed').checked;entry.category=$('job-category').value.trim();entry.role=$('job-role').value;entry.sets=quantity;entry.materialId=$('job-material').value;$('job-settings').close();invalidate();};
+$('job-form').onsubmit=e=>{e.preventDefault();const entry=queue.find(e=>e.id===editingJob);if(!entry)return;if(entry.status!=='ready'){ $('job-error').textContent=entry.error||'Wait for the source file to finish saving.';return;}const quantity=Number($('job-quantity').value);if(!Number.isInteger(quantity)||quantity<1||quantity>800){$('job-error').textContent='Enter a whole number from 1 to 800.';return;}for(const field of ['customer','order','kit'])entry[field]=$('job-'+field).value.trim();if(entry.data?.format==='pdf')entry.data.reviewed=$('document-reviewed').checked;entry.category=$('job-category').value.trim();entry.role=$('job-role').value;entry.sets=quantity;entry.materialId=$('job-material').value;$('job-settings').close();invalidate();};
 
 $('job-remove').onclick=()=>{const entry=queue.find(e=>e.id===editingJob);if(!entry)return;if(entry.origin==='folder'){preferences.dismissed=preferences.dismissed||{};preferences.dismissed[entry.id]=entry.revision;}queue=queue.filter(e=>e!==entry);$('job-settings').close();invalidate();};
 

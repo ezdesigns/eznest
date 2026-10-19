@@ -30,7 +30,7 @@ def main():
     for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer']:command+=['--copy-metadata',name]
     subprocess.run(command+[str(ROOT/'launcher.py')],cwd=ROOT,check=True)
     release=out/'dist'/'eznest'
-    for name in ['START HERE.txt','Stop EZ Nest.cmd','Stop EZ Nest.ps1','THIRD_PARTY.md','version.json']:shutil.copy2(ROOT/name,release/name)
+    for name in ['START HERE.txt','Stop EZ Nest.cmd','Stop EZ Nest.ps1','eznest-web.bat','THIRD_PARTY.md','version.json']:shutil.copy2(ROOT/name,release/name)
     (release/'examples').mkdir();shutil.copy2(ROOT/'sample-artwork.svg',release/'examples'/'sample-artwork.svg')
     shutil.copytree(ROOT/'licenses',release/'licenses')
     licenses=release/'licenses'

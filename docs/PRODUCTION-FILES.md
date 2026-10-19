@@ -1,4 +1,4 @@
-# Production files in 0.12.0-beta.1
+# Production files in 1.0.0-rc.1
 
 The MVP works without hardware details. Enter usable width; optionally configure
 sheet length, bleed, material cost and a shop profile. Equipment-specific validation
@@ -35,7 +35,7 @@ hidden/conditional layers, nonstandard UserUnit, missing boundaries, conflicting
 mappings, orphan open cuts, duplicate cuts, intersecting closed boundaries without
 a unique owner, filled/dashed cut shapes, clipped cuts, overlapping bleed regions
 or pieces outside the page. DeviceN cut colors are unsupported.
-Limits: 20 MB, 25 pages, 100 pieces/copies per batch, 2000 cut paths per page,
+Limits: 20 MB, 25 pages, 800 pieces/copies per batch, 2000 cut paths per page,
 5000 per document and 5000 sampled points per path.
 This is narrower than arbitrary PDF/AI compatibility.
 
@@ -84,7 +84,7 @@ and sorting identities remain intact. The allocator is conservative and heuristi
 it does not jointly optimize all bins and may waste space on narrow/concave parts.
 
 Optional complete sticker sets fill spare space across sheets within the global
-100-piece cap. Fixed-length sticker-only fill stays a single-sheet operation.
+800-piece cap. Fixed-length sticker-only fill stays a single-sheet operation.
 Multi-sheet batches export numbered files, not one overly long print file.
 PDF pages are limited to 5000 mm per side; set a per-sheet length limit for longer batches.
 

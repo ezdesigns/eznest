@@ -321,7 +321,7 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         incumbent = STATE.get('incumbent')
                         STATE.clear()
-                        STATE.update(incumbent or {'status': 'cancelled'})
+                        STATE.update(incumbent or {'status': 'cancelled', 'note': 'Stopped before a layout was ready.'})
                         if incumbent:
                             STATE['note'] = 'Search cancelled; your best layout is retained.'
                     persist_state()
