@@ -55,18 +55,58 @@ function scale() {
   return EZNQueue.unitScale($('unit').value);
 }
 
+const CUT_PRESETS = {
+  ln: {thru: 'LNThru-cut', kiss: 'LNKiss-cut'},
+  output: {thru: 'CutContour_Thru-cut', kiss: 'CutContour_Kiss-cut'}
+};
+const HOT_FOLDER_LABEL = 'EPSON SureColor S80600 ONYX Input';
+
+function autoBleedMm() {
+  const inches = Number($('auto-bleed').value);
+  if (!Number.isFinite(inches) || inches < 0) return 0;
+  return inches * 25.4;
+}
+
+function cutNames() {
+  const thru = $('thru-name').value.trim();
+  const kiss = $('kiss-name').value.trim();
+  if (!thru || !kiss || thru.length > 80 || kiss.length > 80) throw Error('Enter thru and kiss spot names.');
+  return {thru, kiss};
+}
+
+function cutMapping() {
+  const mapping = EZNCuts.defaults();
+  const names = cutNames();
+  mapping.genericOperation = $('generic-cut').value;
+  mapping.outputs.thru.spot = names.thru;
+  mapping.outputs.thru.layer = names.thru;
+  mapping.outputs.kiss.spot = names.kiss;
+  mapping.outputs.kiss.layer = names.kiss;
+  return EZNCuts.validate(mapping);
+}
+
 function preset() {
   const factor = scale();
   const number = id => Number($(id).value) * factor;
+  const printable = number('width');
+  const edge = number('margin');
+  const mark = $('mark-margin').value.trim() ? number('mark-margin') : 0;
+  // Sheet width is the printable width. Mark clearance is reserved inside it,
+  // so pieces nest on printable width minus the mark margins (and the edge).
   const settings = {
-    width: number('width'),
+    width: printable,
     maxLength: null,
     gap: number('gap'),
-    margin: number('margin'),
+    margin: edge + mark,
+    edgeMargin: edge,
+    markMargin: mark,
     seconds: Number($('seconds').value) || 5,
     rotations: $('rotations').value === 'free' ? null : $('rotations').value.split(',').map(Number),
-    seed: 42
+    seed: 42,
+    autoBleedMm: autoBleedMm(),
+    drawRegmarks: $('draw-marks').checked === true
   };
+  if ($('roll').value.trim()) settings.rollWidth = number('roll');
   if ($('sheet').value.trim()) settings.sheetLength = Number($('sheet').value) * factor;
   if ($('cost').value.trim()) {
     settings.costPerSquareMeter = Number($('cost').value);
@@ -79,21 +119,21 @@ function preset() {
 
 function profileFor(entries) {
   const pdf = entries.some(entry => entry.data.format === 'pdf');
+  const mapping = cutMapping();
   if (!pdf) {
     return EZNProfiles.validate({
       name: 'Generic SVG handoff', rip: 'Other / manual', format: 'svg', acceptedFormats: ['svg'],
       colorMode: 'preserve', iccProfile: '', bleedMm: 0, cutSpot: '', cutLayer: '',
-      registrationOwner: 'none', finishingSoftware: '', mediaOwner: 'rip', jobLogOwner: 'rip'
+      registrationOwner: 'none', finishingSoftware: '', mediaOwner: 'rip', jobLogOwner: 'rip',
+      cutMapping: mapping
     });
   }
-  const mapping = EZNCuts.defaults();
-  mapping.genericOperation = $('generic-cut').value;
   return EZNProfiles.validate({
     name: 'PDF / CutContour', rip: 'ONYX', format: 'pdf', acceptedFormats: ['pdf', 'ai'],
     colorMode: 'preserve', iccProfile: '', bleedMm: Number($('bleed').value) || 0,
     cutSpot: 'CutContour', cutLayer: 'CutContour', registrationOwner: 'rip',
     finishingSoftware: 'GoProduce', mediaOwner: 'rip', jobLogOwner: 'rip',
-    cutMapping: EZNCuts.validate(mapping)
+    cutMapping: mapping
   });
 }
 
@@ -133,10 +173,13 @@ function inputIssue() {
   const width = Number($('width').value);
   const gap = Number($('gap').value);
   const margin = Number($('margin').value);
+  const mark = $('mark-margin').value.trim() ? Number($('mark-margin').value) : 0;
   const count = Number($('sets').value);
-  if (!Number.isFinite(width) || width <= 0) return 'Enter a roll width';
+  if (!Number.isFinite(width) || width <= 0) return 'Enter a printable width';
   if (!Number.isFinite(gap) || gap < 0) return 'Check the spacing';
   if (!Number.isFinite(margin) || margin < 0) return 'Check the edge margin';
+  if (!Number.isFinite(mark) || mark < 0) return 'Check the mark margin';
+  if ((margin + mark) * 2 >= width) return 'Mark margins leave no room on this printable width';
   if (!Number.isInteger(count) || count < 1 || count > 100) return 'Sets must be from 1 to 100';
   return '';
 }
@@ -163,7 +206,10 @@ function lengthOver(state) {
   const raw = $('sheet').value.trim();
   if (!raw || !state?.result) return false;
   const limit = Number(raw) * scale();
-  return Number.isFinite(limit) && limit > 0 && state.result.usedLength > limit;
+  if (!Number.isFinite(limit) || limit <= 0) return false;
+  const sheets = state.result.sheets;
+  if (sheets && sheets.length) return sheets.some(sheet => sheet.usedLength > limit + 0.05);
+  return state.result.usedLength > limit;
 }
 
 function clearReadout() {
@@ -424,7 +470,10 @@ function renderSheet(frame, state, index) {
   const sheets = sheetList(state);
   const sheet = sheets[index] || sheets[0];
   const art = state.job.documentSources ? documentPreview(state) : EZNSVG.buildSVG(state.job, result);
-  if (!state.job.documentSources) emphasizeCuts(art);
+  if (!state.job.documentSources) {
+    applyAutoBleed(art);
+    emphasizeCuts(art);
+  }
   frame.replaceChildren();
   const pad = Math.max(result.width, sheet.usedLength) / 18;
   const x = -pad;
@@ -639,9 +688,20 @@ async function nest() {
   if (inputIssue()) { showBlocked(inputIssue()); return; }
   try {
     for (const entry of kits) entry.sets = sets();
-    const job = EZNQueue.compose(kits, preset(), 'combined');
+    const roll = preset();
+    const job = EZNQueue.compose(kits, roll, 'combined');
     job.outputProfile = profileFor(kits);
     job.settings.seed = 42;
+    const option = $('material').selectedOptions[0];
+    job.media = {
+      name: option.dataset.name || roll.name,
+      rollWidthMm: $('roll').value.trim() ? Number($('roll').value) * scale() : null,
+      printableWidthMm: Number($('width').value) * scale(),
+      markMarginMm: $('mark-margin').value.trim() ? Number($('mark-margin').value) * scale() : 0,
+      printer: option.dataset.printer || '',
+      quickSet: option.dataset.quickset || '',
+      hotFolderLabel: HOT_FOLDER_LABEL
+    };
     busy = true;
     current = null;
     blockReason = '';
@@ -693,13 +753,50 @@ function sheetMap(state) {
   return svg;
 }
 
+function applyAutoBleed(svg) {
+  const mm = autoBleedMm();
+  if (!(mm > 0)) return svg;
+  const width = (2 * mm).toFixed(3);
+  const nodes = [...svg.querySelectorAll('path,rect,circle,ellipse,polygon')];
+  for (const node of nodes) {
+    if (node.closest('defs') || node.getAttribute('data-ezn-bleed') === '1') continue;
+    const id = node.getAttribute('id') || '';
+    const boundary = node.getAttribute('data-ezn-boundary') === 'true' || /cutcontour|kiss-cut|thru-cut|ezn_boundary|boundary/i.test(id);
+    if (!boundary) continue;
+    const fill = node.getAttribute('fill');
+    if (!fill || fill === 'none' || fill === 'transparent' || /^url\(/i.test(fill)) continue;
+    const clone = node.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.setAttribute('data-ezn-bleed', '1');
+    clone.setAttribute('fill', fill);
+    clone.setAttribute('stroke', fill);
+    clone.setAttribute('stroke-width', width);
+    clone.setAttribute('stroke-linejoin', 'round');
+    clone.removeAttribute('stroke-dasharray');
+    node.parentNode.insertBefore(clone, node);
+  }
+  return svg;
+}
+
 async function lock() {
   if (!current || current.released || busy || saving) return current;
   saving = true;
   renderActions();
   try {
-    const artwork = current.job.documentSources ? null : EZNSVG.serialize(EZNSVG.buildSVG(current.job, current.result));
-    const released = await api('/api/release', {id: current.id, artwork, map: EZNSVG.serialize(sheetMap(current))});
+    let artwork = null;
+    if (!current.job.documentSources) {
+      const art = EZNSVG.buildSVG(current.job, current.result);
+      applyAutoBleed(art);
+      artwork = EZNSVG.serialize(art);
+    }
+    const released = await api('/api/release', {
+      id: current.id,
+      artwork,
+      map: EZNSVG.serialize(sheetMap(current)),
+      autoBleedMm: autoBleedMm(),
+      drawRegmarks: $('draw-marks').checked === true,
+      cutMapping: cutMapping()
+    });
     current.released = true;
     current.sha256 = released.sha256;
     current.savedPath = released.savedPath || '';
@@ -767,7 +864,7 @@ async function startOver() {
 function convertUnit(next) {
   const previous = $('unit').dataset.current || next;
   const factor = EZNQueue.unitScale(previous) / EZNQueue.unitScale(next);
-  for (const id of ['width', 'gap', 'margin', 'sheet']) {
+  for (const id of ['width', 'gap', 'margin', 'sheet', 'mark-margin', 'roll']) {
     if (!$(id).value.trim()) continue;
     $(id).value = String(Number((Number($(id).value) * factor).toFixed(4)));
   }
@@ -777,13 +874,29 @@ function convertUnit(next) {
 
 function applyMaterial() {
   const option = $('material').selectedOptions[0];
-  $('preset-name').value = option.dataset.width ? option.textContent.split('·')[0].trim() : ($('preset-name').value || 'Custom roll');
+  const named = option.dataset.name || (option.dataset.width ? option.textContent.split('·')[0].trim() : '');
+  $('preset-name').value = named || ($('preset-name').value || 'Custom roll');
   if (!option.dataset.width) return;
   $('unit').value = option.dataset.unit || 'in';
   $('unit').dataset.current = $('unit').value;
   $('width').value = option.dataset.width;
+  $('roll').value = option.dataset.roll || option.dataset.width;
   for (const node of document.querySelectorAll('[data-unit]')) node.textContent = $('unit').value;
   savePrefs({material: option.value});
+}
+
+function applyCutPreset() {
+  const names = CUT_PRESETS[$('cut-preset').value];
+  if (!names) return;
+  $('thru-name').value = names.thru;
+  $('kiss-name').value = names.kiss;
+}
+
+function matchCutPreset() {
+  const thru = $('thru-name').value.trim();
+  const kiss = $('kiss-name').value.trim();
+  const match = Object.entries(CUT_PRESETS).find(([, names]) => names.thru === thru && names.kiss === kiss);
+  $('cut-preset').value = match ? match[0] : 'custom';
 }
 
 function watchWidth() {
@@ -951,8 +1064,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('unit').addEventListener('change', () => { convertUnit($('unit').value); watchWidth(); requestNest(); });
   $('material').addEventListener('change', () => { applyMaterial(); requestNest(); });
   $('width').addEventListener('input', () => { watchWidth(); requestNest(); });
-  for (const id of ['gap', 'margin', 'sheet']) $(id).addEventListener('input', requestNest);
-  for (const id of ['width', 'gap', 'margin', 'sheet', 'rotations']) $(id).addEventListener('change', requestNest);
+  for (const id of ['gap', 'margin', 'sheet', 'mark-margin']) $(id).addEventListener('input', requestNest);
+  for (const id of ['width', 'gap', 'margin', 'sheet', 'mark-margin', 'rotations']) $(id).addEventListener('change', requestNest);
+  $('cut-preset').addEventListener('change', applyCutPreset);
+  $('thru-name').addEventListener('input', matchCutPreset);
+  $('kiss-name').addEventListener('input', matchCutPreset);
+  $('auto-bleed').addEventListener('change', () => { if (current && current.result && !busy && !saving) renderPreview(activeSheet); });
   $('preset-name').addEventListener('change', rememberPreset);
   $('hot-folder').addEventListener('change', saveHotFolder);
   $('allow-undo').addEventListener('change', () => { savePrefs({undo: $('allow-undo').checked}); renderActions(); });

@@ -35,6 +35,28 @@ OUTPUT = OutputFolder(WORK / 'output-folder.json')
 DOCUMENT_LOCK = threading.Lock()
 
 
+def apply_web_export(job, data):
+    """Apply gear choices to the first freeze. Later sends reuse the same bytes."""
+    if not isinstance(data, dict):
+        return
+    settings = job.setdefault('settings', {})
+    if 'autoBleedMm' in data and data['autoBleedMm'] is not None:
+        value = data['autoBleedMm']
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError('Auto bleed must be from 0 to 25 mm.')
+        value = float(value)
+        if value != value or value < 0 or value > 25:
+            raise ValueError('Auto bleed must be from 0 to 25 mm.')
+        settings['autoBleedMm'] = value
+    if 'drawRegmarks' in data and data['drawRegmarks'] is not None:
+        if not isinstance(data['drawRegmarks'], bool):
+            raise ValueError('Registration marks are on or off.')
+        settings['drawRegmarks'] = data['drawRegmarks']
+    if data.get('cutMapping') and isinstance(job.get('outputProfile'), dict):
+        from cut_mapping import validate
+        job['outputProfile']['cutMapping'] = validate(data['cutMapping'])
+
+
 def batch_output_check(job):
     if job.get('documentSources'):
         from pdf_io import output_check
@@ -325,6 +347,8 @@ class Handler(BaseHTTPRequestHandler):
                 elif self.path == '/api/release':
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('Calculate and review the current layout before exporting.')
+                    if not STATE.get('released'):
+                        apply_web_export(STATE['job'], data)
                     check = batch_output_check(STATE['job'])
                     if check and not check['ready'] and data.get('workingOnly') is not True:
                         raise ValueError('This layout does not meet the shop output requirements. Save working files explicitly or use a supported output profile.')

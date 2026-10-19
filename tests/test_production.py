@@ -52,6 +52,21 @@ class ProductionTests(unittest.TestCase):
             self.assertEqual(saved['totalPieces'],5)
             self.assertEqual(saved['jobs'][0]['sets'],2)
             self.assertIn('A2.02',archive.read('piece-checklist.csv').decode('utf-8-sig'))
+            self.assertNotIn('LNRegmark', archive.read('artwork.svg').decode())
+
+    def test_optional_regmarks_and_media_stay_out_of_the_default_pack(self):
+        source='<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="16mm" viewBox="0 0 100 16">'+''.join(f'<g id="ez-part-{i+1}"/>' for i in range(5))+'</svg>'
+        job=fixture()
+        job['settings']['drawRegmarks']=True
+        job['settings']['markMargin']=6
+        job['media']={'name':'White gloss','printer':'Epson S80600','quickSet':'Substance Gloss GL [EZ Designs 80600] @ 720-CT','hotFolderLabel':'EPSON SureColor S80600 ONYX Input','printableWidthMm':1308.1,'rollWidthMm':1371.6,'markMarginMm':12.7}
+        data,details=make_package(job,result(),'a'*32,source,source)
+        self.assertEqual(details['media']['hotFolderLabel'],'EPSON SureColor S80600 ONYX Input')
+        self.assertEqual(details['media']['quickSet'],'Substance Gloss GL [EZ Designs 80600] @ 720-CT')
+        with ZipFile(BytesIO(data)) as archive:
+            artwork=archive.read('artwork.svg').decode()
+        self.assertIn('LNRegmark', artwork)
+        self.assertNotIn('barcode', artwork.casefold())
 
     def test_pack_rejects_missing_artwork_and_executable_svg(self):
         source='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 16"/>'

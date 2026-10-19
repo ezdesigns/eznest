@@ -294,6 +294,49 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None):
                           'registrationPaintRemoved':registration_removed,'warnings':warnings,'pages':len(reader.pages)}
 
 
+def cut_bounds(piece):
+    points = [point for path in piece.get('cutPaths') or [] for point in path.get('pdfPoints') or []]
+    if len(points) < 2:
+        return None
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def bleed_artwork_matrix(bounds, bleed_mm):
+    """Scale artwork about the cut-bounds center so each side grows by bleed_mm.
+
+    The returned PDF matrix is applied only to the clip and art. Cut strokes stay
+    on the original contour.
+    """
+    if not bounds or isinstance(bleed_mm, bool) or not isinstance(bleed_mm, (int, float)):
+        return None
+    if not math.isfinite(bleed_mm) or bleed_mm <= 0:
+        return None
+    x0, y0, x1, y1 = bounds
+    width, height = x1 - x0, y1 - y0
+    if width <= 1e-6 or height <= 1e-6:
+        return None
+    bleed = bleed_mm / MM
+    sx = (width + 2 * bleed) / width
+    sy = (height + 2 * bleed) / height
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    return (sx, 0, 0, sy, cx * (1 - sx), cy * (1 - sy))
+
+
+def regmark_operators(width_mm, height_mm, margin_mm):
+    """Corner LNRegmark strokes in PDF points. No barcode."""
+    band = margin_mm if isinstance(margin_mm, (int, float)) and not isinstance(margin_mm, bool) and margin_mm > 1 else 6
+    inset = min(band * 0.4, width_mm * 0.2, height_mm * 0.2) / MM
+    arm = min(max(band * 0.5, 4), 14) / MM
+    width, height = width_mm / MM, height_mm / MM
+    corners = ((inset, inset, 1, 1), (width - inset, inset, -1, 1), (inset, height - inset, 1, -1), (width - inset, height - inset, -1, -1))
+    parts = []
+    for x, y, sx, sy in corners:
+        parts.append(f'{x:.3f} {y:.3f} m {x + sx * arm:.3f} {y:.3f} l {x:.3f} {y:.3f} m {x:.3f} {y + sy * arm:.3f} l')
+    return ' '.join(parts) + ' S'
+
+
 def form_from_page(page, writer):
     form = DecodedStreamObject(); form.set_data(page.get_contents().get_data())
     form.update({NameObject('/Type'):NameObject('/XObject'),NameObject('/Subtype'):NameObject('/Form'),
@@ -319,13 +362,21 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
                 output_intents.append(profiles);writer.root_object[NameObject('/OutputIntents')]=intents.clone(writer)
         for page_index,page in enumerate(reader.pages):forms[(ident,page_index)]=form_from_page(page,writer)
     active=[op for op in OPERATIONS if any(c['operation']==op for raw,meta in documents.values() for p in meta['pieces'] for c in p['cutPaths'])]
+    settings=job.get('settings') or {}
+    draw_marks=settings.get('drawRegmarks') is True
+    bleed_mm=settings.get('autoBleedMm') or 0
     groups={};spaces={};keys={}
     for index,operation in enumerate(active):
         config=mapping['outputs'][operation];keys[operation]=('/EZCut'+(str(index) if index else ''),'/EZCutLayer'+(str(index) if index else ''))
         groups[operation]=writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject(config['layer'])}))
         tint=DictionaryObject({NameObject('/FunctionType'):NumberObject(2),NameObject('/Domain'):ArrayObject([NumberObject(0),NumberObject(1)]),NameObject('/C0'):ArrayObject([NumberObject(0)]*4),NameObject('/C1'):ArrayObject([NumberObject(v) for v in ([1,0,0,0] if operation=='thru' else [0,1,0,0])]),NameObject('/N'):NumberObject(1)})
         spaces[operation]=ArrayObject([NameObject('/Separation'),NameObject('/'+config['spot']),NameObject('/DeviceCMYK'),writer._add_object(tint)])
-    layers=ArrayObject(list(groups.values()))
+    reg_group=reg_space=None
+    if draw_marks:
+        reg_group=writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject('LNRegmark')}))
+        reg_tint=DictionaryObject({NameObject('/FunctionType'):NumberObject(2),NameObject('/Domain'):ArrayObject([NumberObject(0),NumberObject(1)]),NameObject('/C0'):ArrayObject([NumberObject(0)]*4),NameObject('/C1'):ArrayObject([NumberObject(0),NumberObject(0),NumberObject(0),NumberObject(1)]),NameObject('/N'):NumberObject(1)})
+        reg_space=ArrayObject([NameObject('/Separation'),NameObject('/LNRegmark'),NameObject('/DeviceCMYK'),writer._add_object(reg_tint)])
+    layers=ArrayObject(list(groups.values())+([reg_group] if reg_group else []))
     writer.root_object[NameObject('/OCProperties')]=DictionaryObject({NameObject('/OCGs'):layers,NameObject('/D'):DictionaryObject({NameObject('/Order'):layers,NameObject('/ON'):layers})})
     parts={p['id']:p for p in job['parts']}
     sheets=result.get('sheets') or [{'index':0,'offset':0,'usedLength':result['usedLength']}]
@@ -333,8 +384,13 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
         if sheet_filter is not None and sheet['index']!=sheet_filter:continue
         if not 0<sheet['usedLength']<=5000 or not 0<result['width']<=5000:raise ValueError('PDF sheets are limited to 5000 mm per side. Set a maximum sheet length for a longer batch.')
         page=writer.add_blank_page(width=result['width']/MM,height=sheet['usedLength']/MM)
-        resources=DictionaryObject({NameObject('/XObject'):DictionaryObject(),NameObject('/ColorSpace'):DictionaryObject({NameObject(keys[op][0]):spaces[op] for op in active}),
-            NameObject('/Properties'):DictionaryObject({NameObject(keys[op][1]):groups[op] for op in active}),
+        color_spaces={NameObject(keys[op][0]):spaces[op] for op in active}
+        properties={NameObject(keys[op][1]):groups[op] for op in active}
+        if draw_marks:
+            color_spaces[NameObject('/EZReg')]=reg_space
+            properties[NameObject('/EZRegLayer')]=reg_group
+        resources=DictionaryObject({NameObject('/XObject'):DictionaryObject(),NameObject('/ColorSpace'):DictionaryObject(color_spaces),
+            NameObject('/Properties'):DictionaryObject(properties),
             NameObject('/ExtGState'):DictionaryObject({NameObject('/EZOverprint'):DictionaryObject({NameObject('/Type'):NameObject('/ExtGState'),NameObject('/OP'):__import__('pypdf').generic.BooleanObject(True)})})})
         page[NameObject('/Resources')]=resources;chunks=[]
         for placement in result['placements']:
@@ -345,11 +401,20 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
             tx=placement['x']/MM-c*x0-s*y1
             ty=(sheet['usedLength']-(placement['y']-sheet['offset']))/MM+s*x0-c*y1
             key=NameObject('/Art'+str(len(resources['/XObject'])+1));resources['/XObject'][key]=forms[(ident,piece['page'])]
-            chunk='q\n'+' '.join(f'{v:.9f}' for v in (c,-s,s,c,tx,ty))+' cm\nq\n'+path_text(piece['clipCommands'])+'\nW n\n'+str(key)+' Do\nQ\n'
+            placement_cm=' '.join(f'{v:.9f}' for v in (c,-s,s,c,tx,ty))
+            bleed=bleed_artwork_matrix(cut_bounds(piece), bleed_mm) if piece.get('cutPaths') else None
+            if bleed:
+                bleed_cm=' '.join(f'{v:.9f}' for v in bleed)
+                chunk='q\n'+placement_cm+' cm\nq\n'+bleed_cm+' cm\nq\n'+path_text(piece['clipCommands'])+'\nW n\n'+str(key)+' Do\nQ\nQ\n'
+            else:
+                chunk='q\n'+placement_cm+' cm\nq\n'+path_text(piece['clipCommands'])+'\nW n\n'+str(key)+' Do\nQ\n'
             for path in piece['cutPaths']:
                 color,layer=keys[path['operation']]
                 chunk+='/OC '+layer+' BDC\n/EZOverprint gs\n'+color+' CS 1 SCN\n0.25 w\n'+path_text(path['commands'])+'\nS\nEMC\n'
             chunks.append(chunk+'Q')
+        if draw_marks:
+            band=settings.get('markMargin') or settings.get('margin') or 0
+            chunks.append('q\n/OC /EZRegLayer BDC\n/EZOverprint gs\n/EZReg CS 1 SCN\n0.4 w\n'+regmark_operators(result['width'], sheet['usedLength'], band)+'\nEMC\nQ')
         stream=DecodedStreamObject();stream.set_data('\n'.join(chunks).encode('ascii'));page[NameObject('/Contents')]=writer._add_object(stream)
     writer.add_metadata({'/Creator':'eznest','/Title':'Nested artwork and separate cut operations — review in RIP'})
     out=io.BytesIO();writer.write(out);return out.getvalue()

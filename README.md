@@ -35,7 +35,8 @@ cut colors are not supported. PDF import is limited to 20 MB and 25 pages.
 
 PDF and SVG jobs cannot be mixed in one batch. Watched folders remain SVG-only.
 Use Preserve source colors; configure printer ICC/color conversion and registration
-marks in ONYX/your RIP. No EPS, automatic bleed, inventory or printer/cutter dispatch.
+marks in ONYX/your RIP. No EPS, inventory, or printer/cutter dispatch. The web page
+can offset full-bleed artwork past the cut; it does not certify ink coverage.
 **Physical ONYX/GoProduce validation and controlled MX comparison remain outstanding.**
 
 ## Run on Windows
@@ -88,7 +89,18 @@ Send to ONYX writes one frozen package. Sending again, or opening the page again
 restart, returns that same file and the same SHA-256. The layout id and hash stay in that
 package. The page shows material used, waste, and sheets.
 
-Not in this page: automatic bleed, an ONYX or GoProduce proof, laminate cost, and
+The gear holds the shop handoff. Nesting uses the material's printable width, with
+a mark margin reserved around the sheet so ONYX CutServer can add registration
+marks and barcodes. Those marks are not drawn unless Draw registration marks is
+on. Cut spots default to LNThru-cut and LNKiss-cut; CutContour_Thru-cut and
+CutContour_Kiss-cut are the alternate preset, pending Ez Ink's ONYX mapping.
+Full-bleed artwork is offset 1/16 in past the cut (or 1/8 in) without moving the
+cut paths. Sheets split at the max length, 96 in unless you change it. Send to
+ONYX writes the frozen pack into the hot-folder path labeled EPSON SureColor
+S80600 ONYX Input, or downloads it when that path is empty. The page does not
+build OXF files, manifests for the cutter, or cut recipes.
+
+Not in this page: an ONYX or GoProduce proof, laminate cost, and
 the later pro pass that batches work by time. PDF import is still 20 MB, 25 pages,
 named spots or layers, and no DeviceN, native AI, or EPS. SVG and PDF cannot share
 a batch. One batch holds 100 pieces. See [supported files](docs/PRODUCTION-FILES.md).

@@ -67,8 +67,13 @@
     if(s.sheetLength!=null&&(!finite('sheetLength',10,5000)||s.sheetLength<=s.margin*2))throw Error('Sheet length must leave room inside the margins.');
     if(s.costPerSquareMeter!=null&&!finite('costPerSquareMeter',0,1000000))throw Error('Enter a nonnegative material cost.');
     if(s.currency!=null&&!/^[A-Za-z]{3}$/.test(s.currency))throw Error('Use a three-letter currency code.');
+    if(s.markMargin!=null&&!finite('markMargin',0,100))throw Error('Invalid mark margin.');
+    if(s.edgeMargin!=null&&!finite('edgeMargin',0,100))throw Error('Invalid edge margin.');
+    if(s.rollWidth!=null&&!finite('rollWidth',10,5000))throw Error('Invalid roll width.');
+    if(s.autoBleedMm!=null&&!finite('autoBleedMm',0,25))throw Error('Auto bleed must be from 0 to 25 mm.');
+    if(s.drawRegmarks!=null&&typeof s.drawRegmarks!=='boolean')throw Error('Registration marks are on or off.');
     const settings=Object.fromEntries(['width','maxLength','gap','margin','seconds','rotations'].map(k=>[k,s[k]]));
-    for(const k of ['sheetLength','costPerSquareMeter','currency'])if(s[k]!==undefined)settings[k]=s[k];
+    for(const k of ['sheetLength','costPerSquareMeter','currency','markMargin','edgeMargin','rollWidth','autoBleedMm','drawRegmarks'])if(s[k]!==undefined)settings[k]=s[k];
     return {name:p.name.trim(),units:p.units,settings};
   }
   function importPresets(document){

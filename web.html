@@ -17,10 +17,16 @@
   <div class="panel">
     <div class="fields">
       <label>Preset name
-        <input id="preset-name" type="text" maxlength="80" value="Vinyl + gloss lam">
+        <input id="preset-name" type="text" maxlength="80" value="White gloss">
       </label>
       <label>Roll width
-        <span class="measure"><input id="width" type="number" min="0" step="any" value="54" inputmode="decimal"><span data-unit>in</span></span>
+        <span class="measure"><input id="roll" type="number" min="0" step="any" value="54" inputmode="decimal"><span data-unit>in</span></span>
+      </label>
+      <label>Printable width
+        <span class="measure"><input id="width" type="number" min="0" step="any" value="51.5" inputmode="decimal"><span data-unit>in</span></span>
+      </label>
+      <label>Mark margin
+        <span class="measure"><input id="mark-margin" type="number" min="0" step="any" value="0.5" inputmode="decimal"><span data-unit>in</span></span>
       </label>
       <label>Spacing
         <span class="measure"><input id="gap" type="number" min="0" step="any" value="0.12" inputmode="decimal"><span data-unit>in</span></span>
@@ -44,10 +50,30 @@
         </select>
       </label>
       <label>Max sheet length
-        <span class="measure"><input id="sheet" type="number" min="0" step="any" placeholder="No limit" inputmode="decimal"><span data-unit>in</span></span>
+        <span class="measure"><input id="sheet" type="number" min="0" step="any" value="96" inputmode="decimal"><span data-unit>in</span></span>
+      </label>
+      <label>Auto bleed
+        <select id="auto-bleed">
+          <option value="0.0625" selected>1/16 in</option>
+          <option value="0.125">1/8 in</option>
+          <option value="0">Off</option>
+        </select>
       </label>
       <label>Existing bleed
         <span class="measure"><input id="bleed" type="number" min="0" max="25" step="0.1" value="0" inputmode="decimal"><span>mm</span></span>
+      </label>
+      <label class="wide">Cut spot names
+        <select id="cut-preset">
+          <option value="ln" selected>LNThru-cut / LNKiss-cut</option>
+          <option value="output">CutContour_Thru-cut / CutContour_Kiss-cut</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label>Thru spot
+        <input id="thru-name" type="text" maxlength="80" value="LNThru-cut" spellcheck="false" autocomplete="off">
+      </label>
+      <label>Kiss spot
+        <input id="kiss-name" type="text" maxlength="80" value="LNKiss-cut" spellcheck="false" autocomplete="off">
       </label>
       <label>Unnamed CutContour
         <select id="generic-cut">
@@ -60,10 +86,11 @@
       <label>Material $ / m²
         <input id="cost" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal">
       </label>
-      <label>ONYX hot folder
-        <input id="hot-folder" type="text" placeholder="Optional local folder" autocomplete="off">
+      <label class="wide">EPSON SureColor S80600 ONYX Input
+        <input id="hot-folder" type="text" placeholder="Hot folder path" autocomplete="off">
       </label>
     </div>
+    <label class="check"><input id="draw-marks" type="checkbox"> Draw registration marks (ONYX adds them)</label>
     <label class="check"><input id="allow-undo" type="checkbox"> Undo send while the file is still in the folder</label>
     <label class="check"><input id="allow-hold" type="checkbox"> Hold for Operator</label>
     <a class="workspace" href="/">Full workspace</a>
@@ -84,7 +111,8 @@
   <p id="legend" class="key" hidden><i class="thru"></i> Thru <i class="kiss"></i> Kiss</p>
   <div class="quiet">
     <select id="material" aria-label="Material">
-      <option value="vinyl-gloss" data-width="54" data-unit="in" selected>Vinyl + gloss lam · 54 in</option>
+      <option value="white-gloss" data-name="White gloss" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>White gloss, 54" roll, 51.5" printable</option>
+      <option value="vinyl-gloss" data-width="54" data-unit="in">Vinyl + gloss lam · 54 in</option>
       <option value="vinyl" data-width="54" data-unit="in">Vinyl · 54 in</option>
       <option value="custom">Custom roll</option>
     </select>

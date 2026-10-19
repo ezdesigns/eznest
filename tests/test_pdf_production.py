@@ -9,7 +9,7 @@ from zipfile import ZipFile
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, DecodedStreamObject
-from pdf_io import read_document, import_to_store, export_pdf, load_documents, output_check, MM
+from pdf_io import read_document, import_to_store, export_pdf, load_documents, output_check, bleed_artwork_matrix, cut_bounds, MM
 from production import make_package
 
 
@@ -127,6 +127,48 @@ class PDFProductionTests(unittest.TestCase):
                 self.assertNotIn('artwork.svg',archive.namelist())
                 self.assertIn('ORDER-12',archive.read('piece-checklist.csv').decode('utf-8-sig'))
             self.assertEqual([p['sheet'] for p in manifest['pieces']],[1,2])
+
+    def test_bleed_matrix_offsets_a_square_by_one_sixteenth(self):
+        matrix = bleed_artwork_matrix((0, 0, 72, 72), 25.4 / 16)
+        self.assertAlmostEqual(matrix[0], 1.125, places=6)
+        self.assertAlmostEqual(matrix[3], 1.125, places=6)
+        self.assertAlmostEqual(matrix[4], -4.5, places=6)
+        self.assertAlmostEqual(matrix[5], -4.5, places=6)
+        self.assertIsNone(bleed_artwork_matrix((0, 0, 72, 72), 0))
+        eighth = bleed_artwork_matrix((0, 0, 72, 72), 25.4 / 8)
+        self.assertAlmostEqual(eighth[0], (72 + 2 * (25.4 / 8) / MM) / 72, places=6)
+
+    def test_auto_bleed_scales_art_and_leaves_cut_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parsed = import_to_store(pdf_fixture(), directory, 0)
+            job = document_job(parsed)
+            docs = load_documents(job, directory)
+            part = job['parts'][0]
+            result = {'width': 200, 'usedLength': 160, 'placements': [{'id': part['id'], 'x': 20, 'y': 20, 'rotation': 0}]}
+            plain = export_pdf(job, result, docs)
+            job['settings']['autoBleedMm'] = 25.4 / 16
+            bled = export_pdf(job, result, docs)
+            plain_stream = PdfReader(io.BytesIO(plain)).pages[0].get_contents().get_data()
+            bled_stream = PdfReader(io.BytesIO(bled)).pages[0].get_contents().get_data()
+            piece = docs[part['documentId']][1]['pieces'][0]
+            matrix = bleed_artwork_matrix(cut_bounds(piece), 25.4 / 16)
+            scale = f'{matrix[0]:.9f}'.encode()
+            self.assertIn(b'20 20 m', plain_stream)
+            self.assertIn(b'20 20 m', bled_stream)
+            self.assertIn(scale, bled_stream)
+            self.assertNotIn(scale, plain_stream)
+            self.assertEqual(plain_stream.split(b'0.25 w\n', 1)[1], bled_stream.split(b'0.25 w\n', 1)[1])
+            self.assertNotIn(b'LNRegmark', plain_stream)
+            self.assertNotIn(b'LNRegmark', bled_stream)
+            self.assertNotIn(b'barcode', bled.lower())
+            job['settings']['drawRegmarks'] = True
+            job['settings']['markMargin'] = 8
+            marked = export_pdf(job, result, docs)
+            marked_stream = PdfReader(io.BytesIO(marked)).pages[0].get_contents().get_data()
+            self.assertIn(b'LNRegmark', marked)
+            self.assertIn(b'/EZReg', marked_stream)
+            self.assertIn(b'20 20 m', marked_stream)
+            self.assertNotIn(b'barcode', marked.lower())
 
 
 if __name__=='__main__':unittest.main()

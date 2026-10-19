@@ -49,6 +49,8 @@ button { cursor: pointer; }
 #settings .panel {
   position: absolute; top: 42px; right: 0;
   width: min(360px, calc(100vw - 32px));
+  max-height: calc(100dvh - 72px);
+  overflow: auto;
   padding: 16px;
   background: #fff;
   border-radius: 12px;
@@ -56,6 +58,7 @@ button { cursor: pointer; }
   text-align: left;
 }
 .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fields label.wide { grid-column: 1 / -1; }
 .fields label, .check { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
 .check { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-weight: 400; font-size: 14px; }
 .check input { width: 16px; height: 16px; }

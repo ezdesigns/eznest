@@ -87,13 +87,54 @@ def manifest(job, result, run_id):
     requirements = {'outputProfile':profile,'outputCheck':inspect_output(profile)} if profile else {}
     from cut_mapping import OPERATIONS,output_mapping
     cut_summary={op:sum(p['cutCounts'].get(op,0) for p in instances) for op in OPERATIONS}
-    return {'batchId': run_id, 'createdAt': datetime.now(timezone.utc).isoformat(), 'material': job.get('materialName'),
+    payload = {'batchId': run_id, 'createdAt': datetime.now(timezone.utc).isoformat(), 'material': job.get('materialName'),
             'settings': job['settings'], 'width': result['width'], 'usedLength': result['usedLength'],
             'jobs': summaries, 'pieces': instances, 'totalPieces': len(instances), 'complete': True,
             'stickerFill': result.get('fillSummary', []), 'fillLimited': result.get('fillLimited', False),
             'sheets':result.get('sheets',[{'index':0,'offset':0,'usedLength':result['usedLength'],'pieces':len(instances)}]),
             'materialCost':material_cost(job,result,shapes), 'cutSummary':cut_summary,
             'cutOutputs':output_mapping(profile or {})['outputs'] if job.get('documentSources') else None, **requirements}
+    media = media_metadata(job.get('media'))
+    if media:
+        payload['media'] = media
+    return payload
+
+
+def media_metadata(media):
+    if not isinstance(media, dict):
+        return None
+    kept = {}
+    for key in ('name', 'printer', 'quickSet', 'hotFolderLabel'):
+        value = media.get(key)
+        if isinstance(value, str) and value and len(value) <= 160 and all(ord(c) >= 32 for c in value):
+            kept[key] = value
+    for key in ('rollWidthMm', 'printableWidthMm', 'markMarginMm'):
+        value = media.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            kept[key] = float(value)
+    return kept or None
+
+
+def regmark_d(width, height, margin):
+    """Corner registration marks in millimeters. No barcode."""
+    band = margin if isinstance(margin, (int, float)) and not isinstance(margin, bool) and margin > 1 else 6
+    inset = min(band * 0.4, width * 0.2, height * 0.2)
+    arm = min(max(band * 0.5, 4), 14)
+    corners = ((inset, inset, 1, 1), (width - inset, inset, -1, 1), (inset, height - inset, 1, -1), (width - inset, height - inset, -1, -1))
+    parts = []
+    for x, y, sx, sy in corners:
+        parts.append(f'M{x:.3f} {y:.3f}h{sx * arm:.3f}M{x:.3f} {y:.3f}v{sy * arm:.3f}')
+    return ' '.join(parts)
+
+
+def add_regmarks(root, width, height, margin):
+    ns = '{http://www.w3.org/2000/svg}'
+    if any(child.get('id') == 'LNRegmark' for child in root):
+        return
+    ET.SubElement(root, ns + 'path', {
+        'id': 'LNRegmark', 'fill': 'none', 'stroke': '#000000', 'stroke-width': '0.25',
+        'd': regmark_d(width, height, margin),
+    })
 
 
 def validate_svg_payload(text):
@@ -176,9 +217,15 @@ def make_package(job, result, run_id, artwork, sheet_map, pdf_documents=None, ou
                 if names['toolHint']:instructions+='Operator reference: '+names['toolHint']+' (not a cutter command)\n'
         if readiness.get('ready') is False: instructions='WORKING PDF PACKAGE - REQUIREMENTS NOT MET\n'+'\n'.join(readiness['issues'])+'\n'+instructions
     elif len(data['sheets'])==1:
+        if root is not None and job.get('settings', {}).get('drawRegmarks') is True:
+            band = job['settings'].get('markMargin') or job['settings'].get('margin') or 0
+            add_regmarks(root, result['width'], result['usedLength'], band)
+            artwork = ET.tostring(root, encoding='unicode')
         print_files['artwork.svg']=artwork
     else:
         ns='{http://www.w3.org/2000/svg}'
+        draw_marks = job.get('settings', {}).get('drawRegmarks') is True
+        band = job.get('settings', {}).get('markMargin') or job.get('settings', {}).get('margin') or 0
         for sheet in data['sheets']:
             page=ET.Element(root.tag,dict(root.attrib)); page.set('height',str(sheet['usedLength'])+'mm'); page.set('viewBox',f"0 0 {result['width']} {sheet['usedLength']}")
             for child in root:
@@ -186,6 +233,8 @@ def make_package(job, result, run_id, artwork, sheet_map, pdf_documents=None, ou
             for i,placement in enumerate(result['placements']):
                 if placement.get('sheet',0)!=sheet['index']: continue
                 holder=ET.SubElement(page,ns+'g',{'transform':f"translate(0 {-sheet['offset']})"}); holder.append(copy.deepcopy(groups[i]))
+            if draw_marks:
+                add_regmarks(page, result['width'], sheet['usedLength'], band)
             print_files[f"sheet-{sheet['index']+1:03}.svg"]=ET.tostring(page,encoding='unicode')
         instructions='Each numbered sheet SVG is a separate print file. Do not print the sorting map.\n'+instructions.replace('Artwork is in artwork.svg.','Artwork is in the numbered sheet files.')
     data['printFiles']=list(print_files)
