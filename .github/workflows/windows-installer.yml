@@ -1,0 +1,88 @@
+name: Windows installer
+
+# A v* tag attaches eznest-setup.exe to that GitHub release.
+# workflow_dispatch uploads the same exe as an artifact and does not publish a release.
+# pull_request runs the build on this branch before the file is on the default branch.
+# GitHub hides workflow_dispatch until the workflow is on the default branch or has run once.
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installer:
+    name: Build eznest-setup.exe
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+
+      - name: Install the build dependencies
+        run: python -m pip install -r requirements-build.txt
+
+      - name: Install Inno Setup 6.7.3
+        shell: pwsh
+        run: |
+          $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe"
+          $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.3.exe"
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait
+          $isccDir = "${env:ProgramFiles(x86)}\Inno Setup 6"
+          $iscc = Join-Path $isccDir "ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC missing after install (expected $iscc)" }
+          Add-Content -Path $env:GITHUB_PATH -Value $isccDir
+
+      - name: Build the shop installer
+        shell: pwsh
+        run: |
+          python build_windows.py --out (Join-Path $env:RUNNER_TEMP "eznest-build")
+          $setup = "installer\Output\eznest-setup.exe"
+          if (-not (Test-Path $setup)) { throw "eznest-setup.exe was not produced" }
+          Get-Item $setup | Select-Object FullName, Length
+
+      - name: Upload the installer artifact
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eznest-setup
+          path: installer/Output/eznest-setup.exe
+          if-no-files-found: error
+
+      - name: Attach the installer to the release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $setup = "installer\Output\eznest-setup.exe"
+          $notes = "Shop server installer for $tag. Run eznest-setup.exe on the shop PC. It does not need Python or Git."
+          gh release view $tag
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $setup --clobber
+          } else {
+            gh release create $tag $setup --title $tag --notes $notes
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

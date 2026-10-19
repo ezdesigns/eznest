@@ -67,9 +67,14 @@ One shop computer runs eznest. The other computers only open a browser. Use the 
 
 ## Install on the shop server
 
-The shop server is one Windows PC. The installer puts eznest in Program Files. That PC does not need Python or Git.
+The shop server is one Windows PC. The installer puts eznest in Program Files. That PC does not need Python or Git. GitHub Actions builds `eznest-setup.exe`, so nobody compiles it by hand.
 
-Build the installer on a Windows machine that has 64-bit Python 3.12 and [Inno Setup 6](https://jrsoftware.org/isinfo.php):
+The workflow is `.github/workflows/windows-installer.yml`.
+
+- Push a `v*` tag, such as `v1.0.0-rc.1`. That run attaches `eznest-setup.exe` to the GitHub release for the tag.
+- Or open Actions, choose Windows installer, and run the workflow on this branch. That uploads `eznest-setup.exe` as an artifact and does not publish a release. GitHub shows Run workflow after this file is on the default branch, or after the workflow has run once.
+
+To build it on a Windows machine instead, install 64-bit Python 3.12 and [Inno Setup 6](https://jrsoftware.org/isinfo.php):
 
 ```powershell
 py -3.12 -m pip install -r requirements.txt -r requirements-build.txt
@@ -188,9 +193,7 @@ node tests/test_boundaries.cjs
 .local/venv/Scripts/python.exe build_windows.py --out ../eznest-build
 ```
 
-GitHub Actions runs the checks on Windows, Python 3.12 and Node 24. Use a new
-build directory outside the source tree. Zip its complete dist/eznest folder.
-On Windows, the same build runs Inno Setup when `ISCC` is installed and writes `eznest-setup.exe`.
+GitHub Actions runs the checks on Windows, Python 3.12 and Node 24. The Windows installer workflow, on a `v*` tag or a manual run, builds `eznest-setup.exe` with Python 3.12 and Inno Setup 6.7.3. A local build still uses a directory outside the source tree.
 
 ## Repository map
 

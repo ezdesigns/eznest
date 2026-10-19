@@ -14,5 +14,6 @@ Shop release candidate. v1 is nesting only: drop artwork, nest it, and send the 
 - Shop network is off by default. Turn it on to listen for other PCs at `http://<server-name>:8765/web`. The gear shows that address and warns that it is for the shop network only.
 - The hot-folder default is `C:\ONYX\EPSON SureColor S80600 ONYX Input` on the ONYX PC and `\\ONYX\EPSON SureColor S80600 ONYX Input` from every other PC.
 - The gear shows the version. Update checks the latest eznest release and downloads the official installer.
+- GitHub Actions builds `eznest-setup.exe` on Windows. A `v*` tag attaches it to the release. A manual run uploads it as an artifact.
 
 Not in v1, so they can be added later without replacing the nest: job history, order intake, AI batching, cost tracking as a product, OXF or cut recipes, and a physical ONYX proof.
