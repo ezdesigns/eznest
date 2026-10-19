@@ -55,6 +55,43 @@ py -3.12 -m venv .local/venv
 The browser opens http://127.0.0.1:8765/. Stop an older version on that port first.
 Developer options: --no-browser, --port 8767, --data-dir "isolated test folder".
 
+## Run the web page
+
+The simple page is one screen: drop a kit, set the roll, nest, lock the layout, and export.
+It uses the same local Python server as the Windows app. Nesting stays on this computer.
+There is no account. SVG is the first format. PDF and PDF-compatible AI use the existing
+cut-spot importer. The full workspace remains at `/`.
+
+From source, with Python 3.12:
+
+```bash
+python3 -m venv .local/venv
+.local/venv/bin/pip install -r requirements.txt
+.local/venv/bin/python launcher.py --web
+```
+
+On Windows, use `.local\venv\Scripts\python.exe launcher.py --web`.
+Then open http://127.0.0.1:8765/web. `--no-browser` prints the address without opening one.
+`sample-artwork.svg` is on that page as "Use sample-artwork.svg".
+
+Docker, from this directory:
+
+```bash
+docker build -t eznest .
+docker run --rm -p 8765:8765 eznest
+```
+
+Open http://127.0.0.1:8765/web. The server still accepts only loopback host names.
+Publish port 8765, or the page will refuse the request.
+
+Lock writes one frozen package. Exporting again, or opening the page again after a
+restart, returns that same file and the same SHA-256. The layout id is on the page.
+
+Not in this page: automatic bleed, an ONYX or GoProduce proof, laminate cost, and
+the later pro pass that batches work by time. PDF import is still 20 MB, 25 pages,
+named spots or layers, and no DeviceN, native AI, or EPS. SVG and PDF cannot share
+a batch. One batch holds 100 pieces. See [supported files](docs/PRODUCTION-FILES.md).
+
 ## Test and build
 
 Node is only needed for checks; there are no npm dependencies.
@@ -106,6 +143,23 @@ environments and build outputs are ignored. Read [HANDOFF.md](HANDOFF.md),
 [production behavior](docs/PRODUCTION-FILES.md), [validation](docs/PRODUCTION-VALIDATION.md)
 and [mixed-cut workflow](docs/CUT-WORKFLOW-NEXT.md), [0.12 validation](docs/MIXED-CUT-VALIDATION.md), plus [third-party notices](THIRD_PARTY.md). PACKAGED-VALIDATION.md and HANDOFF-MANIFEST.json record the older 0.10 release.
 
-No open-source license has been selected for original eznest code. Keep the repo
-private pending that decision. Dependencies retain their licenses. No MX source,
-assets or binaries are included.
+## Open-source license
+
+Recommended license for original eznest code: **MIT**. It matches the permissive
+terms already used by Sparrow (MIT), pypdf (BSD-3-Clause), Pillow (MIT-CMU), and
+charset-normalizer (MIT). Two dependencies need to stay beside that choice:
+
+- jagua-rs is MPL-2.0. Its license is file-level. eznest uses the unmodified
+  library through spyrrow and already ships `licenses/jagua-rs-0.7.0-source.crate`
+  with its notices. Do not copy MPL source into eznest files without keeping those
+  files under MPL.
+- Shapely links GEOS, which is LGPL-2.1. The pip and Docker installs use GEOS as a
+  separate library, and `licenses/geos-3.13.1-source.tar.bz2` is the corresponding
+  source. Replacements can follow the note in [THIRD_PARTY.md](THIRD_PARTY.md).
+  Do not statically absorb GEOS into a build that users cannot relink.
+
+Rajdhani and Red Hat Display on the web page stay under the SIL Open Font License
+in `fonts/`. That license does not cover the application.
+
+MIT has not been applied. This repository stays private until that decision is made.
+Dependencies keep their own licenses. No MX source, assets, or binaries are included.

@@ -23,6 +23,11 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(launcher.main(),0)
             worker.assert_called_once_with('request path.json','result path.json')
 
+    def test_public_host_rejected_before_network(self):
+        with patch.object(sys,'argv',['eznest','--host','8.8.8.8','--no-browser']),patch.object(launcher,'urlopen') as lookup:
+            with self.assertRaisesRegex(ValueError,'127.0.0.1'):launcher.main()
+            lookup.assert_not_called()
+
     def test_invalid_port_rejected_before_network(self):
         with patch.object(sys,'argv',['eznest','--port','80']),patch.object(launcher,'urlopen') as lookup:
             with self.assertRaises(ValueError):launcher.main()

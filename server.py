@@ -1,4 +1,5 @@
 """Loopback-only prototype server; each native search runs in an isolated process."""
+import hashlib
 import json
 import os
 import secrets
@@ -27,6 +28,7 @@ LOCK = threading.Lock()
 STATE = {'status': 'idle'}
 PROCESS = None
 PORT = int(os.environ.get('EZ_NEST_PORT', '8765'))
+HOST = os.environ.get('EZ_NEST_HOST', '127.0.0.1')
 FOLDER = FolderQueue(WORK / 'production-folder.json')
 FOLDER_LOCK = threading.Lock()
 OUTPUT = OutputFolder(WORK / 'output-folder.json')
@@ -96,13 +98,23 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def local_name(self, value):
+        name, separator, port = (value or '').partition(':')
+        if name not in ('127.0.0.1', 'localhost') or not separator:
+            return False
+        # The desktop app only accepts its own port. A container published on
+        # another host port still sends a loopback Host name.
+        return True if HOST != '127.0.0.1' else port == str(PORT)
+
     def allowed(self):
-        return self.headers.get('Host') in [f'127.0.0.1:{PORT}', f'localhost:{PORT}']
+        return self.local_name(self.headers.get('Host'))
 
     def do_GET(self):
         if not self.allowed():
             return self.send(403, {'error': 'Invalid host'})
         path = urlparse(self.path).path
+        if path == '/web/':
+            path = '/web'
         if path == '/api/session':
             return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION})
         if path == '/api/output':
@@ -151,6 +163,12 @@ class Handler(BaseHTTPRequestHandler):
         static['/production-features.js']=('production-features.js','text/javascript')
         static['/cut-mapping.js']=('cut-mapping.js','text/javascript')
         static['/shop-profiles.js'] = ('shop-profiles.js','text/javascript')
+        static['/web'] = ('web.html', 'text/html')
+        static['/web.css'] = ('web.css', 'text/css')
+        static['/web.js'] = ('web.js', 'text/javascript')
+        static['/fonts/rajdhani-700.woff2'] = ('fonts/rajdhani-700.woff2', 'font/woff2')
+        static['/fonts/red-hat-display-400.woff2'] = ('fonts/red-hat-display-400.woff2', 'font/woff2')
+        static['/fonts/red-hat-display-700.woff2'] = ('fonts/red-hat-display-700.woff2', 'font/woff2')
         if os.environ.get('EZ_NEST_TEST_UI') == '1':
             static.update({'/tests/svg-tests.html': ('tests/svg-tests.html', 'text/html'), '/tests/svg-tests.js': ('tests/svg-tests.js', 'text/javascript')})
         if path not in static:
@@ -163,7 +181,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed() or self.headers.get('X-EZ-Token') != TOKEN:
             return self.send(403, {'error': 'Invalid session'})
         origin = self.headers.get('Origin')
-        if origin and origin not in [f'http://127.0.0.1:{PORT}', f'http://localhost:{PORT}']:
+        if origin and not self.local_name(origin.removeprefix('http://')):
             return self.send(403, {'error': 'Invalid origin'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
@@ -284,11 +302,13 @@ class Handler(BaseHTTPRequestHandler):
                         temporary.replace(directory / (STATE['id']+'.zip'))
                         STATE.update(released=True, manifest=details, deliveryCompleted=False)
                         persist_state()
+                    package = (WORK/'batches'/(STATE['id']+'.zip')).read_bytes()
+                    digest = hashlib.sha256(package).hexdigest()
                     with FOLDER_LOCK:
-                        saved = OUTPUT.save(STATE['id'], (WORK/'batches'/(STATE['id']+'.zip')).read_bytes(), FOLDER.root)
-                    STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved)
+                        saved = OUTPUT.save(STATE['id'], package, FOLDER.root)
+                    STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved, sha256=digest)
                     persist_state()
-                    return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check,'deliveryCompleted':STATE['deliveryCompleted']})
+                    return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check,'deliveryCompleted':STATE['deliveryCompleted'],'sha256':digest})
                 elif self.path == '/api/delivery/complete':
                     if STATE.get('status')!='ready' or data.get('id')!=STATE.get('id') or not STATE.get('released') or not (WORK/'batches'/(STATE['id']+'.zip')).is_file():
                         raise ValueError('Download the current frozen batch before completing its delivery.')
@@ -326,14 +346,14 @@ class LocalServer(ThreadingHTTPServer):
         super().server_bind()
 
 
-def serve(open_browser=False):
+def serve(open_browser=False, page='/'):
     restore_state()
-    service = LocalServer(('127.0.0.1', PORT), Handler)
+    service = LocalServer((HOST, PORT), Handler)
     if open_browser:
         import webbrowser
-        webbrowser.open(f'http://127.0.0.1:{PORT}')
+        webbrowser.open(f'http://127.0.0.1:{PORT}{page}')
     if sys.stdout:
-        print(f'eznest ready: http://127.0.0.1:{PORT}', flush=True)
+        print(f'eznest ready: http://127.0.0.1:{PORT}{page}', flush=True)
     try:
         service.serve_forever()
     finally:

@@ -1,0 +1,4 @@
+Rajdhani (copyright Google Inc.) and Red Hat Display (copyright Red Hat, Inc.)
+are the web page's display fonts. Both are unmodified latin subsets published
+by Fontsource and licensed under the SIL Open Font License 1.1 (OFL.txt).
+The OFL stays with these font files. It does not license the rest of eznest.

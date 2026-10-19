@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 ROOT=Path(__file__).resolve().parent
-STATIC=['production.html','queue.css','queue-app.js','queue-core.js','production-features.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','classic.html','app.js','style.css']
+STATIC=['production.html','queue.css','queue-app.js','queue-core.js','production-features.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','classic.html','app.js','style.css','web.html','web.css','web.js']
 
 def main():
     parser=argparse.ArgumentParser()
@@ -26,6 +26,7 @@ def main():
     if (out/'dist'/'eznest').exists():raise ValueError('The output already contains a build. Choose a new directory.')
     command=[sys.executable,'-m','PyInstaller','--noconfirm','--onedir','--windowed','--name','eznest','--icon',str(ROOT/'assets'/'eznest.ico'),'--distpath',str(out/'dist'),'--workpath',str(out/'work'),'--specpath',str(out),'--collect-all','spyrrow','--collect-all','pypdfium2','--collect-all','pypdfium2_raw','--exclude-module','tkinter']
     for name in STATIC:command+=['--add-data',f'{ROOT/name}:.']
+    command+=['--add-data',f'{ROOT/"fonts"}:fonts']
     for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer']:command+=['--copy-metadata',name]
     subprocess.run(command+[str(ROOT/'launcher.py')],cwd=ROOT,check=True)
     release=out/'dist'/'eznest'

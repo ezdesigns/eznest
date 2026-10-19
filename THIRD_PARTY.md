@@ -18,6 +18,15 @@ Shapely's separate GEOS 3.13.1 runtime remains in _internal/shapely.libs, with t
 
 NumPy's bundled numerical-library notices are retained with its license. Runtime library notices are in the corresponding licenses subfolders. Preserve all notices and covered source when redistributing the package.
 
+Web page fonts, unmodified latin subsets from Fontsource:
+
+- Rajdhani (copyright Google Inc.), SIL Open Font License 1.1
+- Red Hat Display (copyright Red Hat, Inc.), SIL Open Font License 1.1
+
+`fonts/OFL.txt` is the license text and `fonts/NOTICE.txt` names both families.
+These files stay under the OFL when the application is distributed. The OFL does
+not relicense the rest of eznest.
+
 PDF production additions in 0.11:
 - pypdf 6.19.0 (BSD-3-Clause): https://github.com/py-pdf/pypdf
 - pypdfium2 5.13.0 and its PDFium binary: https://github.com/pypdfium2-team/pypdfium2
