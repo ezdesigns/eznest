@@ -85,11 +85,15 @@ def lan_addresses():
             probe.close()
     except OSError:
         pass
+    previous = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(2)
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET, socket.SOCK_STREAM):
             add(info[4][0])
     except OSError:
         pass
+    finally:
+        socket.setdefaulttimeout(previous)
     return found
 
 
@@ -253,8 +257,12 @@ def pull_latest(directory, current, opener=None):
     temporary.replace(target)
     message = 'Downloaded ' + name + '.'
     if os.name == 'nt' and target.suffix.lower() == '.exe':
-        os.startfile(target)  # noqa: S606 - the gear asked to open this eznest release installer
-        message += ' The installer is opening.'
+        try:
+            os.startfile(target)  # noqa: S606 - the gear asked to open this eznest release installer
+        except OSError:
+            message += ' The installer is in the updates folder.'
+        else:
+            message += ' The installer is opening.'
     return {'ok': True, 'current': current, 'latest': latest.lstrip('vV'), 'updated': True, 'path': str(target), 'message': message}
 
 

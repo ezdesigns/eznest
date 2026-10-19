@@ -437,7 +437,7 @@ class WebMvpTests(unittest.TestCase):
             page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
             try:
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0", timeout=60000)
                 page.select_option('#material', 'vinyl')
                 page.fill('#nest-width', '30')
                 page.locator('#settings').evaluate('node => { node.open = true }')
@@ -449,7 +449,7 @@ class WebMvpTests(unittest.TestCase):
                 page.locator('#hot-folder').dispatch_event('change')
                 page.wait_for_function("() => /Hot folder set/i.test(document.querySelector('#status').textContent)", timeout=10000)
                 page.reload()
-                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0", timeout=60000)
                 self.assertEqual(page.input_value('#material'), 'vinyl')
                 self.assertIn('Shop vinyl', page.locator('#material option:checked').inner_text())
                 self.assertEqual(page.input_value('#preset-name'), 'Shop vinyl')

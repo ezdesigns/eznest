@@ -1,8 +1,11 @@
 """Shop-server install choices: one computer, many browsers."""
 import json
+import os
 import socket
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import server
 import shop_deploy
@@ -72,29 +75,25 @@ class ShopDeployTests(unittest.TestCase):
             {'name': 'eznest-windows.zip', 'browser_download_url': 'https://github.com/ezdesigns/eznest/releases/download/v1.0.0-rc.2/eznest-windows.zip'},
             {'name': 'eznest-setup.exe', 'browser_download_url': url},
         ]}).encode()
-        folder = Path(self.id().replace('.', '-'))
-        root = Path('/tmp') / folder
-        root.mkdir(parents=True, exist_ok=True)
-        try:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
             same = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: current}))
             self.assertFalse(same['updated'])
             self.assertEqual(same['message'], 'This is the latest release.')
-            saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: b'MZ-eznest'}))
+            with patch('shop_deploy.os.startfile', create=True) as opened:
+                saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: b'MZ-eznest'}))
             self.assertTrue(saved['updated'])
             self.assertIn('Downloaded eznest-setup.exe.', saved['message'])
-            self.assertNotIn('installer is opening', saved['message'])
             self.assertEqual((root / 'updates' / 'eznest-setup.exe').read_bytes(), b'MZ-eznest')
+            if os.name == 'nt':
+                opened.assert_called_once()
+                self.assertIn('The installer is opening.', saved['message'])
+            else:
+                opened.assert_not_called()
+                self.assertNotIn('installer is opening', saved['message'])
             slipped = json.dumps({'tag_name': '9.0.0', 'assets': [{'name': '../eznest-setup.exe', 'browser_download_url': url}]}).encode()
             with self.assertRaisesRegex(ValueError, 'release file'):
                 shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: slipped}))
-        finally:
-            for path in sorted(root.rglob('*'), reverse=True):
-                if path.is_file():
-                    path.unlink()
-            for path in sorted(root.rglob('*'), reverse=True):
-                if path.is_dir():
-                    path.rmdir()
-            root.rmdir()
 
     def test_shop_names_are_this_computer_or_a_private_address(self):
         self.assertTrue(shop_deploy.shop_name_allowed(socket.gethostname()))
