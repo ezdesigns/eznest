@@ -57,7 +57,7 @@ Developer options: --no-browser, --port 8767, --data-dir "isolated test folder".
 
 ## Run the web page
 
-The simple page is one screen: drop a kit, set the material and the sets, nest, then Send to ONYX.
+The simple page is one screen: drop a file and it nests. Change the material or the sets and it nests again, then Send to ONYX.
 It uses the same local Python server as the Windows app. Nesting stays on this computer.
 There is no account. SVG is the first format. PDF and PDF-compatible AI use the existing
 cut-spot importer. The full workspace remains at `/`.
@@ -72,7 +72,7 @@ python3 -m venv .local/venv
 
 On Windows, use `.local\venv\Scripts\python.exe launcher.py --web`.
 Then open http://127.0.0.1:8765/web. `--no-browser` prints the address without opening one.
-Drop `sample-artwork.svg` on that page to try a nest without shop artwork.
+Drop `sample-artwork.svg` on that page. It nests on its own.
 
 Docker, from this directory:
 

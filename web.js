@@ -10,6 +10,9 @@ let saving = false;
 let activeSheet = 0;
 let ignoreFileChange = false;
 let blockReason = '';
+let pendingRenest = false;
+let leaving = false;
+let nestTimer = 0;
 
 function status(message, failed) {
   const el = $('status');
@@ -123,21 +126,6 @@ function unresolved() {
 }
 
 function renderKit() {
-  const box = $('kit');
-  if (!kits.length) { box.hidden = true; renderActions(); return; }
-  const count = kits.reduce((sum, entry) => sum + entry.data.parts.reduce((n, part) => n + (part.quantity || 1), 0), 0) * sets();
-  const cuts = cutTotals();
-  box.hidden = false;
-  $('kit-name').textContent = kits.map(entry => entry.name.replace(/\.(svg|pdf|ai)$/i, '')).join(', ');
-  const warnings = kits.flatMap(entry => entry.data.warnings || []);
-  $('kit-note').textContent = warnings[0] || '';
-  $('kit-note').hidden = !warnings[0];
-  const copies = Number($('sets').value) || 1;
-  $('pieces').textContent = count + (count === 1 ? ' piece' : ' pieces');
-  $('thru').textContent = cuts.thru ? cuts.thru * copies + ' thru' : '0 thru';
-  $('kiss').textContent = cuts.kiss ? cuts.kiss * copies + ' kiss' : '0 kiss';
-  const fix = unresolved() ? (cuts.contour || 1) * copies : 0;
-  $('fix').textContent = fix ? fix + ' to fix' : '0 to fix';
   renderActions();
 }
 
@@ -184,9 +172,13 @@ function clearReadout() {
   setNum('sheets', '–');
   $('length').classList.remove('over');
   $('readout').classList.add('pending');
-  $('length-exact').textContent = 'of ' + ($('width').value || '–') + ' ' + $('unit').value + ' roll';
-  $('cost-line').textContent = '';
   $('checks').textContent = '';
+}
+
+function setSentence(text, problem) {
+  $('checks').textContent = text || '';
+  $('gate').className = problem ? 'gate problem' : 'gate';
+  $('gate').hidden = !text;
 }
 
 function cutProblem() {
@@ -210,24 +202,19 @@ function cutProblem() {
 
 function showScreen(name) {
   document.body.dataset.step = name;
-  const nesting = name === 'nest';
   const idle = name === 'drop';
-  $('empty').hidden = !idle;
+  $('drop-screen').hidden = !idle;
   $('sheet-frame').hidden = idle;
-  $('legend').hidden = idle || nesting;
-  $('gate').hidden = idle;
-  $('cancel').hidden = !nesting;
-  $('export').hidden = nesting;
-  $('download-only').hidden = nesting;
-  $('sent-panel').hidden = name !== 'sent';
-  $('again').hidden = idle || nesting || !kits.length;
-  $('improve').hidden = name !== 'check';
+  $('legend').hidden = idle;
+  $('readout').hidden = idle;
+  $('export').hidden = idle;
+  $('start-over').hidden = idle;
   $('choice').hidden = name !== 'blocked' || !unresolved();
   if (idle) {
     clearReadout();
-    $('block-detail').hidden = true;
     $('sheet-tabs').hidden = true;
     $('preview').replaceChildren();
+    setSentence('', false);
   }
 }
 
@@ -238,45 +225,36 @@ function renderActions() {
   const tooLong = current && current.result && lengthOver(current) ? 'Material is over the sheet length' : '';
   const step = document.body.dataset.step;
   const sent = step === 'sent' && current && current.released;
-  $('nest').disabled = busy || saving || !kits.length || !!badInput;
-  $('again').disabled = $('nest').disabled;
   $('length').classList.toggle('over', !!(current && current.result && lengthOver(current)));
+  $('undo').hidden = !(sent && $('allow-undo').checked && current && current.savedPath);
   if (sent) {
     $('export').disabled = saving;
-    $('download-only').disabled = saving;
-    $('undo').hidden = !($('allow-undo').checked && current.savedPath);
     return;
   }
   const actionable = step !== 'drop' && step !== 'nest';
   const reason = blockReason || missing || (cuts ? cuts.line : '') || tooLong || (actionable ? badInput : '');
-  const blocked = !!reason;
-  $('export').disabled = busy || saving || blocked || !current || !current.result;
-  $('download-only').disabled = $('export').disabled;
-  $('undo').hidden = true;
+  $('export').disabled = busy || saving || !!reason || !current || !current.result;
   if (!actionable) return;
   if (reason) {
     document.body.dataset.step = 'blocked';
-    $('gate').hidden = false;
-    $('gate').textContent = reason;
-    $('gate').className = 'gate problem';
-    $('block-detail').hidden = !(cuts && cuts.detail);
-    $('block-detail').textContent = cuts ? cuts.detail : '';
+    setSentence(reason, true);
     $('choice').hidden = !cuts;
-    $('again').hidden = false;
-    $('improve').hidden = true;
     return;
   }
   if (current && current.manifest) {
     document.body.dataset.step = 'check';
-    const placed = current.manifest.totalPieces;
-    $('gate').hidden = false;
-    $('gate').textContent = '✓ Ready · ' + placed + ' of ' + placed + ' pieces · cuts OK';
-    $('gate').className = 'gate';
-    $('block-detail').hidden = true;
+    setSentence(pieceSentence(current), false);
     $('choice').hidden = true;
-    $('again').hidden = false;
-    $('improve').hidden = false;
   }
+}
+
+function pieceSentence(state) {
+  const summary = placedCuts(state);
+  const placed = state.manifest.totalPieces;
+  const bits = [placed + (placed === 1 ? ' piece' : ' pieces')];
+  if (summary.thru) bits.push(summary.thru + ' thru');
+  if (summary.kiss) bits.push(summary.kiss + ' kiss');
+  return bits.join(' · ') + ' · cuts OK';
 }
 
 function sheetList(state) {
@@ -531,19 +509,9 @@ function renderPreview(index) {
 function showMetrics(state) {
   const result = state.result;
   setNum('length', (result.usedLength / 304.8).toFixed(1), 'ft');
-  const cost = state.manifest.materialCost;
-  const costBit = cost ? ' · ≈ $' + Number(cost.total).toFixed(2) : '';
-  $('length-exact').textContent = 'of ' + $('width').value + ' ' + $('unit').value + ' roll' + costBit;
   setNum('waste', String(Math.round((1 - result.utilization) * 100)), '%');
-  $('cost-line').textContent = Math.round(result.utilization * 100) + '% used';
   const sheets = sheetList(state);
   setNum('sheets', String(sheets.length));
-  const summary = placedCuts(state);
-  const pieces = state.manifest.totalPieces;
-  const bits = [pieces + (pieces === 1 ? ' piece' : ' pieces')];
-  if (summary.thru) bits.push(summary.thru + ' thru');
-  if (summary.kiss) bits.push(summary.kiss + ' kiss');
-  $('checks').textContent = bits.join(' · ');
   $('readout').classList.remove('pending');
   $('length').classList.toggle('over', lengthOver(state));
   const tabs = $('sheet-tabs');
@@ -566,22 +534,11 @@ function showLock(state) {
 
 function showSent() {
   showScreen('sent');
-  const name = kits.map(entry => entry.name.replace(/\.(svg|pdf|ai)$/i, '')).join(', ') || 'Layout';
-  const where = current.savedPath ? current.savedPath : 'Downloaded. No hot folder is set.';
-  const sheets = $('sheets').querySelector('.num')?.textContent || '';
-  const amount = ($('length').querySelector('.num')?.textContent || '') + ' ' + ($('length').querySelector('.unit')?.textContent || '');
-  $('sent-file').textContent = name + ' · ' + sheets + ' sheet · ' + amount.trim() + ' · ' + where;
-  $('sent-hold').hidden = !$('allow-hold').checked;
-  $('sent-hold').textContent = 'Hold for Operator is on in settings. ONYX still applies its own holds.';
-  $('gate').hidden = false;
-  $('gate').textContent = 'Sent';
-  $('gate').className = 'gate';
-  $('empty').hidden = true;
-  $('sheet-frame').hidden = false;
+  if (current && current.manifest) setSentence(pieceSentence(current), false);
   renderActions();
 }
 
-function showBlocked(message, detail) {
+function showBlocked(message) {
   blockReason = message || 'Nesting stopped. Change the roll or the file and try again.';
   showScreen('blocked');
   if (!current?.result) {
@@ -590,17 +547,10 @@ function showBlocked(message, detail) {
     setNum('sheets', '–');
     $('readout').classList.add('pending');
     $('length').classList.remove('over');
-    $('checks').textContent = '';
-    $('cost-line').textContent = '';
-    $('empty').hidden = true;
     $('sheet-frame').hidden = false;
     renderLoose($('preview'));
   }
   renderActions();
-  if (detail) {
-    $('block-detail').hidden = false;
-    $('block-detail').textContent = detail;
-  }
 }
 
 function showResult(state) {
@@ -628,9 +578,6 @@ function sheetsIndex(state) {
 function showLive(state) {
   const live = state.live;
   const expected = (state.job?.parts || []).reduce((sum, part) => sum + (part.quantity || 1), 0);
-  $('gate').hidden = false;
-  $('gate').className = 'gate';
-  $('empty').hidden = true;
   $('sheet-frame').hidden = false;
   $('live').hidden = true;
   if (!live || !live.usedLength) {
@@ -638,7 +585,7 @@ function showLive(state) {
     setNum('waste', '–', '%');
     setNum('sheets', '–');
     $('readout').classList.add('pending');
-    $('gate').textContent = expected ? 'Nesting… 0 of ' + expected + ' placed' : 'Nesting…';
+    setSentence('Nesting…', false);
     return;
   }
   const placed = live.placements?.length || 0;
@@ -646,10 +593,7 @@ function showLive(state) {
   setNum('waste', String(Math.round((1 - (live.utilization || 0)) * 100)), '%');
   setNum('sheets', '1');
   $('readout').classList.remove('pending');
-  $('length-exact').textContent = 'of ' + $('width').value + ' ' + $('unit').value + ' roll';
-  $('cost-line').textContent = Math.round((live.utilization || 0) * 100) + '% used';
-  $('checks').textContent = placed + ' of ' + (expected || placed) + ' placed';
-  $('gate').textContent = 'Nesting… ' + placed + ' of ' + (expected || placed) + ' placed';
+  setSentence('Nesting… ' + placed + ' of ' + (expected || placed), false);
   if (state.job) renderSheet($('preview'), {job: state.job, result: live, manifest: null}, 0);
 }
 
@@ -657,6 +601,7 @@ async function poll() {
   if (!busy) return;
   try {
     const state = await (await fetch('/api/state')).json();
+    if (leaving || !kits.length) { busy = false; if (!kits.length) showScreen('drop'); return; }
     if (state.status === 'running') {
       showScreen('nest');
       showLive(state);
@@ -665,17 +610,33 @@ async function poll() {
       return;
     }
     busy = false;
+    if (pendingRenest && kits.length && !leaving) {
+      pendingRenest = false;
+      nest();
+      return;
+    }
     if (state.status === 'ready' && state.manifest) showResult(state);
-    else showBlocked(state.error || state.note || 'Nesting stopped. Change the roll or the file and try again.');
+    else showBlocked(state.error || state.note || 'That file does not fit this roll.');
   } catch (error) {
     busy = false;
+    if (pendingRenest && kits.length && !leaving) { pendingRenest = false; nest(); return; }
     showBlocked(error.message);
   }
   renderActions();
 }
 
+function requestNest() {
+  clearTimeout(nestTimer);
+  nestTimer = setTimeout(() => {
+    if (leaving || saving || !kits.length) return;
+    if (busy) { pendingRenest = true; return; }
+    nest();
+  }, 150);
+}
+
 async function nest() {
-  if (busy || saving || !kits.length || $('nest').disabled) return;
+  if (busy || saving || !kits.length) return;
+  if (inputIssue()) { showBlocked(inputIssue()); return; }
   try {
     for (const entry of kits) entry.sets = sets();
     const job = EZNQueue.compose(kits, preset(), 'combined');
@@ -786,9 +747,21 @@ function nextKit() {
   current = null;
   blockReason = '';
   activeSheet = 0;
+  pendingRenest = false;
   renderKit();
   showScreen('drop');
-  status('Drop the next kit.');
+  status('Drop your file.');
+}
+
+async function startOver() {
+  leaving = true;
+  pendingRenest = false;
+  if (busy) {
+    try { await api('/api/cancel', {}); } catch { /* The next drop starts clean. */ }
+  }
+  busy = false;
+  nextKit();
+  leaving = false;
 }
 
 function convertUnit(next) {
@@ -899,9 +872,10 @@ async function importFiles(fileList) {
   kits = entries;
   current = null;
   blockReason = '';
-  renderKit();
-  showScreen('drop');
-  status(unresolved() ? 'Unnamed cuts need a thru or kiss choice after the nest.' : 'Set the material, then nest.');
+  leaving = false;
+  showScreen('nest');
+  status('Nesting…');
+  requestNest();
 }
 
 async function chooseCut(operation) {
@@ -911,7 +885,6 @@ async function chooseCut(operation) {
   try {
     await importFiles(files);
     $('generic-cut').value = '';
-    if (!$('nest').disabled) await nest();
   } catch (error) {
     $('generic-cut').value = '';
     showBlocked(error.message);
@@ -940,7 +913,7 @@ async function boot() {
   const state = await (await fetch('/api/state')).json();
   if (state.status === 'running') { busy = true; showScreen('nest'); renderActions(); setTimeout(poll, 300); }
   else if (state.status === 'ready' && state.manifest) showResult(state);
-  else { showScreen('drop'); status('Drop a kit. The nest runs on this computer.'); }
+  else { showScreen('drop'); status('Drop your file.'); }
   renderActions();
 }
 
@@ -960,33 +933,34 @@ document.addEventListener('DOMContentLoaded', () => {
     try { await importFiles(event.dataTransfer.files); }
     catch (error) { showBlocked(error.message); }
   });
-  $('sets-dec').addEventListener('click', () => { $('sets').value = String(Math.max(1, sets() - 1)); renderKit(); });
-  $('sets-inc').addEventListener('click', () => { $('sets').value = String(Math.min(100, sets() + 1)); renderKit(); });
-  $('sets').addEventListener('change', () => { try { sets(); renderKit(); } catch (error) { $('sets').value = '1'; status(error.message, true); } });
-  $('unit').addEventListener('change', () => { convertUnit($('unit').value); watchWidth(); });
-  $('material').addEventListener('change', applyMaterial);
-  $('width').addEventListener('input', watchWidth);
+  $('sets-dec').addEventListener('click', () => {
+    $('sets').value = String(Math.max(1, (Number($('sets').value) || 1) - 1));
+    requestNest();
+  });
+  $('sets-inc').addEventListener('click', () => {
+    $('sets').value = String(Math.min(100, (Number($('sets').value) || 1) + 1));
+    requestNest();
+  });
+  const renestFromSets = () => {
+    const count = Number($('sets').value);
+    if (!Number.isInteger(count) || count < 1 || count > 100) { $('sets').value = '1'; status('Sets must be from 1 to 100.', true); }
+    requestNest();
+  };
+  $('sets').addEventListener('input', renestFromSets);
+  $('sets').addEventListener('change', renestFromSets);
+  $('unit').addEventListener('change', () => { convertUnit($('unit').value); watchWidth(); requestNest(); });
+  $('material').addEventListener('change', () => { applyMaterial(); requestNest(); });
+  $('width').addEventListener('input', () => { watchWidth(); requestNest(); });
+  for (const id of ['gap', 'margin', 'sheet']) $(id).addEventListener('input', requestNest);
+  for (const id of ['width', 'gap', 'margin', 'sheet', 'rotations']) $(id).addEventListener('change', requestNest);
   $('preset-name').addEventListener('change', rememberPreset);
   $('hot-folder').addEventListener('change', saveHotFolder);
   $('allow-undo').addEventListener('change', () => { savePrefs({undo: $('allow-undo').checked}); renderActions(); });
-  $('allow-hold').addEventListener('change', () => { savePrefs({hold: $('allow-hold').checked}); if (current?.released) showSent(); });
-  $('nest').addEventListener('click', nest);
-  $('cancel').addEventListener('click', async () => {
-    try {
-      await api('/api/cancel', {keepBest: true});
-      busy = false;
-      const state = await (await fetch('/api/state')).json();
-      if (state.status === 'ready' && state.manifest) showResult(state);
-      else showBlocked(state.note || state.error || 'Stopped before a layout was ready.');
-    } catch (error) { showBlocked(error.message); }
-  });
+  $('allow-hold').addEventListener('change', () => savePrefs({hold: $('allow-hold').checked}));
   $('export').addEventListener('click', () => exportFile(false));
-  $('download-only').addEventListener('click', () => exportFile(true));
-  $('again').addEventListener('click', nest);
-  $('improve').addEventListener('click', improve);
   $('choose-thru').addEventListener('click', () => chooseCut('thru'));
   $('choose-kiss').addEventListener('click', () => chooseCut('kiss'));
-  $('next').addEventListener('click', nextKit);
+  $('start-over').addEventListener('click', startOver);
   $('undo').addEventListener('click', async () => {
     if (!current?.savedPath) return;
     try {
@@ -1002,12 +976,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #sets-dec, #sets-inc, #cancel, #sheet-tabs')) return;
+    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #sets-dec, #sets-inc, #sheet-tabs')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
-    if (document.body.dataset.step === 'sent') { event.preventDefault(); nextKit(); return; }
-    if (document.body.dataset.step === 'check' && current && current.result && !$('export').disabled) { event.preventDefault(); exportFile(); return; }
-    if (document.body.dataset.step === 'drop' && !$('nest').disabled) { event.preventDefault(); nest(); }
+    if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }
+    if (document.body.dataset.step === 'check' && current && current.result && !$('export').disabled) { event.preventDefault(); exportFile(); }
   });
   boot().catch(error => status(error.message, true));
 });

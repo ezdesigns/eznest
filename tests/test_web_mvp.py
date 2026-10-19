@@ -72,7 +72,8 @@ class WebMvpTests(unittest.TestCase):
             page = response.read().decode()
         self.assertIn('Nest selected jobs', desktop)
         self.assertIn('href="/web"', desktop)
-        self.assertIn('Drop the kit', page)
+        self.assertIn('Drop your file', page)
+        self.assertNotIn('id="nest"', page)
         self.assertIn('/svg-io.js', page)
         self.assertNotIn('<script>', page.lower().split('<body', 1)[-1].replace('src=', ''))
 
@@ -107,13 +108,12 @@ class WebMvpTests(unittest.TestCase):
         with sync_playwright() as playwright:
             browser, page = self.open_page(playwright)
             try:
+                page.locator('#settings').evaluate('node => { node.open = false }')
+                page.screenshot(path='/tmp/eznest-desktop-empty.png', full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path='/tmp/eznest-mobile-empty.png', full_page=True)
+                page.set_viewport_size({'width': 1280, 'height': 900})
                 page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
-                page.wait_for_selector('#kit:not([hidden])')
-                self.assertIn('sample-artwork', page.locator('#kit-name').inner_text())
-                self.assertIn('4 piece', page.locator('#pieces').inner_text().casefold())
-                self.assertIn('kiss', page.locator('#kiss').inner_text().casefold())
-                page.screenshot(path='/tmp/eznest-desktop-drop.png', full_page=True)
-                page.click('#nest')
                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
                 self.assertEqual(page.locator('#sheets .num').inner_text().strip(), '1')
                 self.assertIn('ft', page.locator('#length').inner_text().casefold())
@@ -172,11 +172,9 @@ class WebMvpTests(unittest.TestCase):
             browser, page = self.open_page(playwright)
             try:
                 page.set_input_files('#file', str(source))
-                page.wait_for_selector('#kit:not([hidden])')
-                self.assertIn('thru', page.locator('#thru').inner_text().casefold())
-                self.assertIn('kiss', page.locator('#kiss').inner_text().casefold())
-                page.click('#nest')
                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
+                self.assertIn('thru', page.locator('#checks').inner_text().casefold())
+                self.assertIn('kiss', page.locator('#checks').inner_text().casefold())
                 self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
                 first = self.download(page)
                 second = self.download(page)
@@ -197,9 +195,8 @@ class WebMvpTests(unittest.TestCase):
             browser, page = self.open_page(playwright)
             try:
                 page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
-                page.wait_for_selector('#kit:not([hidden])')
                 page.fill('#width', '15')
-                page.click('#nest')
+                page.locator('#settings').evaluate('node => { node.open = false }')
                 page.wait_for_selector('#gate.problem', timeout=90000)
                 self.assertTrue(page.locator('#export').is_disabled())
                 self.assertNotIn('cuts ok', page.locator('#gate').inner_text().casefold())
@@ -213,6 +210,24 @@ class WebMvpTests(unittest.TestCase):
                 page.screenshot(path='/tmp/eznest-desktop-blocked.png', full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
                 page.screenshot(path='/tmp/eznest-mobile-blocked.png', full_page=True)
+            finally:
+                browser.close()
+
+    def test_drop_nests_without_a_button(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                self.assertEqual(page.locator('#nest').count(), 0)
+                page.locator('#settings').evaluate('node => { node.open = false }')
+                page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
+                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#checks')?.textContent || '')", timeout=90000)
+                self.assertEqual(page.locator('#sheets .num').inner_text().strip(), '1')
+                self.assertIn('4 piece', page.locator('#checks').inner_text().casefold())
+                page.fill('#sets', '2')
+                page.wait_for_function("() => /8 pieces/i.test(document.querySelector('#checks')?.textContent || '')", timeout=90000)
+                self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
+                self.assertNotIn('problem', page.locator('#gate').get_attribute('class') or '')
             finally:
                 browser.close()
 
