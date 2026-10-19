@@ -136,7 +136,7 @@ class ShopDeployTests(unittest.TestCase):
                 self.assertTrue(status['url'].endswith(':8765/web'))
                 self.assertFalse(status['lan'])
                 self.assertIn('shop network only', status['warning'].casefold())
-                self.assertEqual(status['version'], '1.0.0-rc.1')
+                self.assertEqual(status['version'], '1.0.0-rc.2')
                 self.assertIn(r'\\ONYX\EPSON SureColor S80600 ONYX Input', status['hotFolderDefault'])
             finally:
                 server.WORK, server.PORT, server.HOST, server.LAN = old

@@ -93,21 +93,25 @@ class WebMvpTests(unittest.TestCase):
         self.assertEqual(page.input_value('#nest-width'), '51.5')
         self.assertIn('on 51.5" wide', page.locator('#used-width').inner_text())
         self.assertEqual(page.input_value('#roll'), '54')
-        self.assertEqual(page.input_value('#mark-margin'), '0.5')
-        self.assertEqual(page.input_value('#sheet'), '96')
+        self.assertEqual(page.input_value('#mark-margin'), '0.4')
+        self.assertEqual(page.input_value('#sheet'), '60')
         self.assertEqual(page.input_value('#auto-bleed'), '0.0625')
-        self.assertEqual(page.input_value('#thru-name'), 'LNThru-cut')
-        self.assertEqual(page.input_value('#kiss-name'), 'LNKiss-cut')
+        self.assertEqual(page.input_value('#thru-name'), 'CutContour_Thru-cut')
+        self.assertEqual(page.input_value('#kiss-name'), 'CutContour_Kiss-cut')
+        self.assertEqual(page.locator('#materials button[aria-pressed="true"]').inner_text(), 'White gloss')
+        self.assertGreaterEqual(page.locator('#materials button').count(), 4)
+        self.assertFalse(page.locator('#staging-on').is_checked())
         self.assertEqual(page.locator('#material option[value="white-gloss"]').get_attribute('data-quickset'), 'Substance Gloss GL [EZ Designs 80600] @ 720-CT')
         self.assertEqual(page.locator('#material option[value="white-gloss"]').get_attribute('data-printer'), 'Epson S80600')
         self.assertFalse(page.locator('#draw-marks').is_checked())
+        self.assertIn('must match CutServer mark setup', page.locator('#settings').inner_text())
         self.assertIn('EPSON SureColor S80600 ONYX Input', page.locator('#settings').inner_text())
-        page.select_option('#cut-preset', 'output')
-        self.assertEqual(page.input_value('#thru-name'), 'CutContour_Thru-cut')
-        self.assertEqual(page.input_value('#kiss-name'), 'CutContour_Kiss-cut')
         page.select_option('#cut-preset', 'ln')
         self.assertEqual(page.input_value('#thru-name'), 'LNThru-cut')
         self.assertEqual(page.input_value('#kiss-name'), 'LNKiss-cut')
+        page.select_option('#cut-preset', 'output')
+        self.assertEqual(page.input_value('#thru-name'), 'CutContour_Thru-cut')
+        self.assertEqual(page.input_value('#kiss-name'), 'CutContour_Kiss-cut')
         if shots:
             page.locator('#settings .panel').evaluate('node => { node.style.maxHeight = "none"; node.style.overflow = "visible"; }')
             page.screenshot(path='/tmp/eznest-gear-desktop.png')
@@ -131,6 +135,7 @@ class WebMvpTests(unittest.TestCase):
                 page.keyboard.press('Enter')
             else:
                 page.click('#export')
+            page.locator('#confirm-send').click()
         item = pending.value
         target = Path(self.tmp.name) / (item.suggested_filename or 'eznest.zip')
         item.save_as(str(target))
@@ -152,9 +157,9 @@ class WebMvpTests(unittest.TestCase):
                 self.assertIn('ft', page.locator('#length').inner_text().casefold())
                 state = json.load(urlopen(self.url() + '/api/state', timeout=10))
                 self.assertAlmostEqual(state['result']['width'], 220, places=2)
-                self.assertAlmostEqual(state['job']['settings']['markMargin'], 12.7, places=1)
-                self.assertAlmostEqual(state['job']['settings']['margin'], 17.7, places=1)
-                self.assertGreater(state['job']['settings']['sheetLength'], 2400)
+                self.assertAlmostEqual(state['job']['settings']['markMargin'], 10.16, places=1)
+                self.assertAlmostEqual(state['job']['settings']['margin'], 15.16, places=1)
+                self.assertAlmostEqual(state['job']['settings']['sheetLength'], 1524, places=0)
                 self.assertEqual(state['job']['media']['hotFolderLabel'], 'EPSON SureColor S80600 ONYX Input')
                 self.assertAlmostEqual(state['job']['media']['printableWidthMm'], 220, places=2)
                 self.assertFalse(state['job']['settings']['drawRegmarks'])
@@ -162,6 +167,8 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(round(shown), round((1 - state['result']['utilization']) * 100))
                 self.assertEqual((page.locator('#preview [id*="Kiss-cut"]').first.get_attribute('stroke') or '').lower(), '#00b7ff')
                 self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
+                self.assertEqual(page.locator('#sheet-id').inner_text(), state['id'])
+                self.assertFalse(page.locator('#sheet-id').is_hidden())
                 self.assertNotIn('problem', page.locator('#gate').get_attribute('class') or '')
                 self.assertEqual(page.locator('#lock').count(), 0)
                 self.assertIn('send to onyx', page.locator('#export').inner_text().casefold())
@@ -193,6 +200,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertIn('clipPath', artwork)
                 self.assertIn('data-ezn-bleed', artwork)
                 self.assertIn('stroke-width="3.175"', artwork)
+                self.assertIn(ident, artwork)
                 self.assertNotIn('LNRegmark', artwork)
                 self.assertNotIn('barcode', artwork.casefold())
                 self.stop()
@@ -226,10 +234,10 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(first).hexdigest(), page.locator('#layout-hash').input_value())
                 with ZipFile(io.BytesIO(first)) as archive:
                     pdf = archive.read('artwork.pdf')
-                self.assertIn(b'LNThru-cut', pdf)
-                self.assertIn(b'LNKiss-cut', pdf)
-                self.assertNotIn(b'CutContour_Thru-cut', pdf)
-                self.assertNotIn(b'CutContour_Kiss-cut', pdf)
+                self.assertIn(b'CutContour_Thru-cut', pdf)
+                self.assertIn(b'CutContour_Kiss-cut', pdf)
+                self.assertNotIn(b'LNThru-cut', pdf)
+                self.assertNotIn(b'LNKiss-cut', pdf)
                 from pypdf import PdfReader
                 content = PdfReader(io.BytesIO(pdf)).pages[0].get_contents().get_data()
                 self.assertNotIn(b'LNRegmark', content)
@@ -311,7 +319,7 @@ class WebMvpTests(unittest.TestCase):
                 narrow = json.load(urlopen(self.url() + '/api/state', timeout=10))
                 self.assertAlmostEqual(narrow['result']['width'], 30 * 25.4, places=1)
                 self.assertLess(narrow['result']['width'], full - 100)
-                self.assertGreater(narrow['job']['settings']['sheetLength'], 2400)
+                self.assertAlmostEqual(narrow['job']['settings']['sheetLength'], 60 * 25.4, places=0)
                 self.assertEqual(page.locator('#used-width').inner_text(), 'on 30" wide')
                 self.assertFalse(page.locator('#export').is_disabled())
                 page.locator('#settings').evaluate('node => { node.open = false }')
@@ -423,8 +431,8 @@ class WebMvpTests(unittest.TestCase):
                 packed = self.download(page)
                 with ZipFile(io.BytesIO(packed)) as archive:
                     pdf = archive.read('artwork.pdf')
-                self.assertIn(b'LNThru-cut', pdf)
-                self.assertIn(b'LNKiss-cut', pdf)
+                self.assertIn(b'CutContour_Thru-cut', pdf)
+                self.assertIn(b'CutContour_Kiss-cut', pdf)
             finally:
                 browser.close()
 
@@ -482,7 +490,7 @@ class WebMvpTests(unittest.TestCase):
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
                 page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
                 page.locator('#settings').evaluate('node => { node.open = true }')
-                self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.1')
+                self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.2')
                 self.assertEqual(page.locator('#update').inner_text(), 'Update')
                 self.assertFalse(page.locator('#lan').is_checked())
                 self.assertTrue(page.locator('#lan-note').is_hidden())
@@ -504,6 +512,98 @@ class WebMvpTests(unittest.TestCase):
                 page.locator('#settings .panel').screenshot(path=str(shots / 'lan-desktop.png'))
                 page.set_viewport_size({'width': 390, 'height': 900})
                 page.locator('#settings .panel').screenshot(path=str(shots / 'lan-mobile.png'))
+            finally:
+                browser.close()
+
+    def test_unknown_cut_name_blocks_send_until_thru_or_kiss(self):
+        from playwright.sync_api import sync_playwright
+        artwork = '''<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="80mm" viewBox="0 0 200 80">
+          <g id="cut-layer" data-name="Cut 2" data-ezn-layer="true">
+            <rect id="piece" x="8" y="8" width="160" height="60" fill="#f2c14e"/>
+          </g>
+        </svg>'''
+        source = Path(self.tmp.name) / 'cut-2.svg'
+        source.write_text(artwork, encoding='utf-8')
+        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots.mkdir(parents=True, exist_ok=True)
+        sentence = 'Unknown cut layer "Cut 2". Rename to thru or kiss.'
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+            try:
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                page.screenshot(path=str(shots / 'rc2-materials-desktop.png'), full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path=str(shots / 'rc2-materials-mobile.png'), full_page=True)
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.set_input_files('#file', str(source))
+                page.wait_for_selector('#gate.problem', timeout=90000)
+                self.assertEqual(page.locator('#checks').inner_text().strip(), sentence)
+                self.assertTrue(page.locator('#export').is_disabled())
+                self.assertFalse(page.locator('#choose-thru').is_hidden())
+                self.assertFalse(page.locator('#choose-kiss').is_hidden())
+                self.assertEqual(page.locator('#choose-thru').inner_text(), 'THRU')
+                self.assertEqual(page.locator('#choose-kiss').inner_text(), 'KISS')
+                page.screenshot(path=str(shots / 'rc2-unknown-desktop.png'), full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path=str(shots / 'rc2-unknown-mobile.png'), full_page=True)
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.keyboard.press('Enter')
+                self.assertTrue(page.locator('#export').is_disabled())
+                page.click('#choose-thru')
+                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
+                self.assertFalse(page.locator('#export').is_disabled())
+                self.assertTrue(page.locator('#choice').is_hidden())
+            finally:
+                browser.close()
+
+    def test_send_confirms_sheet_summary_before_the_file_leaves(self):
+        from playwright.sync_api import sync_playwright
+        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots.mkdir(parents=True, exist_ok=True)
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True).new_page()
+            try:
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
+                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
+                state = json.load(urlopen(self.url() + '/api/state', timeout=10))
+                self.assertFalse(page.locator('#readout').is_hidden())
+                self.assertEqual(page.locator('#sheet-id').inner_text(), state['id'])
+                page.click('#export')
+                page.wait_for_selector('#confirm:not([hidden])')
+                summary = page.locator('#confirm-summary').inner_text()
+                self.assertIn('White gloss', summary)
+                self.assertIn('51.5 in wide', summary)
+                self.assertIn('in long', summary)
+                self.assertIn('piece', summary)
+                self.assertIn(state['id'], summary)
+                self.assertEqual(page.locator('#confirm-send').inner_text(), 'Confirm send')
+                self.assertEqual(page.locator('#confirm-back').inner_text(), 'Back')
+                self.assertFalse(page.locator('#readout').is_hidden())
+                self.assertFalse(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
+                page.screenshot(path=str(shots / 'rc2-confirm-desktop.png'), full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path=str(shots / 'rc2-confirm-mobile.png'), full_page=True)
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.click('#confirm-back')
+                self.assertTrue(page.locator('#confirm').is_hidden())
+                self.assertFalse(page.locator('#export').is_hidden())
+                self.assertFalse(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
+                page.click('#export')
+                with page.expect_download(timeout=30000) as pending:
+                    page.click('#confirm-send')
+                item = pending.value
+                target = Path(self.tmp.name) / (item.suggested_filename or 'eznest.zip')
+                item.save_as(str(target))
+                with ZipFile(target) as archive:
+                    artwork = archive.read('artwork.svg').decode('utf-8')
+                self.assertIn(state['id'], artwork)
+                self.assertNotIn('barcode', artwork.casefold())
+                self.assertTrue(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
             finally:
                 browser.close()
 

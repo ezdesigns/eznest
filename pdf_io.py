@@ -9,6 +9,7 @@ import hashlib
 import io
 import json
 import math
+import re
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
@@ -345,7 +346,17 @@ def form_from_page(page, writer):
     return writer._add_object(form)
 
 
-def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutContour', sheet_filter=None, cut_mapping=None):
+def sheet_id_operators(width_mm, height_mm, margin_mm, sheet_id):
+    """Small layout id in the bottom margin, outside the corner mark area. No barcode."""
+    if not isinstance(sheet_id, str) or not re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z-]{0,79}', sheet_id):
+        return ''
+    band = margin_mm if isinstance(margin_mm, (int, float)) and not isinstance(margin_mm, bool) and margin_mm > 0 else 4
+    x = (width_mm / 2) / MM
+    y = max(band * 0.28, 1.6) / MM
+    return f'q 0 g BT /EZSheetFont 6 Tf {x:.2f} {y:.2f} Td ({sheet_id}) Tj ET Q'
+
+
+def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutContour', sheet_filter=None, cut_mapping=None, sheet_id=None):
     """Transform a piece's print art and every owned cut using one rigid matrix."""
     from cut_mapping import output_mapping,OPERATIONS
     mapping=output_mapping({'cutMapping':cut_mapping} if cut_mapping else {'cutSpot':cut_spot,'cutLayer':cut_layer})
@@ -415,6 +426,11 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
         if draw_marks:
             band=settings.get('markMargin') or settings.get('margin') or 0
             chunks.append('q\n/OC /EZRegLayer BDC\n/EZOverprint gs\n/EZReg CS 1 SCN\n0.4 w\n'+regmark_operators(result['width'], sheet['usedLength'], band)+'\nEMC\nQ')
+        label=sheet_id_operators(result['width'], sheet['usedLength'], settings.get('markMargin') or settings.get('margin') or 0, sheet_id)
+        if label:
+            resources[NameObject('/Font')]=DictionaryObject({NameObject('/EZSheetFont'):DictionaryObject({
+                NameObject('/Type'):NameObject('/Font'), NameObject('/Subtype'):NameObject('/Type1'), NameObject('/BaseFont'):NameObject('/Helvetica')})})
+            chunks.append(label)
         stream=DecodedStreamObject();stream.set_data('\n'.join(chunks).encode('ascii'));page[NameObject('/Contents')]=writer._add_object(stream)
     writer.add_metadata({'/Creator':'eznest','/Title':'Nested artwork and separate cut operations — review in RIP'})
     out=io.BytesIO();writer.write(out);return out.getvalue()
@@ -435,8 +451,16 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
         with pdfium.PdfDocument(preview) as doc:
             page=doc[0]; bitmap=page.render(scale=min(2,600/max(page.get_size())),fill_color=(255,255,255,0))
             image=bitmap.to_pil(); buffer=io.BytesIO(); image.save(buffer,format='PNG'); bitmap.close(); page.close()
+        unknown=[]
+        for path in piece.get('cutPaths') or []:
+            if path.get('operation') in ('thru','kiss','regmark'): continue
+            layers=path.get('sourceLayers') or []
+            if layers: unknown.append({'source':'layer','name':str(layers[0])})
+            elif path.get('sourceSpot'): unknown.append({'source':'spot','name':str(path['sourceSpot'])})
+        if not unknown and piece.get('cutCounts',{}).get('contour'):
+            unknown.append({'source':'spot','name':cut_spot or 'CutContour'})
         preview_parts.append({'id':piece['id'],'name':piece['name'],'points':piece['points'],'quantity':1,
-                              'documentId':ident,'pdfPieceId':piece['id'],'cutCounts':piece['cutCounts'],'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h})
+                              'documentId':ident,'pdfPieceId':piece['id'],'cutCounts':piece['cutCounts'],'cutRefs':unknown,'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h})
     (folder/(ident+'.pdf')).write_bytes(clean)
     (folder/(ident+'.json')).write_text(json.dumps(meta),encoding='utf-8')
     return {'format':'pdf','documentId':ident,'parts':preview_parts,'warnings':meta['warnings'],'bleedMm':bleed_mm,'reviewed':False,'modelVersion':2,'registrationPaintRemoved':meta['registrationPaintRemoved'],'cutMapping':meta['cutMapping']}

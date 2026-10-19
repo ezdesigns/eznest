@@ -1,4 +1,4 @@
-eznest 1.0.0-rc.1 | Windows x64 | Shop release candidate
+eznest 1.0.0-rc.2 | Windows x64 | Shop release candidate
 
 START
 Extract the complete ZIP into a writable folder.

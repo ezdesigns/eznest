@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.0-rc.2
+
+Ez Ink's shop answers for the ONYX handoff.
+
+- Cut spots default to CutContour_Thru-cut and CutContour_Kiss-cut. LNThru-cut and LNKiss-cut stay as the alternate preset.
+- A cut path whose name is not thru or kiss blocks Send. The red sentence names that layer or spot, and THRU / KISS assigns it.
+- Mark margin defaults to 0.4 in, labeled so it matches the CutServer mark setup. Max sheet length defaults to 60 in. White gloss stays 54 in stock, 51.5 in printable, Quick Set Substance Gloss GL [EZ Designs 80600] @ 720-CT.
+- Material presets are buttons. The last material and width are remembered.
+- Material used, waste, and sheets stay on screen. Send to ONYX asks once, with the material, width, length, pieces, and sheet ID, then Confirm send or Back.
+- Staging folder is optional and off until it is turned on.
+- The sheet ID is on screen and printed as small text in the file margin. No barcode.
+
 ## 1.0.0-rc.1
 
 Shop release candidate. v1 is nesting only: drop artwork, nest it, and send the sheet to ONYX.

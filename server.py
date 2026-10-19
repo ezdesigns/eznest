@@ -15,7 +15,7 @@ from urllib.parse import urlparse, parse_qs
 from engine import validate_job
 from production import validate_identity, manifest, make_package
 from folder_queue import FolderQueue
-from output_folder import OutputFolder
+from output_folder import OutputFolder, stage_pack
 from nesting import validate_request
 from shop_profiles import validate_profile, inspect_output
 from app_info import VERSION
@@ -400,6 +400,7 @@ class Handler(BaseHTTPRequestHandler):
                     digest = hashlib.sha256(package).hexdigest()
                     with FOLDER_LOCK:
                         saved = OUTPUT.save(STATE['id'], package, FOLDER.root)
+                        stage_pack(data.get('stagingFolder') or '', STATE['id'], package, FOLDER.root)
                     STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved, sha256=digest)
                     persist_state()
                     return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check,'deliveryCompleted':STATE['deliveryCompleted'],'sha256':digest})

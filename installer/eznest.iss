@@ -6,7 +6,7 @@
 #endif
 
 #define MyAppName "eznest"
-#define MyAppVersion "1.0.0-rc.1"
+#define MyAppVersion "1.0.0-rc.2"
 #define MyAppPublisher "EZ Designs TX"
 
 [Setup]

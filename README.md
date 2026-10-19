@@ -2,7 +2,7 @@
 
 **Add artwork → set material width and quantities → nest → review → export.**
 
-**1.0.0-rc.1 · shop release candidate.** Standalone local nesting for
+**1.0.0-rc.2 · shop release candidate.** Standalone local nesting for
 complete kits, decals and stickers. Illustrator, a printer model and an account
 are not required. Width comes from the material; length comes from the layout.
 
@@ -55,7 +55,7 @@ Source folder (this repository, with 64-bit Python 3.12 installed):
 2. The first time, it creates `.local\venv` and installs the engine. That window can sit for a minute. Later double-clicks open straight away.
 3. The browser opens the same address, http://127.0.0.1:8765/web.
 
-If a message says another version is using port 8765, double-click `Stop EZ Nest.cmd`, or open the old window and use Help → Quit eznest. Then double-click `eznest-web.bat` again. A 0.12 server will not share the port with 1.0.0-rc.1.
+If a message says another version is using port 8765, double-click `Stop EZ Nest.cmd`, or open the old window and use Help → Quit eznest. Then double-click `eznest-web.bat` again. A 0.12 server will not share the port with 1.0.0-rc.2.
 
 Closing the browser leaves eznest running. Double-click `Stop EZ Nest.cmd` to stop it. Help → Quit eznest does the same from the full workspace.
 
@@ -71,7 +71,7 @@ The shop server is one Windows PC. The installer puts eznest in Program Files. T
 
 The workflow is `.github/workflows/windows-installer.yml`.
 
-- Push a `v*` tag, such as `v1.0.0-rc.1`. That run attaches `eznest-setup.exe` to the GitHub release for the tag.
+- Push a `v*` tag, such as `v1.0.0-rc.2`. That run attaches `eznest-setup.exe` to the GitHub release for the tag.
 - Or open Actions, choose Windows installer, and run the workflow on this branch. That uploads `eznest-setup.exe` as an artifact and does not publish a release. GitHub shows Run workflow after this file is on the default branch, or after the workflow has run once.
 
 To build it on a Windows machine instead, install 64-bit Python 3.12 and [Inno Setup 6](https://jrsoftware.org/isinfo.php):
@@ -160,16 +160,22 @@ The gear holds the shop handoff. Width, next to the material and the sets, is th
 nest width in inches. It starts at the material's printable width and can be
 lowered. Nesting uses that width minus the mark margins. A width above the
 material, a width that cannot hold the widest piece, or a blank width is one red
-sentence and Send stays off. Sheets still split at 96 in unless you change it.
-A mark margin is reserved around the sheet so ONYX CutServer can add registration
-marks and barcodes. Those marks are not drawn unless Draw registration marks is
-on. Cut spots default to LNThru-cut and LNKiss-cut; CutContour_Thru-cut and
-CutContour_Kiss-cut are the alternate preset, pending Ez Ink's ONYX mapping.
-Full-bleed artwork is offset 1/16 in past the cut (or 1/8 in) without moving the
-cut paths. Sheets split at the max length, 96 in unless you change it. Send to
-ONYX writes the frozen pack into the hot-folder path labeled EPSON SureColor
-S80600 ONYX Input, or downloads it when that path is empty. On the ONYX PC the suggested path is `C:\ONYX\EPSON SureColor S80600 ONYX Input`. On every other PC it is `\\ONYX\EPSON SureColor S80600 ONYX Input`. The gear shows that default and does not connect it until you set the path. The page does not
-build OXF files, manifests for the cutter, or cut recipes.
+sentence and Send stays off. Sheets still split at 60 in unless you change it.
+A mark margin, 0.4 in by default, is reserved around the sheet so ONYX CutServer
+can add registration marks and barcodes. The gear says it must match the CutServer
+mark setup. Those marks are not drawn unless Draw registration marks is on.
+Cut spots default to CutContour_Thru-cut and CutContour_Kiss-cut. LNThru-cut and
+LNKiss-cut are the alternate preset. A cut name that is not thru or kiss blocks
+Send and names that layer or spot. The sheet ID is on screen and printed in the
+file margin. Send to ONYX confirms the material, width, length, pieces, and sheet
+ID before it writes the pack. Full-bleed artwork is offset 1/16 in past the cut
+(or 1/8 in) without moving the cut paths. The hot-folder path is labeled EPSON
+SureColor S80600 ONYX Input, or the pack downloads when that path is empty. An
+optional staging folder is off until you turn it on. On the ONYX PC the suggested
+path is `C:\ONYX\EPSON SureColor S80600 ONYX Input`. On every other PC it is
+`\\ONYX\EPSON SureColor S80600 ONYX Input`. The gear shows that default and does
+not connect it until you set the path. The page does not build OXF files,
+manifests for the cutter, or cut recipes.
 
 Not in v1: job history, order intake, AI batching, cost tracking, an ONYX or GoProduce proof, and laminate cost.
 The nest, the file import, and the saved shop settings stay separate so those can be added later.
