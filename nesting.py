@@ -151,6 +151,7 @@ def fill_stickers(job, result, budget=None, copy_limit=100):
 
 
 def _run(job):
+    progress = job.pop('_progress', None)
     validate_request(job)
     if job['settings'].get('sheetLength') is not None:
         from sheets import split_nest, subset
@@ -192,7 +193,7 @@ def _run(job):
                 sheet['area']=sum(shape.area for p,shape in zip(result['placements'],shapes) if p['sheet']==sheet['index'])
             return {'ok':True,'job':merged,'result':result,'requestJob':job}
         return {'ok':True,'result':result}
-    result = solve(job) if job.get('parts') else {'placements':[], 'usedLength':job['settings']['maxLength'], 'elapsed':0, 'engine':'eznest sticker fill'}
+    result = solve(job, progress) if job.get('parts') else {'placements':[], 'usedLength':job['settings']['maxLength'], 'elapsed':0, 'engine':'eznest sticker fill'}
     if job.get('fillJobs'):
         resolved, result = fill_stickers(job, result)
         return {'ok':True, 'job':resolved, 'result':result, 'requestJob':job}
@@ -209,7 +210,9 @@ def run(job):
 def worker(request, output):
     request, output = Path(request), Path(output)
     try:
-        payload = run(json.loads(request.read_text(encoding='utf-8-sig')))
+        job = json.loads(request.read_text(encoding='utf-8-sig'))
+        job['_progress'] = str(output.with_name('progress.json'))
+        payload = run(job)
     except BaseException as error:
         if isinstance(error, (KeyboardInterrupt, SystemExit)):
             raise

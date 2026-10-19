@@ -6,89 +6,72 @@
 <title>eznest</title>
 <link rel="stylesheet" href="/web.css">
 </head>
-<body>
+<body data-step="drop">
 <header>
   <a class="brand" href="/web">eznest</a>
-  <p>Local · no account · files stay on this computer</p>
-  <a href="/">Full workspace</a>
+  <p class="tag">Nests on this computer. No account.</p>
+  <a class="workspace" href="/">Full workspace</a>
 </header>
 <main>
-  <section class="card" aria-labelledby="drop-title">
-    <p class="kicker">Input</p>
+  <section id="drop-screen" class="card" aria-labelledby="drop-title">
+    <p class="kicker">Step 1</p>
     <h1 id="drop-title">Drop the kit</h1>
     <label id="drop" class="drop" for="file">
-      <strong>Drop SVG, PDF, or PDF-compatible AI</strong>
-      <span>Or choose a file. Original art is nested here, not redrawn.</span>
+      <strong>Drop a PDF, AI or SVG</strong>
+      <span>or click to choose</span>
       <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
     </label>
-    <button id="sample" type="button">Use sample-artwork.svg</button>
     <div id="kit" class="kit" hidden>
-      <div>
-        <strong id="kit-name"></strong>
-        <p id="kit-note"></p>
-      </div>
-      <div class="pills" aria-label="Detected pieces">
-        <span id="pieces" class="pill"></span>
-        <span id="thru" class="pill"></span>
-        <span id="kiss" class="pill kiss"></span>
-        <span id="fix" class="pill"></span>
-      </div>
+      <strong id="kit-name"></strong>
+      <p id="kit-note" hidden></p>
+      <p class="counts" aria-label="Detected pieces"><span id="pieces"></span> · <span id="thru"></span> · <span id="kiss"></span> · <span id="fix"></span></p>
     </div>
-    <div class="fields">
-      <label>Material
-        <select id="material">
-          <option value="54 in roll">54 in roll</option>
-          <option value="53 in roll">53 in roll</option>
-          <option value="Custom roll">Custom roll</option>
-        </select>
-      </label>
-      <label>Roll width
-        <span class="measure"><input id="width" type="number" min="0" step="any" value="54" inputmode="decimal"><span data-unit>in</span></span>
-      </label>
-      <label>Spacing
-        <span class="measure"><input id="gap" type="number" min="0" step="any" value="0.12" inputmode="decimal"><span data-unit>in</span></span>
-      </label>
-      <label>Edge
-        <span class="measure"><input id="margin" type="number" min="0" step="any" value="0.25" inputmode="decimal"><span data-unit>in</span></span>
-      </label>
+    <label class="field">Material
+      <select id="material">
+        <option value="vinyl-gloss" data-width="54" data-unit="in" selected>Vinyl + gloss lam · 54 in</option>
+        <option value="vinyl" data-width="54" data-unit="in">Vinyl · 54 in</option>
+        <option value="custom">Custom roll</option>
+      </select>
+    </label>
+    <div class="sets">
+      <span id="sets-label">Sets</span>
+      <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
+      <input id="sets" type="number" min="1" max="100" step="1" value="1" inputmode="numeric" aria-labelledby="sets-label">
+      <button id="sets-inc" type="button" aria-label="More sets">+</button>
     </div>
-    <div class="fields sets-row">
-      <div class="sets">
-        <span id="sets-label">Sets</span>
-        <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
-        <input id="sets" type="number" min="1" max="100" step="1" value="1" inputmode="numeric" aria-labelledby="sets-label">
-        <button id="sets-inc" type="button" aria-label="More sets">+</button>
-      </div>
-      <label>Rotation
-        <select id="rotations">
-          <option value="0,90,180,270">Quarter turns</option>
-          <option value="free">Any angle</option>
-          <option value="0,180">Half turns</option>
-          <option value="0">Keep orientation</option>
-        </select>
-      </label>
-      <label>Search
-        <select id="seconds">
-          <option value="5">5 seconds</option>
-          <option value="15">15 seconds</option>
-          <option value="30">30 seconds</option>
-          <option value="60">1 minute</option>
-          <option value="120">2 minutes</option>
-        </select>
-      </label>
-      <label>Units
-        <select id="unit" data-current="in">
-          <option value="in">Inches</option>
-          <option value="mm">Millimeters</option>
-          <option value="cm">Centimeters</option>
-        </select>
-      </label>
-    </div>
-    <details>
-      <summary>Sheet length, bleed, and cut names</summary>
+    <details id="settings">
+      <summary>More settings</summary>
+      <p class="fine">Material names and the hot-folder path are placeholders. Match the material to the ONYX media name. Undo and Hold for Operator stay off until the shop turns them on.</p>
       <div class="fields">
+        <label>Preset name
+          <input id="preset-name" type="text" maxlength="80" value="Vinyl + gloss lam">
+        </label>
+        <label>Roll width
+          <span class="measure"><input id="width" type="number" min="0" step="any" value="54" inputmode="decimal"><span data-unit>in</span></span>
+        </label>
+        <label>Spacing
+          <span class="measure"><input id="gap" type="number" min="0" step="any" value="0.12" inputmode="decimal"><span data-unit>in</span></span>
+        </label>
+        <label>Edge
+          <span class="measure"><input id="margin" type="number" min="0" step="any" value="0.25" inputmode="decimal"><span data-unit>in</span></span>
+        </label>
+        <label>Rotation
+          <select id="rotations">
+            <option value="0,90,180,270">Quarter turns</option>
+            <option value="free">Any angle</option>
+            <option value="0,180">Half turns</option>
+            <option value="0">Keep orientation</option>
+          </select>
+        </label>
+        <label>Units
+          <select id="unit" data-current="in">
+            <option value="in">Inches</option>
+            <option value="mm">Millimeters</option>
+            <option value="cm">Centimeters</option>
+          </select>
+        </label>
         <label>Max sheet length
-          <span class="measure"><input id="sheet" type="number" min="0" step="any" placeholder="One sheet" inputmode="decimal"><span data-unit>in</span></span>
+          <span class="measure"><input id="sheet" type="number" min="0" step="any" placeholder="No limit" inputmode="decimal"><span data-unit>in</span></span>
         </label>
         <label>Existing bleed
           <span class="measure"><input id="bleed" type="number" min="0" max="25" step="0.1" value="0" inputmode="decimal"><span>mm</span></span>
@@ -104,34 +87,63 @@
         <label>Material $ / m²
           <input id="cost" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal">
         </label>
+        <label>ONYX hot folder
+          <input id="hot-folder" type="text" placeholder="Optional local folder" autocomplete="off">
+        </label>
       </div>
-      <p class="fine">Bleed you already drew is reserved. This page does not create bleed. PDF cuts are read from named spots or layers. SVG and PDF stay in separate nests. One batch holds 100 pieces.</p>
+      <label class="check"><input id="allow-undo" type="checkbox"> Undo send while the file is still in the folder</label>
+      <label class="check"><input id="allow-hold" type="checkbox"> Hold for Operator (placeholder, off)</label>
+      <input id="seconds" type="hidden" value="5">
     </details>
-    <button id="nest" class="primary" type="button" disabled>Nest it</button>
-    <button id="cancel" class="secondary" type="button" hidden>Stop</button>
+    <button id="nest" class="primary" type="button" disabled>Nest <span class="hint">Enter</span></button>
+    <button id="again" class="link" type="button" hidden>Nest again</button>
   </section>
-  <section id="output" class="card" aria-labelledby="out-title" hidden>
-    <p class="kicker">Output</p>
-    <h1 id="out-title">Sheet ready</h1>
+
+  <section id="output" class="card" aria-label="Nested sheet">
+    <div class="metrics pending" id="readout">
+      <p id="length-cell">
+        <span class="label">Material used</span>
+        <strong id="length"><span class="num">–</span><span class="unit">ft</span></strong>
+        <small id="length-exact">of 54 in roll</small>
+      </p>
+      <p>
+        <span class="label">Waste</span>
+        <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong>
+        <small id="cost-line"></small>
+      </p>
+      <p>
+        <span class="label">Sheets</span>
+        <strong id="sheets"><span class="num">–</span></strong>
+        <small id="checks"></small>
+      </p>
+    </div>
+    <p id="gate" class="gate" role="status" hidden></p>
+    <p id="block-detail" class="detail" hidden></p>
     <div id="sheet-tabs" class="tabs" hidden></div>
-    <div class="sheet-frame">
+    <div id="sheet-frame" class="sheet-frame" hidden>
       <svg id="preview" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nested sheet"></svg>
+      <svg id="live" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nest in progress" hidden></svg>
     </div>
-    <p class="legend"><span class="swatch thru"></span> Thru-cut <span class="swatch kiss"></span> Kiss-cut <span class="swatch spare"></span> Unused material</p>
-    <div class="metrics">
-      <p><strong id="length">—</strong><span>Material</span><small id="length-exact"></small></p>
-      <p><strong id="waste" class="waste">—</strong><span>Waste</span><small id="cost-line"></small></p>
-      <p><strong id="sheets">—</strong><span>Sheets</span><small id="checks"></small></p>
+    <p id="empty" class="empty">Your sheet appears here after you nest.</p>
+    <p id="legend" class="legend" hidden><span class="swatch thru"></span> Thru-cut <span class="swatch kiss"></span> Kiss-cut <span class="swatch reg"></span> Reg marks <span class="swatch spare"></span> Waste</p>
+    <div id="choice" class="choice" hidden>
+      <button id="choose-thru" type="button">Thru</button>
+      <button id="choose-kiss" type="button">Kiss</button>
     </div>
-    <div class="actions">
-      <button id="lock" type="button">Lock layout</button>
-      <button id="export" class="primary" type="button">Export print file</button>
+    <div id="send-row" class="send-row">
+      <button id="cancel" class="primary" type="button" hidden>Stop · keep best</button>
+      <button id="export" class="primary" type="button" disabled>Send to ONYX <span class="hint">Enter</span></button>
+      <button id="download-only" class="link" type="button" disabled>Download only</button>
     </div>
-    <div id="locked" class="locked" hidden>
-      <p>Locked. Opening this page again, or exporting again, uses this file.</p>
-      <label>Layout ID <input id="layout-id" readonly></label>
-      <label>SHA-256 <input id="layout-hash" readonly></label>
+    <button id="improve" class="link" type="button" hidden>Try a better fit</button>
+    <div id="sent-panel" hidden>
+      <p id="sent-file"></p>
+      <p id="sent-hold" hidden></p>
+      <button id="next" class="link" type="button">Next kit</button>
+      <button id="undo" class="link" type="button" hidden>Undo send</button>
     </div>
+    <input id="layout-id" hidden readonly tabindex="-1" aria-label="Layout ID">
+    <input id="layout-hash" hidden readonly tabindex="-1" aria-label="SHA-256">
   </section>
 </main>
 <p id="status" role="status"></p>

@@ -148,6 +148,14 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         finish_search({'ok': False, 'error': 'The engine stopped without returning a layout.'})
                 public = {k: v for k, v in STATE.items() if k not in ('output', 'incumbent')}
+                if public.get('status') == 'running' and STATE.get('output'):
+                    progress = Path(STATE['output']).with_name('progress.json')
+                    try:
+                        live = json.loads(progress.read_text(encoding='utf-8'))
+                        if live.get('ok') and live.get('result'):
+                            public['live'] = live['result']
+                    except (OSError, ValueError):
+                        pass
             return self.send(200, public)
         if path == '/api/selection':
             source = WORK / 'selection.json'
@@ -267,15 +275,46 @@ class Handler(BaseHTTPRequestHandler):
                     if incumbent:
                         STATE['incumbent'] = incumbent
                 elif self.path == '/api/cancel':
+                    keep = data.get('keepBest') is True
                     if PROCESS and PROCESS.poll() is None:
                         PROCESS.terminate()
                         PROCESS.wait(timeout=5)
-                    incumbent = STATE.get('incumbent')
-                    STATE.clear()
-                    STATE.update(incumbent or {'status': 'cancelled'})
-                    if incumbent:
-                        STATE['note'] = 'Search cancelled; your best layout is retained.'
+                    live = None
+                    if keep and STATE.get('status') == 'running' and STATE.get('output'):
+                        try:
+                            payload = json.loads(Path(STATE['output']).with_name('progress.json').read_text(encoding='utf-8'))
+                            if payload.get('ok') and payload.get('result'):
+                                live = payload['result']
+                        except (OSError, ValueError):
+                            live = None
+                    if live:
+                        STATE.pop('incumbent', None)
+                        STATE.pop('output', None)
+                        STATE.update(status='ready', ok=True, result=live, note='Stopped. This is the best layout so far.')
+                        if STATE.get('job', {}).get('productionJobs'):
+                            STATE['manifest'] = manifest(STATE['job'], STATE['result'], STATE['id'])
+                            check = batch_output_check(STATE['job'])
+                            if check:
+                                STATE['manifest']['outputCheck'] = check
+                    else:
+                        incumbent = STATE.get('incumbent')
+                        STATE.clear()
+                        STATE.update(incumbent or {'status': 'cancelled'})
+                        if incumbent:
+                            STATE['note'] = 'Search cancelled; your best layout is retained.'
                     persist_state()
+                elif self.path == '/api/output/undo':
+                    if STATE.get('status') != 'ready' or not STATE.get('released') or data.get('id') != STATE.get('id'):
+                        raise ValueError('Send a layout before undoing it.')
+                    if not OUTPUT.root:
+                        raise ValueError('No hot folder is set.')
+                    import shutil
+                    root = OUTPUT.root.resolve(strict=True)
+                    destination = root / ('eznest-' + STATE['id'])
+                    if not destination.is_dir() or destination.is_symlink() or not destination.resolve().is_relative_to(root):
+                        raise ValueError('That file is no longer in the hot folder.')
+                    shutil.rmtree(destination)
+                    return self.send(200, {'ok': True})
                 elif self.path == '/api/shutdown':
                     if STATE.get('status') == 'running':
                         raise ValueError('Stop the current search before closing eznest.')

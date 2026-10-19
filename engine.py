@@ -110,7 +110,7 @@ def validate_result(job, result):
     return shapes
 
 
-def solve(job):
+def solve(job, progress_path=None):
     width, length, gap, margin, seconds = validate_job(job)
     started = time.monotonic()
     # Sparrow's finite axis is Y. Reflect x/y at the boundary of the adapter.
@@ -137,13 +137,58 @@ def solve(job):
         items.append(spyrrow.Item(part['id'], [(y, x) for x, y in envelope.exterior.coords], part.get('quantity', 1), orientations))
     # Small extra clearance absorbs native floating-point error; zero gap remains valid.
     config = spyrrow.StripPackingConfig(total_computation_time=int(seconds), min_items_separation=gap + 0.02, num_workers=2, seed=int(job['settings'].get('seed', 42)), early_termination=True)
-    solution = spyrrow.StripPackingInstance('eznest', width - 2 * margin, items).solve(config)
-    result = {'placements': [{'id': p.id, 'rotation': base_rotations[p.id] - p.rotation, 'x': p.translation[1] + margin, 'y': p.translation[0] + margin} for p in solution.placed_items]}
-    shapes = validate_result(job, result)
-    used_length = max(p.bounds[3] for p in shapes) + margin
-    area = sum(p.area for p in shapes)
-    result.update({'width': width, 'usedLength': used_length, 'area': area, 'utilization': area / (width * used_length), 'elapsed': time.monotonic() - started, 'engine': 'Sparrow via spyrrow ' + spyrrow.__version__, 'validated': True})
-    return result
+    instance = spyrrow.StripPackingInstance('eznest', width - 2 * margin, items)
+    progress_path = progress_path or job.pop('_progress', None)
+
+    def build(solution):
+        result = {'placements': [{'id': p.id, 'rotation': base_rotations[p.id] - p.rotation, 'x': p.translation[1] + margin, 'y': p.translation[0] + margin} for p in solution.placed_items]}
+        shapes = validate_result(job, result)
+        used_length = max(p.bounds[3] for p in shapes) + margin
+        area = sum(p.area for p in shapes)
+        result.update({'width': width, 'usedLength': used_length, 'area': area, 'utilization': area / (width * used_length), 'elapsed': time.monotonic() - started, 'engine': 'Sparrow via spyrrow ' + spyrrow.__version__, 'validated': True})
+        return result
+
+    if not progress_path:
+        return build(instance.solve(config))
+    import json
+    import threading
+    from pathlib import Path
+    queue = spyrrow.ProgressQueue()
+    holder, failure, best = {}, {}, -1
+    feasible = (spyrrow.ReportType.ExplFeas, spyrrow.ReportType.CmprFeas, spyrrow.ReportType.Final)
+
+    def run():
+        try:
+            holder['solution'] = instance.solve(config, queue)
+        except BaseException as error:
+            failure['error'] = error
+
+    def publish(reports):
+        nonlocal best
+        for kind, solution in reports:
+            if kind not in feasible:
+                continue
+            try:
+                partial = build(solution)
+            except (ValueError, ZeroDivisionError):
+                continue
+            if partial['utilization'] <= best + 1e-9:
+                continue
+            best = partial['utilization']
+            path = Path(progress_path)
+            temporary = path.with_suffix('.tmp')
+            temporary.write_text(json.dumps({'ok': True, 'result': partial}), encoding='utf-8')
+            temporary.replace(path)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    while thread.is_alive():
+        publish(queue.drain())
+        thread.join(0.2)
+    publish(queue.drain())
+    if 'error' in failure:
+        raise failure['error']
+    return build(holder['solution'])
 
 
 if __name__ == '__main__':

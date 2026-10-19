@@ -57,7 +57,7 @@ Developer options: --no-browser, --port 8767, --data-dir "isolated test folder".
 
 ## Run the web page
 
-The simple page is one screen: drop a kit, set the roll, nest, lock the layout, and export.
+The simple page is one screen: drop a kit, set the material and the sets, nest, then Send to ONYX.
 It uses the same local Python server as the Windows app. Nesting stays on this computer.
 There is no account. SVG is the first format. PDF and PDF-compatible AI use the existing
 cut-spot importer. The full workspace remains at `/`.
@@ -72,7 +72,7 @@ python3 -m venv .local/venv
 
 On Windows, use `.local\venv\Scripts\python.exe launcher.py --web`.
 Then open http://127.0.0.1:8765/web. `--no-browser` prints the address without opening one.
-`sample-artwork.svg` is on that page as "Use sample-artwork.svg".
+Drop `sample-artwork.svg` on that page to try a nest without shop artwork.
 
 Docker, from this directory:
 
@@ -84,8 +84,9 @@ docker run --rm -p 8765:8765 eznest
 Open http://127.0.0.1:8765/web. The server still accepts only loopback host names.
 Publish port 8765, or the page will refuse the request.
 
-Lock writes one frozen package. Exporting again, or opening the page again after a
-restart, returns that same file and the same SHA-256. The layout id is on the page.
+Send to ONYX writes one frozen package. Sending again, or opening the page again after a
+restart, returns that same file and the same SHA-256. The layout id and hash stay in that
+package. The page shows material used, waste, and sheets.
 
 Not in this page: automatic bleed, an ONYX or GoProduce proof, laminate cost, and
 the later pro pass that batches work by time. PDF import is still 20 MB, 25 pages,
