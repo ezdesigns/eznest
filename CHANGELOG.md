@@ -10,5 +10,9 @@ Shop release candidate. v1 is nesting only: drop artwork, nest it, and send the 
 - `eznest-web.bat` starts the local server and opens the shop page. No terminal is required.
 - Material, nest width, hot-folder path, and cut spot names persist in the browser for this address. The hot-folder path also stays on this computer.
 - The shop handoff from the beta stays: mark margins, LN cut names, printable width, auto bleed, and the ONYX hot folder.
+- One shop server, many browsers. `eznest-setup.exe` installs to Program Files, adds a desktop shortcut, and can start eznest at boot with Task Scheduler. The shop PC does not need Python or Git.
+- Shop network is off by default. Turn it on to listen for other PCs at `http://<server-name>:8765/web`. The gear shows that address and warns that it is for the shop network only.
+- The hot-folder default is `C:\ONYX\EPSON SureColor S80600 ONYX Input` on the ONYX PC and `\\ONYX\EPSON SureColor S80600 ONYX Input` from every other PC.
+- The gear shows the version. Update checks the latest eznest release and downloads the official installer.
 
 Not in v1, so they can be added later without replacing the nest: job history, order intake, AI batching, cost tracking as a product, OXF or cut recipes, and a physical ONYX proof.

@@ -63,6 +63,44 @@ Material, width, and cut spot names stay in that browser for http://127.0.0.1:87
 
 `eznest.exe` without the bat still opens the full workspace at http://127.0.0.1:8765/.
 
+One shop computer runs eznest. The other computers only open a browser. Use the installer below for that computer. `eznest-web.bat` is still the one-PC start.
+
+## Install on the shop server
+
+The shop server is one Windows PC. The installer puts eznest in Program Files. That PC does not need Python or Git.
+
+Build the installer on a Windows machine that has 64-bit Python 3.12 and [Inno Setup 6](https://jrsoftware.org/isinfo.php):
+
+```powershell
+py -3.12 -m pip install -r requirements.txt -r requirements-build.txt
+py -3.12 build_windows.py --out ..\eznest-build
+```
+
+`build_windows.py` makes the portable folder, then runs `ISCC` when Inno Setup 6 is installed. The result is `installer\Output\eznest-setup.exe`. If Inno Setup is missing, the portable folder is still there and `ISCC installer\eznest.iss /DSourceDir=..\eznest-build\dist\eznest` finishes the setup program. This Linux checkout cannot compile that exe.
+
+On the shop server:
+
+1. Close any older eznest, including a 0.12 build on port 8765. Double-click `Stop EZ Nest.cmd`, or use Help → Quit eznest.
+2. Run `eznest-setup.exe`.
+3. It installs to `C:\Program Files\eznest` and adds a desktop shortcut named eznest.
+4. Leave "Start eznest when Windows starts" on if this PC should come up ready. That registers a Task Scheduler task named `eznest`. At boot it runs `eznest-server.cmd`, which is `eznest.exe --web --no-browser` with its data in `%ProgramData%\eznest`. The desktop shortcut opens the browser. Boot does not.
+5. Leave "Shop network" off unless other PCs on this network will open the page. Leave "This PC runs ONYX" off unless this is the ONYX computer.
+
+Settings and the hot-folder path for an installed copy live in `%ProgramData%\eznest`, because Program Files is not writable. A portable folder that is not under Program Files still uses `data\` beside the exe.
+
+Closing the browser does not stop eznest. Double-click `Stop EZ Nest.cmd` in the install folder, or use Help → Quit eznest from the full workspace.
+
+## Open from other PCs
+
+Shop network is off until you turn it on. When it is on, eznest listens on this computer's addresses and the gear warns that the page is for the shop network only.
+
+1. In the installer, check Shop network, or after install open the gear on the server and check Shop network. Restart eznest so the new binding is the one that is running.
+2. The gear shows the address, `http://<server-name>:8765/web`, and the first private address. Other shop PCs open that address. They do not install eznest.
+3. The installer opens Windows Firewall for TCP 8765 on the private profile only when Shop network is selected. It does not open a public profile.
+4. The warning in the gear stays visible while Shop network is on: other computers on this network can open the page. Do not forward port 8765 to the internet.
+
+A container still uses `--host 0.0.0.0` without shop-network mode. That accepts loopback host names on the published port and rejects every other name.
+
 ## Run on Windows
 
 Extract the entire portable ZIP and open eznest.exe. Keep _internal beside it.
@@ -106,7 +144,7 @@ docker build -t eznest .
 docker run --rm -p 8765:8765 eznest
 ```
 
-Open http://127.0.0.1:8765/web. The server still accepts only loopback host names.
+Open http://127.0.0.1:8765/web. By default the server accepts only loopback host names, including whatever port Docker publishes. Shop network is separate: the gear or the installer can listen on this computer and accept its name. That option is off unless you turn it on, and it is for the shop LAN.
 Publish port 8765, or the page will refuse the request.
 
 Send to ONYX writes one frozen package. Sending again, or opening the page again after a
@@ -125,7 +163,7 @@ CutContour_Kiss-cut are the alternate preset, pending Ez Ink's ONYX mapping.
 Full-bleed artwork is offset 1/16 in past the cut (or 1/8 in) without moving the
 cut paths. Sheets split at the max length, 96 in unless you change it. Send to
 ONYX writes the frozen pack into the hot-folder path labeled EPSON SureColor
-S80600 ONYX Input, or downloads it when that path is empty. The page does not
+S80600 ONYX Input, or downloads it when that path is empty. On the ONYX PC the suggested path is `C:\ONYX\EPSON SureColor S80600 ONYX Input`. On every other PC it is `\\ONYX\EPSON SureColor S80600 ONYX Input`. The gear shows that default and does not connect it until you set the path. The page does not
 build OXF files, manifests for the cutter, or cut recipes.
 
 Not in v1: job history, order intake, AI batching, cost tracking, an ONYX or GoProduce proof, and laminate cost.
@@ -152,6 +190,7 @@ node tests/test_boundaries.cjs
 
 GitHub Actions runs the checks on Windows, Python 3.12 and Node 24. Use a new
 build directory outside the source tree. Zip its complete dist/eznest folder.
+On Windows, the same build runs Inno Setup when `ISCC` is installed and writes `eznest-setup.exe`.
 
 ## Repository map
 
@@ -163,7 +202,8 @@ build directory outside the source tree. Zip its complete dist/eznest folder.
 | cut_mapping.py, cut-mapping.js | Shareable cut rules, names and validation |
 | engine.py, nesting.py, sheets.py | Nesting, validation, filler and sheets |
 | production.py, costing.py | Packages, sorting and material estimates |
-| server.py, launcher.py | Local API and isolated workers |
+| server.py, launcher.py, shop_deploy.py | Local API, shop network, and release check |
+| installer/ | Inno Setup script for the shop server |
 | folder_queue.py, output_folder.py | SVG source watching and safe folder saves |
 | shop-profiles.js, shop_profiles.py | Configurable output requirements |
 | tests/ | Geometry, renderer, HTTP API and queue checks |

@@ -2,6 +2,7 @@
 import argparse
 import importlib.metadata as metadata
 import json
+import os
 from pathlib import Path
 import shutil
 import struct
@@ -30,7 +31,8 @@ def main():
     for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer']:command+=['--copy-metadata',name]
     subprocess.run(command+[str(ROOT/'launcher.py')],cwd=ROOT,check=True)
     release=out/'dist'/'eznest'
-    for name in ['START HERE.txt','Stop EZ Nest.cmd','Stop EZ Nest.ps1','eznest-web.bat','THIRD_PARTY.md','version.json']:shutil.copy2(ROOT/name,release/name)
+    for name in ['START HERE.txt','Stop EZ Nest.cmd','Stop EZ Nest.ps1','eznest-web.bat','eznest-server.cmd','THIRD_PARTY.md','version.json']:shutil.copy2(ROOT/name,release/name)
+    shutil.copy2(ROOT/'installer'/'install-shop.ps1',release/'install-shop.ps1')
     (release/'examples').mkdir();shutil.copy2(ROOT/'sample-artwork.svg',release/'examples'/'sample-artwork.svg')
     shutil.copytree(ROOT/'licenses',release/'licenses')
     licenses=release/'licenses'
@@ -47,5 +49,20 @@ def main():
     manifest['python']=sys.version;manifest['app']=json.loads((ROOT/'version.json').read_text())
     (release/'BUILD.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     print(f'Portable app: {release}')
+    compile_setup(release)
+
+
+def compile_setup(release):
+    """Compile eznest-setup.exe when Inno Setup is installed. A missing compiler leaves the portable folder."""
+    iscc = shutil.which('ISCC')
+    if not iscc:
+        candidate = Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)')) / 'Inno Setup 6' / 'ISCC.exe'
+        if candidate.is_file():
+            iscc = str(candidate)
+    if not iscc:
+        print('Inno Setup 6 is not installed. The portable folder is ready. Run ISCC on installer/eznest.iss to build eznest-setup.exe.')
+        return
+    subprocess.run([iscc, '/DSourceDir=' + str(release), str(ROOT / 'installer' / 'eznest.iss')], cwd=ROOT, check=True)
+    print('Installer: ' + str(ROOT / 'installer' / 'Output' / 'eznest-setup.exe'))
 
 if __name__=='__main__':main()

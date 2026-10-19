@@ -468,6 +468,45 @@ class WebMvpTests(unittest.TestCase):
                     pass
                 browser.close()
 
+    def test_shop_server_gear(self):
+        from playwright.sync_api import sync_playwright
+        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots.mkdir(parents=True, exist_ok=True)
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+            try:
+                page.route('**/api/update', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({
+                    'ok': True, 'current': '1.0.0-rc.1', 'latest': '1.0.0-rc.1', 'updated': False, 'message': 'This is the latest release.'
+                })))
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                page.locator('#settings').evaluate('node => { node.open = true }')
+                self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.1')
+                self.assertEqual(page.locator('#update').inner_text(), 'Update')
+                self.assertFalse(page.locator('#lan').is_checked())
+                self.assertTrue(page.locator('#lan-note').is_hidden())
+                page.click('#update')
+                page.wait_for_function("() => /latest release/i.test(document.querySelector('#status').textContent)", timeout=10000)
+                page.locator('#lan').check()
+                page.wait_for_function("() => !document.querySelector('#lan-note').hidden")
+                self.assertIn('shop network only', page.locator('#lan-note').inner_text().casefold())
+                self.assertIn(f':{server.PORT}/web', page.locator('#lan-address').inner_text())
+                self.assertIn('Restart eznest to open the shop network.', page.locator('#lan-restart').inner_text())
+                page.locator('#onyx-pc').check()
+                page.wait_for_function("() => document.querySelector('#hot-default').textContent.includes('C:\\\\ONYX\\\\')")
+                self.assertIn(r'C:\ONYX\EPSON SureColor S80600 ONYX Input', page.locator('#hot-default').inner_text())
+                page.locator('#onyx-pc').uncheck()
+                page.wait_for_function("() => document.querySelector('#hot-default').textContent.includes('\\\\\\\\ONYX\\\\')")
+                self.assertIn(r'\\ONYX\EPSON SureColor S80600 ONYX Input', page.locator('#hot-default').inner_text())
+                self.assertEqual(page.input_value('#hot-folder'), '')
+                page.locator('#settings .panel').evaluate('node => { node.style.maxHeight = "none"; node.style.overflow = "visible"; }')
+                page.locator('#settings .panel').screenshot(path=str(shots / 'lan-desktop.png'))
+                page.set_viewport_size({'width': 390, 'height': 900})
+                page.locator('#settings .panel').screenshot(path=str(shots / 'lan-mobile.png'))
+            finally:
+                browser.close()
+
 
 if __name__ == '__main__':
     unittest.main()

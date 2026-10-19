@@ -1,4 +1,4 @@
-"""Loopback-only prototype server; each native search runs in an isolated process."""
+"""Local shop server. Loopback by default; the shop network is an explicit option."""
 import hashlib
 import json
 import os
@@ -19,6 +19,7 @@ from output_folder import OutputFolder
 from nesting import validate_request
 from shop_profiles import validate_profile, inspect_output
 from app_info import VERSION
+from shop_deploy import WARNING, default_hot_folder, lan_addresses, load_shop, pull_latest, save_shop, shop_name_allowed
 
 ROOT = Path(__file__).resolve().parent
 WORK = Path(os.environ.get('EZ_NEST_DATA', ROOT / '.local')).resolve()
@@ -29,10 +30,29 @@ STATE = {'status': 'idle'}
 PROCESS = None
 PORT = int(os.environ.get('EZ_NEST_PORT', '8765'))
 HOST = os.environ.get('EZ_NEST_HOST', '127.0.0.1')
+LAN = os.environ.get('EZ_NEST_LAN', '') == '1'
 FOLDER = FolderQueue(WORK / 'production-folder.json')
 FOLDER_LOCK = threading.Lock()
 OUTPUT = OutputFolder(WORK / 'output-folder.json')
 DOCUMENT_LOCK = threading.Lock()
+
+
+def shop_status():
+    saved = load_shop(WORK)
+    running = LAN and HOST == '0.0.0.0'
+    return {
+        'version': VERSION,
+        'onyxPc': saved['onyxPc'],
+        'lan': saved['lan'],
+        'runningLan': running,
+        'restart': saved['lan'] != running,
+        'port': PORT,
+        'name': socket.gethostname(),
+        'addresses': lan_addresses(),
+        'url': f'http://{socket.gethostname()}:{PORT}/web',
+        'warning': WARNING,
+        'hotFolderDefault': default_hot_folder(saved['onyxPc']),
+    }
 
 
 def apply_web_export(job, data):
@@ -122,11 +142,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def local_name(self, value):
         name, separator, port = (value or '').partition(':')
-        if name not in ('127.0.0.1', 'localhost') or not separator:
+        if not separator:
             return False
-        # The desktop app only accepts its own port. A container published on
-        # another host port still sends a loopback Host name.
-        return True if HOST != '127.0.0.1' else port == str(PORT)
+        if name in ('127.0.0.1', 'localhost'):
+            # The desktop app only accepts its own port. A container published on
+            # another host port still sends a loopback Host name.
+            return True if HOST != '127.0.0.1' else port == str(PORT)
+        if not LAN or port != str(PORT):
+            return False
+        return shop_name_allowed(name)
 
     def allowed(self):
         return self.local_name(self.headers.get('Host'))
@@ -139,6 +163,8 @@ class Handler(BaseHTTPRequestHandler):
             path = '/web'
         if path == '/api/session':
             return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION})
+        if path == '/api/shop':
+            return self.send(200, shop_status())
         if path == '/api/output':
             return self.send(200, OUTPUT.status())
         if path == '/api/folder':
@@ -242,6 +268,11 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(200, {'cancelled': True})
                 with FOLDER_LOCK:
                     return self.send(200, OUTPUT.connect(data.get('path',''), FOLDER.root))
+            if self.path == '/api/shop':
+                save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True)
+                return self.send(200, shop_status())
+            if self.path == '/api/update':
+                return self.send(200, pull_latest(WORK, VERSION))
             if self.path.startswith('/api/folder/'):
                 if self.path == '/api/folder/pick':
                     if os.name != 'nt':
@@ -417,6 +448,8 @@ def serve(open_browser=False, page='/'):
         webbrowser.open(f'http://127.0.0.1:{PORT}{page}')
     if sys.stdout:
         print(f'eznest ready: http://127.0.0.1:{PORT}{page}', flush=True)
+        if LAN:
+            print(f'Shop network: http://{socket.gethostname()}:{PORT}{page}', flush=True)
     try:
         service.serve_forever()
     finally:

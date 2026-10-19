@@ -1,9 +1,14 @@
 import io
 import json
+import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
+from urllib.error import URLError
 import launcher
+import server
 
 
 class LauncherTests(unittest.TestCase):
@@ -32,3 +37,44 @@ class LauncherTests(unittest.TestCase):
         with patch.object(sys,'argv',['eznest','--port','80']),patch.object(launcher,'urlopen') as lookup:
             with self.assertRaises(ValueError):launcher.main()
             lookup.assert_not_called()
+
+    def _launch(self, argv, shop=None):
+        previous = {key: os.environ.get(key) for key in ('EZ_NEST_HOST', 'EZ_NEST_LAN', 'EZ_NEST_DATA', 'EZ_NEST_PORT')}
+        saved = (server.HOST, server.LAN, server.PORT)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                if shop is not None:
+                    Path(tmp, 'shop.json').write_text(json.dumps(shop), encoding='utf-8')
+                with patch.object(sys, 'argv', ['eznest', *argv, '--data-dir', tmp]), \
+                     patch.object(launcher, 'urlopen', side_effect=URLError('down')), \
+                     patch('server.serve') as serve:
+                    self.assertEqual(launcher.main(), 0)
+                    serve.assert_called_once()
+                    return os.environ['EZ_NEST_HOST'], os.environ['EZ_NEST_LAN']
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            server.HOST, server.LAN, server.PORT = saved
+
+    def test_lan_flag_opens_the_shop_network(self):
+        host, lan = self._launch(['--lan', '--no-browser'])
+        self.assertEqual(host, '0.0.0.0')
+        self.assertEqual(lan, '1')
+
+    def test_saved_shop_network_opens_without_a_host_flag(self):
+        host, lan = self._launch(['--no-browser'], {'onyxPc': False, 'lan': True})
+        self.assertEqual(host, '0.0.0.0')
+        self.assertEqual(lan, '1')
+
+    def test_default_start_stays_on_loopback(self):
+        host, lan = self._launch(['--no-browser'])
+        self.assertEqual(host, '127.0.0.1')
+        self.assertEqual(lan, '0')
+
+    def test_container_host_does_not_enable_shop_names(self):
+        host, lan = self._launch(['--host', '0.0.0.0', '--no-browser'], {'lan': True})
+        self.assertEqual(host, '0.0.0.0')
+        self.assertEqual(lan, '0')

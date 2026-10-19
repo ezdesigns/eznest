@@ -1101,6 +1101,49 @@ function rememberPreset() {
   savePrefs(stored);
 }
 
+function showLan(shop) {
+  const on = $('lan').checked;
+  $('lan-note').hidden = !on;
+  $('lan-note').textContent = (shop && shop.warning) || 'Shop network only. Other computers on this network can open this page.';
+  const bits = [];
+  if (shop && shop.url) bits.push(shop.url);
+  if (shop && shop.addresses && shop.addresses.length) bits.push(shop.addresses[0]);
+  $('lan-address').textContent = bits.filter(Boolean).join(' · ');
+  $('lan-address').hidden = !on;
+}
+
+function showHotDefault(path) {
+  $('hot-default').textContent = path ? 'Default ' + path : '';
+  if (!$('hot-folder').value && path) $('hot-folder').placeholder = path;
+}
+
+function showRestart(shop) {
+  const note = $('lan-restart');
+  if (!shop || !shop.restart) {
+    note.hidden = true;
+    note.textContent = '';
+    return;
+  }
+  note.hidden = false;
+  note.textContent = shop.lan ? 'Restart eznest to open the shop network.' : 'Shop network turns off after you restart eznest.';
+}
+
+function applyShop(shop) {
+  $('app-version').textContent = shop.version || '';
+  $('onyx-pc').checked = shop.onyxPc === true;
+  $('lan').checked = shop.lan === true;
+  showLan(shop);
+  showRestart(shop);
+  showHotDefault(shop.hotFolderDefault);
+}
+
+async function saveDeploy() {
+  const result = await api('/api/shop', {lan: $('lan').checked, onyxPc: $('onyx-pc').checked});
+  applyShop(result);
+  if (result.restart && result.lan) status('Restart eznest to open the shop network.');
+  else if (result.restart) status('Shop network turns off after you restart eznest.');
+}
+
 async function saveHotFolder() {
   const path = $('hot-folder').value.trim();
   try {
@@ -1223,6 +1266,9 @@ async function boot() {
     if (folder.path) $('hot-folder').value = folder.path;
     else if (stored.hotFolder) $('hot-folder').value = stored.hotFolder;
   } catch { /* The folder status is optional. */ }
+  try {
+    applyShop(await (await fetch('/api/shop')).json());
+  } catch { /* Shop network settings stay off when the server has none. */ }
   const state = await (await fetch('/api/state')).json();
   if (state.status === 'running') { busy = true; showScreen('nest'); renderActions(); setTimeout(poll, 300); }
   else if (state.status === 'ready' && state.manifest) showResult(state);
@@ -1275,6 +1321,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('auto-bleed').addEventListener('change', () => { if (current && current.result && !busy && !saving) renderPreview(activeSheet); });
   $('preset-name').addEventListener('change', rememberPreset);
   $('hot-folder').addEventListener('change', saveHotFolder);
+  $('lan').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  $('onyx-pc').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  $('update').addEventListener('click', async () => {
+    try { status((await api('/api/update', {})).message); }
+    catch (error) { status(error.message, true); }
+  });
   $('allow-undo').addEventListener('change', () => { savePrefs({undo: $('allow-undo').checked}); renderActions(); });
   $('allow-hold').addEventListener('change', () => savePrefs({hold: $('allow-hold').checked}));
   $('export').addEventListener('click', () => exportFile(false));
@@ -1302,7 +1354,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop')) return;
+    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #update')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

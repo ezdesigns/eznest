@@ -7,6 +7,7 @@ import sys
 from urllib.request import urlopen
 from urllib.error import URLError
 from app_info import VERSION
+from shop_deploy import data_directory, load_shop
 
 
 def main():
@@ -21,11 +22,12 @@ def main():
     parser = argparse.ArgumentParser(description='eznest local nesting workspace')
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--web', action='store_true', help='Open the simple nest page')
-    parser.add_argument('--host', default='127.0.0.1', help='127.0.0.1, or 0.0.0.0 inside a local container')
+    parser.add_argument('--host', default=None, help='127.0.0.1, or 0.0.0.0 inside a local container')
+    parser.add_argument('--lan', action='store_true', help='Open the shop network on this computer')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--data-dir', type=Path)
     args = parser.parse_args()
-    if args.host not in ('127.0.0.1', '0.0.0.0'):
+    if args.host is not None and args.host not in ('127.0.0.1', '0.0.0.0'):
         raise ValueError('Bind to 127.0.0.1, or 0.0.0.0 inside a local container.')
     if not 1024 <= args.port <= 65535:
         raise ValueError('Choose a local port from 1024 to 65535.')
@@ -44,11 +46,29 @@ def main():
             webbrowser.open(address + page)
         return 0
     package_root = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
-    data = args.data_dir or package_root / ('data' if getattr(sys, 'frozen', False) else '.local')
+    frozen = getattr(sys, 'frozen', False)
+    data = data_directory(package_root, args.data_dir, frozen=frozen, program_files=os.environ.get('ProgramFiles'), program_data=os.environ.get('ProgramData'))
+    saved = load_shop(data)
+    if args.lan:
+        host, lan = '0.0.0.0', True
+    elif args.host == '0.0.0.0':
+        host, lan = '0.0.0.0', False
+    elif args.host == '127.0.0.1':
+        host, lan = '127.0.0.1', False
+    elif saved['lan']:
+        host, lan = '0.0.0.0', True
+    else:
+        host, lan = '127.0.0.1', False
     data.mkdir(parents=True, exist_ok=True)
     os.environ['EZ_NEST_DATA'] = str(data.resolve())
     os.environ['EZ_NEST_PORT'] = str(args.port)
-    os.environ['EZ_NEST_HOST'] = args.host
+    os.environ['EZ_NEST_HOST'] = host
+    os.environ['EZ_NEST_LAN'] = '1' if lan else '0'
+    running = sys.modules.get('server')
+    if running is not None:
+        running.HOST = host
+        running.PORT = args.port
+        running.LAN = lan
     # Do not expose development-only pages in a distributed executable.
     if getattr(sys, 'frozen', False):
         os.environ.pop('EZ_NEST_TEST_UI', None)

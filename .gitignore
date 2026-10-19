@@ -21,6 +21,7 @@ htmlcov/
 # Generated builds, release downloads and export batches
 /build/
 /dist/
+/installer/Output/
 *.spec
 *.exe
 *.dll

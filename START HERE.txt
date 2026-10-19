@@ -2,7 +2,8 @@ eznest 1.0.0-rc.1 | Windows x64 | Shop release candidate
 
 START
 Extract the complete ZIP into a writable folder.
-For the shop page, double-click eznest-web.bat. It opens http://127.0.0.1:8765/web.
+For one PC, double-click eznest-web.bat. It opens http://127.0.0.1:8765/web.
+For the shop server, run eznest-setup.exe instead. See README, "Install on the shop server".
 eznest.exe opens the full workspace at http://127.0.0.1:8765/.
 Keep _internal beside the exe. No separate Python installation or account is needed.
 Stop an older version on that port first. See README, "Run eznest in the shop".
