@@ -6,7 +6,7 @@
 #endif
 
 #define MyAppName "eznest"
-#define MyAppVersion "1.0.0-rc.2"
+#define MyAppVersion "1.0.0-rc.3"
 #define MyAppPublisher "EZ Designs TX"
 
 [Setup]
@@ -36,10 +36,12 @@ Name: "desktopicon"; Description: "Desktop shortcut"; GroupDescription: "Shortcu
 Name: "startatboot"; Description: "Start eznest when Windows starts"; GroupDescription: "Shop server:"; Flags: checkedonce
 Name: "lan"; Description: "Shop network (other PCs on this network)"; GroupDescription: "Shop server:"; Flags: unchecked
 Name: "onyxpc"; Description: "This PC runs ONYX"; GroupDescription: "Shop server:"; Flags: unchecked
+Name: "noupdates"; Description: "Disable updates (offline install)"; GroupDescription: "Shop server:"; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "BUILD.json"
 Source: "install-shop.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{src}\BUILD.json"; DestDir: "{app}"; Flags: external skipifsourcedoesntexist
 
 [Icons]
 Name: "{commondesktop}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""; Tasks: desktopicon
@@ -47,7 +49,7 @@ Name: "{group}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "--web --data-
 Name: "{group}\Stop eznest"; Filename: "{app}\Stop EZ Nest.cmd"
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-shop.ps1"" -DataDir ""{commonappdata}\eznest"" -App ""{app}\eznest.exe"" -OnyxPc {code:OnyxFlag} -Lan {code:LanFlag} -StartAtBoot {code:BootFlag}"; Flags: runhidden waituntilterminated
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-shop.ps1"" -DataDir ""{commonappdata}\eznest"" -App ""{app}\eznest.exe"" -OnyxPc {code:OnyxFlag} -Lan {code:LanFlag} -StartAtBoot {code:BootFlag} -Updates {code:UpdatesFlag}"; Flags: runhidden waituntilterminated
 Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""; Description: "Open eznest"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
@@ -68,4 +70,9 @@ end;
 function BootFlag(Param: String): String;
 begin
   if WizardIsTaskSelected('startatboot') then Result := '1' else Result := '0';
+end;
+
+function UpdatesFlag(Param: String): String;
+begin
+  if WizardIsTaskSelected('noupdates') then Result := '0' else Result := '1';
 end;

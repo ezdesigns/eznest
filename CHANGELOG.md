@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0-rc.3
+
+Ez Ink's audit of the shop-server install.
+
+- The boot task runs as the local user `eznest-svc` with limited rights. That account is not an administrator. It can read and write `%ProgramData%\eznest`, and on the ONYX PC it can write the local hot folder.
+- Shop network stays off until it is turned on. There is no login. The gear and the install notes say anyone on the shop LAN can Send to ONYX, and this network must not be shared with guest WiFi.
+- Disable updates is off unless the installer task or the gear turns updates off. While updates are off, eznest does not call GitHub and does not read an update token.
+- `BUILD.json` next to `eznest-setup.exe` records the version, the commit SHA, and the SHA-256 of that exe. The same file is in the Actions artifact.
+
 ## 1.0.0-rc.2
 
 Ez Ink's shop answers for the ONYX handoff.

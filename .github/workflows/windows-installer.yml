@@ -27,6 +27,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Python
@@ -56,18 +57,28 @@ jobs:
 
       - name: Build the shop installer
         shell: pwsh
+        env:
+          EZ_NEST_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           python build_windows.py --out (Join-Path $env:RUNNER_TEMP "eznest-build")
           $setup = "installer\Output\eznest-setup.exe"
+          $pin = "installer\Output\BUILD.json"
           if (-not (Test-Path $setup)) { throw "eznest-setup.exe was not produced" }
+          if (-not (Test-Path $pin)) { throw "BUILD.json was not produced" }
           Get-Item $setup | Select-Object FullName, Length
+          Get-Content $pin
+          $expected = (Get-Content $pin -Raw | ConvertFrom-Json).sha256
+          $actual = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) { throw "BUILD.json sha256 does not match eznest-setup.exe" }
 
       - name: Upload the installer artifact
         if: github.event_name != 'push'
         uses: actions/upload-artifact@v4
         with:
           name: eznest-setup
-          path: installer/Output/eznest-setup.exe
+          path: |
+            installer/Output/eznest-setup.exe
+            installer/Output/BUILD.json
           if-no-files-found: error
 
       - name: Attach the installer to the release
@@ -78,11 +89,12 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}"
           $setup = "installer\Output\eznest-setup.exe"
-          $notes = "Shop server installer for $tag. Run eznest-setup.exe on the shop PC. It does not need Python or Git."
+          $pin = "installer\Output\BUILD.json"
+          $notes = "Shop server installer for $tag. Run eznest-setup.exe on the shop PC. It does not need Python or Git. BUILD.json records the version, commit, and SHA-256 of eznest-setup.exe."
           gh release view $tag
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $setup --clobber
+            gh release upload $tag $setup $pin --clobber
           } else {
-            gh release create $tag $setup --title $tag --notes $notes
+            gh release create $tag $setup $pin --title $tag --notes $notes
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

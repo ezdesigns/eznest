@@ -16,7 +16,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 LOCAL_HOT_FOLDER = r'C:\ONYX\EPSON SureColor S80600 ONYX Input'
 UNC_HOT_FOLDER = r'\\ONYX\EPSON SureColor S80600 ONYX Input'
 RELEASE_API = 'https://api.github.com/repos/ezdesigns/eznest/releases/latest'
-WARNING = 'Shop network only. Other computers on this network can open this page.'
+WARNING = 'Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.'
 MAX_RELEASE_BYTES = 300_000_000
 REDIRECT_HOSTS = {
     'github.com',
@@ -53,13 +53,19 @@ def load_shop(directory):
         data = {}
     if not isinstance(data, dict):
         data = {}
-    return {'onyxPc': data.get('onyxPc') is True, 'lan': data.get('lan') is True}
+    return {
+        'onyxPc': data.get('onyxPc') is True,
+        'lan': data.get('lan') is True,
+        'updates': data.get('updates') is not False,
+    }
 
 
-def save_shop(directory, onyx_pc, lan):
+def save_shop(directory, onyx_pc, lan, updates=None):
     path = Path(directory) / 'shop.json'
+    if updates is None:
+        updates = load_shop(directory)['updates']
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({'onyxPc': bool(onyx_pc), 'lan': bool(lan)}, indent=2) + '\n', encoding='utf-8')
+    path.write_text(json.dumps({'onyxPc': bool(onyx_pc), 'lan': bool(lan), 'updates': bool(updates)}, indent=2) + '\n', encoding='utf-8')
     return load_shop(directory)
 
 
@@ -224,6 +230,8 @@ def _read_limited(response):
 def pull_latest(directory, current, opener=None):
     """Download a newer official Windows release. The button in the gear calls this."""
     directory = Path(directory)
+    if not load_shop(directory)['updates']:
+        return {'ok': True, 'current': current, 'latest': current, 'updated': False, 'message': 'Updates are off.'}
     token = github_token(directory)
     opener = opener or build_opener(_StopRedirect)
     try:

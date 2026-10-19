@@ -1205,7 +1205,7 @@ function rememberPreset() {
 function showLan(shop) {
   const on = $('lan').checked;
   $('lan-note').hidden = !on;
-  $('lan-note').textContent = (shop && shop.warning) || 'Shop network only. Other computers on this network can open this page.';
+  $('lan-note').textContent = (shop && shop.warning) || 'Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.';
   const bits = [];
   if (shop && shop.url) bits.push(shop.url);
   if (shop && shop.addresses && shop.addresses.length) bits.push(shop.addresses[0]);
@@ -1233,13 +1233,15 @@ function applyShop(shop) {
   $('app-version').textContent = shop.version || '';
   $('onyx-pc').checked = shop.onyxPc === true;
   $('lan').checked = shop.lan === true;
+  $('updates').checked = !shop || shop.updates !== false;
+  $('update').hidden = !$('updates').checked;
   showLan(shop);
   showRestart(shop);
   showHotDefault(shop.hotFolderDefault);
 }
 
 async function saveDeploy() {
-  const result = await api('/api/shop', {lan: $('lan').checked, onyxPc: $('onyx-pc').checked});
+  const result = await api('/api/shop', {lan: $('lan').checked, onyxPc: $('onyx-pc').checked, updates: $('updates').checked});
   applyShop(result);
   if (result.restart && result.lan) status('Restart eznest to open the shop network.');
   else if (result.restart) status('Shop network turns off after you restart eznest.');
@@ -1460,6 +1462,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('staging-folder').addEventListener('change', saveShop);
   $('lan').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('onyx-pc').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  $('updates').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('update').addEventListener('click', async () => {
     try { status((await api('/api/update', {})).message); }
     catch (error) { status(error.message, true); }

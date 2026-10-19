@@ -44,6 +44,7 @@ def shop_status():
         'version': VERSION,
         'onyxPc': saved['onyxPc'],
         'lan': saved['lan'],
+        'updates': saved['updates'],
         'runningLan': running,
         'restart': saved['lan'] != running,
         'port': PORT,
@@ -269,7 +270,9 @@ class Handler(BaseHTTPRequestHandler):
                 with FOLDER_LOCK:
                     return self.send(200, OUTPUT.connect(data.get('path',''), FOLDER.root))
             if self.path == '/api/shop':
-                save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True)
+                current = load_shop(WORK)
+                updates = current['updates'] if 'updates' not in data else data.get('updates') is True
+                save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates)
                 return self.send(200, shop_status())
             if self.path == '/api/update':
                 return self.send(200, pull_latest(WORK, VERSION))

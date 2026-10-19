@@ -1,4 +1,5 @@
 """Shop-server install choices: one computer, many browsers."""
+import hashlib
 import json
 import os
 import socket
@@ -7,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import build_windows
 import server
 import shop_deploy
 
@@ -95,6 +97,48 @@ class ShopDeployTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'release file'):
                 shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: slipped}))
 
+    def test_updates_off_does_not_call_github_or_read_a_token(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertTrue(shop_deploy.load_shop(root)['updates'])
+            (root / 'github-token').write_text('secret-token', encoding='utf-8')
+            shop_deploy.save_shop(root, False, False)
+            self.assertTrue(shop_deploy.load_shop(root)['updates'])
+            shop_deploy.save_shop(root, False, False, updates=False)
+            self.assertFalse(shop_deploy.load_shop(root)['updates'])
+            calls = {'token': 0, 'open': 0}
+
+            def token_read(directory):
+                calls['token'] += 1
+                raise AssertionError('token read')
+
+            def network(opener, url, token, timeout):
+                calls['open'] += 1
+                raise AssertionError('network')
+
+            with patch.dict(os.environ, {'EZ_NEST_GITHUB_TOKEN': 'env-secret'}):
+                with patch('shop_deploy.github_token', token_read), patch('shop_deploy._open', network):
+                    result = shop_deploy.pull_latest(root, '1.0.0-rc.3')
+            self.assertEqual(calls, {'token': 0, 'open': 0})
+            self.assertEqual((root / 'github-token').read_text(encoding='utf-8'), 'secret-token')
+            self.assertFalse(result['updated'])
+            self.assertEqual(result['message'], 'Updates are off.')
+            self.assertFalse((root / 'updates').exists())
+
+    def test_release_pin_records_version_commit_and_exe_sha256(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            exe = root / 'eznest-setup.exe'
+            payload = b'MZ-eznest-setup'
+            exe.write_bytes(payload)
+            dest = root / 'BUILD.json'
+            pin = build_windows.write_release_pin(dest, '1.0.0-rc.3', 'abc123', exe)
+            saved = json.loads(dest.read_text(encoding='utf-8'))
+            self.assertEqual(saved, pin)
+            self.assertEqual(pin['version'], '1.0.0-rc.3')
+            self.assertEqual(pin['commit'], 'abc123')
+            self.assertEqual(pin['sha256'], hashlib.sha256(payload).hexdigest())
+
     def test_shop_names_are_this_computer_or_a_private_address(self):
         self.assertTrue(shop_deploy.shop_name_allowed(socket.gethostname()))
         self.assertTrue(shop_deploy.shop_name_allowed('192.168.1.20'))
@@ -135,8 +179,10 @@ class ShopDeployTests(unittest.TestCase):
                 status = server.shop_status()
                 self.assertTrue(status['url'].endswith(':8765/web'))
                 self.assertFalse(status['lan'])
-                self.assertIn('shop network only', status['warning'].casefold())
-                self.assertEqual(status['version'], '1.0.0-rc.2')
+                self.assertIn('anyone on the shop lan can send to onyx', status['warning'].casefold())
+                self.assertIn('guest wifi', status['warning'].casefold())
+                self.assertTrue(status['updates'])
+                self.assertEqual(status['version'], '1.0.0-rc.3')
                 self.assertIn(r'\\ONYX\EPSON SureColor S80600 ONYX Input', status['hotFolderDefault'])
             finally:
                 server.WORK, server.PORT, server.HOST, server.LAN = old
@@ -154,7 +200,21 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn('schtasks.exe', script)
         self.assertIn('ONSTART', install)
         self.assertIn('schtasks.exe', install)
+        self.assertNotIn('/RU SYSTEM', install)
+        self.assertNotIn('/RL HIGHEST', install)
+        self.assertIn('/RL LIMITED', install)
+        self.assertIn('eznest-svc', install)
+        self.assertIn('icacls', install)
+        self.assertIn('SeBatchLogonRight', install)
+        self.assertIn('(OI)(CI)M', install)
+        self.assertIn('(OI)(CI)W', install)
         self.assertIn('profile=private', install)
+        self.assertIn('Name: "noupdates"', script)
+        self.assertIn('Disable updates (offline install)', script)
+        self.assertIn('-Updates', script)
+        self.assertIn('Excludes: "BUILD.json"', script)
+        self.assertIn('{src}\\BUILD.json', script)
+        self.assertIn('external', script)
         self.assertIn(r'C:\ONYX\EPSON SureColor S80600 ONYX Input', install)
         self.assertIn('--web --no-browser', server_cmd)
         self.assertIn(r'%ProgramData%\eznest', server_cmd)
