@@ -125,27 +125,21 @@ class ShopDeployTests(unittest.TestCase):
 
     def test_shop_status_uses_the_service_port(self):
         old = (server.WORK, server.PORT, server.HOST, server.LAN)
-        root = Path('/tmp/eznest-shop-status')
-        root.mkdir(exist_ok=True)
-        shop = root / 'shop.json'
-        if shop.exists():
-            shop.unlink()
-        try:
-            server.WORK = root
-            server.PORT = 8765
-            server.HOST = '127.0.0.1'
-            server.LAN = False
-            status = server.shop_status()
-            self.assertTrue(status['url'].endswith(':8765/web'))
-            self.assertFalse(status['lan'])
-            self.assertIn('shop network only', status['warning'].casefold())
-            self.assertEqual(status['version'], '1.0.0-rc.1')
-            self.assertIn(r'\\ONYX\EPSON SureColor S80600 ONYX Input', status['hotFolderDefault'])
-        finally:
-            server.WORK, server.PORT, server.HOST, server.LAN = old
-            shop = root / 'shop.json'
-            if shop.exists():
-                shop.unlink()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            try:
+                server.WORK = root
+                server.PORT = 8765
+                server.HOST = '127.0.0.1'
+                server.LAN = False
+                status = server.shop_status()
+                self.assertTrue(status['url'].endswith(':8765/web'))
+                self.assertFalse(status['lan'])
+                self.assertIn('shop network only', status['warning'].casefold())
+                self.assertEqual(status['version'], '1.0.0-rc.1')
+                self.assertIn(r'\\ONYX\EPSON SureColor S80600 ONYX Input', status['hotFolderDefault'])
+            finally:
+                server.WORK, server.PORT, server.HOST, server.LAN = old
 
     def test_installer_script_matches_the_shop_server(self):
         root = Path(__file__).resolve().parents[1]
