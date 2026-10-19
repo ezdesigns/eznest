@@ -17,7 +17,7 @@ from folder_queue import FolderQueue
 from output_folder import OutputFolder
 from nesting import validate_request
 from shop_profiles import validate_profile, inspect_output
-from app_info import VERSION
+from app_info import UPDATE_CHANNEL, VERSION
 
 ROOT = Path(__file__).resolve().parent
 WORK = Path(os.environ.get('EZ_NEST_DATA', ROOT / '.local')).resolve()
@@ -104,7 +104,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {'error': 'Invalid host'})
         path = urlparse(self.path).path
         if path == '/api/session':
-            return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION})
+            return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION, 'updateChannel': UPDATE_CHANNEL})
+        if path == '/api/changelog':
+            from updates import changelog_entries
+            return self.send(200, {'version': VERSION, 'channel': UPDATE_CHANNEL, 'entries': changelog_entries()})
+        if path == '/api/update':
+            from updates import status
+            import updater
+            force = parse_qs(urlparse(self.path).query).get('refresh', ['0'])[0] == '1'
+            return self.send(200, status(WORK, updater.install_root(), force=force))
         if path == '/api/output':
             return self.send(200, OUTPUT.status())
         if path == '/api/folder':
@@ -170,6 +178,19 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 <= size <= 48_000_000:
                 raise ValueError('Job is too large.')
             data = json.loads(self.rfile.read(size) or '{}')
+            if self.path in ('/api/update/prepare', '/api/update/apply'):
+                with LOCK:
+                    if STATE.get('status') == 'running':
+                        raise ValueError('Stop the current search before updating.')
+                import updater
+                from updates import begin_apply, prepare
+                root = updater.install_root()
+                if self.path.endswith('/prepare'):
+                    return self.send(200, prepare(WORK, root, data.get('when') or 'restart'))
+                result = begin_apply(WORK, root)
+                self.send(200, result)
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return
             if self.path == '/api/document/import':
                 if not DOCUMENT_LOCK.acquire(blocking=False):
                     raise ValueError('Wait for the current document import to finish.')
@@ -329,6 +350,8 @@ class LocalServer(ThreadingHTTPServer):
 def serve(open_browser=False):
     restore_state()
     service = LocalServer(('127.0.0.1', PORT), Handler)
+    import updater
+    updater.mark_healthy(WORK)
     if open_browser:
         import webbrowser
         webbrowser.open(f'http://127.0.0.1:{PORT}')

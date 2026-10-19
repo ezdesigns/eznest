@@ -44,6 +44,13 @@ batches live in data/ beside the executable. Keep both when upgrading. Re-add
 active PDF/AI jobs from before 0.12 to review cut types. Frozen exports stay intact. Back up
 exports. Originals are never edited or deleted. Watched folders still use SVG.
 
+UPDATES
+What's new, in the app, lists this build and can install a newer one.
+Update now, or install on the next restart. Ez Nest checks the file's checksum,
+keeps data\ and this browser's jobs, and puts the previous build back if the
+new one does not start. Read docs\updates.md. Report a problem from What's new
+or Help if you have access to the GitHub repo.
+
 STOP
 Help > Quit eznest stops the local service. Closing the browser alone does not.
 Keep all licenses/ notices and covered source when redistributing the package.

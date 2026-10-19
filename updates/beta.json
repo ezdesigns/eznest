@@ -1,0 +1,13 @@
+{
+  "channel": "beta",
+  "version": "0.12.0-beta.1",
+  "published": false,
+  "notes": "No beta update is offered until a release is approved. The Windows portable workflow uploads a candidate manifest with the build.",
+  "platforms": {
+    "windows-x64": {
+      "filename": null,
+      "url": null,
+      "sha256": null
+    }
+  }
+}

@@ -1,0 +1,132 @@
+name: Windows portable
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a GitHub release. Requires approval in the eznest-release environment.
+        type: boolean
+        default: false
+      channel:
+        description: Channel used only when publish_release is true
+        type: choice
+        options:
+          - beta
+          - stable
+        default: beta
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Build portable ZIP and smoke test
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+      - name: Install build dependencies
+        run: python -m pip install -r requirements-build.txt
+      - name: Build, pack, and write the unpublished manifest
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'eznest-build'
+          python build_windows.py --out $out
+          $version = (Get-Content -Raw version.json | ConvertFrom-Json).version
+          $zip = Join-Path $env:RUNNER_TEMP "eznest-$version-windows-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip }
+          tar -a -cf $zip -C (Join-Path $out 'dist') eznest
+          python updates.py --write-manifest --zip $zip --out (Join-Path $env:RUNNER_TEMP 'manifest-beta.json') --channel beta --version $version --notes-file CHANGELOG.md
+          $artifact = Join-Path $env:RUNNER_TEMP 'artifact'
+          New-Item -ItemType Directory -Force -Path $artifact | Out-Null
+          Copy-Item $zip (Join-Path $artifact (Split-Path $zip -Leaf))
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'manifest-beta.json') $artifact
+          Copy-Item (Join-Path $env:RUNNER_TEMP ((Split-Path $zip -Leaf) + '.sha256')) $artifact
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "zipname=$(Split-Path $zip -Leaf)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        id: package
+      - name: Smoke test the extracted ZIP
+        shell: pwsh
+        env:
+          EZ_NEST_UPDATES: '0'
+        run: |
+          $version = (Get-Content -Raw version.json | ConvertFrom-Json).version
+          $zip = Join-Path $env:RUNNER_TEMP "eznest-$version-windows-x64.zip"
+          $extract = Join-Path $env:RUNNER_TEMP 'eznest-extracted'
+          New-Item -ItemType Directory -Force -Path $extract | Out-Null
+          tar -xf $zip -C $extract
+          python tests/portable_smoke.py --exe (Join-Path $extract 'eznest\eznest.exe') --work (Join-Path $env:RUNNER_TEMP 'smoke-work')
+          Copy-Item (Join-Path $env:RUNNER_TEMP 'smoke-work\validation.json') (Join-Path $env:RUNNER_TEMP 'artifact')
+      - name: Attach the ZIP and manifest to this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: eznest-windows-x64
+          path: ${{ runner.temp }}/artifact/
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    name: Publish approved release
+    needs: package
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
+    runs-on: ubuntu-latest
+    environment: eznest-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download the packaged build
+        uses: actions/download-artifact@v4
+        with:
+          name: eznest-windows-x64
+          path: dist
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ inputs.channel }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          channel = os.environ['CHANNEL']
+          manifest = json.loads(Path('dist/manifest-beta.json').read_text())
+          version = manifest['version']
+          if channel == 'stable' and '-' in version:
+              raise SystemExit(f'Stable releases need a version without a prerelease suffix. This build is {version}.')
+          filename = manifest['platforms']['windows-x64']['filename']
+          tag = 'v' + version
+          url = f"https://github.com/{os.environ['REPOSITORY']}/releases/download/{tag}/{filename}"
+          manifest['channel'] = channel
+          manifest['published'] = True
+          manifest['approval'] = 'Published after the eznest-release environment approved this workflow.'
+          manifest['platforms']['windows-x64']['url'] = url
+          Path(f'dist/manifest-{channel}.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          Path('dist/notes.md').write_text((manifest.get('notes') or f'eznest {version}') + '\n')
+          Path('dist/release-meta').write_text(version + '\n' + filename + '\n')
+          PY
+          version=$(sed -n '1p' dist/release-meta)
+          filename=$(sed -n '2p' dist/release-meta)
+          tag="v$version"
+          args=(release create "$tag" "dist/$filename" "dist/${filename}.sha256" "dist/manifest-${CHANNEL}.json" --title "eznest $version" --notes-file dist/notes.md)
+          if [ "$CHANNEL" = "beta" ]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}"

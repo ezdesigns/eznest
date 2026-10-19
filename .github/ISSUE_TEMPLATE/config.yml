@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Getting started for testers
+    url: https://github.com/ezdesigns/eznest/blob/main/docs/getting-started.md
+    about: How to download the Windows build, nest a job, and send it to ONYX.
+  - name: How updates work
+    url: https://github.com/ezdesigns/eznest/blob/main/docs/updates.md
+    about: Checksums, Update now, and what happens if a new build does not start.

@@ -1,0 +1,13 @@
+{
+  "channel": "stable",
+  "version": null,
+  "published": false,
+  "notes": "No stable release has been approved.",
+  "platforms": {
+    "windows-x64": {
+      "filename": null,
+      "url": null,
+      "sha256": null
+    }
+  }
+}

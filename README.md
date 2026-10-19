@@ -72,8 +72,12 @@ node tests/test_boundaries.cjs
 .local/venv/Scripts/python.exe build_windows.py --out ../eznest-build
 ```
 
-GitHub Actions runs the checks on Windows, Python 3.12 and Node 24. Use a new
-build directory outside the source tree. Zip its complete dist/eznest folder.
+GitHub Actions runs the checks on Windows, Python 3.12 and Node 24. The
+Windows portable workflow builds the ZIP, runs the packaged smoke test, and
+attaches the ZIP, checksum and update manifest to that workflow run. It does
+not publish a GitHub release unless someone dispatches it with approval.
+Testers start at [docs/getting-started.md](docs/getting-started.md). Updates
+are described in [docs/updates.md](docs/updates.md).
 
 ## Repository map
 
