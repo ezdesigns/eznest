@@ -71,8 +71,8 @@ The shop server is one Windows PC. The installer puts eznest in Program Files. T
 
 The workflow is `.github/workflows/windows-installer.yml`.
 
-- Push a `v*` tag, such as `v1.0.0-rc.1`. That run attaches `eznest-setup.exe` to the GitHub release for the tag.
-- Or open Actions, choose Windows installer, and run the workflow on this branch. That uploads `eznest-setup.exe` as an artifact and does not publish a release. GitHub shows Run workflow after this file is on the default branch, or after the workflow has run once.
+- Open Actions, choose Windows installer, and run the workflow. That uploads `eznest-setup.exe`, its `.sha256` file, and an unpublished manifest. It does not publish a release. GitHub shows Run workflow after this file is on the default branch, or after the workflow has run once.
+- To publish, create a GitHub environment named `eznest-release` and add a required reviewer. Then either push a `v*` tag or run the workflow with publish_release on, and approve that environment. The release gets the installer and the checksum Update requires. See [docs/updates.md](docs/updates.md).
 
 To build it on a Windows machine instead, install 64-bit Python 3.12 and [Inno Setup 6](https://jrsoftware.org/isinfo.php):
 
@@ -193,7 +193,7 @@ node tests/test_boundaries.cjs
 .local/venv/Scripts/python.exe build_windows.py --out ../eznest-build
 ```
 
-GitHub Actions runs the checks on Windows, Python 3.12 and Node 24. The Windows installer workflow, on a `v*` tag or a manual run, builds `eznest-setup.exe` with Python 3.12 and Inno Setup 6.7.3. A local build still uses a directory outside the source tree.
+GitHub Actions runs the checks on Windows, Python 3.12 and Node 24. The Windows installer workflow builds `eznest-setup.exe` with Python 3.12 and Inno Setup 6.7.3, and uploads the checksum with it. A release is published only after the `eznest-release` environment approves it. A local build still uses a directory outside the source tree. Testers start at [docs/getting-started.md](docs/getting-started.md).
 
 ## Repository map
 

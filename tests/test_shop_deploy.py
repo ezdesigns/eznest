@@ -1,6 +1,6 @@
 """Shop-server install choices: one computer, many browsers."""
+import hashlib
 import json
-import os
 import socket
 import tempfile
 import unittest
@@ -68,29 +68,41 @@ class ShopDeployTests(unittest.TestCase):
         self.assertEqual(api['Authorization'], 'Bearer secret')
         self.assertNotIn('Authorization', cdn)
 
-    def test_pull_latest_reports_current_and_saves_a_newer_installer(self):
+    def test_pull_latest_checks_the_checksum_and_waits_for_the_next_start(self):
         current = json.dumps({'tag_name': '1.0.0-rc.1', 'assets': []}).encode()
         url = 'https://github.com/ezdesigns/eznest/releases/download/v1.0.0-rc.2/eznest-setup.exe'
+        sha_url = url + '.sha256'
+        body = b'MZ-eznest'
+        digest = hashlib.sha256(body).hexdigest()
         newer = json.dumps({'tag_name': 'v1.0.0-rc.2', 'assets': [
             {'name': 'eznest-windows.zip', 'browser_download_url': 'https://github.com/ezdesigns/eznest/releases/download/v1.0.0-rc.2/eznest-windows.zip'},
             {'name': 'eznest-setup.exe', 'browser_download_url': url},
+            {'name': 'eznest-setup.exe.sha256', 'browser_download_url': sha_url},
         ]}).encode()
+        sha = f'{digest}  eznest-setup.exe\n'.encode()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             same = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: current}))
             self.assertFalse(same['updated'])
             self.assertEqual(same['message'], 'This is the latest release.')
-            with patch('shop_deploy.os.startfile', create=True) as opened:
-                saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: b'MZ-eznest'}))
+            saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: body, sha_url: sha}))
             self.assertTrue(saved['updated'])
-            self.assertIn('Downloaded eznest-setup.exe.', saved['message'])
-            self.assertEqual((root / 'updates' / 'eznest-setup.exe').read_bytes(), b'MZ-eznest')
-            if os.name == 'nt':
-                opened.assert_called_once()
-                self.assertIn('The installer is opening.', saved['message'])
-            else:
-                opened.assert_not_called()
-                self.assertNotIn('installer is opening', saved['message'])
+            self.assertTrue(saved['applyOnRestart'])
+            self.assertIn('checked', saved['message'])
+            self.assertIn('hot folder', saved['message'])
+            self.assertEqual((root / 'updates' / 'incoming' / 'eznest-setup.exe').read_bytes(), body)
+            pending = json.loads((root / 'updates' / 'pending.json').read_text(encoding='utf-8'))
+            self.assertTrue(pending['verified'])
+            self.assertEqual(pending['sha256'], digest)
+            mismatch = ScriptedOpener({shop_deploy.RELEASE_API: newer, url: body, sha_url: (digest[:-1] + ('0' if digest[-1] != '0' else '1') + '  eznest-setup.exe\n').encode()})
+            with self.assertRaisesRegex(ValueError, 'checksum'):
+                shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=mismatch)
+            missing = json.dumps({'tag_name': 'v1.0.0-rc.2', 'assets': [
+                {'name': 'eznest-setup.exe', 'browser_download_url': url},
+            ]}).encode()
+            with self.assertRaisesRegex(ValueError, 'no checksum'):
+                shop_deploy.pull_latest(Path(tmp) / 'empty', '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: missing}))
+            self.assertFalse((Path(tmp) / 'empty' / 'updates' / 'incoming' / 'eznest-setup.exe').exists())
             slipped = json.dumps({'tag_name': '9.0.0', 'assets': [{'name': '../eznest-setup.exe', 'browser_download_url': url}]}).encode()
             with self.assertRaisesRegex(ValueError, 'release file'):
                 shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: slipped}))
@@ -160,6 +172,8 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn(r'%ProgramData%\eznest', server_cmd)
         self.assertIn('ISCC', build)
         self.assertIn('eznest-server.cmd', build)
+        self.assertIn('IsFreshInstall', script)
+        self.assertIn('os.pathsep', build)
 
 
 if __name__ == '__main__':

@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 ROOT=Path(__file__).resolve().parent
-STATIC=['production.html','queue.css','queue-app.js','queue-core.js','production-features.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','classic.html','app.js','style.css','web.html','web.css','web.js']
+STATIC=['production.html','queue.css','queue-app.js','queue-core.js','production-features.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','CHANGELOG.md','classic.html','app.js','style.css','web.html','web.css','web.js']
 
 def main():
     parser=argparse.ArgumentParser()
@@ -25,14 +25,17 @@ def main():
         if metadata.version(name)!=version:raise RuntimeError(f'Install {name}=={version}')
     out.mkdir(parents=True,exist_ok=True)
     if (out/'dist'/'eznest').exists():raise ValueError('The output already contains a build. Choose a new directory.')
-    command=[sys.executable,'-m','PyInstaller','--noconfirm','--onedir','--windowed','--name','eznest','--icon',str(ROOT/'assets'/'eznest.ico'),'--distpath',str(out/'dist'),'--workpath',str(out/'work'),'--specpath',str(out),'--collect-all','spyrrow','--collect-all','pypdfium2','--collect-all','pypdfium2_raw','--exclude-module','tkinter']
-    for name in STATIC:command+=['--add-data',f'{ROOT/name}:.']
-    command+=['--add-data',f'{ROOT/"fonts"}:fonts']
+    command=[sys.executable,'-m','PyInstaller','--noconfirm','--onedir','--windowed','--name','eznest','--icon',str(ROOT/'assets'/'eznest.ico'),'--distpath',str(out/'dist'),'--workpath',str(out/'work'),'--specpath',str(out),'--collect-all','spyrrow','--collect-all','pypdfium2','--collect-all','pypdfium2_raw','--hidden-import','installer_update','--exclude-module','tkinter']
+    for name in STATIC:command+=['--add-data',f'{ROOT/name}{os.pathsep}.']
+    command+=['--add-data',f'{ROOT/"fonts"}{os.pathsep}fonts']
     for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer']:command+=['--copy-metadata',name]
     subprocess.run(command+[str(ROOT/'launcher.py')],cwd=ROOT,check=True)
     release=out/'dist'/'eznest'
-    for name in ['START HERE.txt','Stop EZ Nest.cmd','Stop EZ Nest.ps1','eznest-web.bat','eznest-server.cmd','THIRD_PARTY.md','version.json']:shutil.copy2(ROOT/name,release/name)
+    for name in ['START HERE.txt','Stop EZ Nest.cmd','Stop EZ Nest.ps1','eznest-web.bat','eznest-server.cmd','THIRD_PARTY.md','version.json','CHANGELOG.md']:shutil.copy2(ROOT/name,release/name)
     shutil.copy2(ROOT/'installer'/'install-shop.ps1',release/'install-shop.ps1')
+    docs=release/'docs'
+    docs.mkdir(exist_ok=True)
+    for name in ['getting-started.md','testing-plan.md','updates.md']:shutil.copy2(ROOT/'docs'/name,docs/name)
     (release/'examples').mkdir();shutil.copy2(ROOT/'sample-artwork.svg',release/'examples'/'sample-artwork.svg')
     shutil.copytree(ROOT/'licenses',release/'licenses')
     licenses=release/'licenses'

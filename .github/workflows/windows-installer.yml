@@ -1,18 +1,24 @@
 name: Windows installer
 
-# A v* tag attaches eznest-setup.exe to that GitHub release.
-# workflow_dispatch uploads the same exe as an artifact and does not publish a release.
-# pull_request runs the build on this branch before the file is on the default branch.
+# Pull requests and a manual run upload eznest-setup.exe, its SHA-256, and an
+# unpublished manifest. They do not publish a release.
+# A v* tag, or a manual run with publish_release, waits for the eznest-release
+# environment and then attaches those files to a GitHub release.
 # GitHub hides workflow_dispatch until the workflow is on the default branch or has run once.
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a GitHub release. Requires approval in the eznest-release environment.
+        type: boolean
+        default: false
   pull_request:
   push:
     tags:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: windows-installer-${{ github.ref }}
@@ -60,29 +66,62 @@ jobs:
           python build_windows.py --out (Join-Path $env:RUNNER_TEMP "eznest-build")
           $setup = "installer\Output\eznest-setup.exe"
           if (-not (Test-Path $setup)) { throw "eznest-setup.exe was not produced" }
-          Get-Item $setup | Select-Object FullName, Length
+          $artifact = Join-Path $env:RUNNER_TEMP "artifact"
+          New-Item -ItemType Directory -Force -Path $artifact | Out-Null
+          Copy-Item $setup $artifact
+          $version = (Get-Content -Raw version.json | ConvertFrom-Json).version
+          python installer_update.py --write-sidecars (Join-Path $artifact "eznest-setup.exe") $artifact $version
+          Get-ChildItem $artifact | Select-Object Name, Length
 
       - name: Upload the installer artifact
-        if: github.event_name != 'push'
         uses: actions/upload-artifact@v4
         with:
           name: eznest-setup
-          path: installer/Output/eznest-setup.exe
+          path: ${{ runner.temp }}/artifact/
           if-no-files-found: error
 
+  publish:
+    name: Publish approved release
+    needs: installer
+    if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_release) }}
+    runs-on: ubuntu-latest
+    environment: eznest-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download the installer
+        uses: actions/download-artifact@v4
+        with:
+          name: eznest-setup
+          path: dist
+
       - name: Attach the installer to the release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $setup = "installer\Output\eznest-setup.exe"
-          $notes = "Shop server installer for $tag. Run eznest-setup.exe on the shop PC. It does not need Python or Git."
-          gh release view $tag
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $setup --clobber
-          } else {
-            gh release create $tag $setup --title $tag --notes $notes
-          }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          set -eu
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          manifest = json.loads(Path('dist/manifest.json').read_text())
+          version = manifest['version']
+          filename = manifest['filename']
+          ref = os.environ.get('GITHUB_REF', '')
+          tag = os.environ.get('GITHUB_REF_NAME', '')
+          if not ref.startswith('refs/tags/v'):
+              tag = 'v' + version
+          url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/{tag}/{filename}"
+          manifest['published'] = True
+          manifest['url'] = url
+          manifest['approval'] = 'Published after the eznest-release environment approved this workflow.'
+          Path('dist/manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          Path('dist/release-tag').write_text(tag + '\n')
+          Path('dist/notes.md').write_text(f"Shop server installer for {tag}. Run eznest-setup.exe on the shop PC. The SHA-256 file is the checksum Update checks before it installs.\n")
+          PY
+          tag=$(cat dist/release-tag)
+          gh release view "$tag" && exists=1 || exists=0
+          if [ "$exists" = "1" ]; then
+            gh release upload "$tag" dist/eznest-setup.exe dist/eznest-setup.exe.sha256 dist/manifest.json --clobber
+          else
+            gh release create "$tag" dist/eznest-setup.exe dist/eznest-setup.exe.sha256 dist/manifest.json --title "$tag" --notes-file dist/notes.md --prerelease
+          fi

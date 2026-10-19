@@ -3,6 +3,7 @@ import copy
 import hashlib
 import io
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -27,6 +28,8 @@ def launch_browser(playwright):
 class WebMvpTests(unittest.TestCase):
     def setUp(self):
         self.old = (server.WORK, server.PORT, server.HOST, copy.deepcopy(server.STATE), server.PROCESS)
+        self.old_updates = os.environ.get('EZ_NEST_UPDATES')
+        os.environ['EZ_NEST_UPDATES'] = '0'
         self.tmp = tempfile.TemporaryDirectory()
         server.WORK = Path(self.tmp.name)
         server.STATE.clear()
@@ -58,6 +61,10 @@ class WebMvpTests(unittest.TestCase):
     def tearDown(self):
         self.stop()
         server.WORK, server.PORT, server.HOST, previous, server.PROCESS = self.old
+        if self.old_updates is None:
+            os.environ.pop('EZ_NEST_UPDATES', None)
+        else:
+            os.environ['EZ_NEST_UPDATES'] = self.old_updates
         server.STATE.clear()
         server.STATE.update(previous)
         self.tmp.cleanup()

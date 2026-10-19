@@ -3,6 +3,7 @@
 LAN binding, the ONYX hot-folder default, and release checks live here so the
 nest, the file import, and the gear can stay separate.
 """
+import hmac
 import io
 import ipaddress
 import json
@@ -15,7 +16,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 LOCAL_HOT_FOLDER = r'C:\ONYX\EPSON SureColor S80600 ONYX Input'
 UNC_HOT_FOLDER = r'\\ONYX\EPSON SureColor S80600 ONYX Input'
-RELEASE_API = 'https://api.github.com/repos/ezdesigns/eznest/releases/latest'
+RELEASE_API = 'https://api.github.com/repos/ezdesigns/eznest/releases?per_page=20'
 WARNING = 'Shop network only. Other computers on this network can open this page.'
 MAX_RELEASE_BYTES = 300_000_000
 REDIRECT_HOSTS = {
@@ -146,7 +147,7 @@ def release_url_allowed(url, download=False):
     host = parsed.hostname.casefold()
     if download and host in REDIRECT_HOSTS and host not in ('github.com', 'api.github.com'):
         return True
-    if host == 'api.github.com' and parsed.path == '/repos/ezdesigns/eznest/releases/latest':
+    if host == 'api.github.com' and parsed.path in ('/repos/ezdesigns/eznest/releases', '/repos/ezdesigns/eznest/releases/latest'):
         return not download
     if host == 'github.com' and parsed.path.startswith('/ezdesigns/eznest/releases/download/'):
         return True
@@ -221,49 +222,162 @@ def _read_limited(response):
     return b''.join(chunks)
 
 
-def pull_latest(directory, current, opener=None):
-    """Download a newer official Windows release. The button in the gear calls this."""
+def parse_sha256_text(text):
+    token = text.strip().split()[0].lower() if text.strip() else ''
+    if len(token) != 64 or any(character not in '0123456789abcdef' for character in token):
+        raise ValueError('Checksum file is not a SHA-256 hex digest.')
+    return token
+
+
+def checksum_matches(actual, expected):
+    actual = (actual or '').lower()
+    expected = (expected or '').strip().lower()
+    if len(actual) != 64 or len(expected) != 64 or any(character not in '0123456789abcdef' for character in expected):
+        return False
+    return hmac.compare_digest(actual, expected)
+
+
+def _asset_map(release):
+    assets = {}
+    for asset in release.get('assets') or []:
+        if isinstance(asset, dict) and isinstance(asset.get('name'), str):
+            assets[asset['name']] = asset
+    return assets
+
+
+def select_release(payload, current):
+    releases = payload if isinstance(payload, list) else [payload]
+    chosen = None
+    for release in releases:
+        if not isinstance(release, dict) or release.get('draft') or not release.get('tag_name'):
+            continue
+        try:
+            if not is_newer(str(release['tag_name']), current):
+                continue
+        except ValueError:
+            continue
+        if chosen is None or _numbers(str(release['tag_name'])) > _numbers(str(chosen['tag_name'])):
+            chosen = release
+    return chosen
+
+
+def release_checksum(release, filename, opener, token):
+    assets = _asset_map(release)
+    sha_asset = assets.get(filename + '.sha256')
+    if sha_asset:
+        url = sha_asset.get('browser_download_url') or ''
+        if not release_url_allowed(url):
+            raise ValueError('The release file is not from the eznest releases.')
+        with _open(opener, url, token, 30) as response:
+            return parse_sha256_text(_read_limited(response).decode('utf-8', 'replace'))
+    manifest_asset = assets.get('manifest.json')
+    if manifest_asset:
+        url = manifest_asset.get('browser_download_url') or ''
+        if not release_url_allowed(url):
+            raise ValueError('The release file is not from the eznest releases.')
+        with _open(opener, url, token, 30) as response:
+            manifest = json.loads(_read_limited(response).decode('utf-8'))
+        if isinstance(manifest, dict) and manifest.get('published') is not False and manifest.get('filename') in (None, filename):
+            digest = manifest.get('sha256')
+            if isinstance(digest, str):
+                return parse_sha256_text(digest)
+    raise ValueError('The release has no checksum. It was not downloaded.')
+
+
+def pull_latest(directory, current, opener=None, when='restart', install_root=None):
+    """Download a newer official Windows release after its checksum matches.
+
+    The gear's Update button calls this. The file stays in the data directory
+    until the next start, or until Install now asks the helper to swap it in.
+    """
     directory = Path(directory)
+    if os.environ.get('EZ_NEST_UPDATES', '1') == '0':
+        return {'ok': True, 'current': current, 'latest': current, 'updated': False, 'staged': False, 'applyOnRestart': False, 'message': 'Update checks are off.'}
+    if when not in ('now', 'restart'):
+        raise ValueError('Choose Update or install on the next start.')
     token = github_token(directory)
     opener = opener or build_opener(_StopRedirect)
     try:
         with _open(opener, RELEASE_API, token, 30) as response:
-            release = json.loads(_read_limited(response).decode('utf-8'))
+            payload = json.loads(_read_limited(response).decode('utf-8'))
     except (OSError, URLError, HTTPError, ValueError, json.JSONDecodeError) as error:
         if isinstance(error, ValueError) and 'release file' in str(error):
             raise
         raise ValueError('Could not reach the release.') from error
-    if not isinstance(release, dict) or not release.get('tag_name'):
+    releases = payload if isinstance(payload, list) else [payload]
+    if not releases or not isinstance(releases[0], dict):
         raise ValueError('Could not reach the release.')
-    latest = str(release['tag_name'])
-    if not is_newer(latest, current):
-        return {'ok': True, 'current': current, 'latest': latest.lstrip('vV'), 'updated': False, 'message': 'This is the latest release.'}
+    release = select_release(payload, current)
+    if release is None:
+        known = []
+        for item in releases:
+            tag = str(item.get('tag_name')) if isinstance(item, dict) and item.get('tag_name') else ''
+            if not tag:
+                continue
+            try:
+                _numbers(tag)
+            except ValueError:
+                continue
+            known.append(tag)
+        latest = max(known, key=_numbers).lstrip('vV') if known else current
+        return {'ok': True, 'current': current, 'latest': latest, 'updated': False, 'staged': False, 'applyOnRestart': False, 'message': 'This is the latest release.'}
+    latest = str(release['tag_name']).lstrip('vV')
     asset = choose_asset(release)
     name = Path(asset['name']).name
     if name != asset['name'] or Path(name).name != name:
         raise ValueError('The release file is not from the eznest releases.')
     try:
+        digest = release_checksum(release, name, opener, token)
         with _open(opener, asset['browser_download_url'], token, 120) as response:
-            payload = _read_limited(response)
+            body = _read_limited(response)
     except (OSError, URLError, HTTPError, ValueError) as error:
         if isinstance(error, ValueError):
             raise
         raise ValueError('Could not reach the release.') from error
-    folder = directory / 'updates'
-    folder.mkdir(parents=True, exist_ok=True)
-    target = folder / name
-    temporary = target.with_suffix(target.suffix + '.part')
-    temporary.write_bytes(payload)
-    temporary.replace(target)
-    message = 'Downloaded ' + name + '.'
-    if os.name == 'nt' and target.suffix.lower() == '.exe':
-        try:
-            os.startfile(target)  # noqa: S606 - the gear asked to open this eznest release installer
-        except OSError:
-            message += ' The installer is in the updates folder.'
+    import installer_update
+    pending = installer_update.stage_file(directory, latest, digest, body, name)
+    message = f'{name} is checked and installs the next time eznest starts. Settings and the hot folder stay.'
+    result = {
+        'ok': True,
+        'current': current,
+        'latest': latest,
+        'updated': True,
+        'staged': True,
+        'applyOnRestart': True,
+        'path': pending['file'],
+        'message': message,
+        'restarting': False,
+    }
+    if when == 'now':
+        if installer_update.apply_supported(install_root):
+            result.update(installer_update.begin_apply(directory, install_root))
         else:
-            message += ' The installer is opening.'
-    return {'ok': True, 'current': current, 'latest': latest.lstrip('vV'), 'updated': True, 'path': str(target), 'message': message}
+            result['message'] = f'{name} is checked. Run it on the shop PC. Settings and the hot folder stay in the data folder.'
+            result['applyOnRestart'] = True
+    return result
+
+
+def peek_latest(directory, current, opener=None):
+    """Say whether a newer release exists. This does not download the installer."""
+    if os.environ.get('EZ_NEST_UPDATES', '1') == '0':
+        return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': current, 'message': 'Update checks are off.', 'error': None}
+    directory = Path(directory)
+    token = github_token(directory)
+    opener = opener or build_opener(_StopRedirect)
+    try:
+        with _open(opener, RELEASE_API, token, 15) as response:
+            payload = json.loads(_read_limited(response).decode('utf-8'))
+    except (OSError, URLError, HTTPError, ValueError, json.JSONDecodeError):
+        return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': None, 'message': 'Could not reach the release.', 'error': 'Could not reach the release.'}
+    release = select_release(payload, current)
+    if release is None:
+        return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': current, 'message': 'This is the latest release.', 'error': None}
+    latest = str(release['tag_name']).lstrip('vV')
+    try:
+        choose_asset(release)
+    except ValueError as error:
+        return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': latest, 'message': str(error), 'error': str(error)}
+    return {'ok': True, 'current': current, 'updateAvailable': True, 'latest': latest, 'message': f'{latest} is available.', 'error': None}
 
 
 def read_json(value):

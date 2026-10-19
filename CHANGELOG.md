@@ -13,7 +13,8 @@ Shop release candidate. v1 is nesting only: drop artwork, nest it, and send the 
 - One shop server, many browsers. `eznest-setup.exe` installs to Program Files, adds a desktop shortcut, and can start eznest at boot with Task Scheduler. The shop PC does not need Python or Git.
 - Shop network is off by default. Turn it on to listen for other PCs at `http://<server-name>:8765/web`. The gear shows that address and warns that it is for the shop network only.
 - The hot-folder default is `C:\ONYX\EPSON SureColor S80600 ONYX Input` on the ONYX PC and `\\ONYX\EPSON SureColor S80600 ONYX Input` from every other PC.
-- The gear shows the version. Update checks the latest eznest release and downloads the official installer.
-- GitHub Actions builds `eznest-setup.exe` on Windows. A `v*` tag attaches it to the release. A manual run uploads it as an artifact.
+- The gear shows the version. What's new lists this file. Report a problem opens a GitHub issue with the version filled in.
+- Update checks the latest eznest release, downloads `eznest-setup.exe` or the app files, and checks the SHA-256 checksum before anything is replaced. It installs on the next start. Install now restarts into that build. Shop settings and the hot-folder path stay. If the new build does not start, the previous build is put back.
+- GitHub Actions builds `eznest-setup.exe` on Windows and uploads it with its checksum. A manual run does not publish a release. Publishing waits for approval in the `eznest-release` environment.
 
 Not in v1, so they can be added later without replacing the nest: job history, order intake, AI batching, cost tracking as a product, OXF or cut recipes, and a physical ONYX proof.

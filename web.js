@@ -1274,6 +1274,40 @@ async function boot() {
   else if (state.status === 'ready' && state.manifest) showResult(state);
   else { showScreen('drop'); status('Drop your files.'); }
   renderActions();
+  refreshUpdate().catch(() => {});
+}
+
+function showUpdate(info) {
+  const note = $('update-note');
+  $('update').textContent = info && info.applyOnRestart ? 'Install now' : 'Update';
+  if (info && info.rollback) {
+    note.hidden = false;
+    note.textContent = info.rollback.reason || info.message || '';
+    return;
+  }
+  if (info && (info.applyOnRestart || info.updateAvailable) && info.message) {
+    note.hidden = false;
+    note.textContent = info.message;
+    return;
+  }
+  note.hidden = true;
+  note.textContent = '';
+}
+
+async function refreshUpdate(remote) {
+  const version = $('app-version').textContent || '';
+  $('report').href = 'https://github.com/ezdesigns/eznest/issues/new?' + new URLSearchParams({
+    template: 'tester-problem.yml',
+    title: 'Problem in eznest ' + (version || '1.0.0-rc.1'),
+    version: version
+  });
+  try {
+    const notes = await (await fetch('/api/changelog')).json();
+    const entries = Array.isArray(notes.entries) ? notes.entries : [];
+    const current = entries.find(entry => entry.version === notes.version) || entries[0];
+    $('notes-body').textContent = current && current.body ? current.body : '';
+  } catch { /* What's new stays empty if the changelog is missing. */ }
+  showUpdate(await (await fetch(remote ? '/api/update?refresh=1' : '/api/update')).json());
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1320,12 +1354,28 @@ document.addEventListener('DOMContentLoaded', () => {
   $('kiss-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
   $('auto-bleed').addEventListener('change', () => { if (current && current.result && !busy && !saving) renderPreview(activeSheet); });
   $('preset-name').addEventListener('change', rememberPreset);
+  $('settings').addEventListener('toggle', () => { if ($('settings').open) refreshUpdate(true).catch(() => {}); });
   $('hot-folder').addEventListener('change', saveHotFolder);
   $('lan').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('onyx-pc').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('update').addEventListener('click', async () => {
-    try { status((await api('/api/update', {})).message); }
-    catch (error) { status(error.message, true); }
+    const installNow = $('update').textContent === 'Install now';
+    try {
+      const result = await api('/api/update', {when: installNow ? 'now' : 'restart'});
+      status(result.message);
+      showUpdate(result);
+      if (result.restarting) {
+        $('update-note').hidden = false;
+        $('update-note').textContent = result.message;
+      }
+    } catch (error) {
+      const offline = /Failed to fetch|NetworkError/i.test(String(error.message || error));
+      if (installNow && offline) {
+        status('eznest is restarting to install the update.');
+        return;
+      }
+      status(error.message, true);
+    }
   });
   $('allow-undo').addEventListener('change', () => { savePrefs({undo: $('allow-undo').checked}); renderActions(); });
   $('allow-hold').addEventListener('change', () => savePrefs({hold: $('allow-hold').checked}));

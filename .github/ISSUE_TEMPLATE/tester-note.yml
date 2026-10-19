@@ -1,0 +1,11 @@
+name: Tester note
+description: A comparison result or a note that is not a broken job.
+title: "Tester note"
+body:
+  - type: textarea
+    id: note
+    attributes:
+      label: Note
+      description: Paste the testing-plan summary here. Leave customer files out.
+    validations:
+      required: true
