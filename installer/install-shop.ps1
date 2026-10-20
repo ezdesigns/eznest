@@ -1,5 +1,5 @@
 # Shop-server setup. The boot task runs as the local user eznest-svc with limited rights.
-# That account is not an administrator. Its password stays in this process for schtasks
+# That account is not an administrator. Its password stays in this process for task registration
 # and is not written into the eznest folder. The account can read and write the data
 # folder. When a hot folder is already saved and it is on this PC, the account
 # can write that folder too. The path is chosen on first run, not here.

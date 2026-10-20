@@ -229,11 +229,11 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn(r'{autopf}\eznest', script)
         self.assertIn('{commondesktop}', script)
         self.assertIn('uninstall-shop.ps1', script)
-        self.assertIn('ONSTART', install)
-        self.assertIn('schtasks.exe', install)
+        self.assertIn('New-ScheduledTaskTrigger -AtStartup', install)
+        self.assertIn('Register-ScheduledTask', install)
         self.assertNotIn('/RU SYSTEM', install)
         self.assertNotIn('/RL HIGHEST', install)
-        self.assertIn('/RL LIMITED', install)
+        self.assertIn('-RunLevel Limited', install)
         self.assertIn('eznest-svc', install)
         self.assertIn('icacls', install)
         self.assertIn('SeBatchLogonRight', install)
@@ -336,3 +336,5 @@ class ShopDeployTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
