@@ -35,6 +35,22 @@ try {
   $page = Invoke-WebRequest 'http://127.0.0.1:8765/web'
   Assert ($page.Content -match 'Job progress') 'Employee interface was not packaged.'
   [IO.File]::WriteAllText((Join-Path $data 'acceptance-marker.txt'), 'synthetic retained shop data')
+  $beforeShop = Get-FileHash -LiteralPath (Join-Path $data 'shop.json')
+  $beforeTask = Export-ScheduledTask -TaskName eznest
+  Invoke-LocalApi '/api/shutdown' @{} | Out-Null
+  Stop-ShopTask
+  $reinstallLog = Join-Path $env:RUNNER_TEMP 'eznest-acceptance-reinstall.log'
+  # Same-build maintenance install tests the existing-install path, not signed
+  # version upgrade/rollback. Different task options must not reset the shop.
+  $reinstall = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/EZUPDATE=1','/TASKS="startatboot,lan"',('/LOG="' + $reinstallLog + '"') -WindowStyle Hidden -PassThru
+  if (-not $reinstall.WaitForExit(180000)) { throw 'Maintenance installation timed out.' }
+  Get-Content -LiteralPath $reinstallLog -Tail 15
+  Assert ($reinstall.ExitCode -eq 0) 'Existing-install detection failed.'
+  Assert ((Get-FileHash -LiteralPath (Join-Path $data 'shop.json')).Hash -eq $beforeShop.Hash) 'Maintenance install reset shop settings.'
+  Enable-ScheduledTask -TaskName eznest | Out-Null
+  Assert ((Export-ScheduledTask -TaskName eznest) -eq $beforeTask) 'Maintenance install changed the limited startup task.'
+  Start-ScheduledTask -TaskName eznest
+  Assert (Wait-ShopHealthy $version (Join-Path $app 'eznest.exe') 120) 'Maintenance installation did not restart.'
   $uninstall = Start-Process -FilePath (Join-Path $app 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -PassThru
   if (-not $uninstall.WaitForExit(120000)) { throw 'Uninstall timed out.' }
   Assert ($uninstall.ExitCode -eq 0) 'Uninstall failed.'
@@ -42,7 +58,7 @@ try {
   $account = Get-LocalUser -Name eznest-svc -ErrorAction SilentlyContinue
   Assert ($null -eq $account -or -not $account.Enabled) 'Uninstall left an enabled service account.'
   Assert ((Get-Content (Join-Path $data 'acceptance-marker.txt') -Raw) -eq 'synthetic retained shop data') 'Uninstall removed shop data.'
-  Write-Output 'Actual fresh install, limited service startup, loopback UI, and uninstall/data retention passed.'
+  Write-Output 'Actual fresh install, limited service startup, loopback UI, maintenance reinstall/settings retention, and uninstall/data retention passed.'
 } finally {
   # The hosted runner is destroyed after this job. Never recursively delete app/data here.
   $remaining = Get-ScheduledTask -TaskName eznest -ErrorAction SilentlyContinue

@@ -94,7 +94,7 @@ function IsUpgrade: Boolean;
 var
   Uninstall: String;
 begin
-  Result := RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1', 'UninstallString', Uninstall);
+  Result := RegQueryStringValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'UninstallString', Uninstall);
 end;
 
 function IsFreshInstall: Boolean;
@@ -118,7 +118,7 @@ var
 begin
   { Capture before Setup writes its own uninstall registration. }
   ExistingInstall := IsUpgrade;
-  RetryShopSetup := RegQueryDWordValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1', 'ShopSetupComplete', SetupComplete) and (SetupComplete = 0);
+  RetryShopSetup := RegQueryDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'ShopSetupComplete', SetupComplete) and (SetupComplete = 0);
   Log('Existing installation at start: ' + IntToStr(Ord(ExistingInstall)));
   Result := True;
   if ExpandConstant('{param:EZUPDATE|0}') = '1' then
@@ -136,7 +136,7 @@ begin
   if (CurStep = ssPostInstall) and IsFreshInstall then
   begin
     ShopSetupFailed := True;
-    RegWriteDWordValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1', 'ShopSetupComplete', 0);
+    RegWriteDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'ShopSetupComplete', 0);
     Log('Configuring fresh shop; selected tasks: ' + WizardSelectedTasks(False));
     Arguments := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\install-shop.ps1') +
       '" -DataDir "' + ExpandConstant('{commonappdata}\eznest') + '" -App "' +
@@ -147,7 +147,7 @@ begin
       RaiseException('Windows could not start shop setup. Contact your shop administrator before using eznest.');
     if ResultCode <> 0 then
       RaiseException('Shop setup failed. The startup task or folder permissions need administrator attention. Do not use this installation for production yet.');
-    RegWriteDWordValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1', 'ShopSetupComplete', 1);
+    RegWriteDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'ShopSetupComplete', 1);
     ShopSetupFailed := False;
   end;
 end;

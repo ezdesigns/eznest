@@ -14,6 +14,21 @@ function global:Remove-LocalUser { param($Name, $ErrorAction); $global:eznestTes
 function global:Disable-LocalUser { param($Name, $ErrorAction); $global:eznestTestCalls.Add("disable $Name") }
 function global:Get-CimInstance { @() }
 function global:Get-ScheduledTask { param($TaskName, $TaskPath, $ErrorAction); $null }
+function global:Unregister-ScheduledTask { param($TaskName, $TaskPath, $Confirm); $global:eznestTestCalls.Add('unregister ' + $TaskName) }
+function global:New-ScheduledTaskAction { param($Execute, $Argument); [pscustomobject]@{ Execute=$Execute; Arguments=$Argument } }
+function global:New-ScheduledTaskTrigger { param([switch]$AtStartup); if (-not $AtStartup) { throw 'Expected startup trigger' }; 'startup' }
+function global:New-ScheduledTaskSettingsSet {
+  param([switch]$StartWhenAvailable, [switch]$AllowStartIfOnBatteries, [switch]$DontStopIfGoingOnBatteries, $ExecutionTimeLimit)
+  if ($ExecutionTimeLimit -ne [TimeSpan]::Zero) { throw 'Host must not stop after a fixed run duration' }
+  'settings'
+}
+function global:Register-ScheduledTask {
+  param($TaskName, $TaskPath, $Action, $Trigger, $Settings, $User, $Password, $RunLevel, [switch]$Force)
+  if ($Password -ne 'TEST-ONLY-NOT-A-CREDENTIAL') { throw 'Unexpected test credential' }
+  $global:eznestTestCalls.Add('register ' + $User + ' ' + $RunLevel + ' ' + $Action.Arguments)
+  $global:eznestTestAction = $Action
+}
+function global:Start-ScheduledTask { param($TaskName, $TaskPath); $global:eznestTestCalls.Add('start ' + $TaskName) }
 function global:Remove-CimInstance { throw 'Unexpected profile deletion' }
 try {
     $source = Get-Content (Join-Path $root 'installer/install-shop.ps1') -Raw
@@ -29,15 +44,16 @@ function Grant-BatchLogon([string]$Account) { $global:eznestTestCalls.Add("batch
     $shop = Get-Content (Join-Path $sandbox 'shop.json') -Raw | ConvertFrom-Json
     Assert (-not $shop.lan -and -not $shop.outputNetwork) 'Network defaults must be off.'
     Assert ($global:eznestTestCalls.Contains('account eznest-svc')) 'The limited service account must be used.'
-    $task = $global:eznestTestCalls | Where-Object { $_ -match '/Create' }
-    Assert ($task -match '/RL LIMITED' -and $task -match '/RU eznest-svc') 'Boot task must run with limited rights.'
+    $task = $global:eznestTestCalls | Where-Object { $_ -match '^register ' }
+    Assert ($task -match 'register eznest-svc Limited') 'Boot task must run with limited rights.'
+    Assert ($global:eznestTestAction.Execute -eq (Join-Path $sandbox 'eznest.exe')) 'App path must remain separate from task arguments.'
     Assert ($task -notmatch '--lan') 'Default startup must not use LAN.'
-    Assert ($global:eznestTestCalls.Contains('task /Run /TN eznest')) 'Fresh setup must start the limited task without waiting for reboot.'
+    Assert ($global:eznestTestCalls.Contains('start eznest')) 'Fresh setup must start the limited task without waiting for reboot.'
     Assert (-not ($global:eznestTestCalls | Where-Object { $_ -match 'firewall.*add rule' })) 'Default install must not open firewall.'
     $before = Get-Content (Join-Path $sandbox 'shop.json') -Raw
     $global:eznestTestCalls.Clear()
     & $installer -DataDir $sandbox -App (Join-Path $sandbox 'eznest.exe') -Lan 1 -StartAtBoot 1
-    Assert (($global:eznestTestCalls | Where-Object { $_ -match '/Create' }) -match '--lan') 'Explicit LAN must reach startup arguments.'
+    Assert (($global:eznestTestCalls | Where-Object { $_ -match '^register ' }) -match '--lan') 'Explicit LAN must reach startup arguments.'
     $after = Get-Content (Join-Path $sandbox 'shop.json') -Raw | ConvertFrom-Json
     Assert ($after.lan -eq $true -and $after.outputNetwork -eq $false) 'Explicit LAN must preserve OUTPUT off.'
     $global:eznestTestCalls.Clear()

@@ -135,8 +135,7 @@ if (Test-Path -LiteralPath $shopPath) {
 $task = 'eznest'
 $account = 'eznest-svc'
 if (Get-ScheduledTask -TaskName $task -TaskPath '\' -ErrorAction SilentlyContinue) {
-  & schtasks.exe /Delete /TN $task /F | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw 'Could not replace the existing eznest task.' }
+  Unregister-ScheduledTask -TaskName $task -TaskPath '\' -Confirm:$false
 }
 if ($boot) {
   $password = Ensure-ServiceAccount $account
@@ -152,12 +151,16 @@ if ($boot) {
     } catch {}
   }
   Grant-BatchLogon $account
-  $cmd = Join-Path (Split-Path -Parent $App) 'eznest-server.cmd'
-  $launch = "`"$App`" --web --no-browser --data-dir `"$DataDir`""
-  if ($lanEnabled) { $launch += ' --lan' }
-  & schtasks.exe /Create /TN $task /SC ONSTART /RU $account /RP $password /RL LIMITED /TR $launch /F *> $null
-  $password = $null
-  if ($LASTEXITCODE -ne 0) { throw 'Could not register the eznest startup task.' }
+  $launchArguments = '--web --no-browser --data-dir "' + $DataDir + '"'
+  if ($lanEnabled) { $launchArguments += ' --lan' }
+  $action = New-ScheduledTaskAction -Execute $App -Argument $launchArguments
+  $trigger = New-ScheduledTaskTrigger -AtStartup
+  $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+  try {
+    # Typed task fields preserve spaces in Program Files; no password is put
+    # in a child process command line, script, or log.
+    Register-ScheduledTask -TaskName $task -TaskPath '\' -Action $action -Trigger $trigger -Settings $settings -User $account -Password $password -RunLevel Limited -Force | Out-Null
+  } finally { $password = $null }
 }
 & netsh.exe advfirewall firewall delete rule name=eznest | Out-Null
 if ($lanEnabled) {
@@ -165,8 +168,7 @@ if ($lanEnabled) {
   if ($LASTEXITCODE -ne 0) { throw 'Could not open the shop-network port.' }
 }
 if ($boot) {
-  & schtasks.exe /Run /TN $task | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw 'The eznest startup task was registered but could not start. Check it in Windows Task Scheduler.' }
+  Start-ScheduledTask -TaskName $task -TaskPath '\'
 }
 
 
