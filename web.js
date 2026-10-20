@@ -29,7 +29,8 @@ function prefs() {
 }
 
 function savePrefs(patch) {
-  localStorage.setItem(PREF, JSON.stringify({...prefs(), ...patch}));
+  try { localStorage.setItem(PREF, JSON.stringify({...prefs(), ...patch})); }
+  catch { status('Browser preferences could not be saved. Shop settings are still saved on the host PC.', true); }
 }
 
 async function sha256(data) {
@@ -442,6 +443,13 @@ function showScreen(name) {
   $('export').hidden = idle || confirming;
   $('confirm').hidden = !confirming;
   $('start-over').hidden = idle;
+  $('delivery-receipt').hidden = name !== 'sent';
+  $('start-over').textContent = name === 'sent' ? 'Next job' : 'Start over';
+  const steps = {drop: 1, nest: 2, blocked: 2, check: 2, confirm: 3, sent: 3};
+  for (const node of document.querySelectorAll('[data-workflow-step]')) {
+    if (Number(node.dataset.workflowStep) === steps[name]) node.setAttribute('aria-current', 'step');
+    else node.removeAttribute('aria-current');
+  }
   $('choice').hidden = name !== 'blocked' || !unresolved();
   if (idle) showSheetId(null);
   syncFiles();
@@ -524,12 +532,21 @@ function applySetsToFiles() {
 }
 
 function renderActions() {
+  $('confirm-send').disabled = saving || busy;
+  $('confirm-back').disabled = saving;
+  $('start-over').disabled = saving;
   const badInput = inputIssue();
   const missing = current && current.result ? pieceIssue(current) : '';
   const cuts = current && current.result ? cutProblem() : null;
   const tooLong = current && current.result && lengthOver(current) ? 'Material is over the sheet length' : '';
   const step = document.body.dataset.step;
   const sent = step === 'sent' && current && current.released;
+  $('export').textContent = sent ? (current.savedPath ? 'Send again' : 'Download again')
+    : ($('hot-folder').value.trim() ? 'Review and send' : 'Review and download');
+  $('export').classList.toggle('primary', !sent);
+  $('export').classList.toggle('link', !!sent);
+  $('start-over').classList.toggle('primary', !!sent);
+  $('start-over').classList.toggle('link', !sent);
   $('length').classList.toggle('over', !!(current && current.result && lengthOver(current)));
   $('undo').hidden = !(sent && $('allow-undo').checked && current && current.savedPath);
   if (sent) {
@@ -849,6 +866,9 @@ function showLock(state) {
 
 function showSent() {
   showScreen('sent');
+  $('delivery-receipt').textContent = current?.savedPath
+    ? 'Sent to the hot folder. Check the job in your RIP before printing.'
+    : 'Pack downloaded. It has not been sent to a printer. Check your browser downloads.';
   if (current && current.manifest) setSentence(pieceSentence(current), false);
   renderActions();
 }
@@ -879,14 +899,14 @@ function showResult(state) {
   renderPreview(Math.min(activeSheet, sheetsIndex(state)));
   const missing = pieceIssue(state);
   const cuts = cutProblem();
-  if (state.released) showSent();
+  if (state.deliveryCompleted && state.savedPath) showSent();
   else if (missing) showBlocked(missing);
   else if (cuts) showBlocked(cuts.line, cuts.detail);
   else {
     showScreen('check');
     renderActions();
   }
-  status(state.note || (state.released ? 'This locked layout was restored on this computer.' : 'Layout ready.'));
+  status(state.note || (state.released && !state.deliveryCompleted ? 'Your saved layout is ready. Delivery is not complete; review and send it.' : 'Layout ready.'));
 }
 
 function sheetsIndex(state) {
@@ -1055,7 +1075,7 @@ function applyAutoBleed(svg) {
 }
 
 async function lock() {
-  if (!current || current.released || busy || saving) return current;
+  if (!current || current.released || busy) return current;
   saving = true;
   renderActions();
   try {
@@ -1081,10 +1101,7 @@ async function lock() {
     showLock(current);
     showSheetId(current);
     return current;
-  } finally {
-    saving = false;
-    renderActions();
-  }
+  } finally { renderActions(); }
 }
 
 function sheetSummary() {
@@ -1119,14 +1136,25 @@ function closeConfirm() {
 async function exportFile(forceDownload) {
   if (!current || busy || saving) return;
   if (document.body.dataset.step !== 'confirm' && $('export').disabled) return;
+  saving = true;
+  renderActions();
   try {
     if (!current.released) await lock();
-    else await api('/api/release', {
-      id: current.id,
-      map: EZNSVG.serialize(sheetMap(current)),
-      stagingFolder: stagingPath()
-    });
-    saving = true;
+    else {
+      const delivered = await api('/api/release', {
+        id: current.id,
+        map: EZNSVG.serialize(sheetMap(current)),
+        stagingFolder: stagingPath()
+      });
+      current.savedPath = delivered.savedPath || '';
+      current.deliveryCompleted = delivered.deliveryCompleted === true;
+      current.sha256 = delivered.sha256;
+    }
+    if (current.savedPath && forceDownload !== true) {
+      showSent();
+      status('Sent to the hot folder.');
+      return;
+    }
     const response = await fetch('/api/batch/' + current.id);
     if (!response.ok) throw Error('The locked file is saved, but the download failed. Send again.');
     const bytes = await response.arrayBuffer();
@@ -1173,6 +1201,7 @@ async function stopNest() {
 }
 
 async function startOver() {
+  if (saving) return;
   leaving = true;
   pendingRenest = false;
   if (busy) {
@@ -1865,6 +1894,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       await api('/api/output/undo', {id: current.id});
       current.savedPath = '';
+      current.deliveryCompleted = false;
       showResult(current);
       showScreen('check');
       renderActions();
@@ -1884,4 +1914,5 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   boot().catch(error => status(error.message, true));
 });
+
 

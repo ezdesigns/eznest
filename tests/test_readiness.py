@@ -2,6 +2,7 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 import installer_update
@@ -12,6 +13,75 @@ from output_folder import OutputFolder
 
 
 class ReadinessTests(unittest.TestCase):
+    def test_folder_setup_checks_write_access_and_leaves_no_probe(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hot = root / 'hot'
+            hot.mkdir()
+            output = OutputFolder(root / 'folder.json')
+            with patch('output_folder.tempfile.TemporaryFile', side_effect=PermissionError('Denied')):
+                with self.assertRaisesRegex(ValueError, 'cannot write'):
+                    output.connect(str(hot))
+            self.assertFalse(output.status()['configured'])
+            output.connect(str(hot))
+            self.assertEqual(list(hot.iterdir()), [])
+
+    def test_failed_delivery_restore_retry_double_click_and_undo(self):
+        from playwright.sync_api import sync_playwright
+        fixture = test_web_mvp.WebMvpTests()
+        fixture.setUp()
+        try:
+            hot = server.WORK / 'hot'
+            hot.mkdir()
+            with sync_playwright() as playwright:
+                browser = test_web_mvp.launch_browser(playwright)
+                try:
+                    page = browser.new_page(viewport={'width': 1440, 'height': 1000})
+                    page.goto(fixture.url() + '/web')
+                    fixture.wait_ready(page)
+                    page.fill('#setup-hot', str(hot))
+                    page.fill('#setup-printer', 'Synthetic printer')
+                    page.click('#setup-save')
+                    page.wait_for_function("() => document.querySelector('#setup').hidden")
+                    page.set_input_files('#file', str(Path(__file__).parents[1] / 'sample-artwork.svg'))
+                    page.wait_for_function("() => document.body.dataset.step === 'check'", timeout=90000)
+                    with patch.object(server.OUTPUT, 'save', side_effect=ValueError('Test hot folder disconnected')):
+                        page.click('#export')
+                        page.click('#confirm-send')
+                        page.wait_for_function("() => document.body.dataset.step === 'blocked'")
+                    self.assertTrue(server.STATE['released'])
+                    self.assertFalse(server.STATE['deliveryCompleted'])
+                    page.reload()
+                    fixture.wait_ready(page)
+                    self.assertEqual(page.get_attribute('body', 'data-step'), 'check')
+                    self.assertTrue(page.locator('#delivery-receipt').is_hidden())
+                    self.assertIn('Delivery is not complete', page.locator('#status').inner_text())
+                    original = server.OUTPUT.save
+                    def slow_save(*args):
+                        time.sleep(0.3)
+                        return original(*args)
+                    with patch.object(server.OUTPUT, 'save', side_effect=slow_save) as delivered:
+                        page.click('#export')
+                        page.evaluate('Promise.all([exportFile(false), exportFile(false)])')
+                        self.assertEqual(delivered.call_count, 1)
+                    self.assertIn('Sent to the hot folder', page.locator('#delivery-receipt').inner_text())
+                    self.assertEqual(page.locator('#start-over').inner_text(), 'Next job')
+                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'production-delivered-desktop.png'), full_page=True)
+                    page.set_viewport_size({'width': 390, 'height': 844})
+                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'production-delivered-mobile.png'), full_page=True)
+                    page.evaluate("document.querySelector('#allow-undo').checked = true; renderActions()")
+                    page.click('#undo')
+                    page.wait_for_function("() => document.querySelector('#status').textContent.includes('Removed the pack')")
+                    self.assertFalse(server.STATE['deliveryCompleted'])
+                    self.assertFalse(server.STATE['savedPath'])
+                    page.reload()
+                    fixture.wait_ready(page)
+                    self.assertEqual(page.get_attribute('body', 'data-step'), 'check')
+                finally:
+                    browser.close()
+        finally:
+            fixture.tearDown()
+
     def test_pending_path_cannot_escape_download_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -80,3 +150,4 @@ class ReadinessTests(unittest.TestCase):
                         browser.close()
         finally:
             fixture.tearDown()
+

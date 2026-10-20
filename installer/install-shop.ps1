@@ -155,4 +155,9 @@ if ($lanEnabled) {
   & netsh.exe advfirewall firewall add rule name=eznest dir=in action=allow protocol=TCP localport=8765 profile=private
   if ($LASTEXITCODE -ne 0) { throw 'Could not open the shop-network port.' }
 }
+if ($boot) {
+  & schtasks.exe /Run /TN $task | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'The eznest startup task was registered but could not start. Check it in Windows Task Scheduler.' }
+}
+
 

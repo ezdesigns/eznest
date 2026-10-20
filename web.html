@@ -7,9 +7,12 @@
 <link rel="stylesheet" href="/web.css">
 </head>
 <body data-step="drop">
+<header class="shop-header">
+  <strong>eznest</strong><span>Prepare. Nest. Send.</span>
+</header>
 <section id="setup" hidden>
   <h2>Set up this shop</h2>
-  <p class="hint">Hot folder, printer, cut names, and units. Nothing is connected until you save.</p>
+  <p class="hint">Set this up once on the shop host PC. Every employee uses the same saved printer and hot folder. Save checks that eznest can write there.</p>
   <div class="fields">
     <label class="wide">Hot folder
       <input id="setup-hot" type="text" maxlength="400" placeholder="RIP hot folder or share" autocomplete="off" spellcheck="false">
@@ -166,6 +169,11 @@
   </div>
 </details>
 <main>
+  <nav class="workflow" aria-label="Job progress">
+    <span data-workflow-step="1" aria-current="step">1 · Add files</span>
+    <span data-workflow-step="2">2 · Review nest</span>
+    <span data-workflow-step="3">3 · Send</span>
+  </nav>
   <section id="illustrator-handoff" class="handoff" hidden>
     <strong>Illustrator pilot · Regular</strong>
     <p id="illustrator-note">Your production copy is ready to load.</p>
@@ -176,6 +184,7 @@
     <label id="drop" class="drop">Drop your files
       <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
     </label>
+    <p class="hint import-hint">Click to choose PDF, PDF-compatible AI, or SVG. Prepare colors and cut paths in Illustrator first. Nesting starts automatically.</p>
   </div>
   <div id="sheet-tabs" class="tabs" hidden></div>
   <div class="preview-tools" id="preview-tools" hidden>
@@ -225,6 +234,8 @@
     <button id="choose-kiss" type="button">KISS</button>
   </div>
   <div id="confirm" class="confirm" hidden>
+    <strong>Ready to send?</strong>
+    <p class="hint">Check every piece, cut path, and material. Sending places the pack in the hot folder; your RIP controls printing.</p>
     <p id="confirm-summary"></p>
     <button id="confirm-send" class="primary" type="button">Confirm send</button>
     <button id="confirm-back" class="link" type="button">Back</button>
@@ -233,10 +244,21 @@
   <button id="stop" class="link" type="button" hidden>Stop · keep best</button>
   <button id="start-over" class="link" type="button" hidden>Start over</button>
   <button id="undo" class="link" type="button" hidden>Undo send</button>
+  <p id="delivery-receipt" class="delivery-receipt" role="status" hidden></p>
+  <p id="status" role="status" aria-live="polite"></p>
+  <details class="quick-guide">
+    <summary>How to use eznest</summary>
+    <ol>
+      <li>Prepare your print file in Illustrator. Check colors and cut paths, then save a PDF or PDF-compatible AI file. Keep your original artwork.</li>
+      <li>Add the file, choose the material and number of sets, and let it nest. Check the large preview, piece count, dimensions and waste.</li>
+      <li>Review and confirm Send. Check the job in your RIP before printing. Choose Next job when you are finished.</li>
+    </ol>
+    <p>If a send fails, keep the preview open, fix the hot-folder connection in Settings, and send again. Your frozen pack is kept.</p>
+    <p>One PC hosts the shop. Other PCs can use its browser address when the administrator explicitly enables Shop network. Local activity stays on the host; OUTPUT sharing is off.</p>
+  </details>
   <input id="layout-id" hidden readonly tabindex="-1" aria-label="Layout ID">
   <input id="layout-hash" hidden readonly tabindex="-1" aria-label="SHA-256">
 </main>
-<p id="status" role="status"></p>
 <script src="/svg-io.js"></script>
 <script src="/queue-core.js"></script>
 <script src="/cut-mapping.js"></script>
@@ -244,4 +266,5 @@
 <script src="/web.js"></script>
 </body>
 </html>
+
 

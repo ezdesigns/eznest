@@ -565,6 +565,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError('That file is no longer in the hot folder.')
                     shutil.rmtree(destination)
                     record_workload('removed_from_folder')
+                    STATE.update(savedPath='', deliveryCompleted=False)
+                    persist_state()
                     return self.send(200, {'ok': True})
                 elif self.path == '/api/shutdown':
                     if STATE.get('status') == 'running':
@@ -688,4 +690,5 @@ def serve(open_browser=False, page='/'):
 
 if __name__ == '__main__':
     serve()
+
 

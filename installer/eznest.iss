@@ -58,13 +58,16 @@ Root: HKLM; Subkey: "Software\Classes\eznest-update"; ValueType: string; ValueNa
 Root: HKLM; Subkey: "Software\Classes\eznest-update\shell\open\command"; ValueType: string; ValueData: """{app}\eznest.exe"" --request-shop-update"
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-shop.ps1"" -DataDir ""{commonappdata}\eznest"" -App ""{app}\eznest.exe"" -OnyxPc {code:OnyxFlag} -Lan {code:LanFlag} -StartAtBoot {code:BootFlag} -Updates {code:UpdatesFlag}"; Flags: runhidden waituntilterminated; Check: IsFreshInstall
-Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""; Description: "Open eznest"; Flags: nowait postinstall skipifsilent
+Filename: "http://127.0.0.1:8765/web"; Description: "Open eznest"; Flags: shellexec postinstall skipifsilent; Check: OpenServicePage
+Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""; Description: "Open eznest"; Flags: nowait postinstall skipifsilent; Check: OpenStandalonePage
 
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\uninstall-shop.ps1"" -DataDir ""{commonappdata}\eznest"""; Flags: runhidden waituntilterminated; RunOnceId: "UninstallShop"
 
 [Code]
+var
+  ExistingInstall: Boolean;
+
 function OnyxFlag(Param: String): String;
 begin
   if WizardIsTaskSelected('onyxpc') then Result := '1' else Result := '0';
@@ -94,16 +97,48 @@ end;
 
 function IsFreshInstall: Boolean;
 begin
-  Result := not IsUpgrade;
+  Result := not ExistingInstall;
+end;
+
+function OpenServicePage: Boolean;
+begin
+  Result := IsFreshInstall and WizardIsTaskSelected('startatboot');
+end;
+
+function OpenStandalonePage: Boolean;
+begin
+  Result := not OpenServicePage;
 end;
 
 function InitializeSetup: Boolean;
 begin
+  { Capture before Setup writes its own uninstall registration. }
+  ExistingInstall := IsUpgrade;
   Result := True;
   if ExpandConstant('{param:EZUPDATE|0}') = '1' then
   begin
-    Result := IsUpgrade;
+    Result := ExistingInstall;
     if not Result then MsgBox('An existing eznest installation is required for this update.', mbError, MB_OK);
   end;
 end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+  Arguments: String;
+begin
+  if (CurStep = ssPostInstall) and IsFreshInstall then
+  begin
+    Arguments := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\install-shop.ps1') +
+      '" -DataDir "' + ExpandConstant('{commonappdata}\eznest') + '" -App "' +
+      ExpandConstant('{app}\eznest.exe') + '" -OnyxPc ' + OnyxFlag('') +
+      ' -Lan ' + LanFlag('') + ' -StartAtBoot ' + BootFlag('') + ' -Updates ' + UpdatesFlag('');
+    if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Arguments, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      RaiseException('Windows could not start shop setup. Contact your shop administrator before using eznest.');
+    if ResultCode <> 0 then
+      RaiseException('Shop setup failed. The startup task or folder permissions need administrator attention. Do not use this installation for production yet.');
+  end;
+end;
+
 

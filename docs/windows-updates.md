@@ -23,6 +23,19 @@ workflow until separately authorized.
 
 ## First rollout requirements
 
+Use one host PC per shop and browser bookmarks on employee PCs. Enable LAN only
+on the trusted shop network with the installer's explicit Shop network choice.
+Update that host once; browser clients do not need separate installers. A shop
+that leaves LAN off uses the host PC's local browser.
+
+The installer CI now performs a real fresh install on a disposable GitHub-hosted
+Windows runner. It checks limited-account startup, loopback binding, the employee
+page, and uninstall/data retention. It never runs on the developer's or shop PC.
+This reduces the need for a spare PC during development, but does not validate
+Illustrator, ONYX, physical cutting, UAC interaction or signed upgrade/rollback.
+Unsigned internal pilot builds use manual installation after checksum verification.
+Do not disable the signed-update guard or distribute a test certificate to employees.
+
 Existing employees need one manual installation of the build containing this
 helper. It cannot add itself to an older installation remotely. Use a separate
 test PC; do not replace protected rc.4 or its ONYX white-gloss test setup.
@@ -91,3 +104,4 @@ Before employee rollout, test two signed versions on a disposable Windows PC/VM:
 
 Record actual versions, signatures, account identity and results in the draft PR.
 Keep the readiness checklist's real install/rollback item open until this passes.
+

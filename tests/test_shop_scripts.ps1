@@ -31,6 +31,7 @@ function Grant-BatchLogon([string]$Account) { $global:eznestTestCalls.Add("batch
     $task = $global:eznestTestCalls | Where-Object { $_ -match '/Create' }
     Assert ($task -match '/RL LIMITED' -and $task -match '/RU eznest-svc') 'Boot task must run with limited rights.'
     Assert ($task -notmatch '--lan') 'Default startup must not use LAN.'
+    Assert ($global:eznestTestCalls.Contains('task /Run /TN eznest')) 'Fresh setup must start the limited task without waiting for reboot.'
     Assert (-not ($global:eznestTestCalls | Where-Object { $_ -match 'firewall.*add rule' })) 'Default install must not open firewall.'
     $before = Get-Content (Join-Path $sandbox 'shop.json') -Raw
     $global:eznestTestCalls.Clear()
@@ -54,3 +55,4 @@ function Grant-BatchLogon([string]$Account) { $global:eznestTestCalls.Add("batch
     if (-not $resolved.StartsWith($temp, [StringComparison]::OrdinalIgnoreCase) -or (Split-Path $resolved -Leaf) -notlike 'eznest-script-tests-*') { throw 'Unsafe test cleanup path' }
     Remove-Item -LiteralPath $resolved -Recurse -Force
 }
+

@@ -48,6 +48,12 @@ class OutputFolder:
             raise ValueError('Choose an output folder, not an entire drive.')
         if source and root.is_relative_to(source.resolve()):
             raise ValueError('Choose an output folder outside the watched source folder to avoid importing exports.')
+        try:
+            # Empty, non-printable probe; exercise this server account's access.
+            with tempfile.TemporaryFile(prefix='.eznest-check-', suffix='.tmp', dir=root):
+                pass
+        except OSError:
+            raise ValueError('The hot folder exists, but eznest cannot write to it. Ask your shop administrator to give the eznest-svc account access, then save again.') from None
         self.root = root
         self._store(str(root))
         return self.status()
@@ -106,3 +112,5 @@ def stage_pack(folder, run_id, content, source=None):
     holder.root = root
     holder.storage = None
     return holder.save(run_id, content, source)
+
+

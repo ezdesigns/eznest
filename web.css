@@ -176,7 +176,9 @@ button.link, #add-files {
 .tabs { display: flex; gap: 8px; justify-content: center; }
 .tabs button { min-height: 32px; border: 0; background: transparent; font-size: 14px; font-weight: 700; }
 .tabs button[aria-pressed="true"] { text-decoration: underline; }
-#status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+#status { width: 100%; max-width: 760px; text-align: center; font-size: 14px; overflow-wrap: anywhere; }
+#status:empty { display: none; }
+#status.error { color: var(--alarm); background: #fff0eb; padding: 12px; border-radius: 8px; forced-color-adjust: none; }
 button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, a:focus-visible {
   outline: 3px solid #111; outline-offset: 3px;
 }
@@ -198,7 +200,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 #local-activity { margin-top: 18px; font-size: 14px; }
 #local-activity summary { cursor: pointer; font-weight: 700; }
 #activity-summary { margin: 10px 0; line-height: 1.5; }
+.shop-header { display: flex; align-items: baseline; gap: 14px; padding: 20px 70px 0 24px; }
+.shop-header strong { font-size: 23px; letter-spacing: -.5px; }
+.shop-header span { color: var(--muted); font-size: 13px; }
+.workflow { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: 100%; font-size: 14px; color: var(--muted); }
+.workflow span { padding: 7px 12px; border-radius: 20px; }
+.workflow [aria-current] { background: #111; color: white; font-weight: 700; }
+.import-hint { text-align: center; max-width: 540px; margin: 0 auto; }
+.delivery-receipt { background: #e6f3e9; padding: 16px; border-radius: 10px; max-width: 760px; text-align: center; }
+.quick-guide { width: 100%; max-width: 760px; font-size: 14px; color: var(--muted); }
+.quick-guide summary { cursor: pointer; text-align: center; font-weight: 700; }
+.quick-guide li, .quick-guide p { margin: 10px 0; }
 @media (max-width: 640px) {
   main { gap: 16px; padding-top: 56px; }
   .sheet-frame { min-height: 180px; }
 }
+
