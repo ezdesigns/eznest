@@ -36,3 +36,12 @@ offer **Install when finished** after the separate rollout acceptance test passe
 Finish or explicitly discard the current job before installation. Do not replace
 the protected rc.4 shop test until its ONYX test passes and v1 merges.
 
+## From Illustrator
+
+Finish colors and existing bleed, save, select complete artwork and cuts, and run
+**File > Scripts > Nest in eznest**. First run remembers your approved Adobe PDF
+preset, Regular material, width and existing bleed. Later runs open the production
+copy directly in eznest: choose sets, review, send. Use **EZ Nest Settings** to
+change saved choices. See [Illustrator setup](../illustrator/START%20HERE.txt).
+The bridge needs eznest running on the same PC; it does not connect a browser-only
+LAN workstation to the host. An existing job requires explicit replacement.

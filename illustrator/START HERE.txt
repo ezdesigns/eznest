@@ -7,16 +7,25 @@ EZ Nest Illustrator pilot - draft build only
    For the pilot choose an empty TEST output folder, not the live ONYX folder.
 3. In Illustrator, open a COPY of a real kit and save it. Select the complete
    production artwork and its cut paths.
-4. Use File > Scripts > Other Script and select "Prepare for EZ Nest.jsx"
-   in this folder. Keep bridge-core.js beside it.
-5. Choose your existing ONYX PDF preset. Confirm width, kits and EXISTING bleed.
-   Regular is the only enabled material. Confirm that production colors and
-   existing bleed are already correct.
-6. The script creates a separate document with print, thru-cut and kiss cut
-   layers. It exports that copy and opens the local nesting page.
-7. Click Load Illustrator selection. Inspect every piece, scale and cut path.
-   Click Send to ONYX to write into your TEST folder (the button name is not a
-   confirmation that ONYX is connected).
+4. Run "Nest in eznest.jsx" through File > Scripts > Other Script. Keep all
+   four files together: Nest in eznest.jsx, Prepare for EZ Nest.jsx,
+   EZ Nest Settings.jsx and bridge-core.js.
+   For a permanent menu entry, copy this folder's files to Illustrator's
+   Presets/<language>/Scripts folder and restart Illustrator. Run File > Scripts
+   > Nest in eznest. This is a script menu action, not an installed plugin panel.
+5. On the first run, choose your existing approved ONYX Adobe PDF preset,
+   Regular material, printable width and EXISTING bleed. These settings are saved
+   per Windows user. Run EZ Nest Settings.jsx to change them. If a saved preset
+   is removed or settings are damaged, setup opens again; no substitute is chosen.
+6. Later runs need no setup dialog: finish your colors/bleed, save the source,
+   select complete parts, and run Nest in eznest. It creates a separate production
+   document with print, thru-cut and kiss cut layers and exports your saved preset.
+   The original document is reactivated and never overwritten.
+7. The browser opens and loads the handoff automatically into an empty workspace.
+   Choose sets, inspect every piece, scale, colors and cut path, then Review and
+   send. Shop setup must be finished first. An existing job is never automatically
+   replaced; finish it or explicitly load and confirm replacement. Reloading the
+   page preserves a reviewed/sent job. Retry is available if loading fails.
 8. Compare the resulting artwork.pdf against your normal production PDF in
    Illustrator and ONYX before any physical production.
 
@@ -24,7 +33,7 @@ SUPPORTED PREPARATION
 Copies selected artwork into a separate document; preserves its object structure
 and scale; moves separate unfilled cut strokes to the specified output layers;
 maps those strokes to CutContour_Thru-cut / CutContour_Kiss-cut spots; and exports
-with an existing Adobe PDF preset you explicitly choose. All other color handling
+with an existing Adobe PDF preset you explicitly choose once and can change later. All other color handling
 comes from that PDF preset. The original source is never saved by the script.
 
 Cut strokes must be on source layers named thru-cut or kiss cut, or use the
@@ -40,6 +49,11 @@ Illustrator automatically. The exported PDF can be opened in Illustrator.
 This is a handoff/preparation pilot, not full Nest Pro feature parity.
 
 LOCAL DATA
+Illustrator saves only PDF preset, material, width and existing bleed under
+Folder.userData/eznest/illustrator-settings.json. Sets reset to 1 for every new
+export. No tokens, source paths or artwork are saved in these preferences.
+The bridge requires eznest on the SAME PC as Illustrator, at 127.0.0.1:8765;
+a browser-only LAN workstation cannot use this local bridge yet.
 The app stores a PDF handoff and metadata under its data directory's illustrator
 folder. The source path is hashed; it is not stored in the handoff manifest.
 Each export gets a handoff ID. Repeating a browser calculation for that handoff

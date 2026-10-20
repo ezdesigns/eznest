@@ -37,3 +37,58 @@ assert.equal(Buffer.byteLength(body), length);
 assert.ok(sent.includes('X-EZ-Token: test-token'));
 new vm.Script(fs.readFileSync(path.join(__dirname, '../illustrator/Prepare for EZ Nest.jsx'), 'utf8').replace(/^#.*$/gm, ''));
 console.log('Illustrator bridge: binary transport, Unicode JSON, cut classification, conflicts, loopback HTTP and JSX syntax passed.');
+const names = ['[PDF/X-4:2008]', 'Shop ONYX'];
+const saved = {version:1, material:'regular', pdfPreset:'Shop ONYX', widthIn:51.5, bleedMm:0};
+assert.equal(bridge.validPreferences(saved,names),true);
+for (const change of [{pdfPreset:'Removed'}, {material:'chrome'}, {widthIn:NaN}, {widthIn:'51.5'}, {bleedMm:26}, {version:2}]) {
+  assert.equal(bridge.validPreferences({...saved,...change},names),false);
+}
+let disk='', closed=0;
+const prefFile={exists:true,parent:{exists:true},open:()=>true,close:()=>closed++,write:text=>{disk=text;return true;},read:()=>disk};
+bridge.writePreferences(prefFile,saved);
+assert.equal(bridge.readPreferences(prefFile,names).pdfPreset,'Shop ONYX');
+assert.equal(closed,2);
+assert.equal(bridge.readPreferences(prefFile,['Other preset']),null);
+disk='{broken';assert.equal(bridge.readPreferences(prefFile,names),null);
+prefFile.open=()=>false;
+assert.throws(()=>bridge.writePreferences(prefFile,saved),/Cannot save/);
+for(const name of ['Nest in eznest.jsx','EZ Nest Settings.jsx']) {
+  new vm.Script(fs.readFileSync(path.join(__dirname,'../illustrator',name),'utf8').replace(/^#.*$/gm,''));
+}
+console.log('Remembered Illustrator settings: roundtrip, removed presets, corrupt files, invalid materials and save failures passed.');
+// Exercise the actual JSX fast path with an Illustrator host double: no setup or
+// success modal, correct preset/material, source preservation and browser launch.
+const script = fs.readFileSync(path.join(__dirname,'../illustrator/Prepare for EZ Nest.jsx'),'utf8').replace(/^#.*$/gm,'');
+let exportCount=0, launched=0, sourceActivated=0, intake;
+const fileData = {'user/eznest/illustrator-settings.json':JSON.stringify(saved)};
+function FakeFile(name) {
+  if (!(this instanceof FakeFile)) return new FakeFile(name);
+  this.fsName=name;this.parent={fsName:'scripts',exists:true};this.exists=name in fileData;
+  this.length=10;this.open=()=>true;this.close=()=>true;
+  this.read=()=>fileData[name]||'%PDF-test';this.write=text=>{fileData[name]=text;return true;};
+  this.execute=()=>{assert.equal(sourceActivated,1);launched++;return true;};
+}
+function FakeFolder(name){this.fsName=name;this.exists=true;}
+FakeFolder.userData={fsName:'user'};FakeFolder.temp={fsName:'temp'};
+const layer={typename:'Layer',name:'thru-cut'};
+const copied={typename:'PathItem',parent:layer,stroked:true,filled:false,geometricBounds:[0,10,10,0],visibleBounds:[0,10,10,0],translate:()=>{},move:()=>{}};
+const selected={...copied,duplicate:()=>copied};
+const source={saved:true,selection:[selected],fullName:{fsName:'synthetic.ai'},documentColorSpace:'CMYK',activate:()=>sourceActivated++};
+const layers=[{}];layers.add=()=>({});
+const production={layers,spots:{getByName:()=>({})},pageItems:[copied],artboards:[{}],
+  saveAs:(file,options)=>{assert.equal(options.pDFPreset,'Shop ONYX');exportCount++;}};
+const docs=[source];docs.add=()=>production;
+context.File=FakeFile;context.Folder=FakeFolder;
+context.$={fileName:'scripts/Prepare for EZ Nest.jsx',global:{},evalFile:()=>{}};
+context.app={documents:docs,activeDocument:source,PDFPresetsList:names};
+context.Window=()=>{throw Error('Unexpected setup dialog');};
+context.alert=message=>{throw Error(message);};
+context.SpotColor=function(){};context.PDFSaveOptions=function(){};
+context.ElementPlacement={PLACEATEND:1};
+bridge.http=(method,url,data)=>{if(method==='GET')return {app:'eznest',token:'test'};intake=data;return {ok:true};};
+vm.runInContext(script,context);
+assert.equal(exportCount,1);assert.equal(launched,1);
+assert.equal(intake.material,'regular');assert.equal(intake.sets,1);assert.equal(intake.widthIn,51.5);
+assert.equal(intake.bleedMm,0);
+console.log('Illustrator JSX fast path: saved preset export, one set, untouched source and browser launch passed with host doubles.');
+

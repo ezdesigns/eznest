@@ -61,6 +61,10 @@ bleed, repair clipping groups, register templates or apply production color
 substitutions. The handoff stores a local PDF and hashed source reference; it is
 not an OUTPUT transfer. Recalculating a handoff with the same production settings
 is one workload observation. A fresh Illustrator export is a new attempt.
+The Nest in eznest script remembers the selected PDF preset, material, width and
+existing bleed per Windows user. Later exports open directly in an empty browser
+workspace; operators choose sets, review and send. Existing jobs require explicit
+replacement. EZ Nest Settings changes those choices. The bridge is same-PC only.
 
 ## Roadmap
 

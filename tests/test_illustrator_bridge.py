@@ -85,7 +85,7 @@ class IllustratorBridgeTests(unittest.TestCase):
                         for run in range(2):
                             if run:
                                 page.click('#start-over')
-                            page.click('#illustrator-load')
+                                page.click('#illustrator-load')
                             try:
                                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate').textContent)", timeout=30000)
                             except Exception:
@@ -104,6 +104,14 @@ class IllustratorBridgeTests(unittest.TestCase):
                             page.wait_for_function("async () => (await (await fetch('/api/state')).json()).deliveryCompleted === true", timeout=30000)
                             state = json.load(urlopen(fixture.url()+'/api/state'))
                             self.assertEqual(state['job']['illustrator']['id'], result['id'])
+                            # Refreshing the one-click URL must preserve the sent pack.
+                            pack_id = state['id']
+                            page.reload()
+                            fixture.wait_ready(page)
+                            self.assertIn('already open', page.locator('#illustrator-note').inner_text())
+                            restored = json.load(urlopen(fixture.url()+'/api/state'))
+                            self.assertEqual(restored['id'], pack_id)
+                            self.assertTrue(restored['deliveryCompleted'])
                             with ZipFile(server.WORK/'batches'/(state['id']+'.zip')) as pack:
                                 reader = PdfReader(io.BytesIO(pack.read('artwork.pdf')))
                                 names = [o.get_object()['/Name'] for o in reader.root_object['/OCProperties']['/OCGs']]

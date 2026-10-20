@@ -1,5 +1,26 @@
 /* Original local handoff utilities; ES3 for Illustrator ExtendScript. */
 var EZPilot = {};
+// Revalidate saved choices against this Illustrator installation on every run.
+EZPilot.validPreferences = function(p, names) {
+    if(!p || p.version!==1 || p.material!=='regular' || typeof p.pdfPreset!=='string')return false;
+    if(typeof p.widthIn!=='number'||!isFinite(p.widthIn)||p.widthIn<1||p.widthIn>196)return false;
+    if(typeof p.bleedMm!=='number'||!isFinite(p.bleedMm)||p.bleedMm<0||p.bleedMm>25)return false;
+    for(var i=0;i<names.length;i++)if(String(names[i])===p.pdfPreset)return true;
+    return false;
+};
+EZPilot.readPreferences = function(file, names) {
+    if(!file.exists)return null;
+    try {
+        file.encoding='UTF-8';if(!file.open('r'))return null;
+        var text;try{text=file.read();}finally{file.close();}
+        var p=EZPilot.parse(text);return EZPilot.validPreferences(p,names)?p:null;
+    }catch(ignore){return null;}
+};
+EZPilot.writePreferences = function(file, p) {
+    if(!file.parent.exists&&!file.parent.create())throw Error('Cannot create the eznest settings folder.');
+    file.encoding='UTF-8';if(!file.open('w'))throw Error('Cannot save Illustrator settings.');
+    try{if(!file.write(EZPilot.stringify(p)))throw Error('Cannot save Illustrator settings.');}finally{file.close();}
+};
 EZPilot.base64 = function(text) {
     var chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/',out='',i,a,b,c;
     for(i=0;i<text.length;i+=3){

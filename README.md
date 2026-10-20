@@ -130,9 +130,13 @@ Older Illustrator scripts and the classic page are in [archive/](archive/README.
 ### Illustrator pilot (draft only)
 
 The new [Illustrator pilot](illustrator/START%20HERE.txt) is separate from the
-archived bridge. Run `illustrator/Prepare for EZ Nest.jsx` through Illustrator's
+archived bridge. Run `illustrator/Nest in eznest.jsx` through Illustrator's
 File > Scripts > Other Script on the same PC as this draft. It exports a separate
 production copy using your chosen Adobe PDF preset and opens a local handoff.
+The first run remembers the PDF preset, material, width and existing bleed;
+later runs load an empty workspace automatically. Choose sets, review and send.
+Run `EZ Nest Settings.jsx` to change saved choices. An existing job requires
+explicit replacement. See the pilot guide to add the script to Illustrator's menu.
 The pilot uses `print`, `thru-cut`, and `kiss cut` layers and Regular material.
 Use a test hot folder first. Live Illustrator host and ONYX validation are still
 required; automated bridge tests do not establish physical production readiness.
@@ -147,4 +151,3 @@ Ez Nest is MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Dependencies keep t
 ![First-run setup](docs/screenshots/first-run.png)
 
 ![Settings](docs/screenshots/settings.png)
-

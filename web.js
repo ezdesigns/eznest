@@ -16,6 +16,7 @@ let pendingRenest = false;
 let leaving = false;
 let nestTimer = 0;
 let illustratorHandoff = null;
+let illustratorLoading = false;
 
 function status(message, failed) {
   const el = $('status');
@@ -1181,6 +1182,7 @@ async function exportFile(forceDownload) {
 
 function nextKit() {
   illustratorHandoff = null;
+  $('illustrator-load').hidden = false;
   renderMaterialButtons();
   kits = [];
   current = null;
@@ -1637,10 +1639,33 @@ async function boot() {
     }
   }
   document.body.dataset.ready = '1';
+  await autoLoadIllustrator();
+}
+
+async function autoLoadIllustrator() {
+  const id = new URLSearchParams(location.search).get('illustrator');
+  if (!id || !/^[a-f0-9]{32}$/.test(id) || !$('setup').hidden) return;
+  // Refreshing a handoff must not replace its reviewed/sent layout or another job.
+  if (busy || saving || kits.length || current) {
+    $('illustrator-note').textContent = 'A job is already open. Finish it before loading this selection.';
+    return;
+  }
+  await openIllustrator();
+}
+
+async function openIllustrator() {
+  if (illustratorLoading) return;
+  illustratorLoading = true;
+  $('illustrator-load').disabled = true;
+  $('illustrator-note').textContent = 'Opening your production copy...';
+  try { await loadIllustrator(); }
+  catch (error) { $('illustrator-note').textContent = error.message + ' Use Load Illustrator selection to retry.'; }
+  finally { illustratorLoading = false; $('illustrator-load').disabled = false; }
 }
 
 async function loadIllustrator() {
   if (busy || saving) throw Error('Finish the current operation first.');
+  if (!$('setup').hidden) throw Error('Finish shop setup first.');
   if ((kits.length || current) && !confirm('Replace the current preview with this Illustrator selection?')) return;
   const id = new URLSearchParams(location.search).get('illustrator');
   const response = await fetch('/api/illustrator/' + encodeURIComponent(id));
@@ -1673,7 +1698,8 @@ async function loadIllustrator() {
   blockReason = '';
   leaving = false;
   renderFiles();
-  $('illustrator-note').textContent = 'Selection loaded. Verify every piece and its cut paths before sending.';
+  $('illustrator-note').textContent = 'Choose sets, review every piece, colors and cut paths, then send. Regular material; your saved Illustrator PDF preset was used.';
+  $('illustrator-load').hidden = true;
   showScreen('nest');
   requestNest();
 }
@@ -1743,12 +1769,7 @@ async function refreshActivity() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  $('illustrator-load').addEventListener('click', async () => {
-    $('illustrator-load').disabled = true;
-    try { await loadIllustrator(); }
-    catch (error) { $('illustrator-note').textContent = error.message; }
-    finally { $('illustrator-load').disabled = false; }
-  });
+  $('illustrator-load').addEventListener('click', openIllustrator);
   $('preview-zoom').addEventListener('change', () => {
     const width = Number($('preview-zoom').value) * 100 + '%';
     for (const id of ['preview', 'live']) $(id).style.width = width;
@@ -1818,7 +1839,7 @@ document.addEventListener('DOMContentLoaded', () => {
     catch (error) { status(error.message, true); }
   });
   $('setup-save').addEventListener('click', async () => {
-    try { await saveSetup(); }
+    try { await saveSetup(); await autoLoadIllustrator(); }
     catch (error) {
       $('setup-error').hidden = false;
       $('setup-error').textContent = error.message;
@@ -1914,5 +1935,4 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   boot().catch(error => status(error.message, true));
 });
-
 

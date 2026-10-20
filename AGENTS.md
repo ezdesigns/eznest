@@ -66,6 +66,11 @@ Work on a separate production copy and never silently save over the source.
 The operator chooses an existing Adobe PDF preset. Regular is the only configured
 pilot material. Chrome and Holographic need actual shop rules before enabling
 them. Do not invent color substitutions, bleed values or PDF presets.
+`Nest in eznest.jsx` remembers those choices per Windows user; `EZ Nest Settings.jsx`
+changes them. Revalidate saved presets against Illustrator's available presets,
+never silently substitute. New exports start at one set. Auto-load only an empty
+workspace after shop setup; preserve existing reviewed/sent work on page reload.
+The bridge is loopback-only and needs eznest on the same PC as Illustrator.
 
 The pilot does not yet generate bleed, repair clipping groups, register templates,
 automatically recolor production art, or return the nest to Illustrator. Preserve
@@ -148,4 +153,3 @@ and draft commit/PR. Keep unchecked readiness items open until evidence supports
 completion. Distinguish local tests, current-commit CI, installer artifacts, and
 physical production validation. Do not claim that building an installer publishes
 a release or that sending to a folder confirms printing.
-
