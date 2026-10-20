@@ -25,8 +25,12 @@ FAIL = 'import sys\nraise SystemExit(1)\n'
 
 
 class InstallerUpdateTests(unittest.TestCase):
+    def tearDown(self):
+        installer_update.reap_left_running()
+
     def settle(self):
         """Let a stub launcher exit before the temp directory disappears."""
+        installer_update.reap_left_running()
         if os.name == 'nt':
             return
         deadline = time.time() + 5

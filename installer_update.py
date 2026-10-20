@@ -325,10 +325,63 @@ def _wait_healthy(path, process, version, timeout):
     return False
 
 
+_left_running = []
+
+
 def _leave_running(process):
     """The shop app outlives this helper. Don't warn that its handle is still open."""
     if process.poll() is None:
+        _left_running.append(process.pid)
         process.returncode = 0
+
+
+def _end_pid(pid):
+    if os.name == 'nt':
+        subprocess.run(['taskkill', '/PID', str(pid), '/F'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+    try:
+        os.kill(pid, 15)
+    except ProcessLookupError:
+        return
+
+
+def _reap_unix(pid, timeout):
+    deadline = time.time() + timeout
+    while True:
+        try:
+            found, _status = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if found == pid:
+            return
+        if time.time() >= deadline:
+            _end_pid(pid)
+            try:
+                os.waitpid(pid, 0)
+            except ChildProcessError:
+                return
+            return
+        time.sleep(0.05)
+
+
+def reap_left_running(timeout=8):
+    """Wait out a stub the tests relaunched, so Windows can delete its folder."""
+    pids = list(_left_running)
+    _left_running.clear()
+    for pid in pids:
+        if os.name == 'nt':
+            try:
+                wait_until_exit(pid, timeout=timeout)
+            except TimeoutError:
+                _end_pid(pid)
+                try:
+                    wait_until_exit(pid, timeout=3)
+                except TimeoutError:
+                    pass
+        else:
+            _reap_unix(pid, timeout)
+    if pids and os.name == 'nt':
+        time.sleep(0.3)
 
 
 def _stop(process):
