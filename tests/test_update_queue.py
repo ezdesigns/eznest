@@ -23,7 +23,7 @@ class UpdateQueueTests(unittest.TestCase):
     @unittest.skipUnless(sys.platform == 'win32', 'Windows install policy')
     def test_unsigned_and_unprotected_installs_remain_manual(self):
         with tempfile.TemporaryDirectory() as temp:
-            programs = Path(temp)/'Program Files'
+            programs = (Path(temp)/'Program Files').resolve()
             root = programs/'eznest'
             root.mkdir(parents=True)
             (root/'eznest.exe').write_bytes(b'MZ synthetic')

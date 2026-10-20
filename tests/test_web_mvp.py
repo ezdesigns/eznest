@@ -31,8 +31,10 @@ def launch_browser(playwright):
 class WebMvpTests(unittest.TestCase):
     def setUp(self):
         self.old = (server.WORK, server.PORT, server.HOST, copy.deepcopy(server.STATE), server.PROCESS)
+        self.old_output = server.OUTPUT
         self.tmp = tempfile.TemporaryDirectory()
         server.WORK = Path(self.tmp.name)
+        server.OUTPUT = server.OutputFolder(server.WORK / 'output-folder.json')
         server.STATE.clear()
         server.STATE.update(status='idle')
         server.PROCESS = None
@@ -73,6 +75,7 @@ class WebMvpTests(unittest.TestCase):
     def tearDown(self):
         self.stop()
         server.WORK, server.PORT, server.HOST, previous, server.PROCESS = self.old
+        server.OUTPUT = self.old_output
         server.STATE.clear()
         server.STATE.update(previous)
         self.tmp.cleanup()
