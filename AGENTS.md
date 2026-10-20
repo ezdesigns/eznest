@@ -132,8 +132,11 @@ older test results ran against the new commit. Add tests for meaningful behavior
 not tests that merely duplicate implementation details. Inspect desktop/mobile
 screenshots after UI changes. Check the installer workflow for packaging changes.
 
-Installer tests mock system changes; they do not validate a real elevated install
-or rollback. Live install, Illustrator, ONYX and cutter tests belong on an isolated
+The local PowerShell tests mock system changes; they do not validate a real
+elevated install or rollback. `tests/test_installed_shop.ps1` performs real fresh
+install/startup/uninstall checks ONLY on disposable GitHub-hosted Windows runners;
+never bypass its environment/clean-machine guards to run it on a shop or developer
+PC. It does not validate signed upgrades or rollback. Illustrator, ONYX and cutter tests belong on an isolated
 test PC/VM or the explicitly authorized shop-test setup. Never use the live hot
 folder for automated tests. If a dependency or host is unavailable, report exactly
 what was tested and what remains unverified.
@@ -145,3 +148,4 @@ and draft commit/PR. Keep unchecked readiness items open until evidence supports
 completion. Distinguish local tests, current-commit CI, installer artifacts, and
 physical production validation. Do not claim that building an installer publishes
 a release or that sending to a folder confirms printing.
+

@@ -2,6 +2,8 @@
 
 [Goals](GOALS.md)
 
+[Employee quick start](docs/employee-quick-start.md) · [Host updates and rollout checks](docs/windows-updates.md)
+
 Ez Nest is a free, open-source, self-updating desktop nesting tool that any print shop can install in minutes. It nests files, adds cut marks, and sends them to the RIP hot folder.
 
 It is built first for EZ Designs (Austin). The EZ Designs printer, cut names, and hot folder are a preset. Any other shop types its own. Later, and only if a shop opts in, Ez Nest is how shops join the OUTPUT print production network. That switch is off, and it sends nothing. See [Goals](GOALS.md).
@@ -145,3 +147,4 @@ Ez Nest is MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Dependencies keep t
 ![First-run setup](docs/screenshots/first-run.png)
 
 ![Settings](docs/screenshots/settings.png)
+

@@ -202,7 +202,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertFalse(page.locator('#sheet-id').is_hidden())
                 self.assertNotIn('problem', page.locator('#gate').get_attribute('class') or '')
                 self.assertEqual(page.locator('#lock').count(), 0)
-                self.assertIn('send to onyx', page.locator('#export').inner_text().casefold())
+                self.assertEqual(page.locator('#export').inner_text(), 'Review and download')
                 page.locator('#settings').evaluate('node => { node.open = false }')
                 page.evaluate('document.activeElement && document.activeElement.blur()')
                 page.keyboard.press('Space')
@@ -652,4 +652,5 @@ class WebMvpTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
 

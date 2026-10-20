@@ -114,6 +114,7 @@ function InitializeSetup: Boolean;
 begin
   { Capture before Setup writes its own uninstall registration. }
   ExistingInstall := IsUpgrade;
+  Log('Existing installation at start: ' + IntToStr(Ord(ExistingInstall)));
   Result := True;
   if ExpandConstant('{param:EZUPDATE|0}') = '1' then
   begin
@@ -129,6 +130,7 @@ var
 begin
   if (CurStep = ssPostInstall) and IsFreshInstall then
   begin
+    Log('Configuring fresh shop; selected tasks: ' + WizardSelectedTasks(False));
     Arguments := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\install-shop.ps1') +
       '" -DataDir "' + ExpandConstant('{commonappdata}\eznest') + '" -App "' +
       ExpandConstant('{app}\eznest.exe') + '" -OnyxPc ' + OnyxFlag('') +
