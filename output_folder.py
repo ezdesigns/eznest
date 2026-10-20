@@ -53,6 +53,10 @@ class OutputFolder:
             with tempfile.TemporaryFile(prefix='.eznest-check-', suffix='.tmp', dir=root):
                 pass
         except OSError:
+            # Retain the requested destination, never silently send to an older
+            # working folder after the operator tried to change it.
+            self.root = root
+            self._store(str(root))
             raise ValueError('The hot folder exists, but eznest cannot write to it. Ask your shop administrator to give the eznest-svc account access, then save again.') from None
         self.root = root
         self._store(str(root))

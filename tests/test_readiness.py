@@ -19,10 +19,15 @@ class ReadinessTests(unittest.TestCase):
             hot = root / 'hot'
             hot.mkdir()
             output = OutputFolder(root / 'folder.json')
+            old = root / 'previous'
+            old.mkdir()
+            output.connect(str(old))
             with patch('output_folder.tempfile.TemporaryFile', side_effect=PermissionError('Denied')):
                 with self.assertRaisesRegex(ValueError, 'cannot write'):
                     output.connect(str(hot))
-            self.assertFalse(output.status()['configured'])
+            self.assertEqual(output.root, hot.resolve())
+            self.assertEqual(OutputFolder(root / 'folder.json').root, hot.resolve())
+            self.assertEqual(list(old.iterdir()), [])
             output.connect(str(hot))
             self.assertEqual(list(hot.iterdir()), [])
 
