@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0-rc.4
+
+Uninstall removes the shop service account.
+
+- Uninstall stops and deletes the `eznest` startup task, then removes the local user `eznest-svc` and the folder permissions granted to that account. If the account is still signed in, uninstall disables it. Shop files in `%ProgramData%\eznest` stay on disk.
+
 ## 1.0.0-rc.3
 
 Ez Ink's audit of the shop-server install.

@@ -182,7 +182,7 @@ class ShopDeployTests(unittest.TestCase):
                 self.assertIn('anyone on the shop lan can send to onyx', status['warning'].casefold())
                 self.assertIn('guest wifi', status['warning'].casefold())
                 self.assertTrue(status['updates'])
-                self.assertEqual(status['version'], '1.0.0-rc.3')
+                self.assertEqual(status['version'], '1.0.0-rc.4')
                 self.assertIn(r'\\ONYX\EPSON SureColor S80600 ONYX Input', status['hotFolderDefault'])
             finally:
                 server.WORK, server.PORT, server.HOST, server.LAN = old
@@ -197,7 +197,7 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn(f'#define MyAppVersion "{version}"', script)
         self.assertIn(r'{autopf}\eznest', script)
         self.assertIn('{commondesktop}', script)
-        self.assertIn('schtasks.exe', script)
+        self.assertIn('uninstall-shop.ps1', script)
         self.assertIn('ONSTART', install)
         self.assertIn('schtasks.exe', install)
         self.assertNotIn('/RU SYSTEM', install)
@@ -220,6 +220,29 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn(r'%ProgramData%\eznest', server_cmd)
         self.assertIn('ISCC', build)
         self.assertIn('eznest-server.cmd', build)
+        self.assertIn('uninstall-shop.ps1', build)
+
+    def test_uninstall_removes_the_task_then_the_service_account(self):
+        root = Path(__file__).resolve().parents[1]
+        script = (root / 'installer' / 'eznest.iss').read_text(encoding='utf-8')
+        uninstall = (root / 'installer' / 'uninstall-shop.ps1').read_text(encoding='utf-8')
+        uninstall_run = script.split('[UninstallRun]', 1)[1].split('[Code]', 1)[0]
+        self.assertIn('uninstall-shop.ps1', uninstall_run)
+        self.assertIn(r'{commonappdata}\eznest', uninstall_run)
+        self.assertIn('schtasks.exe', uninstall)
+        self.assertIn('eznest-svc', uninstall)
+        self.assertIn('icacls', uninstall)
+        self.assertIn(r'C:\ONYX\EPSON SureColor S80600 ONYX Input', uninstall)
+        self.assertIn('advfirewall firewall delete rule name=eznest', uninstall)
+        end = uninstall.index('/End')
+        delete = uninstall.index('/Delete')
+        remove_acl = uninstall.index('/remove')
+        remove_user = uninstall.index('Remove-LocalUser')
+        disable_user = uninstall.index('Disable-LocalUser')
+        self.assertLess(end, delete)
+        self.assertLess(delete, remove_acl)
+        self.assertLess(remove_acl, remove_user)
+        self.assertLess(remove_user, disable_user)
 
 
 if __name__ == '__main__':

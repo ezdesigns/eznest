@@ -34,6 +34,7 @@ def main():
     release=out/'dist'/'eznest'
     for name in ['START HERE.txt','Stop EZ Nest.cmd','Stop EZ Nest.ps1','eznest-web.bat','eznest-server.cmd','THIRD_PARTY.md','version.json']:shutil.copy2(ROOT/name,release/name)
     shutil.copy2(ROOT/'installer'/'install-shop.ps1',release/'install-shop.ps1')
+    shutil.copy2(ROOT/'installer'/'uninstall-shop.ps1',release/'uninstall-shop.ps1')
     (release/'examples').mkdir();shutil.copy2(ROOT/'sample-artwork.svg',release/'examples'/'sample-artwork.svg')
     shutil.copytree(ROOT/'licenses',release/'licenses')
     licenses=release/'licenses'

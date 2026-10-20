@@ -490,7 +490,7 @@ class WebMvpTests(unittest.TestCase):
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
                 page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
                 page.locator('#settings').evaluate('node => { node.open = true }')
-                self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.3')
+                self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.4')
                 self.assertEqual(page.locator('#update').inner_text(), 'Update')
                 self.assertTrue(page.locator('#updates').is_checked())
                 self.assertFalse(page.locator('#update').is_hidden())

@@ -2,7 +2,7 @@
 
 **Add artwork → set material width and quantities → nest → review → export.**
 
-**1.0.0-rc.3 · shop release candidate.** Standalone local nesting for
+**1.0.0-rc.4 · shop release candidate.** Standalone local nesting for
 complete kits, decals and stickers. Illustrator, a printer model and an account
 are not required. Width comes from the material; length comes from the layout.
 
@@ -55,7 +55,7 @@ Source folder (this repository, with 64-bit Python 3.12 installed):
 2. The first time, it creates `.local\venv` and installs the engine. That window can sit for a minute. Later double-clicks open straight away.
 3. The browser opens the same address, http://127.0.0.1:8765/web.
 
-If a message says another version is using port 8765, double-click `Stop EZ Nest.cmd`, or open the old window and use Help → Quit eznest. Then double-click `eznest-web.bat` again. A 0.12 server will not share the port with 1.0.0-rc.3.
+If a message says another version is using port 8765, double-click `Stop EZ Nest.cmd`, or open the old window and use Help → Quit eznest. Then double-click `eznest-web.bat` again. A 0.12 server will not share the port with 1.0.0-rc.4.
 
 Closing the browser leaves eznest running. Double-click `Stop EZ Nest.cmd` to stop it. Help → Quit eznest does the same from the full workspace.
 
@@ -71,7 +71,7 @@ The shop server is one Windows PC. The installer puts eznest in Program Files. T
 
 The workflow is `.github/workflows/windows-installer.yml`.
 
-- Push a `v*` tag, such as `v1.0.0-rc.3`. That run attaches `eznest-setup.exe` and `BUILD.json` to the GitHub release for the tag.
+- Push a `v*` tag, such as `v1.0.0-rc.4`. That run attaches `eznest-setup.exe` and `BUILD.json` to the GitHub release for the tag.
 - Or open Actions, choose Windows installer, and run the workflow on this branch. That uploads `eznest-setup.exe` and `BUILD.json` as an artifact and does not publish a release. GitHub shows Run workflow after this file is on the default branch, or after the workflow has run once.
 
 `BUILD.json` records the version, the commit SHA, and the SHA-256 of `eznest-setup.exe`. Compare the exe's SHA-256 with `sha256`, and compare `commit` with the git commit, before you install it. When `BUILD.json` sits next to `eznest-setup.exe`, the installer copies it into `C:\Program Files\eznest`. The portable folder's `BUILD.json` is a dependency list. The installer does not bake that copy in.
@@ -97,6 +97,8 @@ On the shop server:
 Settings and the hot-folder path for an installed copy live in `%ProgramData%\eznest`, because Program Files is not writable. A portable folder that is not under Program Files still uses `data\` beside the exe.
 
 Closing the browser does not stop eznest. Double-click `Stop EZ Nest.cmd` in the install folder, or use Help → Quit eznest from the full workspace.
+
+Uninstall removes the `eznest` startup task, then removes the `eznest-svc` account and the folder permissions granted to it on `%ProgramData%\eznest` and, when that folder is present, on `C:\ONYX\EPSON SureColor S80600 ONYX Input`. If the account is still signed in, uninstall disables it. Shop files in `%ProgramData%\eznest` stay on disk. The ONYX hot folder stays on disk.
 
 ## Open from other PCs
 

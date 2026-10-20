@@ -6,7 +6,7 @@
 #endif
 
 #define MyAppName "eznest"
-#define MyAppVersion "1.0.0-rc.3"
+#define MyAppVersion "1.0.0-rc.4"
 #define MyAppPublisher "EZ Designs TX"
 
 [Setup]
@@ -41,6 +41,7 @@ Name: "noupdates"; Description: "Disable updates (offline install)"; GroupDescri
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "BUILD.json"
 Source: "install-shop.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "uninstall-shop.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{src}\BUILD.json"; DestDir: "{app}"; Flags: external skipifsourcedoesntexist
 
 [Icons]
@@ -53,8 +54,7 @@ Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Fil
 Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""; Description: "Open eznest"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
-Filename: "schtasks.exe"; Parameters: "/Delete /TN eznest /F"; Flags: runhidden; RunOnceId: "DelTask"
-Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=eznest"; Flags: runhidden; RunOnceId: "DelFw"
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\uninstall-shop.ps1"" -DataDir ""{commonappdata}\eznest"""; Flags: runhidden waituntilterminated; RunOnceId: "UninstallShop"
 
 [Code]
 function OnyxFlag(Param: String): String;
