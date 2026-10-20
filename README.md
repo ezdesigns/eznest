@@ -63,7 +63,9 @@ Leave colors as they are in the file. Set the printer ICC and registration marks
 
 **Update** is in the gear, with **What's new** and **Report a problem**.
 
-Update downloads a newer installer only when its SHA-256 checksum matches. The file is staged locally. **Automatic installation into Program Files is disabled in this draft.** The existing server keeps running. Writable-install rollback is covered by tests; a privileged apply path that restarts under `eznest-svc` still needs implementation and isolated Windows validation. See [customer rollout](docs/customer-rollout.md).
+The app checks for a newer release at startup and every six hours while updates are enabled. Update downloads an installer only when its SHA-256 checksum matches. For signed Program Files installations, **Install when finished** opens a separate helper and asks for Windows administrator approval. It waits for the current job to be sent or explicitly discarded, then installs and restarts the existing limited `eznest-svc` task. A failed startup restores the previous files. Settings, local activity and hot-folder contents stay in their existing locations.
+
+Unsigned builds still require a manual installer upgrade. The managed helper requires a signed app and installer from the same certificate, the default data directory/port, and an existing limited startup task. The helper is implemented and has mocked Windows tests; a real signed upgrade and rollback on an isolated Windows PC remains a rollout gate. See [update testing and recovery](docs/windows-updates.md).
 
 Pre-releases show up only when **Test channel** is on.
 

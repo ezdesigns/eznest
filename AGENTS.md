@@ -46,9 +46,12 @@ or completed printing. Do not turn this into an order-management system or RIP.
 - Keep credentials, certificates, customer files, generated packs, local databases
   and `.local/` out of commits. Use synthetic fixtures. Inspect the final diff.
 - Preserve checksum validation, rollback safeguards and shop settings. Program
-  Files automatic replacement is currently disabled pending safe elevation and
-  service restart work plus isolated Windows validation. Do not remove that guard
-  merely to make an update appear successful.
+  Files updates use the separate, explicitly approved helper in
+  `installer/update-shop.ps1`, valid matching publisher signatures and the existing
+  limited service task. Unsigned builds keep the manual-install guard. Do not
+  remove signature or idle-work gates to make an update appear successful.
+  Real signed install/rollback validation remains required before rollout; see
+  [Windows updates](docs/windows-updates.md).
 - `version.json` is the sole version source. Retain LICENSE, NOTICE,
   THIRD_PARTY.md and dependency licenses. Implement original code; competitor
   demonstrations are workflow references, not source code to copy.
@@ -119,6 +122,7 @@ node tests/test_production_features.cjs
 node tests/test_boundaries.cjs
 node tests/test_illustrator_bridge.cjs
 pwsh -NoProfile -File tests/test_shop_scripts.ps1
+pwsh -NoProfile -File tests/test_update_helper.ps1
 ```
 
 Use `.github/workflows/test.yml` as the current CI command list. Run focused

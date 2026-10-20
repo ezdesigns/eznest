@@ -549,6 +549,7 @@ def stage_file(data_dir, version, digest, payload, filename):
         'file': str(target),
         'filename': filename,
         'kind': kind,
+        'channel': shop_deploy.load_shop(data_dir)['channel'],
         'verified': True,
         'applyOnRestart': True,
     }

@@ -18,25 +18,23 @@ Before distributing v1, record the ONYX white-gloss test on the pinned rc.4
 build, complete its review, and merge v1 separately. This readiness draft must
 not be merged into the candidate branch. Retarget it after v1 merges.
 
-## Updates: current draft limitation
+## Updates: draft helper and rollout gate
 
 Downloads require a SHA-256 sidecar and are staged locally. Stable is the
 default channel; test releases require an explicit choice. Public GitHub
 repositories do not require a token. Updates off prevents release requests.
 
-The ported helper tests file replacement, settings preservation, and rollback
-for a writable installation. **Automatic replacement of a Program Files install
-is disabled**, including from the limited boot account. The draft is not ready
-to claim unattended Windows updates.
+The draft now includes a separate administrator-approved helper for signed
+Program Files installations. It waits for work to finish, verifies the copied
+installer's publisher and checksum, preserves the existing limited service task,
+and restores the previous app after failed health checks. Unsigned builds retain
+the manual-upgrade guard. No unattended elevation is attempted.
 
-Before checking off the updater item, implement and test the privileged
-installation boundary: operator elevation on the shop PC, stopping the correct
-service process, installing without rerunning first-install account setup,
-restarting under `eznest-svc`, confirming the expected version is serving, and
-restoring the previous version and settings after a failed start. An elevated
-helper must not restart the web server as administrator. Test cancellation,
-interrupted installation, a disconnected share, and reboot recovery on a
-disposable Windows VM.
+Before checking off the updater item, complete the real signed upgrade/rollback
+acceptance test in [Windows updates](windows-updates.md) on an isolated PC/VM.
+Mocked tests do not validate UAC, real task identity, reboot behavior or ONYX.
+Power-loss recovery currently uses a retained protected backup and requires an
+administrator; do not claim automatic interrupted-transaction recovery.
 
 ## Later OUTPUT phase
 

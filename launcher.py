@@ -11,6 +11,9 @@ from shop_deploy import data_directory, load_shop
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == '--request-shop-update':
+        import managed_update
+        return managed_update.request()
     if len(sys.argv) > 1 and sys.argv[1] == '--apply-update':
         import installer_update
         return installer_update.apply_cli(sys.argv[2:])

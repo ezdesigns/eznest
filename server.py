@@ -52,6 +52,11 @@ WORK = Path(os.environ.get('EZ_NEST_DATA', ROOT / '.local')).resolve()
 WORK.mkdir(parents=True, exist_ok=True)
 TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
+OPERATIONS = threading.RLock()
+from update_queue import UpdateQueue
+UPDATE_QUEUE = UpdateQueue()
+UPDATE_CHECK = {}
+UPDATE_WAKE = threading.Event()
 STATE = {'status': 'idle'}
 PROCESS = None
 PORT = int(os.environ.get('EZ_NEST_PORT', '8765'))
@@ -219,7 +224,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/web/':
             path = '/web'
         if path == '/api/session':
-            return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION})
+            return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION, 'pid': os.getpid()})
         if path == '/api/changelog':
             import installer_update
             return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
@@ -230,7 +235,16 @@ class Handler(BaseHTTPRequestHandler):
                 info = peek_latest(WORK, VERSION)
             else:
                 info = {'ok': True, 'current': VERSION, 'updateAvailable': False, 'latest': VERSION, 'message': '', 'error': None}
+                if load_shop(WORK)['updates'] and os.environ.get('EZ_NEST_UPDATES', '1') != '0':
+                    info.update(UPDATE_CHECK)
             info.update(installer_update.local_state(WORK, installer_update.install_root()))
+            import managed_update
+            info['managedSupported'] = managed_update.supported(installer_update.install_root())
+            with OPERATIONS:
+                info.update(UPDATE_QUEUE.status())
+            info['localPC'] = self.client_address[0] == '127.0.0.1'
+            info['serverPid'] = os.getpid()
+            info['managedResult'] = installer_update.read_json(WORK/'updates'/'managed-result.json')
             info['notes'] = installer_update.current_notes(ROOT, VERSION)
             info['issuesUrl'] = issues_url(WORK)
             if info.get('rollback'):
@@ -240,6 +254,12 @@ class Handler(BaseHTTPRequestHandler):
                 info['error'] = None
             elif info.get('staged'):
                 info['message'] = 'A checked update is saved. Automatic installation is unavailable for this installation. The current app stays running.'
+            if info.get('queued'):
+                info['message'] = 'Update approved. Finish sending the current job or choose Start over. You can cancel before installation starts.'
+            elif info.get('staged') and info['managedSupported']:
+                info['message'] = 'Update ready. Choose Install when finished on this PC and approve the Windows prompt.'
+            elif info.get('managedResult') and not info.get('staged'):
+                info['message'] = info['managedResult'].get('message', '')
             return self.send(200, info)
         if path == '/api/shop':
             return self.send(200, shop_status())
@@ -325,6 +345,14 @@ class Handler(BaseHTTPRequestHandler):
         return self.send(200, static_bytes(name), mime)
 
     def do_POST(self):
+        # Hold admission through import, save and delivery. An update claim cannot
+        # slip between a busy check and a new operation starting on another PC.
+        with OPERATIONS:
+            if UPDATE_QUEUE.stopping:
+                return self.send(503, {'error': 'Installing an update. Wait for eznest to restart.'})
+            return self.handle_post()
+
+    def handle_post(self):
         global PROCESS
         if not self.allowed() or self.headers.get('X-EZ-Token') != TOKEN:
             return self.send(403, {'error': 'Invalid session'})
@@ -336,6 +364,41 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 <= size <= 48_000_000:
                 raise ValueError('Job is too large.')
             data = json.loads(self.rfile.read(size) or '{}')
+            if self.path.startswith('/api/update/'):
+                import installer_update
+                if self.client_address[0] != '127.0.0.1':
+                    return self.send(403, {'error': 'Approve updates on the server PC.'})
+                if self.path == '/api/update/cancel':
+                    UPDATE_QUEUE.cancel()
+                    return self.send(200, {'ok': True, 'message': 'Update cancelled. The app stays running.'})
+                if self.path == '/api/update/result':
+                    pending = installer_update.pending_state(WORK)
+                    if pending and pending['sha256'] == data.get('sha256'):
+                        (WORK/'updates'/'pending.json').unlink(missing_ok=True)
+                    installer_update.write_json(WORK/'updates'/'managed-result.json', {'message': str(data.get('message', ''))[:500]})
+                    return self.send(200, {'ok': True})
+                if self.path in ('/api/update/queue', '/api/update/claim'):
+                    if not installer_update.updates_enabled(WORK):
+                        UPDATE_QUEUE.cancel()
+                        raise ValueError('Updates are off.')
+                    pending = installer_update.pending_state(WORK)
+                    if not pending or pending['sha256'] != data.get('sha256'):
+                        raise ValueError('The staged update changed. Open the update helper again.')
+                    if pending.get('channel') != load_shop(WORK)['channel']:
+                        UPDATE_QUEUE.cancel()
+                        raise ValueError('The update channel changed. Download an update for the selected channel.')
+                    if self.path.endswith('/queue'):
+                        UPDATE_QUEUE.queue(data.get('ticket'))
+                        return self.send(200, {'ok': True, 'queued': True})
+                    with LOCK:
+                        ready = UPDATE_QUEUE.claim(data.get('ticket'), STATE)
+                        if ready:
+                            persist_state()
+                    self.send(200, {'ok': True, 'ready': ready, 'pid': os.getpid()})
+                    if ready:
+                        threading.Thread(target=self.server.shutdown, daemon=True).start()
+                    return
+                raise ValueError('Unknown update operation.')
             if self.path == '/api/illustrator/intake':
                 if self.client_address[0] != '127.0.0.1':
                     return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
@@ -382,8 +445,12 @@ class Handler(BaseHTTPRequestHandler):
                     if key in data:
                         fields[key] = data.get(key)
                 save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates, **fields)
+                UPDATE_CHECK.clear()
+                UPDATE_WAKE.set()
                 return self.send(200, shop_status())
             if self.path == '/api/update':
+                if UPDATE_QUEUE.status()['queued']:
+                    raise ValueError('Cancel the waiting update before downloading another.')
                 with LOCK:
                     if STATE.get('status') == 'running':
                         raise ValueError('Stop the current search before updating.')
@@ -506,6 +573,13 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(200, {'ok': True})
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
+                elif self.path == '/api/work/discard':
+                    if STATE.get('status') == 'running':
+                        raise ValueError('Stop the search before starting over.')
+                    STATE.clear()
+                    STATE.update(status='idle')
+                    (WORK/'session.json').unlink(missing_ok=True)
+                    return self.send(200, {'ok': True})
                 elif self.path == '/api/release':
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('Calculate and review the current layout before exporting.')
@@ -575,11 +649,28 @@ class LocalServer(ThreadingHTTPServer):
         super().server_bind()
 
 
+def check_updates(stop):
+    global UPDATE_CHECK
+    while not stop.is_set():
+        UPDATE_WAKE.clear()
+        try:
+            channel = load_shop(WORK)['channel']
+            info = peek_latest(WORK, VERSION)
+            if load_shop(WORK)['channel'] == channel:
+                UPDATE_CHECK = info
+        except Exception:
+            # Network failure must not affect nesting or make the UI unusable.
+            pass
+        UPDATE_WAKE.wait(6 * 60 * 60)
+
+
 def serve(open_browser=False, page='/'):
     restore_state()
     import installer_update
     installer_update.mark_healthy(WORK)
     service = LocalServer((HOST, PORT), Handler)
+    update_stop = threading.Event()
+    threading.Thread(target=check_updates, args=(update_stop,), daemon=True).start()
     if open_browser:
         import webbrowser
         webbrowser.open(f'http://127.0.0.1:{PORT}{page}')
@@ -590,6 +681,8 @@ def serve(open_browser=False, page='/'):
     try:
         service.serve_forever()
     finally:
+        update_stop.set()
+        UPDATE_WAKE.set()
         service.server_close()
 
 

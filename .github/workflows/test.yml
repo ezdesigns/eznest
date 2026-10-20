@@ -61,4 +61,7 @@ jobs:
       - name: Test the shop install and uninstall scripts
         shell: pwsh
         run: pwsh -NoProfile -File tests/test_shop_scripts.ps1
+      - name: Test the administrator update helper without system changes
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/test_update_helper.ps1
 

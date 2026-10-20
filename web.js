@@ -1179,6 +1179,8 @@ async function startOver() {
     try { await api('/api/cancel', {}); } catch { /* The next drop starts clean. */ }
   }
   busy = false;
+  try { await api('/api/work/discard', {}); }
+  catch (error) { leaving = false; status(error.message, true); return; }
   nextKit();
   leaving = false;
 }
@@ -1647,17 +1649,35 @@ async function loadIllustrator() {
   requestNest();
 }
 
+let updateInfo = {};
+let updateWasQueued = false;
+let updateVersion = null;
+let updateServerPid = null;
 function showUpdate(info) {
+  updateInfo = info || {};
+  if (info?.current && !updateVersion) updateVersion = info.current;
+  if (info?.serverPid && !updateServerPid) updateServerPid = info.serverPid;
+  updateWasQueued = updateWasQueued || !!info?.queued;
+  $('update-cancel').hidden = !info?.queued || !info?.localPC;
+  $('update').disabled = !!info?.queued;
   const note = $('update-note');
-  $('update').textContent = info && info.applyOnRestart ? 'Install now' : 'Update';
+  $('update').textContent = info?.managedSupported && info?.staged ? 'Install when finished' : info?.applyOnRestart ? 'Install now' : 'Check for update';
+  if (info?.updateAvailable && !info.staged) $('update').textContent = 'Download ' + info.latest;
+  $('settings').querySelector('summary').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
+  if (info?.managedSupported && info?.staged && !info.localPC) {
+    note.hidden = false;
+    note.textContent = 'The update is ready. Approve installation on the PC running eznest.';
+    $('update').disabled = true;
+    return;
+  }
   if (info && info.rollback && info.rollback.reason) {
     note.hidden = false;
     note.textContent = info.rollback.reason;
     return;
   }
-  if (info && (info.staged || info.applyOnRestart || info.updateAvailable) && info.message) {
+  if (info && (info.staged || info.applyOnRestart || info.updateAvailable || info.queued || info.managedResult) && info.message) {
     note.hidden = false;
-    note.textContent = info.message;
+    note.textContent = info.message + (info.releaseNotes && !info.queued ? '\n' + info.releaseNotes.slice(0, 500) : '');
     return;
   }
   note.hidden = true;
@@ -1777,11 +1797,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   $('update').addEventListener('click', async () => {
+    if (updateInfo.managedSupported && updateInfo.staged) {
+      if (!updateInfo.localPC) return;
+      updateWasQueued = true;
+      window.location.href = 'eznest-update://install';
+      $('update-note').hidden = false;
+      $('update-note').textContent = 'Approve the Windows prompt. The helper will wait until work is finished. If no prompt opens, use Update eznest in the Windows Start menu.';
+      return;
+    }
     const installNow = $('update').textContent === 'Install now';
     try {
       const result = await api('/api/update', {when: installNow ? 'now' : 'restart'});
       status(result.message);
       showUpdate(result);
+      if (!result.restarting) await refreshUpdate();
       if (result.restarting) {
         $('update-note').hidden = false;
         $('update-note').textContent = result.message;
@@ -1795,6 +1824,28 @@ document.addEventListener('DOMContentLoaded', () => {
       status(error.message, true);
     }
   });
+  $('update-cancel').addEventListener('click', async () => {
+    try { await api('/api/update/cancel', {}); updateWasQueued = false; await refreshUpdate(); }
+    catch (error) { status(error.message, true); }
+  });
+  setInterval(async () => {
+    try {
+      const response = await fetch('/api/update');
+      if (!response.ok) return;
+      const info = await response.json();
+      if (updateWasQueued && ((info.serverPid && updateServerPid && info.serverPid !== updateServerPid) || (info.current && info.current !== updateVersion))) {
+        // Reload only after an approved update, never during ordinary editing.
+        location.reload();
+        return;
+      }
+      showUpdate(info);
+    } catch {
+      if (updateWasQueued) {
+        $('update-note').hidden = false;
+        $('update-note').textContent = 'Installing the update. This page will reconnect when eznest is ready.';
+      }
+    }
+  }, 5000);
   $('allow-undo').addEventListener('change', () => { savePrefs({undo: $('allow-undo').checked}); renderActions(); });
   $('allow-hold').addEventListener('change', () => savePrefs({hold: $('allow-hold').checked}));
   $('export').addEventListener('click', () => openConfirm());

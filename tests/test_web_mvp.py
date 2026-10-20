@@ -527,7 +527,7 @@ class WebMvpTests(unittest.TestCase):
                 page.locator('#setup').screenshot(path=str(shots / 'first-run-preset-desktop.png'))
                 page.locator('#settings').evaluate('node => { node.open = true }')
                 self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.4')
-                self.assertEqual(page.locator('#update').inner_text(), 'Update')
+                self.assertEqual(page.locator('#update').inner_text(), 'Check for update')
                 self.assertTrue(page.locator('#updates').is_checked())
                 self.assertFalse(page.locator('#update').is_hidden())
                 self.assertFalse(page.locator('#lan').is_checked())

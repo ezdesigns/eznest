@@ -50,6 +50,12 @@ Source: "{src}\BUILD.json"; DestDir: "{app}"; Flags: external skipifsourcedoesnt
 Name: "{commondesktop}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""; Tasks: desktopicon
 Name: "{group}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""
 Name: "{group}\Stop eznest"; Filename: "{app}\Stop EZ Nest.cmd"
+Name: "{group}\Update eznest"; Filename: "{app}\eznest.exe"; Parameters: "--request-shop-update"
+
+[Registry]
+Root: HKLM; Subkey: "Software\Classes\eznest-update"; ValueType: string; ValueData: "URL:eznest update"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\eznest-update"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKLM; Subkey: "Software\Classes\eznest-update\shell\open\command"; ValueType: string; ValueData: """{app}\eznest.exe"" --request-shop-update"
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-shop.ps1"" -DataDir ""{commonappdata}\eznest"" -App ""{app}\eznest.exe"" -OnyxPc {code:OnyxFlag} -Lan {code:LanFlag} -StartAtBoot {code:BootFlag} -Updates {code:UpdatesFlag}"; Flags: runhidden waituntilterminated; Check: IsFreshInstall
@@ -90,3 +96,14 @@ function IsFreshInstall: Boolean;
 begin
   Result := not IsUpgrade;
 end;
+
+function InitializeSetup: Boolean;
+begin
+  Result := True;
+  if ExpandConstant('{param:EZUPDATE|0}') = '1' then
+  begin
+    Result := IsUpgrade;
+    if not Result then MsgBox('An existing eznest installation is required for this update.', mbError, MB_OK);
+  end;
+end;
+

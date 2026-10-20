@@ -60,6 +60,8 @@ jobs:
         shell: pwsh
         env:
           EZ_NEST_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
           python build_windows.py --out (Join-Path $env:RUNNER_TEMP "eznest-build")
           $setup = "installer\Output\eznest-setup.exe"
@@ -142,3 +144,4 @@ jobs:
             gh release create $tag $setup $pin $sha $manifest --title $tag --notes $notes
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+

@@ -35,6 +35,7 @@ def main():
     for name in ['START HERE.txt','Stop EZ Nest.cmd','Stop EZ Nest.ps1','eznest-web.bat','eznest-server.cmd','THIRD_PARTY.md','version.json','CHANGELOG.md','LICENSE','NOTICE']:shutil.copy2(ROOT/name,release/name)
     shutil.copy2(ROOT/'installer'/'install-shop.ps1',release/'install-shop.ps1')
     shutil.copy2(ROOT/'installer'/'uninstall-shop.ps1',release/'uninstall-shop.ps1')
+    shutil.copy2(ROOT/'installer'/'update-shop.ps1',release/'update-shop.ps1')
     (release/'examples').mkdir();shutil.copy2(ROOT/'sample-artwork.svg',release/'examples'/'sample-artwork.svg')
     shutil.copytree(ROOT/'licenses',release/'licenses')
     shutil.copytree(ROOT/'illustrator',release/'illustrator')
@@ -53,6 +54,8 @@ def main():
     # Portable dependency list. The setup pin (version, commit, exe sha256) is installer/Output/BUILD.json.
     (release/'BUILD.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     print(f'Portable app: {release}')
+    if os.environ.get('WINDOWS_CERT_BASE64', '').strip():
+        subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ROOT/'installer'/'sign-payload.ps1'), '-App', str(release/'eznest.exe')], check=True)
     compile_setup(release)
 
 

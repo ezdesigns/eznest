@@ -9,6 +9,7 @@ Use 64-bit Python 3.12.
 ```powershell
 py -3.12 -m venv .local/venv
 .local/venv/Scripts/python.exe -m pip install -r requirements.txt
+.local/venv/Scripts/python.exe -m pip install playwright
 .local/venv/Scripts/python.exe -m unittest discover -s tests -p "test_*.py"
 ```
 
@@ -21,6 +22,8 @@ node tests/test_shop_profiles.cjs
 node tests/test_cut_mapping.cjs
 node tests/test_production_features.cjs
 node tests/test_boundaries.cjs
+node tests/test_illustrator_bridge.cjs
+pwsh -NoProfile -File tests/test_update_helper.ps1
 ```
 
 GitHub Actions runs those checks on Windows, Python 3.12, and Node 24. The Windows installer workflow builds `eznest-setup.exe`. It does not publish a release unless someone pushes a `v*` tag.
@@ -57,6 +60,7 @@ The Windows installer workflow signs `eznest-setup.exe` when the `WINDOWS_CERT_B
 ## Tests for the shop scripts
 
 `tests/test_shop_scripts.ps1` checks `installer/install-shop.ps1` and `installer/uninstall-shop.ps1`. The Windows test workflow runs it.
+`tests/test_update_helper.ps1` validates update coordination with system operations mocked. See [Windows update acceptance](docs/windows-updates.md) before enabling employee rollout. Browser tests require installed Chrome or Edge.
 
 ## Pull requests
 

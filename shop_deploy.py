@@ -572,7 +572,7 @@ def peek_latest(directory, current, opener=None):
         choose_asset(release, repo)
     except ValueError as error:
         return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': latest, 'message': str(error), 'error': str(error)}
-    return {'ok': True, 'current': current, 'updateAvailable': True, 'latest': latest, 'message': f'{latest} is available.', 'error': None}
+    return {'ok': True, 'current': current, 'updateAvailable': True, 'latest': latest, 'message': f'{latest} is available.', 'releaseNotes': str(release.get('body') or '')[:4000], 'error': None}
 
 
 def read_json(value):
