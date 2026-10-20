@@ -56,3 +56,6 @@ jobs:
         run: node tests/test_production_features.cjs
       - name: Test legacy boundary policy
         run: node tests/test_boundaries.cjs
+      - name: Test the shop install and uninstall scripts
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/test_shop_scripts.ps1

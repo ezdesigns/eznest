@@ -43,7 +43,7 @@ The first time the page opens, it asks for four things:
 - Cut spot names, thru and kiss
 - Units
 
-**Use EZ Designs preset** fills today's EZ Designs values: the Epson SureColor S80600, CutContour thru and kiss names, inches, and the EZ Designs hot folder. On the computer that holds that folder the path is local. On every other PC it is the share. You can type a different path. Nothing is connected until you save.
+**Use EZ Designs preset** fills today's EZ Designs values: the Epson SureColor S80600, CutContour thru and kiss names, and inches. Check **This PC holds the hot folder** when the folder is on this computer, and the preset uses the local path. Leave it off and the preset uses the share. You can type a different path. Nothing is connected until you save.
 
 After that, the page is one screen. Drop the day's files, set the quantity, and Send.
 

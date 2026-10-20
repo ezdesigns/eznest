@@ -306,6 +306,20 @@ class ShopDeployTests(unittest.TestCase):
             self.assertTrue(shop_deploy.release_url_allowed(
                 'https://github.com/example/nest/releases/download/v1/eznest-setup.exe', repo='example/nest'))
 
+    def test_windows_workflows_sign_when_a_cert_is_set_and_test_the_shop_scripts(self):
+        root = Path(__file__).resolve().parents[1]
+        installer = (root / '.github/workflows/windows-installer.yml').read_text(encoding='utf-8')
+        tests = (root / '.github/workflows/test.yml').read_text(encoding='utf-8')
+        self.assertIn('No Authenticode certificate secret is set. Skipping signing.', installer)
+        self.assertIn('WINDOWS_CERT_BASE64', installer)
+        self.assertIn('version.json', installer)
+        self.assertIn('installer_update.py --write-sidecars', installer)
+        self.assertIn('tests/test_shop_scripts.ps1', tests)
+        script = (root / 'tests/test_shop_scripts.ps1').read_text(encoding='utf-8')
+        self.assertIn('install-shop.ps1', script)
+        self.assertIn('uninstall-shop.ps1', script)
+        self.assertIn('eznest-svc', script)
+
     def test_send_names_a_missing_hot_folder(self):
         from output_folder import OutputFolder
         with tempfile.TemporaryDirectory() as tmp:

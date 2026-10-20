@@ -1,5 +1,6 @@
 name: Windows installer
 
+# version.json is the only version number. build_windows.py passes it to Inno Setup.
 # A v* tag attaches eznest-setup.exe to that GitHub release.
 # workflow_dispatch uploads the same exe as an artifact and does not publish a release.
 # pull_request runs the build on this branch before the file is on the default branch.
@@ -71,6 +72,45 @@ jobs:
           $actual = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
           if ($expected -ne $actual) { throw "BUILD.json sha256 does not match eznest-setup.exe" }
 
+      - name: Sign the installer when a certificate secret is set
+        shell: pwsh
+        env:
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERT_BASE64)) {
+            Write-Host "No Authenticode certificate secret is set. Skipping signing."
+            exit 0
+          }
+          $setup = "installer\Output\eznest-setup.exe"
+          $pfx = Join-Path $env:RUNNER_TEMP "eznest-codesign.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERT_BASE64))
+          $signtool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '\\x64\\signtool.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) { throw "signtool.exe was not found" }
+          & $signtool sign /fd SHA256 /f $pfx /p $env:WINDOWS_CERT_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $setup
+          $signed = $LASTEXITCODE
+          Remove-Item -LiteralPath $pfx -Force
+          if ($signed -ne 0) { throw "signtool failed" }
+
+      - name: Write the checksum from version.json
+        shell: pwsh
+        env:
+          EZ_NEST_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $setup = "installer\Output\eznest-setup.exe"
+          $pin = "installer\Output\BUILD.json"
+          $version = (Get-Content -Raw version.json | ConvertFrom-Json).version
+          python installer_update.py --write-sidecars $setup "installer\Output" $version
+          python -c "import json, os; from pathlib import Path; import build_windows; version=json.loads(Path('version.json').read_text(encoding='utf-8'))['version']; build_windows.write_release_pin(Path(r'installer/Output/BUILD.json'), version, os.environ.get('EZ_NEST_COMMIT',''), Path(r'installer/Output/eznest-setup.exe'))"
+          $expected = (Get-Content $pin -Raw | ConvertFrom-Json).sha256
+          $sidecar = (Get-Content "installer\Output\eznest-setup.exe.sha256" -Raw).Split()[0].ToLower()
+          $actual = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual -or $sidecar -ne $actual) { throw "Checksum does not match eznest-setup.exe" }
+          if ((Get-Content $pin -Raw | ConvertFrom-Json).version -ne $version) { throw "BUILD.json version does not match version.json" }
+
       - name: Upload the installer artifact
         if: github.event_name != 'push'
         uses: actions/upload-artifact@v4
@@ -78,7 +118,9 @@ jobs:
           name: eznest-setup
           path: |
             installer/Output/eznest-setup.exe
+            installer/Output/eznest-setup.exe.sha256
             installer/Output/BUILD.json
+            installer/Output/manifest.json
           if-no-files-found: error
 
       - name: Attach the installer to the release
@@ -90,11 +132,13 @@ jobs:
           $tag = "${{ github.ref_name }}"
           $setup = "installer\Output\eznest-setup.exe"
           $pin = "installer\Output\BUILD.json"
-          $notes = "Shop server installer for $tag. Run eznest-setup.exe on the shop PC. It does not need Python or Git. BUILD.json records the version, commit, and SHA-256 of eznest-setup.exe."
+          $sha = "installer\Output\eznest-setup.exe.sha256"
+          $manifest = "installer\Output\manifest.json"
+          $notes = "Shop server installer for $tag. Run eznest-setup.exe on the shop PC. It does not need Python or Git. BUILD.json records the version, commit, and SHA-256 of eznest-setup.exe. eznest-setup.exe.sha256 is the checksum Update checks."
           gh release view $tag
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $setup $pin --clobber
+            gh release upload $tag $setup $pin $sha $manifest --clobber
           } else {
-            gh release create $tag $setup $pin --title $tag --notes $notes
+            gh release create $tag $setup $pin $sha $manifest --title $tag --notes $notes
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

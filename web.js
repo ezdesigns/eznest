@@ -1338,11 +1338,13 @@ function showSetup(shop) {
   $('setup-units').value = $('unit').value || 'in';
   if (shop.hotFolder && !$('setup-hot').value) $('setup-hot').value = shop.hotFolder;
   if (shop.printer && !$('setup-printer').value) $('setup-printer').value = shop.printer;
+  $('setup-onyx').checked = $('onyx-pc').checked;
 }
 
 function applyEzPreset(shop) {
   const preset = (shop && shop.preset) || {};
-  $('setup-hot').value = $('onyx-pc').checked ? (preset.localHotFolder || '') : (preset.shareHotFolder || '');
+  $('onyx-pc').checked = $('setup-onyx').checked;
+  $('setup-hot').value = $('setup-onyx').checked ? (preset.localHotFolder || '') : (preset.shareHotFolder || '');
   $('setup-printer').value = preset.printer || '';
   $('setup-thru').value = preset.thru || '';
   $('setup-kiss').value = preset.kiss || '';
@@ -1358,6 +1360,7 @@ async function saveSetup(shop) {
   $('kiss-name').value = $('setup-kiss').value.trim();
   matchCutPreset();
   $('printer').value = $('setup-printer').value.trim();
+  $('onyx-pc').checked = $('setup-onyx').checked;
   $('hot-folder').value = $('setup-hot').value.trim();
   const result = await api('/api/shop', shopPayload({
     setupComplete: true,
