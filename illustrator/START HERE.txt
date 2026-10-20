@@ -1,5 +1,10 @@
 EZ Nest Illustrator pilot - draft build only
 
+For Codex-assisted setup on a separate design PC, start with START-CODEX.md at
+the repository root. That guide uses a temporary source launch and separate
+test data/output folders, without installing a service. The packaged-install
+steps below are an alternative, not required for that source pilot.
+
 1. Install the matching draft eznest-setup.exe from the PR's Windows installer
    artifact. Do not replace the frozen rc.4 shop-test installation.
    Use a separate test Windows PC for this draft.

@@ -4,6 +4,11 @@ These instructions apply throughout this repository. Read [GOALS.md](GOALS.md)
 first, then [CONTRIBUTING.md](CONTRIBUTING.md) and the current task/PR description.
 Keep this guide aligned with verified behavior; do not mark planned features as done.
 
+For onboarding or a real-file Illustrator pilot on a separate design PC, follow
+[START-CODEX.md](START-CODEX.md). It contains the operator handoff prompt, isolated
+source setup, test-folder workflow and local report requirements. Do not treat
+that pilot as authorization to change the protected shop installation.
+
 ## Product direction
 
 Ez Nest helps print-shop employees prepare and nest jobs quickly without needing

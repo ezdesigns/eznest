@@ -129,6 +129,10 @@ Older Illustrator scripts and the classic page are in [archive/](archive/README.
 
 ### Illustrator pilot (draft only)
 
+**Setting up a separate design PC with Codex?** Start with
+[the onboarding and real-file walkthrough](START-CODEX.md). It includes a prompt
+to paste into Codex and an isolated setup that leaves the shop PC untouched.
+
 The new [Illustrator pilot](illustrator/START%20HERE.txt) is separate from the
 archived bridge. Run `illustrator/Nest in eznest.jsx` through Illustrator's
 File > Scripts > Other Script on the same PC as this draft. It exports a separate
