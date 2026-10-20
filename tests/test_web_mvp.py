@@ -78,7 +78,12 @@ class WebMvpTests(unittest.TestCase):
         return f'http://127.0.0.1:{server.PORT}'
 
     def wait_ready(self, page):
-        page.wait_for_function("() => document.body.dataset.ready === '1'")
+        # Boot is done and the shop stylesheet is applied. --alarm is unset when
+        # /web.css did not load, which is the same stuck page as an empty status line.
+        page.wait_for_function(
+            "() => document.body.dataset.ready === '1' && "
+            "getComputedStyle(document.documentElement).getPropertyValue('--alarm').toLowerCase().includes('d92f00')"
+        )
 
     def test_desktop_workspace_remains_the_front_page(self):
         with urlopen(self.url() + '/', timeout=10) as response:
@@ -271,7 +276,12 @@ class WebMvpTests(unittest.TestCase):
                 page.wait_for_selector('#gate.problem', timeout=90000)
                 self.assertTrue(page.locator('#export').is_disabled())
                 self.assertNotIn('cuts ok', page.locator('#gate').inner_text().casefold())
-                color = page.locator('#gate').evaluate('el => getComputedStyle(el).color')
+                color = page.locator('#gate').evaluate(
+                    "el => JSON.stringify({color: getComputedStyle(el).color,"
+                    " adjust: getComputedStyle(el).forcedColorAdjust,"
+                    " forced: matchMedia('(forced-colors: active)').matches,"
+                    " alarm: getComputedStyle(document.documentElement).getPropertyValue('--alarm').trim()})"
+                )
                 self.assertIn('217, 47, 0', color)
                 self.assertNotEqual(page.locator('#export').evaluate('el => getComputedStyle(el).backgroundColor'), 'rgb(17, 17, 17)')
                 page.locator('#export').focus()
