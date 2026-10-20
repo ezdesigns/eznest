@@ -11,6 +11,9 @@ from shop_deploy import data_directory, load_shop
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == '--apply-update':
+        import installer_update
+        return installer_update.apply_cli(sys.argv[2:])
     if len(sys.argv) == 4 and sys.argv[1] == '--document-worker':
         from pdf_io import worker
         worker(sys.argv[2],sys.argv[3])
@@ -26,6 +29,7 @@ def main():
     parser.add_argument('--lan', action='store_true', help='Open the shop network on this computer')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--data-dir', type=Path)
+    parser.add_argument('--update-confirm', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.host is not None and args.host not in ('127.0.0.1', '0.0.0.0'):
         raise ValueError('Bind to 127.0.0.1, or 0.0.0.0 inside a local container.')
@@ -72,6 +76,10 @@ def main():
     # Do not expose development-only pages in a distributed executable.
     if getattr(sys, 'frozen', False):
         os.environ.pop('EZ_NEST_TEST_UI', None)
+    if not args.update_confirm:
+        import installer_update
+        if installer_update.handoff_if_pending(installer_update.install_root(), data):
+            return 0
     from server import serve
     serve(open_browser=not args.no_browser, page=page)
     return 0
@@ -84,7 +92,7 @@ if __name__ == '__main__':
         message = str(error)
         if sys.stderr:
             print(message, file=sys.stderr)
-        if os.name == 'nt' and '--no-browser' not in sys.argv and '--nest-worker' not in sys.argv and '--document-worker' not in sys.argv:
+        if os.name == 'nt' and '--no-browser' not in sys.argv and '--update-confirm' not in sys.argv and '--apply-update' not in sys.argv and '--nest-worker' not in sys.argv and '--document-worker' not in sys.argv:
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, message, 'eznest could not start', 0x10)
         raise SystemExit(1)

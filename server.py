@@ -20,7 +20,7 @@ from output_folder import OutputFolder, stage_pack
 from nesting import validate_request
 from shop_profiles import validate_profile, inspect_output
 from app_info import VERSION
-from shop_deploy import WARNING, default_hot_folder, host_name, lan_addresses, load_shop, pull_latest, save_shop, shop_name_allowed
+from shop_deploy import OUTPUT_NOTE, WARNING, default_hot_folder, host_name, issues_url, lan_addresses, load_shop, output_network_status, peek_latest, pull_latest, save_shop, shop_name_allowed, EZ_PRESET
 
 ROOT = Path(__file__).resolve().parent
 _STATIC_CACHE = {}
@@ -69,6 +69,19 @@ def shop_status():
         'onyxPc': saved['onyxPc'],
         'lan': saved['lan'],
         'updates': saved['updates'],
+        'channel': saved['channel'],
+        'testChannel': saved['channel'] == 'test',
+        'outputNetwork': saved['outputNetwork'],
+        'outputNote': OUTPUT_NOTE,
+        'outputShare': output_network_status(saved),
+        'setupComplete': saved['setupComplete'],
+        'printer': saved['printer'],
+        'units': saved['units'],
+        'thru': saved['thru'],
+        'kiss': saved['kiss'],
+        'hotFolder': saved['hotFolder'],
+        'preset': EZ_PRESET,
+        'issuesUrl': issues_url(WORK),
         'runningLan': running,
         'restart': saved['lan'] != running,
         'port': PORT,
@@ -194,6 +207,25 @@ class Handler(BaseHTTPRequestHandler):
             path = '/web'
         if path == '/api/session':
             return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION})
+        if path == '/api/changelog':
+            import installer_update
+            return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
+        if path == '/api/update':
+            import installer_update
+            refresh = parse_qs(urlparse(self.path).query).get('refresh', ['0'])[0] == '1'
+            if refresh:
+                info = peek_latest(WORK, VERSION)
+            else:
+                info = {'ok': True, 'current': VERSION, 'updateAvailable': False, 'latest': VERSION, 'message': '', 'error': None}
+            info.update(installer_update.local_state(WORK, installer_update.install_root()))
+            info['notes'] = installer_update.current_notes(ROOT, VERSION)
+            info['issuesUrl'] = issues_url(WORK)
+            if info.get('rollback'):
+                info['message'] = info['rollback'].get('reason') or info['message']
+            elif info.get('applyOnRestart'):
+                info['message'] = f"{info['stagedVersion']} is checked and installs the next time eznest starts. Settings and the hot folder stay."
+                info['error'] = None
+            return self.send(200, info)
         if path == '/api/shop':
             return self.send(200, shop_status())
         if path == '/api/output':
@@ -302,10 +334,23 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/api/shop':
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
-                save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates)
+                fields = {}
+                for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder'):
+                    if key in data:
+                        fields[key] = data.get(key)
+                save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates, **fields)
                 return self.send(200, shop_status())
             if self.path == '/api/update':
-                return self.send(200, pull_latest(WORK, VERSION))
+                with LOCK:
+                    if STATE.get('status') == 'running':
+                        raise ValueError('Stop the current search before updating.')
+                import installer_update
+                result = pull_latest(WORK, VERSION, when=data.get('when') or 'restart', install_root=installer_update.install_root())
+                if result.get('restarting'):
+                    self.send(200, result)
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
+                    return
+                return self.send(200, result)
             if self.path.startswith('/api/folder/'):
                 if self.path == '/api/folder/pick':
                     if os.name != 'nt':
@@ -476,6 +521,8 @@ class LocalServer(ThreadingHTTPServer):
 
 def serve(open_browser=False, page='/'):
     restore_state()
+    import installer_update
+    installer_update.mark_healthy(WORK)
     service = LocalServer((HOST, PORT), Handler)
     if open_browser:
         import webbrowser

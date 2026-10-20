@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+First run, checked updates, and a shop that is not hard-wired to one hot folder.
+
+- The first time the page opens, it asks for the hot folder, the printer, the cut spot names, and the units. Use EZ Designs preset fills today's EZ Designs values. Nothing is connected until you save.
+- Send says when the hot folder or share cannot be reached.
+- Update checks the SHA-256 sidecar, stages the installer, and rolls back if the new build does not start. What's new, Report a problem, and Update are in the gear. Pre-releases show up when Test channel is on.
+- Join OUTPUT network is off. It sends nothing.
+- The release address, the token, and the problem-report link can be set without rebuilding. A public repository needs no token.
+
 ## 1.0.0-rc.4
 
 Uninstall removes the shop service account.

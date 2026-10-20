@@ -963,7 +963,7 @@ async function nest() {
       printableWidthMm: chosenWidthInches() * 25.4,
       maxPrintableMm: maxPrintableMm(),
       markMarginMm: $('mark-margin').value.trim() ? Number($('mark-margin').value) * scale() : 0,
-      printer: option.dataset.printer || '',
+      printer: $('printer').value.trim() || option.dataset.printer || '',
       quickSet: option.dataset.quickset || '',
       hotFolderLabel: HOT_FOLDER_LABEL
     };
@@ -1284,7 +1284,7 @@ function showLan(shop) {
 }
 
 function showHotDefault(path) {
-  $('hot-default').textContent = path ? 'Default ' + path : '';
+  $('hot-default').textContent = path ? 'EZ Designs preset: ' + path : '';
   if (!$('hot-folder').value && path) $('hot-folder').placeholder = path;
 }
 
@@ -1305,13 +1305,98 @@ function applyShop(shop) {
   $('lan').checked = shop.lan === true;
   $('updates').checked = !shop || shop.updates !== false;
   $('update').hidden = !$('updates').checked;
+  $('test-channel').checked = shop.channel === 'test';
+  $('output-network').checked = shop.outputNetwork === true;
+  if (shop.outputNote) $('output-note').textContent = shop.outputNote;
+  if (shop.printer) $('printer').value = shop.printer;
   showLan(shop);
   showRestart(shop);
   showHotDefault(shop.hotFolderDefault);
+  showSetup(shop);
+  reportLink(shop);
+}
+
+function reportLink(shop) {
+  const base = (shop && shop.issuesUrl) || $('report').getAttribute('href');
+  try {
+    const url = new URL(base);
+    const version = (shop && shop.version) || $('app-version').textContent || '';
+    if (version) url.searchParams.set('version', version);
+    $('report').href = url.toString();
+  } catch { /* Keep the link that shipped with the page. */ }
+}
+
+function showSetup(shop) {
+  const panel = $('setup');
+  if (!shop || shop.setupComplete) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  if (!$('setup-thru').value) $('setup-thru').value = $('thru-name').value;
+  if (!$('setup-kiss').value) $('setup-kiss').value = $('kiss-name').value;
+  $('setup-units').value = $('unit').value || 'in';
+  if (shop.hotFolder && !$('setup-hot').value) $('setup-hot').value = shop.hotFolder;
+  if (shop.printer && !$('setup-printer').value) $('setup-printer').value = shop.printer;
+}
+
+function applyEzPreset(shop) {
+  const preset = (shop && shop.preset) || {};
+  $('setup-hot').value = $('onyx-pc').checked ? (preset.localHotFolder || '') : (preset.shareHotFolder || '');
+  $('setup-printer').value = preset.printer || '';
+  $('setup-thru').value = preset.thru || '';
+  $('setup-kiss').value = preset.kiss || '';
+  $('setup-units').value = preset.units || 'in';
+  $('setup-error').hidden = true;
+}
+
+async function saveSetup(shop) {
+  const previous = $('unit').dataset.current || $('unit').value;
+  $('unit').value = $('setup-units').value;
+  if ($('unit').value !== previous) convertUnit($('unit').value);
+  $('thru-name').value = $('setup-thru').value.trim();
+  $('kiss-name').value = $('setup-kiss').value.trim();
+  matchCutPreset();
+  $('printer').value = $('setup-printer').value.trim();
+  $('hot-folder').value = $('setup-hot').value.trim();
+  const result = await api('/api/shop', shopPayload({
+    setupComplete: true,
+    printer: $('printer').value,
+    units: $('unit').value,
+    thru: $('thru-name').value,
+    kiss: $('kiss-name').value,
+    hotFolder: $('hot-folder').value
+  }));
+  applyShop(result);
+  saveShop();
+  await saveHotFolder();
+  if ($('hot-error').hidden) {
+    $('setup').hidden = true;
+    $('setup-error').hidden = true;
+  } else {
+    $('setup-error').hidden = false;
+    $('setup-error').textContent = $('hot-error').textContent;
+    $('setup').hidden = false;
+  }
+}
+
+function shopPayload(extra) {
+  return Object.assign({
+    lan: $('lan').checked,
+    onyxPc: $('onyx-pc').checked,
+    updates: $('updates').checked,
+    channel: $('test-channel').checked ? 'test' : 'stable',
+    outputNetwork: $('output-network').checked
+  }, extra || {});
 }
 
 async function saveDeploy() {
-  const result = await api('/api/shop', {lan: $('lan').checked, onyxPc: $('onyx-pc').checked, updates: $('updates').checked});
+  const result = await api('/api/shop', shopPayload({
+    printer: $('printer').value.trim(),
+    units: $('unit').value,
+    thru: $('thru-name').value.trim(),
+    kiss: $('kiss-name').value.trim()
+  }));
   applyShop(result);
   if (result.restart && result.lan) status('Restart eznest to open the shop network.');
   else if (result.restart) status('Shop network turns off after you restart eznest.');
@@ -1319,12 +1404,16 @@ async function saveDeploy() {
 
 async function saveHotFolder() {
   const path = $('hot-folder').value.trim();
+  $('hot-error').hidden = true;
+  $('hot-error').textContent = '';
   try {
     const result = await api('/api/output/connect', {path});
     $('hot-folder').value = result.path || '';
     saveShop();
     status(result.path ? 'Hot folder set. Send writes the frozen pack there.' : 'No hot folder. Send downloads the pack.');
   } catch (error) {
+    $('hot-error').hidden = false;
+    $('hot-error').textContent = error.message;
     status(error.message, true);
   }
 }
@@ -1479,7 +1568,39 @@ async function boot() {
   else if (state.status === 'ready' && state.manifest) showResult(state);
   else { showScreen('drop'); status('Drop your files.'); }
   renderActions();
+  refreshUpdate().catch(() => {});
   document.body.dataset.ready = '1';
+}
+
+function showUpdate(info) {
+  const note = $('update-note');
+  $('update').textContent = info && info.applyOnRestart ? 'Install now' : 'Update';
+  if (info && info.rollback && info.rollback.reason) {
+    note.hidden = false;
+    note.textContent = info.rollback.reason;
+    return;
+  }
+  if (info && (info.applyOnRestart || info.updateAvailable) && info.message) {
+    note.hidden = false;
+    note.textContent = info.message;
+    return;
+  }
+  note.hidden = true;
+  note.textContent = '';
+}
+
+async function refreshUpdate(remote) {
+  try {
+    const notes = await (await fetch('/api/changelog')).json();
+    const entries = Array.isArray(notes.entries) ? notes.entries : [];
+    const unreleased = entries.find(entry => entry.version === 'Unreleased');
+    const current = entries.find(entry => entry.version === notes.version);
+    const parts = [unreleased, current].filter(Boolean);
+    $('notes-body').textContent = parts.map(entry => entry.body || '').filter(Boolean).join('\n\n');
+  } catch { /* What's new stays empty if the changelog is missing. */ }
+  try {
+    showUpdate(await (await fetch(remote ? '/api/update?refresh=1' : '/api/update')).json());
+  } catch { /* The gear still has Update. */ }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1536,9 +1657,39 @@ document.addEventListener('DOMContentLoaded', () => {
   $('lan').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('onyx-pc').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('updates').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
-  $('update').addEventListener('click', async () => {
-    try { status((await api('/api/update', {})).message); }
+  $('test-channel').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  $('output-network').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  $('printer').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  $('setup-preset').addEventListener('click', async () => {
+    try { applyEzPreset(await (await fetch('/api/shop')).json()); }
     catch (error) { status(error.message, true); }
+  });
+  $('setup-save').addEventListener('click', async () => {
+    try { await saveSetup(); }
+    catch (error) {
+      $('setup-error').hidden = false;
+      $('setup-error').textContent = error.message;
+      status(error.message, true);
+    }
+  });
+  $('update').addEventListener('click', async () => {
+    const installNow = $('update').textContent === 'Install now';
+    try {
+      const result = await api('/api/update', {when: installNow ? 'now' : 'restart'});
+      status(result.message);
+      showUpdate(result);
+      if (result.restarting) {
+        $('update-note').hidden = false;
+        $('update-note').textContent = result.message;
+      }
+    } catch (error) {
+      const offline = /Failed to fetch|NetworkError/i.test(String(error.message || error));
+      if (installNow && offline) {
+        status('eznest is restarting to install the update.');
+        return;
+      }
+      status(error.message, true);
+    }
   });
   $('allow-undo').addEventListener('change', () => { savePrefs({undo: $('allow-undo').checked}); renderActions(); });
   $('allow-hold').addEventListener('change', () => savePrefs({hold: $('allow-hold').checked}));
@@ -1569,7 +1720,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #update')) return;
+    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #update, #setup')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

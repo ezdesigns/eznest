@@ -1,7 +1,8 @@
 # Shop-server setup. The boot task runs as the local user eznest-svc with limited rights.
 # That account is not an administrator. Its password stays in this process for schtasks
 # and is not written into the eznest folder. The account can read and write the data
-# folder. On the ONYX PC it can also write the local hot folder.
+# folder. When a hot folder is already saved and it is on this PC, the account
+# can write that folder too. The path is chosen on first run, not here.
 param(
   [Parameter(Mandatory = $true)][string]$DataDir,
   [Parameter(Mandatory = $true)][string]$App,
@@ -102,21 +103,45 @@ $lan = $Lan -eq '1'
 $boot = $StartAtBoot -eq '1'
 $updates = $Updates -ne '0'
 $utf8 = New-Object System.Text.UTF8Encoding $false
-$shop = (@{ onyxPc = $onyx; lan = $lan; updates = $updates } | ConvertTo-Json) + "`n"
-[System.IO.File]::WriteAllText((Join-Path $DataDir 'shop.json'), $shop, $utf8)
-$hot = 'C:\ONYX\EPSON SureColor S80600 ONYX Input'
-if ($onyx) {
-  New-Item -ItemType Directory -Force -Path $hot | Out-Null
-  $folder = (@{ path = $hot; configured = $true } | ConvertTo-Json) + "`n"
-  [System.IO.File]::WriteAllText((Join-Path $DataDir 'output-folder.json'), $folder, $utf8)
+$shopPath = Join-Path $DataDir 'shop.json'
+if (Test-Path -LiteralPath $shopPath) {
+  $existing = Get-Content -Raw -LiteralPath $shopPath | ConvertFrom-Json
+  $existing | Add-Member -NotePropertyName onyxPc -NotePropertyValue $onyx -Force
+  $existing | Add-Member -NotePropertyName lan -NotePropertyValue $lan -Force
+  $existing | Add-Member -NotePropertyName updates -NotePropertyValue $updates -Force
+  $shop = ($existing | ConvertTo-Json) + "`n"
+} else {
+  $shop = (@{
+    onyxPc = $onyx
+    lan = $lan
+    updates = $updates
+    channel = 'stable'
+    outputNetwork = $false
+    setupComplete = $false
+    printer = ''
+    units = 'in'
+    thru = ''
+    kiss = ''
+    hotFolder = ''
+  } | ConvertTo-Json) + "`n"
 }
+[System.IO.File]::WriteAllText($shopPath, $shop, $utf8)
 $task = 'eznest'
 $account = 'eznest-svc'
 & schtasks.exe /Delete /TN $task /F | Out-Null
 if ($boot) {
   $password = Ensure-ServiceAccount $account
   Grant-Folder $account $DataDir '(OI)(CI)M'
-  if ($onyx) { Grant-Folder $account $hot '(OI)(CI)W' }
+  $savedHot = Join-Path $DataDir 'output-folder.json'
+  if (Test-Path -LiteralPath $savedHot) {
+    try {
+      $configured = Get-Content -Raw -LiteralPath $savedHot | ConvertFrom-Json
+      $hot = [string]$configured.path
+      if ($hot -and -not $hot.StartsWith('\\') -and (Test-Path -LiteralPath $hot -PathType Container)) {
+        Grant-Folder $account $hot '(OI)(CI)W'
+      }
+    } catch {}
+  }
   Grant-BatchLogon $account
   $cmd = Join-Path (Split-Path -Parent $App) 'eznest-server.cmd'
   & schtasks.exe /Create /TN $task /SC ONSTART /RU $account /RP $password /RL LIMITED /TR "`"$cmd`"" /F *> $null

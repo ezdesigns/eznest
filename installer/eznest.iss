@@ -6,7 +6,9 @@
 #endif
 
 #define MyAppName "eznest"
-#define MyAppVersion "1.0.0-rc.4"
+#ifndef MyAppVersion
+  #error MyAppVersion is passed from version.json by build_windows.py
+#endif
 #define MyAppPublisher "EZ Designs TX"
 
 [Setup]
@@ -50,7 +52,7 @@ Name: "{group}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "--web --data-
 Name: "{group}\Stop eznest"; Filename: "{app}\Stop EZ Nest.cmd"
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-shop.ps1"" -DataDir ""{commonappdata}\eznest"" -App ""{app}\eznest.exe"" -OnyxPc {code:OnyxFlag} -Lan {code:LanFlag} -StartAtBoot {code:BootFlag} -Updates {code:UpdatesFlag}"; Flags: runhidden waituntilterminated
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install-shop.ps1"" -DataDir ""{commonappdata}\eznest"" -App ""{app}\eznest.exe"" -OnyxPc {code:OnyxFlag} -Lan {code:LanFlag} -StartAtBoot {code:BootFlag} -Updates {code:UpdatesFlag}"; Flags: runhidden waituntilterminated; Check: IsFreshInstall
 Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""; Description: "Open eznest"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
@@ -75,4 +77,16 @@ end;
 function UpdatesFlag(Param: String): String;
 begin
   if WizardIsTaskSelected('noupdates') then Result := '0' else Result := '1';
+end;
+
+function IsUpgrade: Boolean;
+var
+  Uninstall: String;
+begin
+  Result := RegQueryStringValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1', 'UninstallString', Uninstall);
+end;
+
+function IsFreshInstall: Boolean;
+begin
+  Result := not IsUpgrade;
 end;

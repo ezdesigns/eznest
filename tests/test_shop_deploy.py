@@ -71,32 +71,42 @@ class ShopDeployTests(unittest.TestCase):
         self.assertEqual(api['Authorization'], 'Bearer secret')
         self.assertNotIn('Authorization', cdn)
 
-    def test_pull_latest_reports_current_and_saves_a_newer_installer(self):
+    def test_pull_latest_stages_a_checked_installer_and_skips_a_prerelease(self):
+        import hashlib
+        import installer_update
         current = json.dumps({'tag_name': '1.0.0-rc.1', 'assets': []}).encode()
         url = 'https://github.com/ezdesigns/eznest/releases/download/v1.0.0-rc.2/eznest-setup.exe'
-        newer = json.dumps({'tag_name': 'v1.0.0-rc.2', 'assets': [
+        sha_url = url + '.sha256'
+        payload = b'MZ-eznest'
+        digest = hashlib.sha256(payload).hexdigest()
+        newer = json.dumps({'tag_name': 'v1.0.0-rc.2', 'prerelease': True, 'assets': [
             {'name': 'eznest-windows.zip', 'browser_download_url': 'https://github.com/ezdesigns/eznest/releases/download/v1.0.0-rc.2/eznest-windows.zip'},
             {'name': 'eznest-setup.exe', 'browser_download_url': url},
+            {'name': 'eznest-setup.exe.sha256', 'browser_download_url': sha_url},
         ]}).encode()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             same = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: current}))
             self.assertFalse(same['updated'])
             self.assertEqual(same['message'], 'This is the latest release.')
-            with patch('shop_deploy.os.startfile', create=True) as opened:
-                saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: b'MZ-eznest'}))
+            stable = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: payload, sha_url: (digest + '  eznest-setup.exe\n').encode()}))
+            self.assertFalse(stable['updated'])
+            self.assertEqual(stable['message'], 'This is the latest release.')
+            shop_deploy.save_shop(root, False, False, channel='test')
+            saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: payload, sha_url: (digest + '  eznest-setup.exe\n').encode()}))
             self.assertTrue(saved['updated'])
-            self.assertIn('Downloaded eznest-setup.exe.', saved['message'])
-            self.assertEqual((root / 'updates' / 'eznest-setup.exe').read_bytes(), b'MZ-eznest')
-            if os.name == 'nt':
-                opened.assert_called_once()
-                self.assertIn('The installer is opening.', saved['message'])
-            else:
-                opened.assert_not_called()
-                self.assertNotIn('installer is opening', saved['message'])
+            self.assertTrue(saved['staged'])
+            self.assertIn('checked', saved['message'])
+            self.assertNotIn('opening', saved['message'])
+            staged = Path(saved['path'])
+            self.assertEqual(staged.read_bytes(), payload)
+            self.assertTrue(installer_update.checksum_matches(hashlib.sha256(staged.read_bytes()).hexdigest(), digest))
             slipped = json.dumps({'tag_name': '9.0.0', 'assets': [{'name': '../eznest-setup.exe', 'browser_download_url': url}]}).encode()
             with self.assertRaisesRegex(ValueError, 'release file'):
                 shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: slipped}))
+            bare = json.dumps({'tag_name': 'v9.0.0', 'assets': [{'name': 'eznest-setup.exe', 'browser_download_url': url}]}).encode()
+            with self.assertRaisesRegex(ValueError, 'no checksum'):
+                shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: bare, url: payload}))
 
     def test_updates_off_does_not_call_github_or_read_a_token(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -212,7 +222,10 @@ class ShopDeployTests(unittest.TestCase):
         install = (root / 'installer' / 'install-shop.ps1').read_text(encoding='utf-8')
         server_cmd = (root / 'eznest-server.cmd').read_text(encoding='utf-8')
         build = (root / 'build_windows.py').read_text(encoding='utf-8')
-        self.assertIn(f'#define MyAppVersion "{version}"', script)
+        self.assertNotIn(f'#define MyAppVersion "{version}"', script)
+        self.assertIn('MyAppVersion is passed from version.json', script)
+        self.assertIn('/DMyAppVersion=', build)
+        self.assertIn("version.json", build)
         self.assertIn(r'{autopf}\eznest', script)
         self.assertIn('{commondesktop}', script)
         self.assertIn('uninstall-shop.ps1', script)
@@ -233,7 +246,10 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn('Excludes: "BUILD.json"', script)
         self.assertIn('{src}\\BUILD.json', script)
         self.assertIn('external', script)
-        self.assertIn(r'C:\ONYX\EPSON SureColor S80600 ONYX Input', install)
+        self.assertNotIn(r'C:\ONYX\EPSON SureColor S80600 ONYX Input', install)
+        self.assertIn('output-folder.json', install)
+        self.assertIn('setupComplete', install)
+        self.assertIn('IsFreshInstall', script)
         self.assertIn('--web --no-browser', server_cmd)
         self.assertIn(r'%ProgramData%\eznest', server_cmd)
         self.assertIn('ISCC', build)
@@ -250,7 +266,8 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn('schtasks.exe', uninstall)
         self.assertIn('eznest-svc', uninstall)
         self.assertIn('icacls', uninstall)
-        self.assertIn(r'C:\ONYX\EPSON SureColor S80600 ONYX Input', uninstall)
+        self.assertNotIn(r'C:\ONYX\EPSON SureColor S80600 ONYX Input', uninstall)
+        self.assertIn('output-folder.json', uninstall)
         self.assertIn('advfirewall firewall delete rule name=eznest', uninstall)
         end = uninstall.index('/End')
         delete = uninstall.index('/Delete')
@@ -261,6 +278,46 @@ class ShopDeployTests(unittest.TestCase):
         self.assertLess(delete, remove_acl)
         self.assertLess(remove_acl, remove_user)
         self.assertLess(remove_user, disable_user)
+
+    def test_output_network_is_off_and_sends_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertFalse(shop_deploy.load_shop(root)['outputNetwork'])
+            self.assertEqual(shop_deploy.load_shop(root)['channel'], 'stable')
+            self.assertFalse(shop_deploy.load_shop(root)['setupComplete'])
+            saved = shop_deploy.save_shop(root, False, False, outputNetwork=True)
+            self.assertTrue(saved['outputNetwork'])
+            share = shop_deploy.output_network_status(saved)
+            self.assertFalse(share['sends'])
+            self.assertIn('machine list', share['note'])
+            self.assertIn('free capacity', share['note'])
+            self.assertNotIn('http://', (root / 'shop.json').read_text(encoding='utf-8'))
+            self.assertNotIn('https://', (root / 'shop.json').read_text(encoding='utf-8'))
+
+    def test_release_links_follow_the_environment_and_need_no_token(self):
+        self.assertNotIn('Authorization', shop_deploy._headers(shop_deploy.release_api(), ''))
+        with patch.dict(os.environ, {
+            'EZ_NEST_RELEASE_API': 'https://api.github.com/repos/example/nest/releases?per_page=5',
+            'EZ_NEST_ISSUES_URL': 'https://github.com/example/nest/issues/new',
+        }):
+            self.assertIn('/repos/example/nest/releases', shop_deploy.release_api())
+            self.assertEqual(shop_deploy.issues_url(), 'https://github.com/example/nest/issues/new')
+            self.assertEqual(shop_deploy.repo_for_release(), 'example/nest')
+            self.assertTrue(shop_deploy.release_url_allowed(
+                'https://github.com/example/nest/releases/download/v1/eznest-setup.exe', repo='example/nest'))
+
+    def test_send_names_a_missing_hot_folder(self):
+        from output_folder import OutputFolder
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            missing = root / 'missing-share'
+            folder = OutputFolder(root / 'output-folder.json')
+            with self.assertRaisesRegex(ValueError, "can't be reached"):
+                folder.connect(str(missing))
+            self.assertIn('missing-share', (root / 'output-folder.json').read_text(encoding='utf-8'))
+            again = OutputFolder(root / 'output-folder.json')
+            with self.assertRaisesRegex(ValueError, "can't be reached"):
+                again.save('ab' * 16, b'not-a-zip')
 
 
 if __name__ == '__main__':

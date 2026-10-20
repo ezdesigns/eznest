@@ -7,6 +7,36 @@
 <link rel="stylesheet" href="/web.css">
 </head>
 <body data-step="drop">
+<section id="setup" hidden>
+  <h2>Set up this shop</h2>
+  <p class="hint">Hot folder, printer, cut names, and units. Nothing is connected until you save.</p>
+  <div class="fields">
+    <label class="wide">Hot folder
+      <input id="setup-hot" type="text" maxlength="400" placeholder="RIP hot folder or share" autocomplete="off" spellcheck="false">
+    </label>
+    <label class="wide">Printer
+      <input id="setup-printer" type="text" maxlength="80" autocomplete="off">
+    </label>
+    <label>Thru spot
+      <input id="setup-thru" type="text" maxlength="80" spellcheck="false" autocomplete="off">
+    </label>
+    <label>Kiss spot
+      <input id="setup-kiss" type="text" maxlength="80" spellcheck="false" autocomplete="off">
+    </label>
+    <label>Units
+      <select id="setup-units">
+        <option value="in">Inches</option>
+        <option value="mm">Millimeters</option>
+        <option value="cm">Centimeters</option>
+      </select>
+    </label>
+  </div>
+  <div class="setup-actions">
+    <button id="setup-preset" type="button" class="link">Use EZ Designs preset</button>
+    <button id="setup-save" type="button" class="primary">Save</button>
+  </div>
+  <p id="setup-error" class="lan-note" hidden></p>
+</section>
 <details id="settings">
   <summary aria-label="Settings">
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -87,9 +117,13 @@
       <label>Material $ / m²
         <input id="cost" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal">
       </label>
-      <label class="wide">EPSON SureColor S80600 ONYX Input
+      <label class="wide">Hot folder
         <input id="hot-folder" type="text" placeholder="Hot folder path" autocomplete="off">
         <span id="hot-default" class="hint"></span>
+        <span id="hot-error" class="lan-note" hidden></span>
+      </label>
+      <label class="wide">Printer
+        <input id="printer" type="text" maxlength="80" autocomplete="off">
       </label>
     </div>
     <label class="check"><input id="staging-on" type="checkbox"> Staging folder</label>
@@ -103,7 +137,17 @@
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
     <label class="check"><input id="updates" type="checkbox" checked> Check for updates</label>
+    <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
+    <p class="hint">Pre-releases show up when this is on.</p>
+    <label class="check"><input id="output-network" type="checkbox"> Join OUTPUT network</label>
+    <p id="output-note" class="hint">Off. Nothing is sent. If you turn this on later, only the machine list and free capacity would be shared, and only after you opt in.</p>
     <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
+    <p id="update-note" class="hint" hidden></p>
+    <details id="notes">
+      <summary>What's new</summary>
+      <div id="notes-body"></div>
+    </details>
+    <a id="report" class="workspace" target="_blank" rel="noopener noreferrer" href="https://github.com/ezdesigns/eznest/issues/new?template=tester-problem.yml">Report a problem</a>
     <label class="check"><input id="draw-marks" type="checkbox"> Draw registration marks (ONYX adds them)</label>
     <label class="check"><input id="allow-undo" type="checkbox"> Undo send while the file is still in the folder</label>
     <label class="check"><input id="allow-hold" type="checkbox"> Hold for Operator</label>
