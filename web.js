@@ -74,6 +74,28 @@ function loadStylesheet() {
   });
 }
 
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src + '?ts=' + Date.now();
+    const timer = setTimeout(() => { script.remove(); reject(Error(src + ' did not load.')); }, 4000);
+    script.onload = () => { clearTimeout(timer); resolve(); };
+    script.onerror = () => { clearTimeout(timer); script.remove(); reject(Error(src + ' did not load.')); };
+    document.head.appendChild(script);
+  });
+}
+
+async function ensureLibraries() {
+  const need = [['EZNQueue', '/queue-core.js'], ['EZNCuts', '/cut-mapping.js'], ['EZNProfiles', '/shop-profiles.js']];
+  for (const [name, src] of need) {
+    for (let attempt = 0; attempt < 3 && typeof window[name] === 'undefined'; attempt++) {
+      try { await loadScript(src); }
+      catch { /* Ask for the script again. */ }
+    }
+    if (typeof window[name] === 'undefined') throw Error(name + ' did not load.');
+  }
+}
+
 async function ensureStyles() {
   if (stylesApplied()) return;
   for (let attempt = 0; attempt < 3 && !stylesApplied(); attempt++) {
@@ -1440,6 +1462,7 @@ async function boot() {
   renderMaterialButtons();
   $('allow-undo').checked = stored.undo === true;
   $('allow-hold').checked = stored.hold === true;
+  await ensureLibraries();
   await ensureStyles();
   const session = await fetchJsonRetry('/api/session');
   token = session.token;

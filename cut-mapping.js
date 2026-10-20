@@ -30,5 +30,5 @@
     return {version:1,rules,genericOperation,outputs,suspectPrefixes:[...new Set(prefixes.map(p=>text(p,'prefix')))]};
   }
   function formatCounts(counts){return [['thru','thru-cut'],['kiss','kiss-cut'],['contour','generic cut']].filter(([op])=>counts?.[op]).map(([op,label])=>counts[op]+' '+label+' path'+(counts[op]===1?'':'s')).join(' · ')||'No cut paths';}
-  const api={defaults,validate,formatCounts,operations};if(typeof module!=='undefined')module.exports=api;else root.EZNCuts=api;
+  const api={defaults,validate,formatCounts,operations};root.EZNCuts=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:this);

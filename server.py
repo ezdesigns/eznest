@@ -149,6 +149,11 @@ def finish_search(payload):
 
 
 class Handler(BaseHTTPRequestHandler):
+    # HTTP/1.1 so a stylesheet or script queued on the same connection is answered.
+    # Closing after the page was dropping that next file on Windows.
+    protocol_version = 'HTTP/1.1'
+    timeout = 30
+
     def log_message(self, *args):
         pass
 
@@ -162,7 +167,6 @@ class Handler(BaseHTTPRequestHandler):
         if filename:
             self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
         self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
-        self.close_connection = True
         self.end_headers()
         self.wfile.write(body)
         self.wfile.flush()
