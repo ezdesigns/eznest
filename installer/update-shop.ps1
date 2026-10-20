@@ -113,6 +113,18 @@ function Invoke-UpdateTransaction([scriptblock]$Install, [scriptblock]$Start,
   }
 }
 
+function Stop-ShopTask {
+  Disable-ScheduledTask -TaskName 'eznest' -TaskPath '\' | Out-Null
+  if ((Get-ScheduledTask -TaskName 'eznest' -TaskPath '\').State -in @('Running', 'Queued')) {
+    Stop-ScheduledTask -TaskName 'eznest' -TaskPath '\'
+  }
+  $deadlineStop = [DateTime]::UtcNow.AddSeconds(30)
+  while ((Get-ScheduledTask -TaskName 'eznest' -TaskPath '\').State -in @('Running', 'Queued')) {
+    if ([DateTime]::UtcNow -ge $deadlineStop) { throw 'Could not stop the failed version. Backup retained for recovery.' }
+    Start-Sleep -Milliseconds 200
+  }
+}
+
 function Invoke-ShopUpdate {
   $ErrorActionPreference = 'Stop'
   $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -195,16 +207,7 @@ function Invoke-ShopUpdate {
       Enable-ScheduledTask -TaskName 'eznest' -TaskPath '\' | Out-Null
       Start-ScheduledTask -TaskName 'eznest' -TaskPath '\'
     }
-    $stop = {
-      if ((Get-ScheduledTask -TaskName 'eznest' -TaskPath '\').State -eq 'Running') {
-        Stop-ScheduledTask -TaskName 'eznest' -TaskPath '\'
-      }
-      $deadlineStop = [DateTime]::UtcNow.AddSeconds(30)
-      while ((Get-ScheduledTask -TaskName 'eznest' -TaskPath '\').State -eq 'Running') {
-        if ([DateTime]::UtcNow -ge $deadlineStop) { throw 'Could not stop the failed version. Backup retained for recovery.' }
-        Start-Sleep -Milliseconds 200
-      }
-    }
+    $stop = { Stop-ShopTask }
     $restore = {
       # Both locations were resolved beneath Program Files; reject linked trees
       # again immediately before recursive replacement. Never clear the data dir.
@@ -241,4 +244,3 @@ if ($Run) {
   Add-Type -AssemblyName System.Windows.Forms
   [Windows.Forms.MessageBox]::Show($message, 'eznest update') | Out-Null
 }
-

@@ -27,6 +27,17 @@ $task = @{ Principal=@{UserId='eznest-svc';RunLevel='Limited'}; Settings=@{Enabl
 Assert-ShopTask $task 'C:\Program Files\eznest\eznest.exe' 'C:\ProgramData\eznest'
 $task.Principal.UserId = 'SYSTEM'
 Reject { Assert-ShopTask $task 'C:\Program Files\eznest\eznest.exe' 'C:\ProgramData\eznest' }
+
+$script:taskCalls = New-Object 'System.Collections.Generic.List[string]'
+function Get-ScheduledTask { param($TaskName, $TaskPath) return @{State=$script:taskState} }
+function Disable-ScheduledTask { param($TaskName, $TaskPath) $script:taskCalls.Add('disable') }
+function Stop-ScheduledTask { param($TaskName, $TaskPath) $script:taskCalls.Add('stop'); $script:taskState='Disabled' }
+foreach ($state in @('Running', 'Queued', 'Ready')) {
+  $script:taskState = $state; $script:taskCalls.Clear()
+  Stop-ShopTask
+  $expected = if ($state -eq 'Ready') { 'disable' } else { 'disable,stop' }
+  Assert (($script:taskCalls -join ',') -eq $expected) 'Rollback must disable triggers and drain queued/running instances.'
+}
 $task.Principal.UserId = 'eznest-svc'; $task.Principal.RunLevel = 'Highest'
 Reject { Assert-ShopTask $task 'C:\Program Files\eznest\eznest.exe' 'C:\ProgramData\eznest' }
 
