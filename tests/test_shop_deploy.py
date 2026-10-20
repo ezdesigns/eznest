@@ -4,6 +4,7 @@ import json
 import os
 import socket
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -138,6 +139,23 @@ class ShopDeployTests(unittest.TestCase):
             self.assertEqual(pin['version'], '1.0.0-rc.3')
             self.assertEqual(pin['commit'], 'abc123')
             self.assertEqual(pin['sha256'], hashlib.sha256(payload).hexdigest())
+
+    def test_hostname_lookup_cannot_stall_shop_status(self):
+        def hang(*args, **kwargs):
+            time.sleep(30)
+            return []
+
+        shop_deploy.clear_name_cache()
+        try:
+            started = time.monotonic()
+            with patch('shop_deploy.socket.getaddrinfo', hang), patch('shop_deploy.socket.getfqdn', hang):
+                status = server.shop_status()
+                names = shop_deploy.shop_names()
+            self.assertLess(time.monotonic() - started, 3)
+            self.assertIn('addresses', status)
+            self.assertIn(socket.gethostname().split('.')[0].casefold(), names)
+        finally:
+            shop_deploy.clear_name_cache()
 
     def test_shop_names_are_this_computer_or_a_private_address(self):
         self.assertTrue(shop_deploy.shop_name_allowed(socket.gethostname()))

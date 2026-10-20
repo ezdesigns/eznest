@@ -5,6 +5,7 @@ import io
 import json
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from urllib.request import urlopen
@@ -41,6 +42,17 @@ class WebMvpTests(unittest.TestCase):
         server.PORT = self.service.server_port
         self.thread = threading.Thread(target=self.service.serve_forever, daemon=True)
         self.thread.start()
+        deadline = time.monotonic() + 5
+        last = None
+        while time.monotonic() < deadline:
+            try:
+                with urlopen(self.url() + '/api/session', timeout=0.2) as response:
+                    if response.status == 200:
+                        return
+            except OSError as error:
+                last = error
+                time.sleep(0.02)
+        raise RuntimeError('eznest did not accept connections. ' + str(last))
 
     def stop(self):
         if server.PROCESS and server.PROCESS.poll() is None:
@@ -65,6 +77,9 @@ class WebMvpTests(unittest.TestCase):
     def url(self):
         return f'http://127.0.0.1:{server.PORT}'
 
+    def wait_ready(self, page):
+        page.wait_for_function("() => document.body.dataset.ready === '1'")
+
     def test_desktop_workspace_remains_the_front_page(self):
         with urlopen(self.url() + '/', timeout=10) as response:
             desktop = response.read().decode()
@@ -86,7 +101,7 @@ class WebMvpTests(unittest.TestCase):
         context = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True)
         page = context.new_page()
         page.goto(self.url() + '/web', wait_until='domcontentloaded')
-        page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+        self.wait_ready(page)
         page.locator('#settings').evaluate('node => { node.open = true }')
         self.assertEqual(page.locator('#material option:checked').inner_text(), 'White gloss, 54" roll, 51.5" printable')
         self.assertEqual(page.input_value('#width'), '51.5')
@@ -296,7 +311,7 @@ class WebMvpTests(unittest.TestCase):
             page = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True).new_page()
             try:
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                self.wait_ready(page)
                 page.locator('#settings').evaluate('node => { node.open = false }')
                 self.assertEqual(page.input_value('#nest-width'), '51.5')
                 page.screenshot(path='/tmp/eznest-desktop-empty.png', full_page=True)
@@ -445,7 +460,7 @@ class WebMvpTests(unittest.TestCase):
             page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
             try:
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0", timeout=60000)
+                self.wait_ready(page)
                 page.select_option('#material', 'vinyl')
                 page.fill('#nest-width', '30')
                 page.locator('#settings').evaluate('node => { node.open = true }')
@@ -457,7 +472,7 @@ class WebMvpTests(unittest.TestCase):
                 page.locator('#hot-folder').dispatch_event('change')
                 page.wait_for_function("() => /Hot folder set/i.test(document.querySelector('#status').textContent)", timeout=10000)
                 page.reload()
-                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0", timeout=60000)
+                self.wait_ready(page)
                 self.assertEqual(page.input_value('#material'), 'vinyl')
                 self.assertIn('Shop vinyl', page.locator('#material option:checked').inner_text())
                 self.assertEqual(page.input_value('#preset-name'), 'Shop vinyl')
@@ -488,7 +503,7 @@ class WebMvpTests(unittest.TestCase):
                     'ok': True, 'current': '1.0.0-rc.1', 'latest': '1.0.0-rc.1', 'updated': False, 'message': 'This is the latest release.'
                 })))
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                self.wait_ready(page)
                 page.locator('#settings').evaluate('node => { node.open = true }')
                 self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.4')
                 self.assertEqual(page.locator('#update').inner_text(), 'Update')
@@ -539,7 +554,7 @@ class WebMvpTests(unittest.TestCase):
             page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
             try:
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                self.wait_ready(page)
                 page.screenshot(path=str(shots / 'rc2-materials-desktop.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
                 page.screenshot(path=str(shots / 'rc2-materials-mobile.png'), full_page=True)
@@ -574,7 +589,7 @@ class WebMvpTests(unittest.TestCase):
             page = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True).new_page()
             try:
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+                self.wait_ready(page)
                 page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
                 state = json.load(urlopen(self.url() + '/api/state', timeout=10))

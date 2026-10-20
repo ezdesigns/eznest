@@ -36,6 +36,19 @@ async function sha256(data) {
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function fetchJson(path, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(path, {signal: controller.signal}).then(response => {
+    clearTimeout(timer);
+    if (!response.ok) throw Error('Request failed.');
+    return response.json();
+  }, error => {
+    clearTimeout(timer);
+    throw error;
+  });
+}
+
 async function api(path, data) {
   const response = await fetch(path, {
     method: 'POST',
@@ -1395,18 +1408,19 @@ async function boot() {
   const session = await (await fetch('/api/session')).json();
   token = session.token;
   try {
-    const folder = await (await fetch('/api/output')).json();
+    const folder = await fetchJson('/api/output', 5000);
     if (folder.path) $('hot-folder').value = folder.path;
     else if (stored.hotFolder) $('hot-folder').value = stored.hotFolder;
   } catch { /* The folder status is optional. */ }
   try {
-    applyShop(await (await fetch('/api/shop')).json());
-  } catch { /* Shop network settings stay off when the server has none. */ }
+    applyShop(await fetchJson('/api/shop', 5000));
+  } catch { /* Shop network settings stay off when the lookup does not answer. */ }
   const state = await (await fetch('/api/state')).json();
   if (state.status === 'running') { busy = true; showScreen('nest'); renderActions(); setTimeout(poll, 300); }
   else if (state.status === 'ready' && state.manifest) showResult(state);
   else { showScreen('drop'); status('Drop your files.'); }
   renderActions();
+  document.body.dataset.ready = '1';
 }
 
 document.addEventListener('DOMContentLoaded', () => {

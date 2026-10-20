@@ -8,6 +8,8 @@ import ipaddress
 import json
 import os
 import socket
+import threading
+import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -69,43 +71,101 @@ def save_shop(directory, onyx_pc, lan, updates=None):
     return load_shop(directory)
 
 
-def lan_addresses():
-    found = []
+# Windows getaddrinfo and getfqdn ignore the Python socket timeout and can sit
+# on DNS for longer than a minute. The shop page waits on this during boot.
+_LOOKUP_TIMEOUT = 1.0
+_LOOKUP_TTL = 30.0
+_lookup_lock = threading.Lock()
+_address_cache = {'expires': 0.0, 'values': []}
+_fqdn_cache = {'expires': 0.0, 'value': ''}
 
-    def add(ip):
-        if not ip or ip.startswith('127.') or ip in found:
-            return
+
+def clear_name_cache():
+    with _lookup_lock:
+        _address_cache['expires'] = 0.0
+        _address_cache['values'] = []
+        _fqdn_cache['expires'] = 0.0
+        _fqdn_cache['value'] = ''
+
+
+def _call_within(function, timeout):
+    """Return function's result, or None when it is still running after timeout."""
+    done = threading.Event()
+    box = {}
+
+    def run():
         try:
-            if not ipaddress.ip_address(ip).is_private:
-                return
-        except ValueError:
-            return
-        found.append(ip)
+            box['result'] = function()
+        except Exception:
+            box['result'] = None
+        finally:
+            done.set()
 
+    threading.Thread(target=run, daemon=True).start()
+    if not done.wait(timeout):
+        return None
+    return box.get('result')
+
+
+def _remember_address(found, ip):
+    if not ip or ip.startswith('127.') or ip in found:
+        return
+    try:
+        if not ipaddress.ip_address(ip).is_private:
+            return
+    except ValueError:
+        return
+    found.append(ip)
+
+
+def _route_address():
+    found = []
     try:
         probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             probe.connect(('192.0.2.1', 9))
-            add(probe.getsockname()[0])
+            _remember_address(found, probe.getsockname()[0])
         finally:
             probe.close()
     except OSError:
         pass
-    previous = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(2)
-    try:
-        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET, socket.SOCK_STREAM):
-            add(info[4][0])
-    except OSError:
-        pass
-    finally:
-        socket.setdefaulttimeout(previous)
     return found
+
+
+def _hostname_ips():
+    infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET, socket.SOCK_STREAM)
+    return [info[4][0] for info in infos]
+
+
+def lan_addresses():
+    with _lookup_lock:
+        if time.monotonic() < _address_cache['expires']:
+            return list(_address_cache['values'])
+        found = _route_address()
+        looked_up = _call_within(_hostname_ips, _LOOKUP_TIMEOUT)
+        for ip in looked_up or []:
+            _remember_address(found, ip)
+        _address_cache['values'] = list(found)
+        _address_cache['expires'] = time.monotonic() + _LOOKUP_TTL
+        return list(found)
+
+
+def _cached_fqdn():
+    with _lookup_lock:
+        if time.monotonic() < _fqdn_cache['expires']:
+            return _fqdn_cache['value']
+        looked_up = _call_within(lambda: socket.getfqdn().strip().rstrip('.'), _LOOKUP_TIMEOUT)
+        _fqdn_cache['value'] = looked_up or ''
+        _fqdn_cache['expires'] = time.monotonic() + _LOOKUP_TTL
+        return _fqdn_cache['value']
 
 
 def shop_names():
     host = socket.gethostname().strip().rstrip('.')
-    names = {host.casefold(), host.split('.')[0].casefold(), socket.getfqdn().strip().rstrip('.').casefold()}
+    names = {host.casefold(), host.split('.')[0].casefold()}
+    fqdn = _cached_fqdn()
+    if fqdn:
+        names.add(fqdn.casefold())
     names.update(ip.casefold() for ip in lan_addresses())
     names.discard('')
     return names
