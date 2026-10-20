@@ -12,6 +12,7 @@ import copy
 import socket
 import sqlite3
 import workload
+import illustrator_bridge
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -135,7 +136,8 @@ def persist_state():
 def record_workload(kind):
     # A statistics failure must not turn a successful delivery into a failed Send.
     try:
-        workload.record(WORK, STATE['id'], kind, STATE['result'])
+        ident = illustrator_bridge.tracking_id(STATE.get('job', {}), STATE['id'])
+        workload.record(WORK, ident, kind, STATE['result'])
         STATE.pop('trackingWarning', None)
     except (OSError, sqlite3.Error, ValueError):
         STATE['trackingWarning'] = 'Local activity could not be saved. Check available disk space and folder permissions.'
@@ -241,6 +243,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, info)
         if path == '/api/shop':
             return self.send(200, shop_status())
+        if path.startswith('/api/illustrator/'):
+            if self.client_address[0] != '127.0.0.1':
+                return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
+            try:
+                return self.send(200, illustrator_bridge.read(WORK, path.rsplit('/', 1)[-1]))
+            except (OSError, ValueError):
+                return self.send(404, {'error': 'Illustrator handoff not found or changed. Export again.'})
         if path == '/api/workload':
             try:
                 info = workload.summary(WORK)
@@ -327,6 +336,12 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 <= size <= 48_000_000:
                 raise ValueError('Job is too large.')
             data = json.loads(self.rfile.read(size) or '{}')
+            if self.path == '/api/illustrator/intake':
+                if self.client_address[0] != '127.0.0.1':
+                    return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
+                with LOCK:
+                    info = illustrator_bridge.accept(WORK, data)
+                return self.send(200, {'ok': True, 'id': info['id'], 'url': f'http://127.0.0.1:{PORT}/web?illustrator=' + info['id']})
             if self.path == '/api/document/import':
                 if not DOCUMENT_LOCK.acquire(blocking=False):
                     raise ValueError('Wait for the current document import to finish.')
@@ -415,11 +430,20 @@ class Handler(BaseHTTPRequestHandler):
                         data = copy.deepcopy(STATE.get('requestJob', STATE['job']))
                         data['settings']['seed'] = secrets.randbelow(2147483647)
                     validate_request(data)
+                    if data.get('illustrator'):
+                        handoff = illustrator_bridge.read(WORK, data['illustrator']['id'])
+                        # Match the source PDF, not a client-supplied tracking identity.
+                        sources = data.get('documentSources', [])
+                        if len(sources) != 1:
+                            raise ValueError('Nest the Illustrator handoff separately.')
+                        data['illustrator'] = {k: handoff[k] for k in ('id', 'sourceId', 'revision')}
                     if data.get('documentSources'):
                         from pdf_io import load_documents
                         complete={**data,'productionJobs':data.get('productionJobs',[])+[f['source'] for f in data.get('fillJobs',[])],
                                   'parts':data['parts']+[p for f in data.get('fillJobs',[]) for p in f['parts']]}
-                        load_documents(complete,WORK/'documents')
+                        documents = load_documents(complete,WORK/'documents')
+                        if data.get('illustrator') and any(meta['sourceHash'] != data['illustrator']['revision'] for _, meta in documents.values()):
+                            raise ValueError('Illustrator source does not match this handoff.')
                     if 'outputProfile' in data:
                         data['outputProfile'] = validate_profile(data['outputProfile'])
                     run_id = uuid.uuid4().hex

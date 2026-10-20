@@ -119,7 +119,7 @@ def solve(job, progress_path=None):
     # Sparrow's finite axis is Y. Reflect x/y at the boundary of the adapter.
     # 0.10 mm outward guard exceeds the host's 0.05 mm curve flattening target.
     orientations = None if job['settings']['rotations'] is None else [-a for a in job['settings']['rotations']]
-    items, base_rotations = [], {}
+    items, base_rotations, span = [], {}, 0.0
     for part in job['parts']:
         polygon = Polygon(part['points'])
         base = 0
@@ -137,10 +137,17 @@ def solve(job, progress_path=None):
                 raise ValueError(f"{part['id']}: part is too wide at every rotation.")
         base_rotations[part['id']] = base
         envelope = polygon.buffer(0.10, join_style=2)
+        left, bottom, right, top = envelope.bounds
+        span += (math.hypot(right - left, top - bottom) + gap + 0.02) * part.get('quantity', 1)
         items.append(spyrrow.Item(part['id'], [(y, x) for x, y in envelope.exterior.coords], part.get('quantity', 1), orientations))
     # Small extra clearance absorbs native floating-point error; zero gap remains valid.
     config = spyrrow.StripPackingConfig(total_computation_time=int(seconds), min_items_separation=gap + 0.02, num_workers=2, seed=int(job['settings'].get('seed', 42)), early_termination=True)
-    instance = spyrrow.StripPackingInstance('eznest', width - 2 * margin, items)
+    # Sparrow initializes strip length from area / width. For a tiny job on a
+    # wide roll this can be smaller than its separation offset and panic.
+    # No part needs more cross-roll space than its envelope diagonal. The sum
+    # plus clearances accommodates every part side by side, at any orientation.
+    # Restrict only the search region; retain the customer's full output width.
+    instance = spyrrow.StripPackingInstance('eznest', min(width - 2 * margin, span), items)
     progress_path = progress_path or job.pop('_progress', None)
 
     def build(solution):

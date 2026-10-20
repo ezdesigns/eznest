@@ -122,6 +122,16 @@ docker run --rm -p 8765:8765 eznest
 
 Older Illustrator scripts and the classic page are in [archive/](archive/README.md).
 
+### Illustrator pilot (draft only)
+
+The new [Illustrator pilot](illustrator/START%20HERE.txt) is separate from the
+archived bridge. Run `illustrator/Prepare for EZ Nest.jsx` through Illustrator's
+File > Scripts > Other Script on the same PC as this draft. It exports a separate
+production copy using your chosen Adobe PDF preset and opens a local handoff.
+The pilot uses `print`, `thru-cut`, and `kiss cut` layers and Regular material.
+Use a test hot folder first. Live Illustrator host and ONYX validation are still
+required; automated bridge tests do not establish physical production readiness.
+
 ## License
 
 Ez Nest is MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Dependencies keep their own licenses. See [THIRD_PARTY.md](THIRD_PARTY.md) and `licenses/`.

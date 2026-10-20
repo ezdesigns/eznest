@@ -15,6 +15,7 @@ let blockReason = '';
 let pendingRenest = false;
 let leaving = false;
 let nestTimer = 0;
+let illustratorHandoff = null;
 
 function status(message, failed) {
   const el = $('status');
@@ -153,6 +154,10 @@ function cutMapping() {
   mapping.outputs.thru.layer = names.thru;
   mapping.outputs.kiss.spot = names.kiss;
   mapping.outputs.kiss.layer = names.kiss;
+  if (illustratorHandoff || current?.job?.illustrator) {
+    mapping.outputs.thru.layer = 'thru-cut';
+    mapping.outputs.kiss.layer = 'kiss cut';
+  }
   return EZNCuts.validate(mapping);
 }
 
@@ -451,7 +456,7 @@ function showScreen(name) {
 function syncFiles() {
   const show = kits.length > 0 && document.body.dataset.step !== 'drop';
   $('files').hidden = !show;
-  $('add-files').hidden = !show || document.body.dataset.step === 'nest';
+  $('add-files').hidden = !show || !!illustratorHandoff || document.body.dataset.step === 'nest';
   $('stop').hidden = document.body.dataset.step !== 'nest';
   const locked = busy || document.body.dataset.step === 'nest';
   for (const node of $('files').querySelectorAll('input, button')) node.disabled = locked;
@@ -956,6 +961,10 @@ async function nest() {
     const roll = preset();
     const job = EZNQueue.compose(kits, roll, 'combined');
     job.outputProfile = profileFor(kits);
+    if (illustratorHandoff) {
+      if (kits.length !== 1 || kits[0].revision !== illustratorHandoff.documentId) throw Error('Start over before mixing an Illustrator handoff with other jobs.');
+      job.illustrator = {id: illustratorHandoff.id};
+    }
     job.settings.seed = 42;
     const option = $('material').selectedOptions[0];
     job.media = {
@@ -1143,6 +1152,8 @@ async function exportFile(forceDownload) {
 }
 
 function nextKit() {
+  illustratorHandoff = null;
+  renderMaterialButtons();
   kits = [];
   current = null;
   blockReason = '';
@@ -1191,8 +1202,10 @@ function stagingPath() {
 function renderMaterialButtons() {
   const box = $('materials');
   const currentValue = $('material').value;
+  $('material').disabled = !!illustratorHandoff;
   box.replaceChildren();
   for (const option of $('material').options) {
+    if (illustratorHandoff && option.value !== 'white-gloss') continue;
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.value = option.value;
@@ -1434,6 +1447,9 @@ async function importPdf(file, operation) {
   let binary = '';
   for (let offset = 0; offset < bytes.length; offset += 32768) binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
   const mapping = EZNCuts.defaults();
+  mapping.rules.push(
+    {source: 'layer', match: 'exact', name: 'thru-cut', operation: 'thru'},
+    {source: 'layer', match: 'exact', name: 'kiss cut', operation: 'kiss'});
   mapping.genericOperation = operation;
   const bleed = Number($('bleed').value);
   if (!Number.isFinite(bleed) || bleed < 0 || bleed > 25) throw Error('Existing bleed must be from 0 to 25 mm.');
@@ -1475,6 +1491,7 @@ async function readEntry(file) {
 async function importFiles(fileList, replace) {
   const files = [...fileList].filter(Boolean);
   if (!files.length || busy || saving) return;
+  if (illustratorHandoff && !replace) throw Error('Start over before adding files to another Illustrator attempt.');
   const incomingPdf = files.some(file => /\.(pdf|ai)$/i.test(file.name));
   const incomingSvg = files.some(file => /\.svg$/i.test(file.name));
   const havePdf = !replace && kits.some(entry => entry.data?.format === 'pdf');
@@ -1580,7 +1597,54 @@ async function boot() {
   else { showScreen('drop'); status('Drop your files.'); }
   renderActions();
   refreshUpdate().catch(() => {});
+  const handoffId = new URLSearchParams(location.search).get('illustrator');
+  if (handoffId) {
+    $('illustrator-handoff').hidden = false;
+    if (!/^[a-f0-9]{32}$/.test(handoffId)) {
+      $('illustrator-note').textContent = 'Invalid Illustrator link. Export again.';
+      $('illustrator-load').disabled = true;
+    }
+  }
   document.body.dataset.ready = '1';
+}
+
+async function loadIllustrator() {
+  if (busy || saving) throw Error('Finish the current operation first.');
+  if ((kits.length || current) && !confirm('Replace the current preview with this Illustrator selection?')) return;
+  const id = new URLSearchParams(location.search).get('illustrator');
+  const response = await fetch('/api/illustrator/' + encodeURIComponent(id));
+  const data = await response.json();
+  if (!response.ok) throw Error(data.error);
+  nextKit();
+  $('material').value = 'white-gloss';
+  const regular = $('material').selectedOptions[0];
+  regular.dataset.name = 'Regular';
+  regular.dataset.width = data.widthIn;
+  regular.dataset.roll = Math.max(54, data.widthIn);
+  regular.textContent = 'Regular';
+  applyMaterial(true);
+  $('nest-width').value = data.widthIn;
+  $('sets').value = data.sets;
+  $('bleed').value = data.bleedMm;
+  $('auto-bleed').value = '0';
+  $('thru-name').value = 'CutContour_Thru-cut';
+  $('kiss-name').value = 'CutContour_Kiss-cut';
+  matchCutPreset();
+  const bytes = Uint8Array.from(atob(data.content), c => c.charCodeAt(0));
+  const file = new File([bytes], 'Illustrator production copy.pdf', {type: 'application/pdf'});
+  const entry = await readEntry(file);
+  entry.id = 'illustrator-' + data.id;
+  illustratorHandoff = {...data, documentId: entry.revision};
+  delete illustratorHandoff.content;
+  renderMaterialButtons();
+  kits = [entry];
+  current = null;
+  blockReason = '';
+  leaving = false;
+  renderFiles();
+  $('illustrator-note').textContent = 'Selection loaded. Verify every piece and its cut paths before sending.';
+  showScreen('nest');
+  requestNest();
 }
 
 function showUpdate(info) {
@@ -1630,6 +1694,12 @@ async function refreshActivity() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  $('illustrator-load').addEventListener('click', async () => {
+    $('illustrator-load').disabled = true;
+    try { await loadIllustrator(); }
+    catch (error) { $('illustrator-note').textContent = error.message; }
+    finally { $('illustrator-load').disabled = false; }
+  });
   $('preview-zoom').addEventListener('change', () => {
     const width = Number($('preview-zoom').value) * 100 + '%';
     for (const id of ['preview', 'live']) $(id).style.width = width;

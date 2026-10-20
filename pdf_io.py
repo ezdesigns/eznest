@@ -387,7 +387,8 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
         reg_group=writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject('LNRegmark')}))
         reg_tint=DictionaryObject({NameObject('/FunctionType'):NumberObject(2),NameObject('/Domain'):ArrayObject([NumberObject(0),NumberObject(1)]),NameObject('/C0'):ArrayObject([NumberObject(0)]*4),NameObject('/C1'):ArrayObject([NumberObject(0),NumberObject(0),NumberObject(0),NumberObject(1)]),NameObject('/N'):NumberObject(1)})
         reg_space=ArrayObject([NameObject('/Separation'),NameObject('/LNRegmark'),NameObject('/DeviceCMYK'),writer._add_object(reg_tint)])
-    layers=ArrayObject(list(groups.values())+([reg_group] if reg_group else []))
+    print_group = writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject('print')})) if job.get('illustrator') else None
+    layers=ArrayObject(([print_group] if print_group else [])+list(groups.values())+([reg_group] if reg_group else []))
     writer.root_object[NameObject('/OCProperties')]=DictionaryObject({NameObject('/OCGs'):layers,NameObject('/D'):DictionaryObject({NameObject('/Order'):layers,NameObject('/ON'):layers})})
     parts={p['id']:p for p in job['parts']}
     sheets=result.get('sheets') or [{'index':0,'offset':0,'usedLength':result['usedLength']}]
@@ -397,6 +398,8 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
         page=writer.add_blank_page(width=result['width']/MM,height=sheet['usedLength']/MM)
         color_spaces={NameObject(keys[op][0]):spaces[op] for op in active}
         properties={NameObject(keys[op][1]):groups[op] for op in active}
+        if print_group:
+            properties[NameObject('/EZPrint')] = print_group
         if draw_marks:
             color_spaces[NameObject('/EZReg')]=reg_space
             properties[NameObject('/EZRegLayer')]=reg_group
@@ -419,6 +422,8 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
                 chunk='q\n'+placement_cm+' cm\nq\n'+bleed_cm+' cm\nq\n'+path_text(piece['clipCommands'])+'\nW n\n'+str(key)+' Do\nQ\nQ\n'
             else:
                 chunk='q\n'+placement_cm+' cm\nq\n'+path_text(piece['clipCommands'])+'\nW n\n'+str(key)+' Do\nQ\n'
+            if print_group:
+                chunk = chunk.replace(str(key)+' Do', '/OC /EZPrint BDC\n'+str(key)+' Do\nEMC')
             for path in piece['cutPaths']:
                 color,layer=keys[path['operation']]
                 chunk+='/OC '+layer+' BDC\n/EZOverprint gs\n'+color+' CS 1 SCN\n0.25 w\n'+path_text(path['commands'])+'\nS\nEMC\n'

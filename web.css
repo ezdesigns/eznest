@@ -189,6 +189,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 
 
 .preview-tools { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 16px; }
+.handoff { width: 100%; padding: 16px; background: #fff; border: 1px solid #ddd; border-radius: 10px; }
+.handoff p { margin: 8px 0; }
 .preview-tools label { display: flex; align-items: center; gap: 8px; }
 .preview-tools select { width: 130px; }
 .files, .metrics, .confirm { max-width: 760px; }

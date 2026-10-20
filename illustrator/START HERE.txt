@@ -1,0 +1,56 @@
+EZ Nest Illustrator pilot - draft build only
+
+1. Install the matching draft eznest-setup.exe from the PR's Windows installer
+   artifact. Do not replace the frozen rc.4 shop-test installation.
+   Use a separate test Windows PC for this draft.
+2. Start eznest on this PC, with localhost port 8765. Finish first-run setup.
+   For the pilot choose an empty TEST output folder, not the live ONYX folder.
+3. In Illustrator, open a COPY of a real kit and save it. Select the complete
+   production artwork and its cut paths.
+4. Use File > Scripts > Other Script and select "Prepare for EZ Nest.jsx"
+   in this folder. Keep bridge-core.js beside it.
+5. Choose your existing ONYX PDF preset. Confirm width, kits and EXISTING bleed.
+   Regular is the only enabled material. Confirm that production colors and
+   existing bleed are already correct.
+6. The script creates a separate document with print, thru-cut and kiss cut
+   layers. It exports that copy and opens the local nesting page.
+7. Click Load Illustrator selection. Inspect every piece, scale and cut path.
+   Click Send to ONYX to write into your TEST folder (the button name is not a
+   confirmation that ONYX is connected).
+8. Compare the resulting artwork.pdf against your normal production PDF in
+   Illustrator and ONYX before any physical production.
+
+SUPPORTED PREPARATION
+Copies selected artwork into a separate document; preserves its object structure
+and scale; moves separate unfilled cut strokes to the specified output layers;
+maps those strokes to CutContour_Thru-cut / CutContour_Kiss-cut spots; and exports
+with an existing Adobe PDF preset you explicitly choose. All other color handling
+comes from that PDF preset. The original source is never saved by the script.
+
+Cut strokes must be on source layers named thru-cut or kiss cut, or use the
+recognized CutContour_Thru-cut / CutContour_Kiss-cut spots. Generic CutContour
+requires one of those source layers. Conflicting names, filled cut paths and
+clipping paths used as cuts are rejected. Keep the artwork mask separate from
+the cut stroke. Do not select parent groups and their child objects together.
+
+NOT YET AUTOMATED
+Template registration, clip-group repair, new bleed generation, production
+color substitutions, Chrome/Holographic rules, or returning the final nest to
+Illustrator automatically. The exported PDF can be opened in Illustrator.
+This is a handoff/preparation pilot, not full Nest Pro feature parity.
+
+LOCAL DATA
+The app stores a PDF handoff and metadata under its data directory's illustrator
+folder. The source path is hashed; it is not stored in the handoff manifest.
+Each export gets a handoff ID. Repeating a browser calculation for that handoff
+and production settings counts once in local activity; changing quantity or
+production settings creates a distinct workload observation. Running this script
+again is a NEW attempt, even for identical artwork. No OUTPUT uploads exist.
+Handoff PDFs are retained until you remove them with the app stopped. Workload
+events follow the existing 90-day policy. Illustrator leaves its temporary export
+under the OS temp folder's eznest-illustrator subfolder.
+
+VALIDATION LIMIT
+The bridge protocol and browser flow are automated-testable. Actual Illustrator
+host behavior, your PDF preset and your production files require the shop pilot.
+No live Illustrator installation was available during development.

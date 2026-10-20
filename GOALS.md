@@ -53,6 +53,15 @@ These are demand signals, not printer utilization or free capacity. No records
 are transmitted to OUTPUT, even if its placeholder switch is enabled. Future
 sharing requires a separate, explicit opt-in.
 
+The draft Illustrator pilot adds an explicit local production-copy handoff.
+It copies selected artwork, organizes separate cut strokes into `thru-cut` and
+`kiss cut` layers with artwork on `print`, and exports using an operator-selected
+Adobe PDF preset. Regular is the only configured material. It does not generate
+bleed, repair clipping groups, register templates or apply production color
+substitutions. The handoff stores a local PDF and hashed source reference; it is
+not an OUTPUT transfer. Recalculating a handoff with the same production settings
+is one workload observation. A fresh Illustrator export is a new attempt.
+
 ## Roadmap
 
 1. **v1 shop test.** EZ Designs runs the release candidate on the shop PC, beside the current workflow.

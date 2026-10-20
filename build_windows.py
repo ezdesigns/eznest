@@ -37,6 +37,7 @@ def main():
     shutil.copy2(ROOT/'installer'/'uninstall-shop.ps1',release/'uninstall-shop.ps1')
     (release/'examples').mkdir();shutil.copy2(ROOT/'sample-artwork.svg',release/'examples'/'sample-artwork.svg')
     shutil.copytree(ROOT/'licenses',release/'licenses')
+    shutil.copytree(ROOT/'illustrator',release/'illustrator')
     licenses=release/'licenses'
     for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer','pyinstaller']:
         distribution=metadata.distribution(name)
@@ -100,3 +101,4 @@ def write_release_pin(dest, version, commit, exe_path):
     return pin
 
 if __name__=='__main__':main()
+
