@@ -4,7 +4,7 @@ WORKDIR /opt/eznest
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-ENV EZ_NEST_HOST=0.0.0.0
+ENV EZ_NEST_HOST=127.0.0.1
 ENV EZ_NEST_PORT=8765
 EXPOSE 8765
-CMD ["python", "launcher.py", "--no-browser", "--host", "0.0.0.0", "--web"]
+CMD ["python", "launcher.py", "--no-browser", "--web"]

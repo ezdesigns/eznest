@@ -34,7 +34,7 @@ v1 does not send customer artwork anywhere. Joining OUTPUT is not part of v1.
 
 Ez Nest is local-first. Nothing leaves the shop unless the shop opts in.
 
-The server listens on `127.0.0.1` by default. Shop network is a separate choice. It listens on this computer only when someone starts eznest with `--lan`, or turns Shop network on and restarts. Do not share that network with guest WiFi. There is no login on the page.
+The server listens on `127.0.0.1` by default. Shop network is a separate choice. It accepts connections from other shop PCs only when started with `--lan`. An explicit installer choice can add this flag to the boot task. A saved preference alone cannot open it. Do not share that network with guest WiFi. There is no login on the page.
 
 Update checks talk only to the configured GitHub release, and only while updates are on. A token is optional. A public repository does not need one.
 

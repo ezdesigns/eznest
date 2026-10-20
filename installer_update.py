@@ -49,7 +49,16 @@ def find_exe(root):
 
 
 def apply_supported(root):
-    return root is not None and find_exe(root) is not None
+    if root is None or find_exe(root) is None:
+        return False
+    if os.name == 'nt':
+        # The limited boot account must never try to replace Program Files,
+        # exit the working server, or gain elevated permissions silently.
+        for variable in ('ProgramFiles', 'ProgramFiles(x86)'):
+            protected = os.environ.get(variable)
+            if protected and Path(root).resolve().is_relative_to(Path(protected).resolve()):
+                return False
+    return True
 
 
 def updates_dir(data_dir):
@@ -93,6 +102,8 @@ def pending_state(data_dir):
     if not pending or not pending.get('verified'):
         return None
     file = Path(pending.get('file', ''))
+    if file.is_symlink() or not file.resolve().is_relative_to((Path(data_dir) / 'updates' / 'incoming').resolve()):
+        return None
     if not file.is_file() or not checksum_matches(sha256_file(file), pending.get('sha256', '')):
         return None
     return pending
@@ -138,7 +149,7 @@ def safe_extract(zip_path, dest):
             if not name:
                 continue
             raw_parts = Path(name).parts
-            if not raw_parts or raw_parts[0] in ('/', '\\') or any(part in ('..', '') for part in raw_parts) or raw_parts[0].endswith(':'):
+            if not raw_parts or raw_parts[0] in ('/', '\\') or any(part in ('..', '') or ':' in part for part in raw_parts) or raw_parts[0].endswith(':'):
                 raise ValueError('Update archive contains an unsafe path.')
             parts = [part for part in raw_parts if part not in ('/', '\\')]
             target = dest.joinpath(*parts).resolve()
@@ -168,7 +179,7 @@ def app_entries(root):
     for entry in Path(root).iterdir():
         if entry.name in ('data', 'updates'):
             continue
-        if entry.is_symlink():
+        if entry.is_symlink() or entry.is_junction():
             raise ValueError(f'Refusing to replace a linked file: {entry.name}')
         yield entry
 
@@ -397,6 +408,8 @@ def _stop(process):
 
 def apply_and_confirm(install_root, data_dir, wait_pid=None, timeout=CONFIRM_TIMEOUT, runner=None):
     install_root, data_dir = Path(install_root), Path(data_dir)
+    if not apply_supported(install_root):
+        raise ValueError('Automatic updates to Program Files are not supported yet. The current server is kept running.')
     directory = updates_dir(data_dir)
     if wait_pid:
         wait_until_exit(int(wait_pid))
@@ -517,6 +530,8 @@ def handoff_if_pending(install_root, data_dir):
 
 
 def stage_file(data_dir, version, digest, payload, filename):
+    if filename != Path(filename).name or '/' in filename or '\\' in filename or ':' in filename or Path(filename).suffix.lower() not in ('.exe', '.zip'):
+        raise ValueError('Invalid update filename.')
     directory = updates_dir(data_dir)
     incoming = directory / 'incoming'
     incoming.mkdir(parents=True, exist_ok=True)
@@ -548,7 +563,7 @@ def local_state(data_dir, install_root):
         'applySupported': apply_supported(install_root),
         'staged': pending is not None,
         'stagedVersion': pending.get('version') if pending else None,
-        'applyOnRestart': bool(pending and pending.get('applyOnRestart')),
+        'applyOnRestart': bool(apply_supported(install_root) and pending and pending.get('applyOnRestart')),
         'rollback': rollback if isinstance(rollback, dict) else None,
     }
 
@@ -636,3 +651,4 @@ if __name__ == '__main__':
         print(written['sha256'])
         raise SystemExit(0)
     raise SystemExit('Run eznest.exe --apply-update to install a downloaded update.')
+

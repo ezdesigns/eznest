@@ -208,7 +208,7 @@ function widestPieceMm() {
 
 function widthLabel() {
   const width = chosenWidthInches();
-  if (!Number.isFinite(width) || width <= 0) return 'on — wide';
+  if (!Number.isFinite(width) || width <= 0) return 'on â€” wide';
   return 'on ' + String(Number(width.toFixed(4))) + '" wide';
 }
 
@@ -371,7 +371,7 @@ function pieceIssue(state) {
   if (!state?.manifest) return '';
   const expected = (state.manifest.jobs || []).reduce((sum, job) => sum + (job.expected || 0), 0);
   const placed = state.manifest.totalPieces;
-  if (expected && placed < expected) return placed + ' of ' + expected + ' pieces · missing pieces';
+  if (expected && placed < expected) return placed + ' of ' + expected + ' pieces Â· missing pieces';
   if (state.manifest.complete === false) return 'Incomplete layout';
   return '';
 }
@@ -396,9 +396,9 @@ function lengthOver(state) {
 }
 
 function clearReadout() {
-  setNum('length', '–', 'ft');
-  setNum('waste', '–', '%');
-  setNum('sheets', '–');
+  setNum('length', 'â€“', 'ft');
+  setNum('waste', 'â€“', '%');
+  setNum('sheets', 'â€“');
   $('length').classList.remove('over');
   $('readout').classList.add('pending');
   $('checks').textContent = '';
@@ -559,7 +559,7 @@ function pieceSentence(state) {
   const bits = [placed + (placed === 1 ? ' piece' : ' pieces')];
   if (summary.thru) bits.push(summary.thru + ' thru');
   if (summary.kiss) bits.push(summary.kiss + ' kiss');
-  return bits.join(' · ') + ' · cuts OK';
+  return bits.join(' Â· ') + ' Â· cuts OK';
 }
 
 function sheetList(state) {
@@ -852,9 +852,9 @@ function showBlocked(message) {
   showScreen('blocked');
   showWidth();
   if (!current?.result) {
-    setNum('length', '–', 'ft');
-    setNum('waste', '–', '%');
-    setNum('sheets', '–');
+    setNum('length', 'â€“', 'ft');
+    setNum('waste', 'â€“', '%');
+    setNum('sheets', 'â€“');
     $('readout').classList.add('pending');
     $('length').classList.remove('over');
     $('sheet-frame').hidden = false;
@@ -893,11 +893,11 @@ function showLive(state) {
   $('sheet-frame').hidden = false;
   $('live').hidden = true;
   if (!live || !live.usedLength) {
-    setNum('length', '–', 'ft');
-    setNum('waste', '–', '%');
-    setNum('sheets', '–');
+    setNum('length', 'â€“', 'ft');
+    setNum('waste', 'â€“', '%');
+    setNum('sheets', 'â€“');
     $('readout').classList.add('pending');
-    setSentence('Nesting…', false);
+    setSentence('Nestingâ€¦', false);
     return;
   }
   const placed = live.placements?.length || 0;
@@ -906,7 +906,7 @@ function showLive(state) {
   setNum('sheets', '1');
   $('readout').classList.remove('pending');
   showWidth();
-  setSentence('Nesting… ' + placed + ' of ' + (expected || placed), false);
+  setSentence('Nestingâ€¦ ' + placed + ' of ' + (expected || placed), false);
   if (state.job) renderSheet($('preview'), {job: state.job, result: live, manifest: null}, 0);
 }
 
@@ -975,7 +975,7 @@ async function nest() {
     showScreen('nest');
     showLive({job});
     renderActions();
-    status('Nesting on ' + $('nest-width').value + ' in…');
+    status('Nesting on ' + $('nest-width').value + ' inâ€¦');
     await api('/api/solve', job);
     setTimeout(poll, 300);
   } catch (error) {
@@ -989,7 +989,7 @@ async function improve() {
   try {
     busy = true;
     showScreen('nest');
-    status('Trying a better fit…');
+    status('Trying a better fitâ€¦');
     await api('/api/improve', {id: current.id});
     setTimeout(poll, 300);
   } catch (error) {
@@ -1195,7 +1195,7 @@ function renderMaterialButtons() {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.value = option.value;
-    button.textContent = option.dataset.name || option.textContent.split('·')[0].trim();
+    button.textContent = option.dataset.name || option.textContent.split('Â·')[0].trim();
     button.setAttribute('aria-pressed', String(option.value === currentValue));
     button.addEventListener('click', () => {
       if ($('material').value === option.value) return;
@@ -1209,7 +1209,7 @@ function renderMaterialButtons() {
 
 function applyMaterial(quiet) {
   const option = $('material').selectedOptions[0];
-  const named = option.dataset.name || (option.dataset.width ? option.textContent.split('·')[0].trim() : '');
+  const named = option.dataset.name || (option.dataset.width ? option.textContent.split('Â·')[0].trim() : '');
   $('preset-name').value = named || ($('preset-name').value || 'Custom roll');
   if (option.dataset.width) {
     $('unit').value = option.dataset.unit || 'in';
@@ -1264,7 +1264,7 @@ function rememberPreset() {
   const name = $('preset-name').value.trim();
   if (!name) return;
   if (option.value === 'custom') option.textContent = name;
-  else option.textContent = name + ' · ' + ($('width').value || option.dataset.width || '') + ' ' + $('unit').value;
+  else option.textContent = name + ' Â· ' + ($('width').value || option.dataset.width || '') + ' ' + $('unit').value;
   renderMaterialButtons();
   const stored = prefs();
   stored.presets = stored.presets || {};
@@ -1279,7 +1279,7 @@ function showLan(shop) {
   const bits = [];
   if (shop && shop.url) bits.push(shop.url);
   if (shop && shop.addresses && shop.addresses.length) bits.push(shop.addresses[0]);
-  $('lan-address').textContent = bits.filter(Boolean).join(' · ');
+  $('lan-address').textContent = bits.filter(Boolean).join(' Â· ');
   $('lan-address').hidden = !on;
 }
 
@@ -1296,19 +1296,26 @@ function showRestart(shop) {
     return;
   }
   note.hidden = false;
-  note.textContent = shop.lan ? 'Restart eznest to open the shop network.' : 'Shop network turns off after you restart eznest.';
+  note.textContent = 'Shop network requires starting eznest with --lan.';
 }
 
 function applyShop(shop) {
   $('app-version').textContent = shop.version || '';
   $('onyx-pc').checked = shop.onyxPc === true;
-  $('lan').checked = shop.lan === true;
+  $('lan').checked = shop.runningLan === true;
   $('updates').checked = !shop || shop.updates !== false;
   $('update').hidden = !$('updates').checked;
   $('test-channel').checked = shop.channel === 'test';
   $('output-network').checked = shop.outputNetwork === true;
   if (shop.outputNote) $('output-note').textContent = shop.outputNote;
   if (shop.printer) $('printer').value = shop.printer;
+  if (shop.setupComplete && !prefs().thru && shop.thru) $('thru-name').value = shop.thru;
+  if (shop.setupComplete && !prefs().kiss && shop.kiss) $('kiss-name').value = shop.kiss;
+  matchCutPreset();
+  if (shop.setupComplete && shop.units) {
+    $('unit').value = shop.units;
+    convertUnit(shop.units);
+  }
   showLan(shop);
   showRestart(shop);
   showHotDefault(shop.hotFolderDefault);
@@ -1362,7 +1369,7 @@ async function saveSetup(shop) {
   $('printer').value = $('setup-printer').value.trim();
   $('onyx-pc').checked = $('setup-onyx').checked;
   $('hot-folder').value = $('setup-hot').value.trim();
-  const result = await api('/api/shop', shopPayload({
+  const result = await api('/api/setup', shopPayload({
     setupComplete: true,
     printer: $('printer').value,
     units: $('unit').value,
@@ -1474,7 +1481,7 @@ async function importFiles(fileList, replace) {
   if ((incomingPdf && incomingSvg) || (incomingPdf && haveSvg) || (incomingSvg && havePdf)) {
     throw Error('Nest SVG files in one batch and PDF files in another. That keeps the original artwork.');
   }
-  status('Reading ' + files.length + (files.length === 1 ? ' file…' : ' files…'));
+  status('Reading ' + files.length + (files.length === 1 ? ' fileâ€¦' : ' filesâ€¦'));
   const entries = [];
   for (const file of files) entries.push(await readEntry(file));
   kits = replace ? entries : kits.concat(entries);
@@ -1483,7 +1490,7 @@ async function importFiles(fileList, replace) {
   leaving = false;
   renderFiles();
   showScreen('nest');
-  status('Nesting…');
+  status('Nestingâ€¦');
   requestNest();
 }
 
@@ -1583,7 +1590,7 @@ function showUpdate(info) {
     note.textContent = info.rollback.reason;
     return;
   }
-  if (info && (info.applyOnRestart || info.updateAvailable) && info.message) {
+  if (info && (info.staged || info.applyOnRestart || info.updateAvailable) && info.message) {
     note.hidden = false;
     note.textContent = info.message;
     return;
@@ -1732,3 +1739,4 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   boot().catch(error => status(error.message, true));
 });
+

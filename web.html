@@ -115,7 +115,7 @@
           <option value="contour">Generic cut</option>
         </select>
       </label>
-      <label>Material $ / m²
+      <label>Material $ / mÂ²
         <input id="cost" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal">
       </label>
       <label class="wide">Hot folder
@@ -133,7 +133,8 @@
       <span class="hint">Optional. Off until you turn it on.</span>
     </label>
     <label class="check"><input id="onyx-pc" type="checkbox"> This PC runs ONYX</label>
-    <label class="check"><input id="lan" type="checkbox"> Shop network</label>
+    <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
+    <p class="hint">Start eznest with --lan to allow other shop PCs.</p>
     <p id="lan-note" class="lan-note" hidden>Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.</p>
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
@@ -172,8 +173,8 @@
   <div class="quiet">
     <select id="material" class="material-native" aria-label="Material" tabindex="-1">
       <option value="white-gloss" data-name="White gloss" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>White gloss, 54" roll, 51.5" printable</option>
-      <option value="vinyl-gloss" data-width="54" data-unit="in">Vinyl + gloss lam · 54 in</option>
-      <option value="vinyl" data-width="54" data-unit="in">Vinyl · 54 in</option>
+      <option value="vinyl-gloss" data-width="54" data-unit="in">Vinyl + gloss lam Â· 54 in</option>
+      <option value="vinyl" data-width="54" data-unit="in">Vinyl Â· 54 in</option>
       <option value="custom">Custom roll</option>
     </select>
     <label class="width">Width
@@ -181,7 +182,7 @@
       <span>in</span>
     </label>
     <div class="sets">
-      <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
+      <button id="sets-dec" type="button" aria-label="Fewer sets">âˆ’</button>
       <input id="sets" type="number" min="1" max="800" step="1" value="1" inputmode="numeric" aria-label="Sets">
       <button id="sets-inc" type="button" aria-label="More sets">+</button>
     </div>
@@ -192,9 +193,9 @@
   </label>
   <p id="sheet-id" class="sheet-id" hidden aria-label="Sheet ID"></p>
   <p class="metrics pending" id="readout" hidden>
-    <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong></span>
-    <span class="metric"><span class="label">Waste</span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
-    <span class="metric"><span class="label">Sheets</span> <strong id="sheets"><span class="num">–</span></strong></span>
+    <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">â€“</span><span class="unit"> ft</span></strong></span>
+    <span class="metric"><span class="label">Waste</span> <strong id="waste"><span class="num">â€“</span><span class="unit">%</span></strong></span>
+    <span class="metric"><span class="label">Sheets</span> <strong id="sheets"><span class="num">â€“</span></strong></span>
     <span id="used-width" class="used-width">on 51.5" wide</span>
   </p>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
@@ -208,7 +209,7 @@
     <button id="confirm-back" class="link" type="button">Back</button>
   </div>
   <button id="export" class="primary" type="button" hidden disabled>Send to ONYX</button>
-  <button id="stop" class="link" type="button" hidden>Stop · keep best</button>
+  <button id="stop" class="link" type="button" hidden>Stop Â· keep best</button>
   <button id="start-over" class="link" type="button" hidden>Start over</button>
   <button id="undo" class="link" type="button" hidden>Undo send</button>
   <input id="layout-id" hidden readonly tabindex="-1" aria-label="Layout ID">
@@ -222,3 +223,4 @@
 <script src="/web.js"></script>
 </body>
 </html>
+

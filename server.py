@@ -225,6 +225,8 @@ class Handler(BaseHTTPRequestHandler):
             elif info.get('applyOnRestart'):
                 info['message'] = f"{info['stagedVersion']} is checked and installs the next time eznest starts. Settings and the hot folder stay."
                 info['error'] = None
+            elif info.get('staged'):
+                info['message'] = 'A checked update is saved. Automatic installation is unavailable for this installation. The current app stays running.'
             return self.send(200, info)
         if path == '/api/shop':
             return self.send(200, shop_status())
@@ -331,6 +333,14 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(200, {'cancelled': True})
                 with FOLDER_LOCK:
                     return self.send(200, OUTPUT.connect(data.get('path',''), FOLDER.root))
+            if self.path == '/api/setup':
+                from shop_deploy import validate_setup
+                setup = validate_setup(data)
+                with FOLDER_LOCK:
+                    OUTPUT.connect(setup['hotFolder'], FOLDER.root)
+                current = load_shop(WORK)
+                save_shop(WORK, data.get('onyxPc') is True, current['lan'], setupComplete=True, **setup)
+                return self.send(200, shop_status())
             if self.path == '/api/shop':
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
@@ -539,3 +549,4 @@ def serve(open_browser=False, page='/'):
 
 if __name__ == '__main__':
     serve()
+

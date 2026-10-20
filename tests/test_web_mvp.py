@@ -12,6 +12,9 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 import server
+
+SCREENSHOTS = Path(__file__).resolve().parents[1] / '.local' / 'screenshots'
+SCREENSHOTS.mkdir(parents=True, exist_ok=True)
 from test_mixed_cuts import mixed_fixture
 
 
@@ -98,7 +101,7 @@ class WebMvpTests(unittest.TestCase):
         self.assertIn('Nest selected jobs', desktop)
         self.assertIn('href="/web"', desktop)
         self.assertIn('Drop your file', page)
-        self.assertIn('Stop · keep best', page)
+        self.assertIn('Stop Â· keep best', page)
         self.assertIn('id="files"', page)
         self.assertIn('Add files', page)
         self.assertIn('max="800"', page)
@@ -139,11 +142,11 @@ class WebMvpTests(unittest.TestCase):
         self.assertEqual(page.input_value('#kiss-name'), 'CutContour_Kiss-cut')
         if shots:
             page.locator('#settings .panel').evaluate('node => { node.style.maxHeight = "none"; node.style.overflow = "visible"; }')
-            page.screenshot(path='/tmp/eznest-gear-desktop.png')
-            page.locator('#settings .panel').screenshot(path='/tmp/eznest-gear-panel-desktop.png')
+            page.screenshot(path=str(SCREENSHOTS / 'eznest-gear-desktop.png'))
+            page.locator('#settings .panel').screenshot(path=str(SCREENSHOTS / 'eznest-gear-panel-desktop.png'))
             page.set_viewport_size({'width': 390, 'height': 900})
-            page.screenshot(path='/tmp/eznest-gear-mobile.png')
-            page.locator('#settings .panel').screenshot(path='/tmp/eznest-gear-panel-mobile.png')
+            page.screenshot(path=str(SCREENSHOTS / 'eznest-gear-mobile.png'))
+            page.locator('#settings .panel').screenshot(path=str(SCREENSHOTS / 'eznest-gear-panel-mobile.png'))
             page.set_viewport_size({'width': 1280, 'height': 900})
         page.select_option('#unit', 'mm')
         page.fill('#width', '220')
@@ -172,9 +175,9 @@ class WebMvpTests(unittest.TestCase):
             browser, page = self.open_page(playwright, shots=True)
             try:
                 page.locator('#settings').evaluate('node => { node.open = false }')
-                page.screenshot(path='/tmp/eznest-desktop-empty.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-desktop-empty.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path='/tmp/eznest-mobile-empty.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-empty.png'), full_page=True)
                 page.set_viewport_size({'width': 1280, 'height': 900})
                 page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
@@ -201,11 +204,11 @@ class WebMvpTests(unittest.TestCase):
                 page.evaluate('document.activeElement && document.activeElement.blur()')
                 page.keyboard.press('Space')
                 self.assertFalse(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
-                page.screenshot(path='/tmp/eznest-web-desktop.png', full_page=True)
-                page.screenshot(path='/tmp/eznest-desktop-ready.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-web-desktop.png'), full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-desktop-ready.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path='/tmp/eznest-web-mobile.png', full_page=True)
-                page.screenshot(path='/tmp/eznest-mobile-ready.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-web-mobile.png'), full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-ready.png'), full_page=True)
                 box = page.locator('#export').bounding_box()
                 self.assertLessEqual(box['x'] + box['width'], 390)
                 page.set_viewport_size({'width': 1280, 'height': 900})
@@ -293,9 +296,9 @@ class WebMvpTests(unittest.TestCase):
                 page.keyboard.press('Space')
                 self.assertTrue(page.locator('#export').is_disabled())
                 self.assertFalse(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
-                page.screenshot(path='/tmp/eznest-desktop-blocked.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-desktop-blocked.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path='/tmp/eznest-mobile-blocked.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-blocked.png'), full_page=True)
             finally:
                 browser.close()
 
@@ -329,9 +332,9 @@ class WebMvpTests(unittest.TestCase):
                 self.wait_ready(page)
                 page.locator('#settings').evaluate('node => { node.open = false }')
                 self.assertEqual(page.input_value('#nest-width'), '51.5')
-                page.screenshot(path='/tmp/eznest-desktop-empty.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-desktop-empty.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path='/tmp/eznest-mobile-empty.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-empty.png'), full_page=True)
                 page.set_viewport_size({'width': 1280, 'height': 900})
                 page.set_input_files('#file', sample)
                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
@@ -353,11 +356,11 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.locator('#used-width').inner_text(), 'on 30" wide')
                 self.assertFalse(page.locator('#export').is_disabled())
                 page.locator('#settings').evaluate('node => { node.open = false }')
-                page.screenshot(path='/tmp/eznest-desktop-ready.png', full_page=True)
-                page.screenshot(path='/tmp/eznest-width-desktop.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-desktop-ready.png'), full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-width-desktop.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path='/tmp/eznest-mobile-ready.png', full_page=True)
-                page.screenshot(path='/tmp/eznest-width-mobile.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-ready.png'), full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-width-mobile.png'), full_page=True)
                 box = page.locator('#nest-width').bounding_box()
                 self.assertLessEqual(box['x'] + box['width'], 390)
                 page.set_viewport_size({'width': 1280, 'height': 900})
@@ -366,9 +369,9 @@ class WebMvpTests(unittest.TestCase):
                 self.assertIn('printable', page.locator('#gate').inner_text().casefold())
                 self.assertTrue(page.locator('#export').is_disabled())
                 self.assertNotIn('cuts ok', page.locator('#gate').inner_text().casefold())
-                page.screenshot(path='/tmp/eznest-desktop-blocked.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-desktop-blocked.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path='/tmp/eznest-mobile-blocked.png', full_page=True)
+                page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-blocked.png'), full_page=True)
                 page.set_viewport_size({'width': 1280, 'height': 900})
                 page.fill('#nest-width', '2')
                 page.wait_for_function("() => /wider than this width/i.test(document.querySelector('#gate')?.textContent || '')", timeout=15000)
@@ -388,7 +391,7 @@ class WebMvpTests(unittest.TestCase):
         label = Path(self.tmp.name) / 'label.svg'
         badge.write_text(sample, encoding='utf-8')
         label.write_text(sample, encoding='utf-8')
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = SCREENSHOTS
         shots.mkdir(parents=True, exist_ok=True)
 
         def ready(count):
@@ -429,7 +432,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.locator('#files li').count(), 2)
                 self.assertFalse(page.locator('#add-files').is_hidden())
                 self.assertTrue(page.locator('#stop').is_hidden())
-                self.assertEqual(page.locator('#stop').text_content().strip(), 'Stop · keep best')
+                self.assertEqual(page.locator('#stop').text_content().strip(), 'Stop Â· keep best')
             finally:
                 browser.close()
 
@@ -439,7 +442,7 @@ class WebMvpTests(unittest.TestCase):
         bad = Path(self.tmp.name) / 'poster.ai'
         good.write_bytes(mixed_fixture())
         bad.write_bytes(b'%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 200 100\n')
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = SCREENSHOTS
         shots.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as playwright:
             browser, page = self.open_page(playwright)
@@ -508,7 +511,7 @@ class WebMvpTests(unittest.TestCase):
 
     def test_shop_server_gear(self):
         from playwright.sync_api import sync_playwright
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = SCREENSHOTS
         shots.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as playwright:
             browser = launch_browser(playwright)
@@ -534,13 +537,8 @@ class WebMvpTests(unittest.TestCase):
                 page.locator('#updates').uncheck()
                 page.wait_for_function("() => document.querySelector('#update').hidden")
                 self.assertFalse(page.locator('#updates').is_checked())
-                page.locator('#lan').check()
-                page.wait_for_function("() => !document.querySelector('#lan-note').hidden")
-                note = page.locator('#lan-note').inner_text().casefold()
-                self.assertIn('anyone on the shop lan can send to onyx', note)
-                self.assertIn('guest wifi', note)
-                self.assertIn(f':{server.PORT}/web', page.locator('#lan-address').inner_text())
-                self.assertIn('Restart eznest to open the shop network.', page.locator('#lan-restart').inner_text())
+                self.assertTrue(page.locator('#lan').is_disabled())
+                self.assertIn('--lan', page.locator('#settings').inner_text())
                 page.locator('#onyx-pc').check()
                 page.wait_for_function("() => document.querySelector('#hot-default').textContent.includes('C:\\\\ONYX\\\\')")
                 self.assertIn(r'C:\ONYX\EPSON SureColor S80600 ONYX Input', page.locator('#hot-default').inner_text())
@@ -565,7 +563,7 @@ class WebMvpTests(unittest.TestCase):
         </svg>'''
         source = Path(self.tmp.name) / 'cut-2.svg'
         source.write_text(artwork, encoding='utf-8')
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = SCREENSHOTS
         shots.mkdir(parents=True, exist_ok=True)
         sentence = 'Unknown cut layer "Cut 2". Rename to thru or kiss.'
         with sync_playwright() as playwright:
@@ -601,7 +599,7 @@ class WebMvpTests(unittest.TestCase):
 
     def test_send_confirms_sheet_summary_before_the_file_leaves(self):
         from playwright.sync_api import sync_playwright
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = SCREENSHOTS
         shots.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as playwright:
             browser = launch_browser(playwright)
@@ -651,3 +649,4 @@ class WebMvpTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

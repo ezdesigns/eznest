@@ -64,10 +64,10 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(host, '0.0.0.0')
         self.assertEqual(lan, '1')
 
-    def test_saved_shop_network_opens_without_a_host_flag(self):
+    def test_saved_shop_network_cannot_open_without_lan_flag(self):
         host, lan = self._launch(['--no-browser'], {'onyxPc': False, 'lan': True})
-        self.assertEqual(host, '0.0.0.0')
-        self.assertEqual(lan, '1')
+        self.assertEqual(host, '127.0.0.1')
+        self.assertEqual(lan, '0')
 
     def test_default_start_stays_on_loopback(self):
         host, lan = self._launch(['--no-browser'])
@@ -75,6 +75,5 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(lan, '0')
 
     def test_container_host_does_not_enable_shop_names(self):
-        host, lan = self._launch(['--host', '0.0.0.0', '--no-browser'], {'lan': True})
-        self.assertEqual(host, '0.0.0.0')
-        self.assertEqual(lan, '0')
+        with self.assertRaisesRegex(ValueError, '--lan'):
+            self._launch(['--host', '0.0.0.0', '--no-browser'], {'lan': True})

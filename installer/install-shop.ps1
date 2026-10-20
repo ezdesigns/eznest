@@ -99,22 +99,22 @@ function Grant-BatchLogon([string]$Account) {
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 $onyx = $OnyxPc -eq '1'
-$lan = $Lan -eq '1'
+$lanEnabled = $Lan -eq '1'
 $boot = $StartAtBoot -eq '1'
-$updates = $Updates -ne '0'
+$updatesEnabled = $Updates -ne '0'
 $utf8 = New-Object System.Text.UTF8Encoding $false
 $shopPath = Join-Path $DataDir 'shop.json'
 if (Test-Path -LiteralPath $shopPath) {
   $existing = Get-Content -Raw -LiteralPath $shopPath | ConvertFrom-Json
   $existing | Add-Member -NotePropertyName onyxPc -NotePropertyValue $onyx -Force
-  $existing | Add-Member -NotePropertyName lan -NotePropertyValue $lan -Force
-  $existing | Add-Member -NotePropertyName updates -NotePropertyValue $updates -Force
+  $existing | Add-Member -NotePropertyName lan -NotePropertyValue $lanEnabled -Force
+  $existing | Add-Member -NotePropertyName updates -NotePropertyValue $updatesEnabled -Force
   $shop = ($existing | ConvertTo-Json) + "`n"
 } else {
   $shop = (@{
     onyxPc = $onyx
-    lan = $lan
-    updates = $updates
+    lan = $lanEnabled
+    updates = $updatesEnabled
     channel = 'stable'
     outputNetwork = $false
     setupComplete = $false
@@ -144,12 +144,15 @@ if ($boot) {
   }
   Grant-BatchLogon $account
   $cmd = Join-Path (Split-Path -Parent $App) 'eznest-server.cmd'
-  & schtasks.exe /Create /TN $task /SC ONSTART /RU $account /RP $password /RL LIMITED /TR "`"$cmd`"" /F *> $null
+  $launch = "`"$App`" --web --no-browser --data-dir `"$DataDir`""
+  if ($lanEnabled) { $launch += ' --lan' }
+  & schtasks.exe /Create /TN $task /SC ONSTART /RU $account /RP $password /RL LIMITED /TR $launch /F *> $null
   $password = $null
   if ($LASTEXITCODE -ne 0) { throw 'Could not register the eznest startup task.' }
 }
 & netsh.exe advfirewall firewall delete rule name=eznest | Out-Null
-if ($lan) {
+if ($lanEnabled) {
   & netsh.exe advfirewall firewall add rule name=eznest dir=in action=allow protocol=TCP localport=8765 profile=private
   if ($LASTEXITCODE -ne 0) { throw 'Could not open the shop-network port.' }
 }
+

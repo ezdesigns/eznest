@@ -31,7 +31,7 @@ GitHub Actions runs those checks on Windows, Python 3.12, and Node 24. The Windo
 
 ## Shop server
 
-The default listen address is `127.0.0.1`. Shop network is `--lan`, or the Shop network switch, which restarts into `0.0.0.0` and accepts this computer's name. Do not make the page reachable on the public internet.
+The default listen address is `127.0.0.1`. Shop network requires `--lan`, which binds `0.0.0.0` and accepts this computer's name. A saved preference alone must never widen the listener. Do not make the page reachable on the public internet.
 
 The boot task runs as `eznest-svc` with limited rights. That account is not an administrator. Do not run the task as SYSTEM, and do not put the account password in the repository or in the data folder.
 

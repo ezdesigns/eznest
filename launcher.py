@@ -25,14 +25,14 @@ def main():
     parser = argparse.ArgumentParser(description='eznest local nesting workspace')
     parser.add_argument('--no-browser', action='store_true')
     parser.add_argument('--web', action='store_true', help='Open the simple nest page')
-    parser.add_argument('--host', default=None, help='127.0.0.1, or 0.0.0.0 inside a local container')
+    parser.add_argument('--host', default=None, help='127.0.0.1; use --lan for shop network access')
     parser.add_argument('--lan', action='store_true', help='Open the shop network on this computer')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--data-dir', type=Path)
     parser.add_argument('--update-confirm', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
-    if args.host is not None and args.host not in ('127.0.0.1', '0.0.0.0'):
-        raise ValueError('Bind to 127.0.0.1, or 0.0.0.0 inside a local container.')
+    if args.host is not None and args.host != '127.0.0.1':
+        raise ValueError('Bind to 127.0.0.1 by default. Use --lan to open the shop network.')
     if not 1024 <= args.port <= 65535:
         raise ValueError('Choose a local port from 1024 to 65535.')
     address = f'http://127.0.0.1:{args.port}'
@@ -54,12 +54,6 @@ def main():
     data = data_directory(package_root, args.data_dir, frozen=frozen, program_files=os.environ.get('ProgramFiles'), program_data=os.environ.get('ProgramData'))
     saved = load_shop(data)
     if args.lan:
-        host, lan = '0.0.0.0', True
-    elif args.host == '0.0.0.0':
-        host, lan = '0.0.0.0', False
-    elif args.host == '127.0.0.1':
-        host, lan = '127.0.0.1', False
-    elif saved['lan']:
         host, lan = '0.0.0.0', True
     else:
         host, lan = '127.0.0.1', False
@@ -96,3 +90,4 @@ if __name__ == '__main__':
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, message, 'eznest could not start', 0x10)
         raise SystemExit(1)
+

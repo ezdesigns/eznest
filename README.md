@@ -14,7 +14,7 @@ The page stays on this computer at `http://127.0.0.1:8765/web`. Shop network is 
 
 One Windows PC runs Ez Nest. The other computers only open a browser. The shop PC does not need Python or Git.
 
-1. Download `eznest-setup.exe` from the GitHub release, or from the Windows installer artifact if you are testing a build that is not released yet. Code → Download ZIP is source, not the app.
+1. Download `eznest-setup.exe` from the GitHub release, or from the Windows installer artifact if you are testing a build that is not released yet. Code â†’ Download ZIP is source, not the app.
 2. If `eznest-setup.exe.sha256` is beside it, compare that checksum with the file before you run it.
 3. Close any older Ez Nest, including a build still using port 8765. `Stop EZ Nest.cmd` in the old folder does that.
 4. Run `eznest-setup.exe`. It installs to `C:\Program Files\eznest` and adds a desktop shortcut.
@@ -63,7 +63,7 @@ Leave colors as they are in the file. Set the printer ICC and registration marks
 
 **Update** is in the gear, with **What's new** and **Report a problem**.
 
-Update looks for a newer release. It downloads the installer only when the SHA-256 sidecar matches, then installs it the next time Ez Nest starts. Install now restarts into that build. Shop settings and the hot folder stay. If the new build does not start, the previous build is put back. The helper writes `%ProgramData%\eznest\updates\helper.log`.
+Update downloads a newer installer only when its SHA-256 checksum matches. The file is staged locally. **Automatic installation into Program Files is disabled in this draft.** The existing server keeps running. Writable-install rollback is covered by tests; a privileged apply path that restarts under `eznest-svc` still needs implementation and isolated Windows validation. See [customer rollout](docs/customer-rollout.md).
 
 Pre-releases show up only when **Test channel** is on.
 
@@ -77,17 +77,19 @@ A public repository needs no token. A private repository can set `EZ_NEST_GITHUB
 
 If an update rolled back, include `helper.log` and leave customer files out of it.
 
+See [the capacity-first OUTPUT roadmap](docs/customer-rollout.md) for the customer rollout and later job tracking.
+
 ## Shop network
 
 The default is this computer only: `http://127.0.0.1:8765/web`.
 
 Shop network is off until you turn it on. There is no login. Anyone on the shop LAN can Send. Do not share this network with guest WiFi. Do not forward port 8765 to the internet.
 
-1. Check Shop network in the installer, or in the gear after install.
+1. Choose Shop network in the installer (which adds `--lan` to the boot task), or start the app with `--lan`. The gear reports the running mode.
 2. Restart Ez Nest. The gear then shows `http://<this-computer>:8765/web`. Other PCs open that address. They do not install Ez Nest.
 3. The installer opens Windows Firewall for TCP 8765 on the private profile only. It does not open a public profile.
 
-`--lan` is the same choice from a shortcut or a command. A container can bind `0.0.0.0` without turning shop names on. That is not the shop network.
+Only `--lan` opens a non-loopback listener. A saved preference alone cannot open it.
 
 ## OUTPUT
 
@@ -123,3 +125,10 @@ Older Illustrator scripts and the classic page are in [archive/](archive/README.
 ## License
 
 Ez Nest is MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Dependencies keep their own licenses. See [THIRD_PARTY.md](THIRD_PARTY.md) and `licenses/`.
+
+
+## Setup preview
+
+![First-run setup](docs/screenshots/first-run.png)
+
+![Settings](docs/screenshots/settings.png)

@@ -369,7 +369,9 @@ class _StopRedirect(HTTPRedirectHandler):
         return None
 
 
-def _open(opener, url, token, timeout, repo=None):
+def _open(opener, url, token, timeout, repo=None, redirects=0):
+    if redirects > 5:
+        raise ValueError('Too many release redirects.')
     if not release_url_allowed(url, download=True, repo=repo) and not release_url_allowed(url, download=False, repo=repo):
         raise ValueError('The release file is not from the eznest releases.')
     request = Request(url, headers=_headers(url, token))
@@ -381,7 +383,7 @@ def _open(opener, url, token, timeout, repo=None):
         location = error.headers.get('Location')
         if not location or not release_url_allowed(location, download=True, repo=repo):
             raise ValueError('The release file is not from the eznest releases.') from error
-        return _open(opener, location, token, timeout, repo)
+        return _open(opener, location, token, timeout, repo, redirects + 1)
 
 
 def _read_limited(response):
@@ -527,23 +529,24 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
         raise ValueError('Could not reach the release.') from error
     import installer_update
     pending = installer_update.stage_file(directory, latest, digest, body, name)
+    supported = installer_update.apply_supported(install_root)
     result = {
         'ok': True,
         'current': current,
         'latest': latest,
         'updated': True,
         'staged': True,
-        'applyOnRestart': True,
+        'applyOnRestart': supported,
         'path': pending['file'],
-        'message': f'{name} is checked and installs the next time eznest starts. Settings and the hot folder stay.',
+        'message': f'{name} is checked and installs the next time eznest starts. Settings and the hot folder stay.' if supported else f'{name} is checked and saved. Automatic installation is unavailable for this installation. The current app stays running.',
         'restarting': False,
     }
     if when == 'now':
         if installer_update.apply_supported(install_root):
             result.update(installer_update.begin_apply(directory, install_root))
         else:
-            result['message'] = f'{name} is checked. Run it on the shop PC. Settings and the hot folder stay in the data folder.'
-            result['applyOnRestart'] = True
+            result['message'] = f'{name} is checked and saved. Automatic installation is unavailable for this installation. The current app stays running.'
+            result['applyOnRestart'] = False
     return result
 
 
@@ -576,3 +579,22 @@ def read_json(value):
     if isinstance(value, bytes):
         return json.loads(value.decode('utf-8'))
     return json.load(io.BytesIO(value) if not hasattr(value, 'read') else value)
+
+
+
+def validate_setup(data):
+    if not isinstance(data, dict):
+        raise ValueError('Enter your shop setup.')
+    clean = {}
+    for field, limit in (('printer', 120), ('hotFolder', 400), ('thru', 80), ('kiss', 80)):
+        value = data.get(field)
+        if not isinstance(value, str) or not value.strip() or len(value) > limit or any(ord(c) < 32 for c in value):
+            raise ValueError(f'Enter a valid {field}.')
+        clean[field] = value.strip()
+    if clean['thru'].casefold() == clean['kiss'].casefold():
+        raise ValueError('Thru and kiss cut spots must have different names.')
+    if data.get('units') not in ('in', 'mm', 'cm'):
+        raise ValueError('Choose inches, millimeters, or centimeters.')
+    clean['units'] = data['units']
+    return clean
+
