@@ -7,6 +7,7 @@ Uninstall removes the shop service account.
 - Uninstall stops and deletes the `eznest` startup task, then removes the local user `eznest-svc` and the folder permissions granted to that account. If the account is still signed in, uninstall disables it. Shop files in `%ProgramData%\eznest` stay on disk.
 - Opening the shop page no longer waits on a hostname lookup. On Windows that lookup ignores the socket timeout and could sit on DNS until the page looked stuck.
 - The problem sentence stays red when Windows high contrast is on. That mode otherwise paints it black.
+- The shop page does not count as open until its stylesheet has loaded. A dropped stylesheet is requested again. The computer name lookup cannot sit on DNS.
 
 ## 1.0.0-rc.3
 

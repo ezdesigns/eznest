@@ -49,6 +49,40 @@ function fetchJson(path, ms) {
   });
 }
 
+async function fetchJsonRetry(path) {
+  let last = Error('Request failed.');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await fetchJson(path, 4000); }
+    catch (error) { last = error; }
+  }
+  throw last;
+}
+
+function stylesApplied() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--alarm').toLowerCase().includes('d92f00');
+}
+
+function loadStylesheet() {
+  return new Promise((resolve, reject) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/web.css?ts=' + Date.now();
+    const timer = setTimeout(() => { link.remove(); reject(Error('The shop stylesheet did not load.')); }, 4000);
+    link.onload = () => { clearTimeout(timer); resolve(); };
+    link.onerror = () => { clearTimeout(timer); link.remove(); reject(Error('The shop stylesheet did not load.')); };
+    document.head.appendChild(link);
+  });
+}
+
+async function ensureStyles() {
+  if (stylesApplied()) return;
+  for (let attempt = 0; attempt < 3 && !stylesApplied(); attempt++) {
+    try { await loadStylesheet(); }
+    catch { /* Ask for the stylesheet again. */ }
+  }
+  if (!stylesApplied()) throw Error('The shop stylesheet did not load.');
+}
+
 async function api(path, data) {
   const response = await fetch(path, {
     method: 'POST',
@@ -857,7 +891,7 @@ function showLive(state) {
 async function poll() {
   if (!busy) return;
   try {
-    const state = await (await fetch('/api/state')).json();
+    const state = await fetchJson('/api/state', 4000);
     if (leaving || !kits.length) { busy = false; if (!kits.length) showScreen('drop'); return; }
     if (state.status === 'running') {
       showScreen('nest');
@@ -875,6 +909,7 @@ async function poll() {
     if (state.status === 'ready' && state.manifest) showResult(state);
     else showBlocked(state.error || state.note || 'That file does not fit this roll.');
   } catch (error) {
+    if (error && error.name === 'AbortError' && busy && !leaving) { setTimeout(poll, 300); return; }
     busy = false;
     if (pendingRenest && kits.length && !leaving) { pendingRenest = false; nest(); return; }
     showBlocked(error.message);
@@ -1405,7 +1440,8 @@ async function boot() {
   renderMaterialButtons();
   $('allow-undo').checked = stored.undo === true;
   $('allow-hold').checked = stored.hold === true;
-  const session = await (await fetch('/api/session')).json();
+  await ensureStyles();
+  const session = await fetchJsonRetry('/api/session');
   token = session.token;
   try {
     const folder = await fetchJson('/api/output', 5000);
@@ -1415,7 +1451,7 @@ async function boot() {
   try {
     applyShop(await fetchJson('/api/shop', 5000));
   } catch { /* Shop network settings stay off when the lookup does not answer. */ }
-  const state = await (await fetch('/api/state')).json();
+  const state = await fetchJsonRetry('/api/state');
   if (state.status === 'running') { busy = true; showScreen('nest'); renderActions(); setTimeout(poll, 300); }
   else if (state.status === 'ready' && state.manifest) showResult(state);
   else { showScreen('drop'); status('Drop your files.'); }

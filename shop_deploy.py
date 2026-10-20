@@ -78,6 +78,7 @@ _LOOKUP_TTL = 30.0
 _lookup_lock = threading.Lock()
 _address_cache = {'expires': 0.0, 'values': []}
 _fqdn_cache = {'expires': 0.0, 'value': ''}
+_host_cache = {'expires': 0.0, 'value': ''}
 
 
 def clear_name_cache():
@@ -86,6 +87,8 @@ def clear_name_cache():
         _address_cache['values'] = []
         _fqdn_cache['expires'] = 0.0
         _fqdn_cache['value'] = ''
+        _host_cache['expires'] = 0.0
+        _host_cache['value'] = ''
 
 
 def _call_within(function, timeout):
@@ -160,8 +163,19 @@ def _cached_fqdn():
         return _fqdn_cache['value']
 
 
+def host_name():
+    """This computer's name, or localhost when Windows is still resolving it."""
+    with _lookup_lock:
+        if time.monotonic() < _host_cache['expires']:
+            return _host_cache['value']
+        looked_up = _call_within(lambda: socket.gethostname().strip().rstrip('.'), _LOOKUP_TIMEOUT)
+        _host_cache['value'] = looked_up or 'localhost'
+        _host_cache['expires'] = time.monotonic() + _LOOKUP_TTL
+        return _host_cache['value']
+
+
 def shop_names():
-    host = socket.gethostname().strip().rstrip('.')
+    host = host_name()
     names = {host.casefold(), host.split('.')[0].casefold()}
     fqdn = _cached_fqdn()
     if fqdn:

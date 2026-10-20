@@ -148,12 +148,12 @@ class ShopDeployTests(unittest.TestCase):
         shop_deploy.clear_name_cache()
         try:
             started = time.monotonic()
-            with patch('shop_deploy.socket.getaddrinfo', hang), patch('shop_deploy.socket.getfqdn', hang):
+            with patch('shop_deploy.socket.getaddrinfo', hang), patch('shop_deploy.socket.getfqdn', hang), patch('shop_deploy.socket.gethostname', hang):
                 status = server.shop_status()
                 names = shop_deploy.shop_names()
-            self.assertLess(time.monotonic() - started, 3)
+            self.assertLess(time.monotonic() - started, 4)
             self.assertIn('addresses', status)
-            self.assertIn(socket.gethostname().split('.')[0].casefold(), names)
+            self.assertIn('localhost', names)
         finally:
             shop_deploy.clear_name_cache()
 

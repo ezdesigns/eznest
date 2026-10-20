@@ -6,6 +6,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 import uuid
 import copy
 import socket
@@ -19,9 +20,31 @@ from output_folder import OutputFolder, stage_pack
 from nesting import validate_request
 from shop_profiles import validate_profile, inspect_output
 from app_info import VERSION
-from shop_deploy import WARNING, default_hot_folder, lan_addresses, load_shop, pull_latest, save_shop, shop_name_allowed
+from shop_deploy import WARNING, default_hot_folder, host_name, lan_addresses, load_shop, pull_latest, save_shop, shop_name_allowed
 
 ROOT = Path(__file__).resolve().parent
+_STATIC_CACHE = {}
+
+
+def static_bytes(name):
+    """Read a shop file, retrying when Windows briefly locks it."""
+    cached = _STATIC_CACHE.get(name)
+    if cached is not None:
+        return cached
+    path = ROOT / name
+    last = None
+    for _ in range(8):
+        try:
+            data = path.read_bytes()
+        except OSError as error:
+            last = error
+            time.sleep(0.05)
+            continue
+        _STATIC_CACHE[name] = data
+        return data
+    raise last
+
+
 WORK = Path(os.environ.get('EZ_NEST_DATA', ROOT / '.local')).resolve()
 WORK.mkdir(parents=True, exist_ok=True)
 TOKEN = secrets.token_urlsafe(32)
@@ -40,6 +63,7 @@ DOCUMENT_LOCK = threading.Lock()
 def shop_status():
     saved = load_shop(WORK)
     running = LAN and HOST == '0.0.0.0'
+    name = host_name()
     return {
         'version': VERSION,
         'onyxPc': saved['onyxPc'],
@@ -48,9 +72,9 @@ def shop_status():
         'runningLan': running,
         'restart': saved['lan'] != running,
         'port': PORT,
-        'name': socket.gethostname(),
+        'name': name,
         'addresses': lan_addresses(),
-        'url': f'http://{socket.gethostname()}:{PORT}/web',
+        'url': f'http://{name}:{PORT}/web',
         'warning': WARNING,
         'hotFolderDefault': default_hot_folder(saved['onyxPc']),
     }
@@ -138,8 +162,10 @@ class Handler(BaseHTTPRequestHandler):
         if filename:
             self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
         self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
+        self.close_connection = True
         self.end_headers()
         self.wfile.write(body)
+        self.wfile.flush()
 
     def local_name(self, value):
         name, separator, port = (value or '').partition(':')
@@ -231,7 +257,7 @@ class Handler(BaseHTTPRequestHandler):
         if path not in static:
             return self.send(404, {'error': 'Not found'})
         name, mime = static[path]
-        return self.send(200, (ROOT / name).read_bytes(), mime)
+        return self.send(200, static_bytes(name), mime)
 
     def do_POST(self):
         global PROCESS

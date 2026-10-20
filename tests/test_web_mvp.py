@@ -78,12 +78,17 @@ class WebMvpTests(unittest.TestCase):
         return f'http://127.0.0.1:{server.PORT}'
 
     def wait_ready(self, page):
-        # Boot is done and the shop stylesheet is applied. --alarm is unset when
-        # /web.css did not load, which is the same stuck page as an empty status line.
-        page.wait_for_function(
-            "() => document.body.dataset.ready === '1' && "
-            "getComputedStyle(document.documentElement).getPropertyValue('--alarm').toLowerCase().includes('d92f00')"
-        )
+        # Boot sets this only after the shop stylesheet is on the page and the
+        # session call has returned. An empty status line was that signal never arriving.
+        try:
+            page.wait_for_function("() => document.body.dataset.ready === '1'")
+        except Exception:
+            detail = page.evaluate(
+                "() => JSON.stringify({ready: document.body && document.body.dataset.ready || '',"
+                " alarm: getComputedStyle(document.documentElement).getPropertyValue('--alarm').trim(),"
+                " status: (document.querySelector('#status') || {}).textContent || ''})"
+            )
+            raise AssertionError('Shop page was not ready. ' + detail) from None
 
     def test_desktop_workspace_remains_the_front_page(self):
         with urlopen(self.url() + '/', timeout=10) as response:
