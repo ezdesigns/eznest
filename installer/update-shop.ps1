@@ -196,7 +196,9 @@ function Invoke-ShopUpdate {
       Start-ScheduledTask -TaskName 'eznest' -TaskPath '\'
     }
     $stop = {
-      Stop-ScheduledTask -TaskName 'eznest' -TaskPath '\'
+      if ((Get-ScheduledTask -TaskName 'eznest' -TaskPath '\').State -eq 'Running') {
+        Stop-ScheduledTask -TaskName 'eznest' -TaskPath '\'
+      }
       $deadlineStop = [DateTime]::UtcNow.AddSeconds(30)
       while ((Get-ScheduledTask -TaskName 'eznest' -TaskPath '\').State -eq 'Running') {
         if ([DateTime]::UtcNow -ge $deadlineStop) { throw 'Could not stop the failed version. Backup retained for recovery.' }
@@ -239,3 +241,4 @@ if ($Run) {
   Add-Type -AssemblyName System.Windows.Forms
   [Windows.Forms.MessageBox]::Show($message, 'eznest update') | Out-Null
 }
+
