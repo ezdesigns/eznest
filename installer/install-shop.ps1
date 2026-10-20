@@ -12,6 +12,12 @@ param(
   [string]$Updates = '1'
 )
 
+# An installer launched from PowerShell 7 can inherit its incompatible modules.
+# Administrative helpers use only the modules bundled with Windows PowerShell.
+if ($PSVersionTable.PSVersion.Major -eq 5) {
+  $env:PSModulePath = Join-Path $PSHOME 'Modules'
+}
+
 function New-ServicePassword {
   $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
   $sets = @(

@@ -4,6 +4,9 @@
 param(
   [Parameter(Mandatory = $true)][string]$DataDir
 )
+if ($PSVersionTable.PSVersion.Major -eq 5) {
+  $env:PSModulePath = Join-Path $PSHOME 'Modules'
+}
 $ErrorActionPreference = 'Continue'
 $task = 'eznest'
 $account = 'eznest-svc'
@@ -48,3 +51,5 @@ if ($null -ne $user) {
 }
 
 & netsh.exe advfirewall firewall delete rule name=eznest | Out-Null
+
+

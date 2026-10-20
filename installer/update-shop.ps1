@@ -1,6 +1,9 @@
 # Interactive, administrator-approved helper. The app is restarted only through
 # the existing limited eznest-svc task. No server or downloaded script is elevated.
 param([switch]$Run)
+if ($PSVersionTable.PSVersion.Major -eq 5) {
+  $env:PSModulePath = Join-Path $PSHOME 'Modules'
+}
 
 function Assert-NoLinks([string]$Path) {
   $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
@@ -244,3 +247,4 @@ if ($Run) {
   Add-Type -AssemblyName System.Windows.Forms
   [Windows.Forms.MessageBox]::Show($message, 'eznest update') | Out-Null
 }
+
