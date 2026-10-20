@@ -1,5 +1,7 @@
 # External components
 
+The Ez Nest application is MIT. See LICENSE and NOTICE. "Ez Nest" is the name of EZ Designs. The packages below keep their own licenses.
+
 The application imports independently obtained packages from PyPI:
 
 - spyrrow 0.9.0: https://github.com/PaulDL-RS/spyrrow
