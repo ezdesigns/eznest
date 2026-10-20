@@ -104,6 +104,7 @@ Not in v1: job history, order intake, and cost tracking as a product.
 ## Develop
 
 Contributing, tests, and the version source are in [CONTRIBUTING.md](CONTRIBUTING.md).
+AI coding agents should read [AGENTS.md](AGENTS.md) for workflow, safety boundaries, and validation instructions.
 
 From source, with 64-bit Python 3.12:
 
