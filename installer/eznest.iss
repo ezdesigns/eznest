@@ -67,6 +67,8 @@ Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Fil
 [Code]
 var
   ExistingInstall: Boolean;
+  ShopSetupFailed: Boolean;
+  RetryShopSetup: Boolean;
 
 function OnyxFlag(Param: String): String;
 begin
@@ -97,23 +99,26 @@ end;
 
 function IsFreshInstall: Boolean;
 begin
-  Result := not ExistingInstall;
+  Result := (not ExistingInstall) or RetryShopSetup;
 end;
 
 function OpenServicePage: Boolean;
 begin
-  Result := IsFreshInstall and WizardIsTaskSelected('startatboot');
+  Result := (not ShopSetupFailed) and IsFreshInstall and WizardIsTaskSelected('startatboot');
 end;
 
 function OpenStandalonePage: Boolean;
 begin
-  Result := not OpenServicePage;
+  Result := (not ShopSetupFailed) and (not OpenServicePage);
 end;
 
 function InitializeSetup: Boolean;
+var
+  SetupComplete: Cardinal;
 begin
   { Capture before Setup writes its own uninstall registration. }
   ExistingInstall := IsUpgrade;
+  RetryShopSetup := RegQueryDWordValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1', 'ShopSetupComplete', SetupComplete) and (SetupComplete = 0);
   Log('Existing installation at start: ' + IntToStr(Ord(ExistingInstall)));
   Result := True;
   if ExpandConstant('{param:EZUPDATE|0}') = '1' then
@@ -130,17 +135,32 @@ var
 begin
   if (CurStep = ssPostInstall) and IsFreshInstall then
   begin
+    ShopSetupFailed := True;
+    RegWriteDWordValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1', 'ShopSetupComplete', 0);
     Log('Configuring fresh shop; selected tasks: ' + WizardSelectedTasks(False));
     Arguments := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\install-shop.ps1') +
       '" -DataDir "' + ExpandConstant('{commonappdata}\eznest') + '" -App "' +
       ExpandConstant('{app}\eznest.exe') + '" -OnyxPc ' + OnyxFlag('') +
       ' -Lan ' + LanFlag('') + ' -StartAtBoot ' + BootFlag('') + ' -Updates ' + UpdatesFlag('');
-    if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-      Arguments, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    if not ExecAndLogOutput(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Arguments, '', SW_HIDE, ewWaitUntilTerminated, ResultCode, nil) then
       RaiseException('Windows could not start shop setup. Contact your shop administrator before using eznest.');
     if ResultCode <> 0 then
       RaiseException('Shop setup failed. The startup task or folder permissions need administrator attention. Do not use this installation for production yet.');
+    RegWriteDWordValue(HKLM, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1', 'ShopSetupComplete', 1);
+    ShopSetupFailed := False;
   end;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  if ShopSetupFailed then Result := 10 else Result := 0;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and ShopSetupFailed then
+    WizardForm.FinishedLabel.Caption := 'Shop setup did not finish. Ask your administrator to review the startup task and folder permissions, then run this installer again. Do not use this installation for production yet.';
 end;
 
 

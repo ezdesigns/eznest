@@ -128,7 +128,10 @@ if (Test-Path -LiteralPath $shopPath) {
 [System.IO.File]::WriteAllText($shopPath, $shop, $utf8)
 $task = 'eznest'
 $account = 'eznest-svc'
-& schtasks.exe /Delete /TN $task /F | Out-Null
+if (Get-ScheduledTask -TaskName $task -TaskPath '\' -ErrorAction SilentlyContinue) {
+  & schtasks.exe /Delete /TN $task /F | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Could not replace the existing eznest task.' }
+}
 if ($boot) {
   $password = Ensure-ServiceAccount $account
   Grant-Folder $account $DataDir '(OI)(CI)M'

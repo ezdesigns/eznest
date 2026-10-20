@@ -13,6 +13,7 @@ function global:Get-LocalUser { [pscustomobject]@{ SID = [pscustomobject]@{ Valu
 function global:Remove-LocalUser { param($Name, $ErrorAction); $global:eznestTestCalls.Add("remove $Name"); if ($global:eznestTestFailRemove) { throw 'In use' } }
 function global:Disable-LocalUser { param($Name, $ErrorAction); $global:eznestTestCalls.Add("disable $Name") }
 function global:Get-CimInstance { @() }
+function global:Get-ScheduledTask { param($TaskName, $TaskPath, $ErrorAction); $null }
 function global:Remove-CimInstance { throw 'Unexpected profile deletion' }
 try {
     $source = Get-Content (Join-Path $root 'installer/install-shop.ps1') -Raw
