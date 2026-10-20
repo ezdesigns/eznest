@@ -208,7 +208,7 @@ function widestPieceMm() {
 
 function widthLabel() {
   const width = chosenWidthInches();
-  if (!Number.isFinite(width) || width <= 0) return 'on â€” wide';
+  if (!Number.isFinite(width) || width <= 0) return 'on — wide';
   return 'on ' + String(Number(width.toFixed(4))) + '" wide';
 }
 
@@ -371,7 +371,7 @@ function pieceIssue(state) {
   if (!state?.manifest) return '';
   const expected = (state.manifest.jobs || []).reduce((sum, job) => sum + (job.expected || 0), 0);
   const placed = state.manifest.totalPieces;
-  if (expected && placed < expected) return placed + ' of ' + expected + ' pieces Â· missing pieces';
+  if (expected && placed < expected) return placed + ' of ' + expected + ' pieces · missing pieces';
   if (state.manifest.complete === false) return 'Incomplete layout';
   return '';
 }
@@ -396,9 +396,9 @@ function lengthOver(state) {
 }
 
 function clearReadout() {
-  setNum('length', 'â€“', 'ft');
-  setNum('waste', 'â€“', '%');
-  setNum('sheets', 'â€“');
+  setNum('length', '–', 'ft');
+  setNum('waste', '–', '%');
+  setNum('sheets', '–');
   $('length').classList.remove('over');
   $('readout').classList.add('pending');
   $('checks').textContent = '';
@@ -431,6 +431,7 @@ function showScreen(name) {
   const confirming = name === 'confirm';
   $('drop-screen').hidden = !idle;
   $('sheet-frame').hidden = idle;
+  $('preview-tools').hidden = idle;
   $('legend').hidden = idle;
   $('readout').hidden = idle;
   $('export').hidden = idle || confirming;
@@ -559,7 +560,7 @@ function pieceSentence(state) {
   const bits = [placed + (placed === 1 ? ' piece' : ' pieces')];
   if (summary.thru) bits.push(summary.thru + ' thru');
   if (summary.kiss) bits.push(summary.kiss + ' kiss');
-  return bits.join(' Â· ') + ' Â· cuts OK';
+  return bits.join(' · ') + ' · cuts OK';
 }
 
 function sheetList(state) {
@@ -701,12 +702,12 @@ function addRuler(frame, sheet, width) {
     ruler.append(tick);
   }
   const feet = document.createElementNS(NS, 'text');
-  feet.setAttribute('x', String(-scale));
-  feet.setAttribute('y', String(top + sheet.usedLength));
+  feet.setAttribute('x', '0');
+  feet.setAttribute('y', String(top + sheet.usedLength + scale * 1.3));
   feet.setAttribute('fill', '#111');
   feet.setAttribute('font-size', String(scale));
   feet.setAttribute('font-family', 'Rajdhani, sans-serif');
-  feet.setAttribute('text-anchor', 'end');
+  feet.setAttribute('text-anchor', 'start');
   feet.textContent = (sheet.usedLength / 304.8).toFixed(2) + ' ft';
   ruler.append(feet);
   frame.append(ruler);
@@ -738,7 +739,7 @@ function renderSheet(frame, state, index) {
   const x = -pad;
   const y = sheet.offset - pad;
   const w = result.width + pad + 2;
-  const h = sheet.usedLength + pad + 2;
+  const h = sheet.usedLength + pad * 2 + 2;
   fit(frame, w, h);
   frame.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
   addHatch(frame);
@@ -852,9 +853,9 @@ function showBlocked(message) {
   showScreen('blocked');
   showWidth();
   if (!current?.result) {
-    setNum('length', 'â€“', 'ft');
-    setNum('waste', 'â€“', '%');
-    setNum('sheets', 'â€“');
+    setNum('length', '–', 'ft');
+    setNum('waste', '–', '%');
+    setNum('sheets', '–');
     $('readout').classList.add('pending');
     $('length').classList.remove('over');
     $('sheet-frame').hidden = false;
@@ -893,11 +894,11 @@ function showLive(state) {
   $('sheet-frame').hidden = false;
   $('live').hidden = true;
   if (!live || !live.usedLength) {
-    setNum('length', 'â€“', 'ft');
-    setNum('waste', 'â€“', '%');
-    setNum('sheets', 'â€“');
+    setNum('length', '–', 'ft');
+    setNum('waste', '–', '%');
+    setNum('sheets', '–');
     $('readout').classList.add('pending');
-    setSentence('Nestingâ€¦', false);
+    setSentence('Nesting…', false);
     return;
   }
   const placed = live.placements?.length || 0;
@@ -906,7 +907,7 @@ function showLive(state) {
   setNum('sheets', '1');
   $('readout').classList.remove('pending');
   showWidth();
-  setSentence('Nestingâ€¦ ' + placed + ' of ' + (expected || placed), false);
+  setSentence('Nesting… ' + placed + ' of ' + (expected || placed), false);
   if (state.job) renderSheet($('preview'), {job: state.job, result: live, manifest: null}, 0);
 }
 
@@ -975,7 +976,7 @@ async function nest() {
     showScreen('nest');
     showLive({job});
     renderActions();
-    status('Nesting on ' + $('nest-width').value + ' inâ€¦');
+    status('Nesting on ' + $('nest-width').value + ' in…');
     await api('/api/solve', job);
     setTimeout(poll, 300);
   } catch (error) {
@@ -989,7 +990,7 @@ async function improve() {
   try {
     busy = true;
     showScreen('nest');
-    status('Trying a better fitâ€¦');
+    status('Trying a better fit…');
     await api('/api/improve', {id: current.id});
     setTimeout(poll, 300);
   } catch (error) {
@@ -1195,7 +1196,7 @@ function renderMaterialButtons() {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.value = option.value;
-    button.textContent = option.dataset.name || option.textContent.split('Â·')[0].trim();
+    button.textContent = option.dataset.name || option.textContent.split('·')[0].trim();
     button.setAttribute('aria-pressed', String(option.value === currentValue));
     button.addEventListener('click', () => {
       if ($('material').value === option.value) return;
@@ -1209,7 +1210,7 @@ function renderMaterialButtons() {
 
 function applyMaterial(quiet) {
   const option = $('material').selectedOptions[0];
-  const named = option.dataset.name || (option.dataset.width ? option.textContent.split('Â·')[0].trim() : '');
+  const named = option.dataset.name || (option.dataset.width ? option.textContent.split('·')[0].trim() : '');
   $('preset-name').value = named || ($('preset-name').value || 'Custom roll');
   if (option.dataset.width) {
     $('unit').value = option.dataset.unit || 'in';
@@ -1264,7 +1265,7 @@ function rememberPreset() {
   const name = $('preset-name').value.trim();
   if (!name) return;
   if (option.value === 'custom') option.textContent = name;
-  else option.textContent = name + ' Â· ' + ($('width').value || option.dataset.width || '') + ' ' + $('unit').value;
+  else option.textContent = name + ' · ' + ($('width').value || option.dataset.width || '') + ' ' + $('unit').value;
   renderMaterialButtons();
   const stored = prefs();
   stored.presets = stored.presets || {};
@@ -1279,7 +1280,7 @@ function showLan(shop) {
   const bits = [];
   if (shop && shop.url) bits.push(shop.url);
   if (shop && shop.addresses && shop.addresses.length) bits.push(shop.addresses[0]);
-  $('lan-address').textContent = bits.filter(Boolean).join(' Â· ');
+  $('lan-address').textContent = bits.filter(Boolean).join(' · ');
   $('lan-address').hidden = !on;
 }
 
@@ -1481,7 +1482,7 @@ async function importFiles(fileList, replace) {
   if ((incomingPdf && incomingSvg) || (incomingPdf && haveSvg) || (incomingSvg && havePdf)) {
     throw Error('Nest SVG files in one batch and PDF files in another. That keeps the original artwork.');
   }
-  status('Reading ' + files.length + (files.length === 1 ? ' fileâ€¦' : ' filesâ€¦'));
+  status('Reading ' + files.length + (files.length === 1 ? ' file…' : ' files…'));
   const entries = [];
   for (const file of files) entries.push(await readEntry(file));
   kits = replace ? entries : kits.concat(entries);
@@ -1490,7 +1491,7 @@ async function importFiles(fileList, replace) {
   leaving = false;
   renderFiles();
   showScreen('nest');
-  status('Nestingâ€¦');
+  status('Nesting…');
   requestNest();
 }
 
@@ -1613,7 +1614,30 @@ async function refreshUpdate(remote) {
   } catch { /* The gear still has Update. */ }
 }
 
+async function refreshActivity() {
+  try {
+    const response = await fetch('/api/workload');
+    const data = await response.json();
+    if (!response.ok) throw Error(data.error);
+    const prepared = data.events.prepared || {packs: 0};
+    const sent = data.events.sent_to_folder || {packs: 0, pieces: 0, lengthMm: 0, materialM2: 0};
+    const removed = data.events.removed_from_folder || {packs: 0};
+    $('activity-summary').textContent = `${prepared.packs} packs prepared · ${sent.packs} sent · ${sent.pieces} pieces sent · ${(sent.lengthMm / 304.8).toFixed(1)} ft · ${sent.materialM2.toFixed(2)} m² of material. ${removed.packs} packs removed from the folder.`
+      + (data.warning ? ' ' + data.warning : '');
+  } catch (error) {
+    $('activity-summary').textContent = error.message || 'Local activity is unavailable.';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  $('preview-zoom').addEventListener('change', () => {
+    const width = Number($('preview-zoom').value) * 100 + '%';
+    for (const id of ['preview', 'live']) $(id).style.width = width;
+  });
+  $('local-activity').addEventListener('toggle', () => {
+    if ($('local-activity').open) refreshActivity();
+  });
+  $('activity-refresh').addEventListener('click', refreshActivity);
   renderMaterialButtons();
   $('file').addEventListener('change', async event => {
     if (ignoreFileChange) { ignoreFileChange = false; event.target.value = ''; return; }

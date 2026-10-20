@@ -40,6 +40,24 @@ disposable Windows VM.
 
 ## Later OUTPUT phase
 
+The readiness draft now includes a local activity foundation. On confirmation,
+freezing a pack records `prepared`; a successful hot-folder write records
+`sent_to_folder`. Explicit Undo records `removed_from_folder`. Downloads and
+failed folder writes do not count as hot-folder deliveries. Repeated sends of
+the same frozen pack count once; a newly nested pack is a new observation.
+
+The gear's Local activity section shows a rolling 24-hour summary. SQLite stores
+up to 90 days of observations in the app data directory, pruning old records on
+new writes. Stored fields are the opaque pack ID, event type, UTC timestamp,
+piece count, width, length, material area and artwork area. No filenames,
+customer details, folder paths or artwork are copied into this database.
+Tracking errors do not interrupt delivery; the activity panel reports them.
+There is no backfill of previous batches.
+
+This is not yet a machine inventory, production timer, printer-status feed or
+capacity estimate. Compare these demand signals against real shop production
+before developing a capacity model. No event upload exists.
+
 The OUTPUT preference defaults off and sends nothing even when selected.
 It is a placeholder, not consent to a future data transfer. Before activating
 any integration, show the exact data to be shared and request fresh consent.

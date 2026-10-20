@@ -101,7 +101,7 @@ class WebMvpTests(unittest.TestCase):
         self.assertIn('Nest selected jobs', desktop)
         self.assertIn('href="/web"', desktop)
         self.assertIn('Drop your file', page)
-        self.assertIn('Stop Â· keep best', page)
+        self.assertIn('Stop · keep best', page)
         self.assertIn('id="files"', page)
         self.assertIn('Add files', page)
         self.assertIn('max="800"', page)
@@ -432,7 +432,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.locator('#files li').count(), 2)
                 self.assertFalse(page.locator('#add-files').is_hidden())
                 self.assertTrue(page.locator('#stop').is_hidden())
-                self.assertEqual(page.locator('#stop').text_content().strip(), 'Stop Â· keep best')
+                self.assertEqual(page.locator('#stop').text_content().strip(), 'Stop · keep best')
             finally:
                 browser.close()
 

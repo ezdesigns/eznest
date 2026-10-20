@@ -10,6 +10,8 @@ import time
 import uuid
 import copy
 import socket
+import sqlite3
+import workload
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -130,6 +132,15 @@ def persist_state():
         temporary.replace(WORK / 'session.json')
 
 
+def record_workload(kind):
+    # A statistics failure must not turn a successful delivery into a failed Send.
+    try:
+        workload.record(WORK, STATE['id'], kind, STATE['result'])
+        STATE.pop('trackingWarning', None)
+    except (OSError, sqlite3.Error, ValueError):
+        STATE['trackingWarning'] = 'Local activity could not be saved. Check available disk space and folder permissions.'
+
+
 def restore_state():
     try:
         saved = json.loads((WORK / 'session.json').read_text(encoding='utf-8'))
@@ -230,6 +241,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, info)
         if path == '/api/shop':
             return self.send(200, shop_status())
+        if path == '/api/workload':
+            try:
+                info = workload.summary(WORK)
+                info['warning'] = STATE.get('trackingWarning')
+                return self.send(200, info)
+            except (OSError, sqlite3.Error):
+                return self.send(503, {'error': 'Local activity is unavailable. Check disk space and folder permissions.'})
         if path == '/api/output':
             return self.send(200, OUTPUT.status())
         if path == '/api/folder':
@@ -455,6 +473,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not destination.is_dir() or destination.is_symlink() or not destination.resolve().is_relative_to(root):
                         raise ValueError('That file is no longer in the hot folder.')
                     shutil.rmtree(destination)
+                    record_workload('removed_from_folder')
                     return self.send(200, {'ok': True})
                 elif self.path == '/api/shutdown':
                     if STATE.get('status') == 'running':
@@ -485,9 +504,12 @@ class Handler(BaseHTTPRequestHandler):
                         STATE.update(released=True, manifest=details, deliveryCompleted=False)
                         persist_state()
                     package = (WORK/'batches'/(STATE['id']+'.zip')).read_bytes()
+                    record_workload('prepared')
                     digest = hashlib.sha256(package).hexdigest()
                     with FOLDER_LOCK:
                         saved = OUTPUT.save(STATE['id'], package, FOLDER.root)
+                        if saved:
+                            record_workload('sent_to_folder')
                         stage_pack(data.get('stagingFolder') or '', STATE['id'], package, FOLDER.root)
                     STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved, sha256=digest)
                     persist_state()

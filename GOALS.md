@@ -24,7 +24,7 @@ Other shops use the same install. They type their own hot folder, printer, cut n
 
 v1 does not replace the RIP. Color, ICC profiles, and the RIP's own registration marks stay in the RIP.
 
-v1 does not take orders, keep a job history, track inventory, price the job as a product, or drive the printer or cutter directly.
+v1 does not take orders, track inventory, price the job as a product, or drive the printer or cutter directly. The readiness draft adds local workload observations as a foundation for OUTPUT; it does not add order management or printer completion tracking.
 
 v1 does not nest on a website. There is no account and no cloud queue.
 
@@ -39,6 +39,19 @@ The server listens on `127.0.0.1` by default. Shop network is a separate choice.
 Update checks talk only to the configured GitHub release, and only while updates are on. A token is optional. A public repository does not need one.
 
 Join OUTPUT network is off. The switch sends nothing. If a shop turns it on later, the only things shared would be the machine list and free capacity, and only after that opt-in.
+
+Local activity records prepared frozen packs, successful hot-folder delivery, and
+explicit removal from the hot folder. It stores an opaque pack ID, UTC event time,
+piece count, dimensions, material area and artwork area in `workload.sqlite3` in
+the app data directory. No filenames, artwork, customer details, or folder paths
+are included. Records older than 90 days are pruned when recording new activity.
+Settings shows the last 24 hours. Re-sending the same frozen pack counts once;
+removal is a separate observation, not proof that printing was cancelled.
+Downloads alone do not count as a hot-folder delivery.
+
+These are demand signals, not printer utilization or free capacity. No records
+are transmitted to OUTPUT, even if its placeholder switch is enabled. Future
+sharing requires a separate, explicit opt-in.
 
 ## Roadmap
 

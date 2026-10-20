@@ -38,14 +38,14 @@ p { margin: 0; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 #settings { position: fixed; top: 18px; right: 18px; z-index: 3; }
-#settings summary {
+#settings > summary {
   list-style: none;
   width: 36px; height: 36px;
   display: grid; place-items: center;
   cursor: pointer; color: var(--ink); border-radius: 8px;
 }
-#settings summary::-webkit-details-marker { display: none; }
-#settings summary:hover { background: rgba(0, 0, 0, .05); }
+#settings > summary::-webkit-details-marker { display: none; }
+#settings > summary:hover { background: rgba(0, 0, 0, .05); }
 #settings .panel {
   position: absolute; top: 42px; right: 0;
   width: min(360px, calc(100vw - 32px));
@@ -92,15 +92,15 @@ input, select {
 }
 .workspace { display: inline-block; margin-top: 14px; margin-right: 14px; color: var(--ink); font-size: 14px; }
 main {
-  width: min(680px, calc(100% - 48px));
+  width: min(1240px, calc(100% - 48px));
   min-height: 100dvh;
   margin: 0 auto;
-  padding: 72px 0;
+  padding: 64px 0 32px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 28px;
+  justify-content: flex-start;
+  gap: 16px;
 }
 .drop {
   display: grid; place-items: center;
@@ -123,7 +123,7 @@ body.dragging .drop { opacity: .55; }
 .sheet-id {
   width: 100%; margin: 0; text-align: center;
   font-family: Rajdhani, "Arial Narrow", sans-serif;
-  font-size: 28px; font-weight: 700; letter-spacing: .04em;
+  font-size: 12px; font-weight: 400; color: var(--muted); letter-spacing: .02em;
   word-break: break-all;
 }
 .confirm { display: grid; gap: 14px; justify-items: center; text-align: center; width: 100%; }
@@ -142,8 +142,8 @@ body.dragging .drop { opacity: .55; }
 .files button { flex: none; }
 #add-files { position: relative; cursor: pointer; }
 #add-files input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.sheet-frame { width: 100%; background: var(--canvas); border-radius: 8px; padding: 8px; overflow: auto; max-height: 54vh; }
-.sheet-frame svg { display: block; width: 100%; height: auto; max-width: 100%; background: var(--canvas); }
+.sheet-frame { width: 100%; background: var(--canvas); border-radius: 8px; padding: 8px; overflow: auto; max-height: 65vh; min-height: 280px; }
+.sheet-frame svg { display: block; width: 100%; height: auto; max-width: none; background: var(--canvas); }
 .key { display: flex; gap: 16px; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
 .key i { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--thru); margin-right: 6px; vertical-align: middle; }
 .key i.kiss { border-top: 2px dashed var(--kiss); }
@@ -187,3 +187,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   .drop { min-height: 36vh; }
 }
 
+
+.preview-tools { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 16px; }
+.preview-tools label { display: flex; align-items: center; gap: 8px; }
+.preview-tools select { width: 130px; }
+.files, .metrics, .confirm { max-width: 760px; }
+.sheet-id::before { content: "Pack reference: "; }
+#local-activity { margin-top: 18px; font-size: 14px; }
+#local-activity summary { cursor: pointer; font-weight: 700; }
+#activity-summary { margin: 10px 0; line-height: 1.5; }
+@media (max-width: 640px) {
+  main { gap: 16px; padding-top: 56px; }
+  .sheet-frame { min-height: 180px; }
+}

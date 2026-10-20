@@ -115,7 +115,7 @@
           <option value="contour">Generic cut</option>
         </select>
       </label>
-      <label>Material $ / mÂ²
+      <label>Material $ / m²
         <input id="cost" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal">
       </label>
       <label class="wide">Hot folder
@@ -153,6 +153,13 @@
     <label class="check"><input id="draw-marks" type="checkbox"> Draw registration marks (ONYX adds them)</label>
     <label class="check"><input id="allow-undo" type="checkbox"> Undo send while the file is still in the folder</label>
     <label class="check"><input id="allow-hold" type="checkbox"> Hold for Operator</label>
+    <details id="local-activity">
+      <summary>Local activity · last 24 hours</summary>
+      <p class="hint">Saved only on this PC for 90 days. No artwork or filenames.
+      Sent means delivered to the hot folder, not printed. Re-sending the same pack counts once.</p>
+      <p id="activity-summary" role="status">Open to load activity.</p>
+      <button id="activity-refresh" class="link" type="button">Refresh activity</button>
+    </details>
     <a class="workspace" href="/">Full workspace</a>
     <input id="seconds" type="hidden" value="5">
   </div>
@@ -164,6 +171,13 @@
     </label>
   </div>
   <div id="sheet-tabs" class="tabs" hidden></div>
+  <div class="preview-tools" id="preview-tools" hidden>
+    <strong>Layout preview</strong>
+    <label>Zoom <select id="preview-zoom" aria-label="Preview zoom">
+      <option value="1">Fit width</option><option value="1.5">150%</option>
+      <option value="2">200%</option><option value="3">300%</option>
+    </select></label>
+  </div>
   <div id="sheet-frame" class="sheet-frame" hidden>
     <svg id="preview" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nested sheet"></svg>
     <svg id="live" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nest in progress" hidden></svg>
@@ -173,16 +187,16 @@
   <div class="quiet">
     <select id="material" class="material-native" aria-label="Material" tabindex="-1">
       <option value="white-gloss" data-name="White gloss" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>White gloss, 54" roll, 51.5" printable</option>
-      <option value="vinyl-gloss" data-width="54" data-unit="in">Vinyl + gloss lam Â· 54 in</option>
-      <option value="vinyl" data-width="54" data-unit="in">Vinyl Â· 54 in</option>
+      <option value="vinyl-gloss" data-width="54" data-unit="in">Vinyl + gloss lam · 54 in</option>
+      <option value="vinyl" data-width="54" data-unit="in">Vinyl · 54 in</option>
       <option value="custom">Custom roll</option>
     </select>
     <label class="width">Width
       <input id="nest-width" type="number" min="0" step="any" value="51.5" inputmode="decimal">
       <span>in</span>
     </label>
-    <div class="sets">
-      <button id="sets-dec" type="button" aria-label="Fewer sets">âˆ’</button>
+    <div class="sets"><span>Sets</span>
+      <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
       <input id="sets" type="number" min="1" max="800" step="1" value="1" inputmode="numeric" aria-label="Sets">
       <button id="sets-inc" type="button" aria-label="More sets">+</button>
     </div>
@@ -193,9 +207,9 @@
   </label>
   <p id="sheet-id" class="sheet-id" hidden aria-label="Sheet ID"></p>
   <p class="metrics pending" id="readout" hidden>
-    <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">â€“</span><span class="unit"> ft</span></strong></span>
-    <span class="metric"><span class="label">Waste</span> <strong id="waste"><span class="num">â€“</span><span class="unit">%</span></strong></span>
-    <span class="metric"><span class="label">Sheets</span> <strong id="sheets"><span class="num">â€“</span></strong></span>
+    <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong></span>
+    <span class="metric"><span class="label">Waste</span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
+    <span class="metric"><span class="label">Sheets</span> <strong id="sheets"><span class="num">–</span></strong></span>
     <span id="used-width" class="used-width">on 51.5" wide</span>
   </p>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
@@ -209,7 +223,7 @@
     <button id="confirm-back" class="link" type="button">Back</button>
   </div>
   <button id="export" class="primary" type="button" hidden disabled>Send to ONYX</button>
-  <button id="stop" class="link" type="button" hidden>Stop Â· keep best</button>
+  <button id="stop" class="link" type="button" hidden>Stop · keep best</button>
   <button id="start-over" class="link" type="button" hidden>Start over</button>
   <button id="undo" class="link" type="button" hidden>Undo send</button>
   <input id="layout-id" hidden readonly tabindex="-1" aria-label="Layout ID">
