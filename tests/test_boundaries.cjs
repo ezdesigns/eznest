@@ -1,6 +1,6 @@
 // Boundary policy fixtures; live Illustrator validation remains separate.
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const code=fs.readFileSync(require('node:path').join(__dirname,'../jsx/host.jsx'),'utf8').replace(/^#.*$/gm,'');
+const code=fs.readFileSync(require('node:path').join(__dirname,'../archive/jsx/host.jsx'),'utf8').replace(/^#.*$/gm,'');
 const context={File:()=>({parent:{parent:{fsName:'.'}}}),$:{fileName:'host.jsx'}};
 vm.createContext(context);vm.runInContext(code,context);
 const resolve=context.EZN.boundary;

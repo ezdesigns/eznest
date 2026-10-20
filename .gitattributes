@@ -3,6 +3,7 @@
 *.js text eol=lf
 *.cjs text eol=lf
 *.jsx text eol=lf
+archive/jsx/host.jsx text eol=crlf
 *.json text eol=lf
 *.html text eol=lf
 *.css text eol=lf

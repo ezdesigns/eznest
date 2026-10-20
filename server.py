@@ -246,7 +246,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(400, {'error': 'Illustrator capture could not be read.'})
         static = {'/': ('production.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
         static.update({'/svg-io.js': ('svg-io.js', 'text/javascript'), '/sample-artwork.svg': ('sample-artwork.svg', 'image/svg+xml')})
-        static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css'), '/classic': ('classic.html','text/html')})
+        static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css')})
         static['/production-features.js']=('production-features.js','text/javascript')
         static['/cut-mapping.js']=('cut-mapping.js','text/javascript')
         static['/shop-profiles.js'] = ('shop-profiles.js','text/javascript')
