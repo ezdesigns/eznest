@@ -22,6 +22,16 @@ assert.equal(bridge.cutType(item('print', 'Brand red')), '');
 assert.throws(() => bridge.cutType(item('thru-cut','CutContour_Kiss-cut')), /disagree/);
 assert.throws(() => bridge.cutType(item('print','CutContour')), /Put generic/);
 assert.throws(() => bridge.cutType(item('print','CutContour_unknown')), /Unrecognized/);
+assert.equal(bridge.cutType({...item('thru-cut'),clipping:true}), '');
+assert.throws(()=>bridge.cutType({...item('thru-cut','CutContour'),clipping:true}), /clipping mask/);
+const selectedGroup={typename:'GroupItem',parent:{typename:'Layer'}};
+const selectedChild={typename:'PathItem',parent:selectedGroup};
+assert.equal(bridge.selectionRoots([selectedChild,selectedGroup,selectedGroup]).length,1);
+assert.equal(bridge.selectionRoots([selectedChild,selectedGroup])[0],selectedGroup);
+const fitDoc={pageItems:[{visibleBounds:[0,100,200,0],geometricBounds:[-1,102,201,-1]}],artboards:[{artboardRect:[0,10,10,0]}]};
+const fitted=bridge.fitProductionArtboard(fitDoc,3);
+assert.ok(fitted[0]<-1-14 && fitted[1]>102+14 && fitted[2]>201+14 && fitted[3]<-1-14);
+assert.deepEqual(fitDoc.pageItems[0].geometricBounds,[-1,102,201,-1]);
 let sent;
 context.Socket = function() {
   let response = 'HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\n{"ok":true}';
@@ -52,7 +62,7 @@ assert.equal(bridge.readPreferences(prefFile,['Other preset']),null);
 disk='{broken';assert.equal(bridge.readPreferences(prefFile,names),null);
 prefFile.open=()=>false;
 assert.throws(()=>bridge.writePreferences(prefFile,saved),/Cannot save/);
-for(const name of ['Nest in eznest.jsx','Prepare and Nest.jsx','EZ Nest Settings.jsx']) {
+for(const name of ['Nest in eznest.jsx','Prepare and Nest.jsx','Nest whole document.jsx','EZ Nest Settings.jsx']) {
   new vm.Script(fs.readFileSync(path.join(__dirname,'../illustrator',name),'utf8').replace(/^#.*$/gm,''));
 }
 console.log('Remembered Illustrator settings: roundtrip, removed presets, corrupt files, invalid materials and save failures passed.');
@@ -91,4 +101,15 @@ assert.equal(exportCount,1);assert.equal(launched,1);
 assert.equal(intake.material,'regular');assert.equal(intake.sets,1);assert.equal(intake.widthIn,51.5);
 assert.equal(intake.bleedMm,0);
 console.log('Illustrator JSX fast path: saved preset export, one set, untouched source and browser launch passed with host doubles.');
+const fullSource={typename:'Document'};
+const visibleLayer={typename:'Layer',visible:true,parent:fullSource};
+const hiddenLayer={typename:'Layer',visible:false,parent:fullSource};
+const group={typename:'GroupItem',parent:visibleLayer};
+const child={typename:'PathItem',parent:group};
+const hiddenItem={typename:'PathItem',parent:hiddenLayer};
+const lockedItem={typename:'PathItem',locked:true,parent:visibleLayer};
+fullSource.pageItems=[group,child,hiddenItem,lockedItem];
+const fullRoots=bridge.documentRoots(fullSource);
+assert.equal(fullRoots.length,1);assert.equal(fullRoots[0],group);
+assert.equal(fullSource.selection,undefined);
 

@@ -45,7 +45,7 @@ Cut strokes must be on source layers named thru-cut or kiss cut, or use the
 recognized CutContour_Thru-cut / CutContour_Kiss-cut spots. Generic CutContour
 requires one of those source layers. Conflicting names, filled cut paths and
 clipping paths used as cuts are rejected. Keep the artwork mask separate from
-the cut stroke. Do not select parent groups and their child objects together.
+the cut stroke. Parent/child selections are counted once. The production copy fits a fresh artboard around all copied object bounds, including existing bleed and 2 mm clearance. Original objects are not scaled.
 
 NOT YET AUTOMATED
 Template registration, clip-group repair, new bleed generation, production
@@ -72,4 +72,7 @@ under the OS temp folder's eznest-illustrator subfolder.
 VALIDATION LIMIT
 The bridge protocol and browser flow are automated-testable. Actual Illustrator
 host behavior, your PDF preset and your production files require the shop pilot.
-No live Illustrator installation was available during development.
+The current script changes still need a live Illustrator acceptance run.
+
+WHOLE DESIGN
+Run Nest whole document.jsx to copy the visible, unlocked document artwork without selecting every item first. It uses the same saved PDF preset and preparation checks. Hidden and locked source objects are excluded; finish specialty colors in Illustrator. Keep all companion scripts together. A PDF-compatible AI file can also be dropped into the browser directly, but PDF-page clipping still requires a source export containing the complete art.

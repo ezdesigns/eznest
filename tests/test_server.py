@@ -12,6 +12,32 @@ from unittest.mock import patch
 
 
 class ServerTests(unittest.TestCase):
+    def test_download_only_never_delivers_and_print_is_from_frozen_pack(self):
+        import io
+        from zipfile import ZipFile
+        original, old_port, old_work = copy.deepcopy(server.STATE), server.PORT, server.WORK
+        service = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+        server.PORT = service.server_port
+        thread = threading.Thread(target=service.serve_forever, daemon=True);thread.start()
+        ident = 'b' * 32
+        data = io.BytesIO()
+        with ZipFile(data, 'w') as archive:archive.writestr('artwork.pdf', b'%PDF-frozen-test')
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                server.WORK=Path(folder)
+                server.STATE.clear();server.STATE.update(status='ready',id=ident,job={},result={})
+                with patch.object(server,'make_package',return_value=(data.getvalue(),{'totalPieces':1})), patch.object(server.OUTPUT,'save') as deliver, patch.object(server,'stage_pack') as stage:
+                    request=Request(f'http://127.0.0.1:{server.PORT}/api/release',data=json.dumps({'id':ident,'map':'map','downloadOnly':True,'stagingFolder':'must-not-write'}).encode(),headers={'Content-Type':'application/json','X-EZ-Token':server.TOKEN})
+                    with urlopen(request) as response:reply=json.load(response)
+                    self.assertFalse(reply['deliveryCompleted']);self.assertFalse(reply['savedPath'])
+                    deliver.assert_not_called();stage.assert_not_called()
+                    with urlopen(f'http://127.0.0.1:{server.PORT}/api/print/{ident}') as response:
+                        self.assertEqual(response.read(),b'%PDF-frozen-test')
+                        self.assertEqual(response.headers.get_content_type(),'application/pdf')
+        finally:
+            service.shutdown();service.server_close();thread.join()
+            server.STATE.clear();server.STATE.update(original);server.PORT=old_port;server.WORK=old_work
+
     def test_one_connection_returns_the_stylesheet_and_a_script(self):
         old_port = server.PORT
         service = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)

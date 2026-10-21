@@ -20,7 +20,7 @@ let illustratorLoading = false;
 let materialProfiles = {};
 let presetEditor = null;
 let activeMaterial = 'white-gloss';
-const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'available-length', 'auto-bleed', 'bleed', 'cost'];
+const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'roll-length', 'available-length', 'auto-bleed', 'bleed', 'cost'];
 
 function status(message, failed) {
   const el = $('status');
@@ -55,11 +55,12 @@ function installSettingsHelp() {
     'test-channel': ['Include test versions', 'When update checks are enabled, also show releases still being tested. Leave off for normal shop use.'],
     'allow-undo': ['Show Undo send', 'Lets you remove a sent pack while it is still in the output folder. This cannot stop a job that ONYX has already picked up.'],
     'preset-name': ['Material name', 'The name on the material button. Save separate materials when rolls need different widths or spacing.'],
-    'unit': ['Measurement units', 'Shows these dimensions in inches, millimeters or centimeters. Existing values are converted, so the artwork stays the same size.'],
+    'unit': ['Units (inches or metric)', 'Shows these dimensions in inches, millimeters or centimeters. Existing values are converted, so the artwork stays the same size.'],
     'roll': ['Roll width', 'The full width of the material. Printable width must fit inside it. Increasing this alone does not make the layout wider.'],
     'width': ['Printable width', 'How much of the roll your printer can use. A smaller width can make the layout longer. Pieces keep their original size.'],
     'gap': ['Space between pieces', 'More space keeps neighboring pieces farther apart and usually uses more material. Less space fits them closer together.'],
     'margin': ['Space at roll edges', 'Keeps pieces away from the sides. More space leaves less room for pieces and may make the layout longer.'],
+    'roll-length': ['Full roll length', 'The length of a new roll. This is a reference for your material list. Material left on roll is the amount available for this job.'],
     'available-length': ['Material left on roll', 'Limits the batch to this much material. Leave blank if unknown. Update it yourself after printing; the app does not subtract used stock yet.'],
     'sheet': ['Longest print section', 'Splits a long layout into sections no longer than this. A lower number can create more sections. Every piece must fit within one section.'],
     'rotations': ['Allowed turns', 'Lets pieces turn to fit closer together. Keep orientation leaves them facing the original direction. Consider material grain and artwork direction.'],
@@ -644,7 +645,7 @@ function renderActions() {
   const step = document.body.dataset.step;
   const sent = step === 'sent' && current && current.released;
   $('export').textContent = sent ? (current.savedPath ? 'Send again' : 'Download again')
-    : ($('hot-folder').value.trim() ? 'Review and send' : 'Review and download');
+    : 'Review and save';
   $('export').classList.toggle('primary', !sent);
   $('export').classList.toggle('link', !!sent);
   $('start-over').classList.toggle('primary', !!sent);
@@ -709,11 +710,11 @@ function emphasizeCuts(svg) {
   for (const node of svg.querySelectorAll('[id]')) {
     node.setAttribute('vector-effect', 'non-scaling-stroke');
     if (/kiss-cut/i.test(node.id)) {
-      node.setAttribute('stroke', '#00B7FF');
+      node.setAttribute('stroke', '#E6007E');
       node.setAttribute('stroke-dasharray', '8 6');
       node.setAttribute('stroke-width', '3');
     } else if (/thru-cut/i.test(node.id)) {
-      node.setAttribute('stroke', '#E6007E');
+      node.setAttribute('stroke', '#00B7FF');
       node.setAttribute('stroke-width', '3');
       node.removeAttribute('stroke-dasharray');
     } else if (/regmark|reg-mark/i.test(node.id)) {
@@ -751,7 +752,7 @@ function documentPreview(state) {
     if (part.points && (counts.thru || counts.kiss)) {
       const outline = document.createElementNS(NS, 'polygon');
       outline.setAttribute('points', part.points.map(point => point.join(',')).join(' '));
-      stroke(outline, counts.thru ? '#E6007E' : '#00B7FF', !counts.thru);
+      stroke(outline, counts.thru ? '#00B7FF' : '#E6007E', !counts.thru);
       group.append(outline);
     }
     group.dataset.index = String(index + 1);
@@ -976,6 +977,7 @@ function showSent() {
 }
 
 function showBlocked(message) {
+  status('');
   blockReason = shortProblem(message) || 'Nesting stopped. Change the width or the file and try again.';
   showScreen('blocked');
   showWidth();
@@ -1178,7 +1180,7 @@ function applyAutoBleed(svg) {
   return svg;
 }
 
-async function lock() {
+async function lock(downloadOnly = false) {
   if (!current || current.released || busy) return current;
   saving = true;
   renderActions();
@@ -1196,7 +1198,8 @@ async function lock() {
       autoBleedMm: autoBleedMm(),
       drawRegmarks: $('draw-marks').checked === true,
       cutMapping: cutMapping(),
-      stagingFolder: stagingPath()
+      stagingFolder: downloadOnly ? '' : stagingPath(),
+      downloadOnly
     });
     current.released = true;
     current.sha256 = released.sha256;
@@ -1218,14 +1221,22 @@ function sheetSummary() {
     material,
     width + ' in wide',
     length + ' in long',
-    pieces + (pieces === 1 ? ' piece' : ' pieces'),
-    current.id
+    pieces + (pieces === 1 ? ' piece' : ' pieces')
   ].join('\n');
 }
 
 function openConfirm() {
   if (busy || saving || !current || !current.result || $('export').disabled) return;
   $('confirm-summary').textContent = sheetSummary();
+  const jobs = current.job.productionJobs || [];
+  const sourceName = jobs[0]?.sourceFile || jobs[0]?.name || 'Print';
+  $('save-name').value = current.downloadName || cleanPrintName(sourceName.replace(/\.(pdf|ai|svg)$/i, '') + (jobs.length > 1 ? ' and ' + (jobs.length - 1) + ' more' : '') + ' - Print');
+  $('save-destination').value = $('hot-folder').value.trim() && prefs().saveDestination !== 'download' ? 'folder' : 'download';
+  $('save-destination').querySelector('[value="folder"]').disabled = !$('hot-folder').value.trim();
+  const onePdf = !!current.job.documentSources && (current.result.sheets || [1]).length === 1;
+  $('save-format').querySelector('[value="pdf"]').disabled = !onePdf;
+  $('save-format').value = onePdf ? 'pdf' : 'pack';
+  updateSaveChoice();
   showScreen('confirm');
   showSheetId(current);
   renderActions();
@@ -1238,14 +1249,35 @@ function closeConfirm() {
   renderActions();
 }
 
+function cleanPrintName(value) {
+  let name = String(value).replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').replace(/[. ]+$/g, '').trim().slice(0, 100);
+  if (!name || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) name = 'Print';
+  return name;
+}
+
+function updateSaveChoice() {
+  const local = $('save-destination').value === 'download';
+  $('save-format-row').hidden = !local;
+  $('save-name-row').hidden = !local;
+  $('save-location-note').textContent = local
+    ? 'Your browser saves this file to Downloads, or asks for a location if you have enabled that option.'
+    : 'Save the complete pack to ' + $('hot-folder').value + '. Each layout has its own folder; existing files are not overwritten.';
+  $('confirm-send').textContent = local ? 'Save on my computer' : 'Save to print folder';
+}
+
 async function exportFile(forceDownload) {
   if (!current || busy || saving) return;
   if (document.body.dataset.step !== 'confirm' && $('export').disabled) return;
+  const downloadOnly = forceDownload === true || $('save-destination').value === 'download';
+  const pdf = downloadOnly && $('save-format').value === 'pdf';
+  const name = cleanPrintName($('save-name').value) + (pdf ? '.pdf' : '.zip');
   saving = true;
   renderActions();
   try {
-    if (!current.released) await lock();
-    else {
+    savePrefs({saveDestination: downloadOnly ? 'download' : 'folder'});
+    current.downloadName = cleanPrintName($('save-name').value);
+    if (!current.released) await lock(downloadOnly);
+    else if (!downloadOnly) {
       const delivered = await api('/api/release', {
         id: current.id,
         map: EZNSVG.serialize(sheetMap(current)),
@@ -1255,27 +1287,33 @@ async function exportFile(forceDownload) {
       current.deliveryCompleted = delivered.deliveryCompleted === true;
       current.sha256 = delivered.sha256;
     }
-    if (current.savedPath && forceDownload !== true) {
+    if (current.savedPath && !downloadOnly) {
       showSent();
       status('Sent to the hot folder.');
       return;
     }
     const response = await fetch('/api/batch/' + current.id);
     if (!response.ok) throw Error('The locked file is saved, but the download failed. Send again.');
-    const bytes = await response.arrayBuffer();
+    let bytes = await response.arrayBuffer();
     const hash = await sha256(bytes);
     if (current.sha256 && hash !== current.sha256) throw Error('The download does not match the locked layout.');
-    if (forceDownload === true || !current.savedPath) {
+    if (pdf) {
+      const printResponse = await fetch('/api/print/' + current.id);
+      if (!printResponse.ok) throw Error('This layout does not have a single PDF. Save the complete pack instead.');
+      bytes = await printResponse.arrayBuffer();
+    }
+    if (downloadOnly || !current.savedPath) {
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(new Blob([bytes], {type: 'application/zip'}));
-      link.download = 'eznest-' + current.id.slice(0, 8) + '.zip';
+      link.href = URL.createObjectURL(new Blob([bytes], {type: pdf ? 'application/pdf' : 'application/zip'}));
+      link.download = name;
       document.body.append(link);
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     }
     showSent();
-    status(current.savedPath ? 'Sent to the hot folder.' : 'Downloaded eznest-' + current.id.slice(0, 8) + '.zip.');
+    if (downloadOnly) $('delivery-receipt').textContent = 'Saved on your computer. This action did not send files to the print folder.';
+    status(downloadOnly ? 'Downloaded ' + name : 'Saved to the print folder.');
   } catch (error) {
     showBlocked(error.message);
   } finally {
@@ -1323,7 +1361,7 @@ async function startOver() {
 function convertUnit(next) {
   const previous = $('unit').dataset.current || next;
   const factor = EZNQueue.unitScale(previous) / EZNQueue.unitScale(next);
-  for (const id of ['width', 'gap', 'margin', 'sheet', 'mark-margin', 'roll', 'available-length']) {
+  for (const id of ['width', 'gap', 'margin', 'sheet', 'mark-margin', 'roll', 'roll-length', 'available-length']) {
     if (!$(id).value.trim()) continue;
     $(id).value = String(Number((Number($(id).value) * factor).toFixed(4)));
   }
@@ -1364,6 +1402,7 @@ function materialValues() {
 }
 
 function setMaterialValues(values) {
+  if (values['roll-length'] == null) $('roll-length').value = '';
   for (const id of MATERIAL_FIELDS) if (values[id] != null) $(id).value = values[id];
   $('unit').dataset.current = $('unit').value;
   $('draw-marks').checked = values.drawMarks === true;
@@ -1383,7 +1422,9 @@ function validateMaterial(values) {
   if (settings.width > settings.rollWidth) throw Error('Printable width cannot be wider than the roll.');
   if (!['0', '0.0625', '0.125'].includes(values['auto-bleed'])) throw Error('Choose a supported bleed setting.');
   if (!Number.isFinite(Number(values.bleed)) || Number(values.bleed) < 0 || Number(values.bleed) > 25) throw Error('Existing bleed must be from 0 to 25 mm.');
-  return {'available-length': '', ...values, 'preset-name': values['preset-name'].trim()};
+  if (values['roll-length']?.trim() && (!Number.isFinite(n('roll-length')) || n('roll-length') <= 0)) throw Error('Enter a positive full roll length or leave it blank.');
+  if (values['roll-length']?.trim() && values['available-length']?.trim() && n('available-length') > n('roll-length')) throw Error('Material left cannot exceed the full roll length.');
+  return {'roll-length': '', 'available-length': '', ...values, 'preset-name': values['preset-name'].trim()};
 }
 
 function registerMaterial(id, values) {
@@ -1399,15 +1440,19 @@ function registerMaterial(id, values) {
 
 function loadMaterialProfiles(stored) {
   registerMaterial('white-gloss', materialValues());
+  const hiddenLegacy = (id, values) => id === 'moto' || values['preset-name'] === 'Design PC test roll';
+  const renamed = (id, values) => ({...values, 'preset-name': id === 'holographic' && values['preset-name'] === 'Holographic' ? 'Moto Holographic' : id === 'chrome' && values['preset-name'] === 'Chrome' ? 'Moto Chrome' : values['preset-name']});
   for (const [id, saved] of Object.entries(stored.presets || {})) {
     if (id === 'custom' && !saved.label) continue;
     const values = {...materialValues(), 'preset-name': saved.label?.split(' · ')[0] || 'Saved roll', width: saved.width || '51.5', unit: saved.unit || 'in'};
     if (id === 'white-gloss' && /^White gloss/.test(values['preset-name'])) values['preset-name'] = 'Moto Regular';
+    if (hiddenLegacy(id, values)) continue;
     try { registerMaterial(id === 'custom' ? 'saved-custom' : id, validateMaterial(values)); } catch { /* Keep legacy preferences intact if they need correction. */ }
   }
   for (const [id, values] of Object.entries(stored.materialProfiles || {})) {
     if (!/^[a-zA-Z0-9-]{1,80}$/.test(id) || id === 'custom') continue;
-    try { registerMaterial(id, validateMaterial(values)); } catch { status('A saved preset needs to be set up again.', true); }
+    if (hiddenLegacy(id, values)) continue;
+    try { registerMaterial(id, validateMaterial(renamed(id, values))); } catch { status('A saved preset needs to be set up again.', true); }
   }
 }
 
@@ -1426,7 +1471,7 @@ function openPreset(id) {
   presetEditor = {id, values: materialValues(), selected: $('material').value, nestWidth: $('nest-width').value};
   if (materialProfiles[id]) setMaterialValues(materialProfiles[id]);
   else $('preset-name').value = id === 'custom' ? '' : [...$('material').options].find(option => option.value === id).textContent;
-  $('preset-title').textContent = id === 'custom' ? 'New preset' : 'Edit ' + $('preset-name').value;
+  $('preset-title').textContent = id === 'custom' ? 'Add material' : 'Edit ' + $('preset-name').value;
   $('preset-error').hidden = true;
   $('preset-editor').hidden = false;
   $('material-advanced').open = false;
@@ -2102,6 +2147,16 @@ document.addEventListener('DOMContentLoaded', () => {
   $('thru-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
   $('kiss-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
   $('auto-bleed').addEventListener('change', () => { if (current && current.result && !busy && !saving && !presetEditor) renderPreview(activeSheet); });
+  $('save-destination').addEventListener('change', updateSaveChoice);
+  $('browse-output').addEventListener('click', async () => {
+    try {
+      const selected = await api('/api/output/pick', {});
+      if (selected.cancelled) return;
+      $('hot-folder').value = selected.path || '';
+      renderActions();
+      status('Print folder saved.');
+    } catch (error) { status(error.message, true); }
+  });
   $('hot-folder').addEventListener('change', saveHotFolder);
   $('staging-on').addEventListener('change', () => {
     $('staging-row').hidden = !$('staging-on').checked;
@@ -2179,7 +2234,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('allow-undo').addEventListener('change', () => { savePrefs({undo: $('allow-undo').checked}); renderActions(); });
   $('allow-hold').addEventListener('change', () => savePrefs({hold: $('allow-hold').checked}));
   $('export').addEventListener('click', () => openConfirm());
-  $('confirm-send').addEventListener('click', () => exportFile(false));
+  $('confirm-send').addEventListener('click', () => exportFile());
   $('confirm-back').addEventListener('click', closeConfirm);
   $('choose-thru').addEventListener('click', () => chooseCut('thru'));
   $('choose-kiss').addEventListener('click', () => chooseCut('kiss'));

@@ -1,5 +1,6 @@
 """Local shop server. Loopback by default; the shop network is an explicit option."""
 import hashlib
+from zipfile import ZipFile
 import json
 import os
 import secrets
@@ -290,13 +291,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {'text': content})
             except (ValueError, OSError) as error:
                 return self.send(409, {'error': str(error)})
-        if path.startswith('/api/batch/'):
+        if path.startswith(('/api/batch/', '/api/print/')):
             ident = path.rsplit('/',1)[-1]
             if len(ident) != 32 or any(c not in '0123456789abcdef' for c in ident):
                 return self.send(404, {'error':'Batch not found'})
             source = WORK / 'batches' / (ident+'.zip')
             if not source.exists():
                 return self.send(404, {'error':'Batch not found'})
+            if path.startswith('/api/print/'):
+                with ZipFile(source) as archive:
+                    if 'artwork.pdf' not in archive.namelist():
+                        return self.send(409, {'error':'Save the complete pack for a multi-sheet or SVG layout.'})
+                    return self.send(200, archive.read('artwork.pdf'), 'application/pdf', 'Print.pdf')
             return self.send(200, source.read_bytes(), 'application/zip', 'EZ-Nest-Batch-'+ident[:8]+'.zip')
         if path == '/api/state':
             with LOCK:
@@ -607,11 +613,12 @@ class Handler(BaseHTTPRequestHandler):
                     record_workload('prepared')
                     digest = hashlib.sha256(package).hexdigest()
                     with FOLDER_LOCK:
-                        saved = OUTPUT.save(STATE['id'], package, FOLDER.root)
+                        saved = None if data.get('downloadOnly') is True else OUTPUT.save(STATE['id'], package, FOLDER.root)
                         if saved:
                             record_workload('sent_to_folder')
-                        stage_pack(data.get('stagingFolder') or '', STATE['id'], package, FOLDER.root)
-                    STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved, sha256=digest)
+                        if data.get('downloadOnly') is not True:
+                            stage_pack(data.get('stagingFolder') or '', STATE['id'], package, FOLDER.root)
+                    STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved or (STATE.get('savedPath') if data.get('downloadOnly') is True else None), sha256=digest)
                     persist_state()
                     return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check,'deliveryCompleted':STATE['deliveryCompleted'],'sha256':digest})
                 elif self.path == '/api/delivery/complete':

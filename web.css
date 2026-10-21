@@ -25,8 +25,8 @@
   --muted: #5c5c58;
   --alarm: #D92F00;
   --canvas: #9a9a9a;
-  --thru: #E6007E;
-  --kiss: #00B7FF;
+  --thru: #00B7FF;
+  --kiss: #E6007E;
   font: 16px/1.45 "Red Hat Display", "Segoe UI", sans-serif;
   color: var(--ink);
   background: #f7f7f4;
@@ -291,3 +291,7 @@ main { min-height: auto; padding: 20px 0 28px; gap: 18px; }
   .sheet-frame { max-height: 42vh; min-height: 180px; }
   main { padding-top: 16px; }
 }
+
+.confirm .fields { width: min(100%, 560px); text-align: left; }
+.confirm .fields input, .confirm .fields select { width: 100%; min-width: 0; }
+#save-location-note { overflow-wrap: anywhere; }

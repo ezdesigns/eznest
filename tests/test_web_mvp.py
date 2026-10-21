@@ -84,6 +84,8 @@ class WebMvpTests(unittest.TestCase):
         return f'http://127.0.0.1:{server.PORT}'
 
     def wait_ready(self, page):
+        # Test the browser-download fallback; native save dialogs need an operator.
+        page.evaluate('window.showSaveFilePicker = undefined')
         # Boot sets this only after the shop stylesheet is on the page and the
         # session call has returned. An empty status line was that signal never arriving.
         try:
@@ -163,12 +165,15 @@ class WebMvpTests(unittest.TestCase):
         return browser, page
 
     def download(self, page, shortcut=False):
+        page.evaluate('window.showSaveFilePicker = undefined')
         with page.expect_download(timeout=30000) as pending:
             if shortcut:
                 page.evaluate('document.activeElement && document.activeElement.blur()')
                 page.keyboard.press('Enter')
             else:
                 page.click('#export')
+            page.select_option('#save-destination', 'download')
+            page.select_option('#save-format', 'pack')
             page.locator('#confirm-send').click()
         item = pending.value
         target = Path(self.tmp.name) / (item.suggested_filename or 'eznest.zip')
@@ -244,13 +249,13 @@ class WebMvpTests(unittest.TestCase):
                 self.assertFalse(state['job']['settings']['drawRegmarks'])
                 shown = float(page.locator('#waste .num').inner_text())
                 self.assertEqual(round(shown), round((1 - state['result']['utilization']) * 100))
-                self.assertEqual((page.locator('#preview [id*="Kiss-cut"]').first.get_attribute('stroke') or '').lower(), '#00b7ff')
+                self.assertEqual((page.locator('#preview [id*="Kiss-cut"]').first.get_attribute('stroke') or '').lower(), '#e6007e')
                 self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
                 self.assertEqual(page.locator('#sheet-id').text_content(), state['id'])
                 self.assertTrue(page.locator('#sheet-id').is_hidden())
                 self.assertNotIn('problem', page.locator('#gate').get_attribute('class') or '')
                 self.assertEqual(page.locator('#lock').count(), 0)
-                self.assertEqual(page.locator('#export').inner_text(), 'Review and download')
+                self.assertEqual(page.locator('#export').inner_text(), 'Review and save')
                 page.locator('#settings').evaluate('node => { node.open = false }')
                 page.evaluate('document.activeElement && document.activeElement.blur()')
                 page.keyboard.press('Space')
@@ -314,6 +319,18 @@ class WebMvpTests(unittest.TestCase):
                     pdf = archive.read('artwork.pdf')
                 self.assertIn(b'CutContour_Thru-cut', pdf)
                 self.assertIn(b'CutContour_Kiss-cut', pdf)
+                page.click('#export')
+                page.select_option('#save-destination', 'download')
+                page.select_option('#save-format', 'pdf')
+                page.fill('#save-name', 'Customer kit - Chrome')
+                with page.expect_download(timeout=30000) as pending:
+                    page.click('#confirm-send')
+                downloaded = pending.value
+                self.assertEqual(downloaded.suggested_filename, 'Customer kit - Chrome.pdf')
+                direct = Path(self.tmp.name) / 'direct.pdf'
+                downloaded.save_as(str(direct))
+                self.assertEqual(direct.read_bytes(), pdf)
+                self.assertIn('did not send', page.locator('#delivery-receipt').inner_text())
                 self.assertNotIn(b'LNThru-cut', pdf)
                 self.assertNotIn(b'LNKiss-cut', pdf)
                 from pypdf import PdfReader
@@ -501,6 +518,7 @@ class WebMvpTests(unittest.TestCase):
                 page.set_input_files('#file', str(bad))
                 page.wait_for_selector('#gate.problem', timeout=20000)
                 self.assertEqual(page.locator('#checks').inner_text().strip(), 'Save as PDF')
+                self.assertNotIn('Reading', page.locator('#status').inner_text())
                 self.assertTrue(page.locator('#export').is_disabled())
                 self.assertEqual(page.locator('#gate').inner_text().strip(), 'Save as PDF')
                 page.screenshot(path=str(shots / 'ai-desktop.png'), full_page=True)
@@ -587,6 +605,7 @@ class WebMvpTests(unittest.TestCase):
                 page.click('#materials button[data-value=custom]')
                 page.fill('#preset-name', 'Shop vinyl')
                 page.fill('#gap', '0.2')
+                page.fill('#roll-length', '3600')
                 page.fill('#available-length', '1800')
                 page.click('#save-material')
                 saved_material = page.input_value('#material')
@@ -628,9 +647,10 @@ class WebMvpTests(unittest.TestCase):
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
                 self.wait_ready(page)
                 page.click('#materials button[data-value=holographic]')
-                self.assertEqual(page.input_value('#preset-name'), 'Holographic')
+                self.assertEqual(page.input_value('#preset-name'), 'Moto Holographic')
                 page.fill('#gap', '0.25')
                 page.fill('#margin', '0.3')
+                page.fill('#roll-length', '3600')
                 page.fill('#available-length', '1800')
                 page.click('#save-material')
                 self.assertTrue(page.locator('#preset-editor').is_hidden())
@@ -642,7 +662,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.input_value('#margin'), '0.3')
                 self.assertEqual(page.input_value('#available-length'), '1800')
                 page.click('#materials button[data-value=custom]')
-                page.fill('#preset-name', 'Holographic')
+                page.fill('#preset-name', 'Moto Holographic')
                 page.click('#save-material')
                 self.assertIn('already exists', page.inner_text('#preset-error'))
                 page.fill('#preset-name', 'Small remnant')
@@ -780,8 +800,8 @@ class WebMvpTests(unittest.TestCase):
                 self.assertIn('51.5 in wide', summary)
                 self.assertIn('in long', summary)
                 self.assertIn('piece', summary)
-                self.assertIn(state['id'], summary)
-                self.assertEqual(page.locator('#confirm-send').inner_text(), 'Confirm send')
+                self.assertNotIn(state['id'], summary)
+                self.assertEqual(page.locator('#confirm-send').inner_text(), 'Save on my computer')
                 self.assertEqual(page.locator('#confirm-back').inner_text(), 'Back')
                 self.assertFalse(page.locator('#readout').is_hidden())
                 self.assertFalse(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))

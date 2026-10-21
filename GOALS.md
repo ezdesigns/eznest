@@ -74,9 +74,9 @@ replacement. EZ Nest Settings changes those choices. The bridge is same-PC only.
 
 ## Design-PC material and nesting draft
 
-The simple browser page stores named roll presets in that browser: Moto, Moto Regular,
-Holographic, Chrome and additional presets created with Custom. Holographic and
-Chrome and Moto require the operator to save their dimensions and spacing before use.
+The simple browser page stores named roll presets in that browser: Moto Regular,
+Moto Holographic, Moto Chrome and presets created with Add material. Holographic and
+Chrome require the operator to save their dimensions and spacing before use.
 These are nesting settings only; they do not configure ink, ICC profiles, Adobe
 PDF presets or specialty preparation rules. The Illustrator pilot still supports
 only Regular preparation.
@@ -91,3 +91,8 @@ Before splitting a job into conservative rectangular bins, the sheet allocator
 tries all contours together when their total area can fit on one sheet. The
 independent geometry checks still require every piece, allowed rotation, spacing
 and sheet boundaries. This is a best-found layout, not a proven optimum.
+
+The review screen offers a saved print folder or a named local download. A single
+PDF sheet can be saved directly; multi-sheet and SVG jobs use the complete pack.
+Local saves bypass print-folder and staging delivery. The browser download settings control whether files go directly to Downloads
+or a save-location dialog. The app does not use the browser file-system API.

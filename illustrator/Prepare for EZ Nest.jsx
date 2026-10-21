@@ -35,56 +35,13 @@ $.evalFile(new File(File($.fileName).parent.fsName+'/bridge-core.js'));
         }
         if(settingsOnly)return;
         if(!app.documents.length)throw Error('Open a saved kit and select its production artwork and cut paths.');
-        var source=app.activeDocument,selected=source.selection,items=[],i;
+        var source=app.activeDocument,selected=source.selection;
         if(!source.saved)throw Error('Save your design first so this export has a stable source reference.');
-        if(!selected||!selected.length||selected.length>100)throw Error('Select 1-100 complete parts, including artwork and their cut paths.');
-        for(i=0;i<selected.length;i++){
-            if(selected[i].typename==='TextRange'||selected[i].locked||selected[i].hidden)throw Error('Select complete, unlocked artwork objects.');
-            items.push(selected[i]);
-        }
+        var items=$.global.EZNestWholeDocument===true?EZPilot.documentRoots(source):EZPilot.selectionRoots(selected);
         var session=EZPilot.http('GET','/api/session');
         if(session.app!=='eznest')throw Error('Port 8765 is not running eznest.');
         var sourceKey=source.fullName.fsName;
-        production=app.documents.add(source.documentColorSpace,1000,1000);
-        var print=production.layers[0];print.name='print';
-        var thru=production.layers.add();thru.name='thru-cut';
-        var kiss=production.layers.add();kiss.name='kiss cut';
-        var bounds=[1e20,-1e20,-1e20,1e20],cutCount=0;
-        function cutColor(name){
-            var spot;try{spot=production.spots.getByName(name);}catch(ignore){spot=production.spots.add();spot.name=name;spot.colorType=ColorModel.SPOT;var color=new CMYKColor();color.cyan=0;color.magenta=100;color.yellow=0;color.black=0;spot.color=color;}
-            var result=new SpotColor();result.spot=spot;result.tint=100;return result;
-        }
-        var colors={thru:cutColor('CutContour_Thru-cut'),kiss:cutColor('CutContour_Kiss-cut')};
-        function collect(node,result){
-            if(node.typename==='PluginItem'||node.typename==='NonNativeItem')throw Error('Expand plug-in artwork before preparing.');
-            if(node.typename==='PathItem'){result.push(node);return;}
-            var list=node.typename==='GroupItem'?node.pageItems:node.typename==='CompoundPathItem'?node.pathItems:null,j;
-            if(list)for(j=0;j<list.length;j++)if(list[j].parent===node)collect(list[j],result);
-        }
-        for(i=0;i<items.length;i++){
-            var sourcePaths=[];collect(items[i],sourcePaths);
-            var types=[],j;
-            for(j=0;j<sourcePaths.length;j++)types.push(EZPilot.cutType(sourcePaths[j]));
-            var duplicate=items[i].duplicate(print,ElementPlacement.PLACEATEND),copyPaths=[];collect(duplicate,copyPaths);
-            if(sourcePaths.length!==copyPaths.length)throw Error('The copied artwork structure changed.');
-            // Keep the exact source position; no scaling or flattening.
-            var originalBounds=items[i].geometricBounds,copyBounds=duplicate.geometricBounds;
-            duplicate.translate(originalBounds[0]-copyBounds[0],originalBounds[1]-copyBounds[1]);
-            for(j=0;j<copyPaths.length;j++)if(types[j]){
-                var path=copyPaths[j];
-                if(path.clipping||path.filled||!path.stroked||path.parent.typename==='CompoundPathItem')throw Error('Cut paths must be separate stroked, unfilled paths; keep clipping masks separate.');
-                path.strokeColor=colors[types[j]];
-                path.move(types[j]==='thru'?thru:kiss,ElementPlacement.PLACEATEND);
-                cutCount++;
-            }
-        }
-        if(!cutCount)throw Error('No cut paths found. Use thru-cut / kiss cut layers or named CutContour_Thru-cut / CutContour_Kiss-cut spots.');
-        for(i=0;i<production.pageItems.length;i++){
-            var b=production.pageItems[i].visibleBounds;
-            bounds[0]=Math.min(bounds[0],b[0]);bounds[1]=Math.max(bounds[1],b[1]);bounds[2]=Math.max(bounds[2],b[2]);bounds[3]=Math.min(bounds[3],b[3]);
-        }
-        var pad=2*72/25.4;
-        production.artboards[0].artboardRect=[bounds[0]-pad,bounds[1]+pad,bounds[2]+pad,bounds[3]-pad];
+        production=EZPilot.prepareSelection(source,items,settings.bleedMm).document;
         var folder=new Folder(Folder.temp.fsName+'/eznest-illustrator');
         if(!folder.exists&&!folder.create())throw Error('Cannot create the temporary export folder.');
         var requestId='',hex='0123456789abcdef';for(i=0;i<32;i++)requestId+=hex.charAt(Math.floor(Math.random()*16));

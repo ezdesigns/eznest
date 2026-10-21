@@ -77,6 +77,7 @@
         <input id="hot-folder" type="text" placeholder="Hot folder path" autocomplete="off">
         <span id="hot-default" class="hint"></span>
         <span id="hot-error" class="lan-note" hidden></span>
+        <button id="browse-output" class="link" type="button">Choose folder…</button>
       </label>
       <label class="wide">Printer
         <input id="printer" type="text" maxlength="80" autocomplete="off">
@@ -141,7 +142,7 @@
     <label id="drop" class="drop">Drop your files
       <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
     </label>
-    <p class="hint import-hint">PDF, PDF-compatible AI, or SVG</p>
+    <p class="hint import-hint">AI, PDF or SVG · Save AI with “Create PDF Compatible File” on. From Illustrator, use Nest whole document for the complete visible design.</p>
   </div>
   <div id="sheet-tabs" class="tabs" hidden></div>
   <div class="preview-tools" id="preview-tools" hidden>
@@ -161,11 +162,10 @@
     <h2>Job</h2>
   <div class="quiet">
     <select id="material" class="material-native" aria-label="Material" tabindex="-1">
-      <option value="moto" data-name="Moto">Moto</option>
       <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>Moto Regular</option>
-      <option value="holographic" data-name="Holographic">Holographic</option>
-      <option value="chrome" data-name="Chrome">Chrome</option>
-      <option value="custom">Custom</option>
+      <option value="holographic" data-name="Moto Holographic">Moto Holographic</option>
+      <option value="chrome" data-name="Moto Chrome">Moto Chrome</option>
+      <option value="custom">+ Add material</option>
     </select>
     <label class="width">Width
       <input id="nest-width" type="number" min="0" step="any" value="51.5" inputmode="decimal">
@@ -193,9 +193,15 @@
     <button id="choose-kiss" type="button">KISS</button>
   </div>
   <div id="confirm" class="confirm" hidden>
-    <strong>Ready to send?</strong>
+    <strong>Save your print</strong>
     <p class="hint">Check pieces, cuts, and size. Your RIP controls printing.</p>
     <p id="confirm-summary"></p>
+    <div class="fields">
+      <label class="wide">Save to<select id="save-destination"><option value="download">My computer</option><option value="folder">Saved print folder</option></select></label>
+      <label class="wide" id="save-name-row">File name<input id="save-name" maxlength="100" autocomplete="off"></label>
+      <label class="wide" id="save-format-row">File type<select id="save-format"><option value="pack">Complete print pack (.zip)</option><option value="pdf">Print file (.pdf)</option></select></label>
+    </div>
+    <p id="save-location-note" class="hint"></p>
     <button id="confirm-send" class="primary" type="button">Confirm send</button>
     <button id="confirm-back" class="link" type="button">Back</button>
   </div>
@@ -238,6 +244,9 @@
       <label>Edge clearance
         <span class="measure"><input id="margin" type="number" min="0" step="any" value="0.25" inputmode="decimal"><span data-unit>in</span></span>
       </label>
+      <label>Full roll length
+        <span class="measure"><input id="roll-length" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal"><span data-unit>in</span></span>
+      </label>
       <label>Available length
         <span class="measure"><input id="available-length" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal"><span data-unit>in</span></span>
         <span class="hint">Update after printing.</span>
@@ -246,7 +255,7 @@
         <span class="measure"><input id="sheet" type="number" min="0" step="any" value="60" inputmode="decimal"><span data-unit>in</span></span>
       </label>
       </div>
-      <details id="material-advanced"><summary>Advanced</summary>
+      <details id="material-advanced"><summary>Turning pieces, bleed &amp; cutter marks</summary>
       <div class="fields">
       <label>Rotation
         <select id="rotations">
