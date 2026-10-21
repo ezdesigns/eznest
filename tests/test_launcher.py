@@ -12,6 +12,20 @@ import server
 
 
 class LauncherTests(unittest.TestCase):
+    def test_isolated_test_cannot_attach_to_same_version_server(self):
+        response=io.BytesIO(json.dumps({'app':'eznest','version':launcher.VERSION}).encode())
+        with patch.object(sys,'argv',['eznest','--isolated','--data-dir','test-only']), \
+             patch.object(launcher,'urlopen',return_value=response), patch('webbrowser.open') as browser, patch('server.serve') as serve:
+            with self.assertRaisesRegex(RuntimeError,'will not open or change'):launcher.main()
+            browser.assert_not_called()
+            serve.assert_not_called()
+
+    def test_isolated_test_requires_explicit_data_and_loopback(self):
+        for args in (['--isolated'], ['--isolated','--data-dir','test-only','--lan']):
+            with patch.object(sys,'argv',['eznest',*args]),patch.object(launcher,'urlopen') as lookup:
+                with self.assertRaisesRegex(ValueError,'isolated test'):launcher.main()
+                lookup.assert_not_called()
+
     def test_existing_same_version_reused(self):
         response=io.BytesIO(json.dumps({'app':'eznest','version':launcher.VERSION}).encode())
         with patch.object(sys,'argv',['eznest','--no-browser']),patch.object(launcher,'urlopen',return_value=response),patch('webbrowser.open') as browser:

@@ -1,6 +1,7 @@
 """Whole-piece sheet allocation with a valid fallback for every optimized sheet."""
 import copy
 import math
+import time
 from collections import Counter
 from shapely.geometry import Polygon
 from shapely.affinity import rotate
@@ -13,6 +14,7 @@ def subset(job, placements):
 
 
 def split_nest(job):
+    started=time.monotonic()
     settings=job['settings']
     limit=number(settings.get('sheetLength'),'Sheet length',10,5000)
     width=settings['width']; margin=settings['margin']; gap=settings['gap']
@@ -51,28 +53,51 @@ def split_nest(job):
         bin['placements'].append({'id':part['id'],'x':x+.11-x0,'y':y+.11-y0,'rotation':angle})
         if w-vw-gap>.01: bin['free'].append((x+vw+gap,y,w-vw-gap,vh))
         if h-vh-gap>.01: bin['free'].append((x,y+vh+gap,w,h-vh-gap))
-    all_placements=[]; sheets=[]; offset=0; total_area=0; elapsed=0
+    all_placements=[]; sheets=[]; offset=0; total_area=0
+    # Bounding boxes cannot interlock. Before committing several bins, let the
+    # contour solver try the complete job on one sheet when its area permits it.
+    area=sum(Polygon(p['points']).area*p.get('quantity',1) for p in job['parts'])
+    if len(bins)>1 and area <= usable_w*usable_h:
+        whole={**job,'settings':{**settings,'maxLength':min(limit,settings.get('maxLength') or limit)}}
+        whole['settings'].pop('sheetLength',None)
+        attempted=time.monotonic()
+        try:
+            candidate=solve(whole)
+            validate_result(whole,candidate)
+            candidate['placements']=[{**p,'sheet':0} for p in candidate['placements']]
+            candidate['sheets']=[{'index':0,'offset':0,'usedLength':candidate['usedLength'],'pieces':len(candidate['placements']),'area':candidate['area']}]
+            validate_result(job,candidate)
+            candidate['elapsed']=time.monotonic()-started
+            return candidate
+        except ValueError:
+            pass
+        # If the contour search used its budget, retain the already valid bins.
+        # Do not run another full search budget for each fallback sheet.
+        remaining=max(0,settings['seconds']-(time.monotonic()-attempted))
+    else:
+        remaining=settings['seconds']
     for index,bin in enumerate(bins):
         local_job=subset(job,bin['placements'])
-        local_job['settings']={**settings,'maxLength':limit,'seconds':max(1,int(settings['seconds']/len(bins)))}
+        local_job['settings']={**settings,'maxLength':limit,'seconds':max(1,int(remaining/len(bins)))}
         local_job['settings'].pop('sheetLength',None)
         result={'width':width,'placements':bin['placements']}
         shapes=validate_result(local_job,result)
         result['usedLength']=max(s.bounds[3] for s in shapes)+margin
         try:
-            optimized=solve(local_job)
-            if optimized['usedLength']<result['usedLength']: result=optimized
+            if remaining>=1:
+                optimized=solve(local_job)
+                if optimized['usedLength']<result['usedLength']: result=optimized
         except ValueError:
             pass
         shapes=validate_result(local_job,result)
-        area=sum(s.area for s in shapes); total_area+=area; elapsed+=result.get('elapsed',0)
+        area=sum(s.area for s in shapes); total_area+=area
         sheets.append({'index':index,'offset':offset,'usedLength':result['usedLength'],'pieces':len(result['placements']),'area':area})
         all_placements.extend({**p,'sheet':index,'y':p['y']+offset} for p in result['placements'])
         offset+=result['usedLength']
     if settings.get('maxLength') is not None and offset>settings['maxLength']+.001:
         raise ValueError('The sheets exceed the available total roll length. Increase the roll limit or select fewer jobs.')
     result={'width':width,'usedLength':offset,'placements':all_placements,'sheets':sheets,'area':total_area,
-            'utilization':total_area/(width*offset),'elapsed':elapsed,'validated':True,'engine':'Sparrow with whole-piece sheet allocation'}
+            'utilization':total_area/(width*offset),'elapsed':time.monotonic()-started,'validated':True,'engine':'Sparrow with whole-piece sheet allocation'}
     validate_result(job,result)
     return result
 

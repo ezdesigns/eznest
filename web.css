@@ -46,6 +46,8 @@ button { cursor: pointer; }
 }
 #settings > summary::-webkit-details-marker { display: none; }
 #settings > summary:hover { background: rgba(0, 0, 0, .05); }
+#settings > summary::after { content: 'Settings'; font-size: 12px; }
+#settings > summary { background: #f7f7f4; width: 90px; grid-template-columns: 20px 1fr; gap: 6px; padding: 6px; }
 #settings .panel {
   position: absolute; top: 42px; right: 0;
   width: min(360px, calc(100vw - 32px));
@@ -59,6 +61,19 @@ button { cursor: pointer; }
 }
 .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .fields label.wide { grid-column: 1 / -1; }
+.fields .setting-field.wide { grid-column: 1 / -1; }
+.setting-field { display: grid; gap: 6px; font-size: 13px; font-weight: 700; min-width: 0; }
+.setting-heading { display: inline-flex; align-items: center; gap: 6px; }
+.fields .setting-heading label { display: inline; font: inherit; }
+.setting-info { flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 1px solid #b6b6ad; border-radius: 50%; background: #fff; color: #45453d; font: 700 13px Georgia, serif; }
+.setting-info:hover, .setting-info[aria-expanded="true"] { color: #fff; background: #30342c; border-color: #30342c; }
+.setting-help { position: fixed; z-index: 20; width: min(290px, calc(100vw - 24px)); padding: 13px 15px; border-radius: 10px; background: #30342c; color: #fff; font-size: 13px; line-height: 1.55; box-shadow: 0 6px 24px #0003; }
+.settings-title { margin: 0 0 4px; font-size: 18px; }
+.settings-intro { margin-bottom: 16px; }
+.settings-save { position: sticky; bottom: -16px; background: #fff; margin-top: 16px; padding: 12px 0 4px; border-top: 1px solid #e7e7e1; }
+#settings .settings-save button { min-height: 40px; width: 100%; font-size: 14px; }
+#settings-saved { font-size: 13px; margin-top: 6px; color: #315b37; }
+#settings-saved.error { color: var(--alarm); }
 .fields label, .check { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
 .check { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-weight: 400; font-size: 14px; }
 .check input { width: 16px; height: 16px; }
@@ -118,6 +133,14 @@ body.dragging .drop { opacity: .55; }
   box-shadow: 0 1px 0 rgba(0, 0, 0, .06);
 }
 .materials button[aria-pressed="true"] { background: #111; color: #fff; }
+.material-area { width: min(720px, 100%); display: grid; gap: 12px; }
+.material-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.material-area > .hint { text-align: center; }
+.preset-editor { background: #fff; padding: 22px; border: 1px solid #dfdfd8; border-radius: 16px; display: grid; gap: 16px; text-align: left; }
+.preset-editor h2 { font-size: 19px; margin: 0; }
+.preset-actions { display: flex; gap: 20px; align-items: center; }
+.preset-editor .fields { gap: 16px; }
+.materials button:disabled { opacity: .5; cursor: default; }
 .material-native { position: absolute; left: -10000px; width: 240px; height: auto; }
 .quiet { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
 .sheet-id {
@@ -216,3 +239,55 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   .sheet-frame { min-height: 180px; }
 }
 
+
+#material-advanced summary { cursor: pointer; font-size: 14px; font-weight: 700; }
+#material-advanced .fields { margin-top: 16px; }
+.preset-editor .fields { align-items: start; }
+
+/* Preview, job controls, then the material selector. */
+main { min-height: auto; padding: 20px 0 28px; gap: 18px; }
+.workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; width: 100%; align-items: start; }
+.canvas-area { min-width: 0; display: grid; gap: 10px; }
+.job-panel { display: grid; gap: 18px; padding: 20px; background: #fff; border: 1px solid #e7e7e1; border-radius: 14px; }
+.job-panel h2 { margin: 0; font-size: 18px; }
+.job-panel .quiet { justify-content: space-between; gap: 12px; }
+.job-panel .files { gap: 12px; }
+.job-panel .files li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; }
+.job-panel .files .file-name { grid-column: 1 / -1; }
+.job-panel .files button { justify-self: end; font-size: 12px; }
+.job-panel .metrics { gap: 14px 6px; border-top: 1px solid #e7e7e1; padding-top: 18px; }
+.job-panel .metrics .label { font-size: 10px; letter-spacing: 0; text-transform: none; }
+.job-panel .metrics .num { font-size: 28px; }
+.job-panel .metrics .unit { font-size: 13px; }
+.job-panel .gate { font-size: 13px; }
+.job-panel .confirm p { font-size: 13px; }
+.job-panel #status { font-size: 13px; }
+.job-panel #add-files { text-align: left; }
+.preview-tools { font-size: 14px; }
+.preview-tools label { font-size: 12px; }
+.preview-tools select { width: 110px; font-size: 13px; }
+.sheet-frame { max-height: 64vh; }
+.key { font-size: 11px; }
+.material-area { width: 100%; max-width: none; border-top: 1px solid #deded8; padding-top: 16px; gap: 10px; }
+.material-heading { font-size: 14px; }
+.materials { justify-content: flex-start; }
+.materials button { min-width: 0; min-height: 38px; padding: 0 16px; border-radius: 8px; font-size: 13px; }
+.material-area > .hint { text-align: left; }
+#material-summary:empty { display: none; }
+.preset-editor { max-width: 720px; padding: 18px; }
+#job-details, #settings .quick-guide { margin-top: 16px; font-size: 13px; }
+#job-details summary, #settings .quick-guide summary { cursor: pointer; text-align: left; }
+#job-details .sheet-id { margin-top: 8px; text-align: left; }
+.drop { min-height: 42vh; border: 1px dashed #c4c4bc; border-radius: 12px; font-size: 22px; }
+.import-hint { margin-top: 8px; font-size: 12px; }
+@media (max-width: 800px) {
+  .workspace-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .job-panel { gap: 12px; padding: 16px; }
+  .job-panel h2 { display: none; }
+  .job-panel .files li { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .job-panel .files .file-name { grid-column: auto; }
+  .job-panel .metrics { gap: 8px; padding-top: 12px; }
+  .job-panel .metrics .num { font-size: 30px; }
+  .sheet-frame { max-height: 42vh; min-height: 180px; }
+  main { padding-top: 16px; }
+}

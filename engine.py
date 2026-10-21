@@ -19,7 +19,7 @@ def number(value, name, low, high):
 def validate_job(job):
     settings = job['settings']
     width = number(settings['width'], 'Material width', 10, 5000)
-    length = None if settings.get('maxLength') is None else number(settings['maxLength'], 'Maximum length', 10, 5000)
+    length = None if settings.get('maxLength') is None else number(settings['maxLength'], 'Available roll length', 10, 1000000)
     gap = number(settings['gap'], 'Gap', 0, 100)
     margin = number(settings['margin'], 'Edge margin', 0, 100)
     seconds = number(settings['seconds'], 'Search time', 1, 120)

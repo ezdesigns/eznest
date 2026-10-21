@@ -20,6 +20,28 @@ from shapely.geometry import Polygon, box
 
 MM = 25.4 / 72
 IDENTITY = (1, 0, 0, 1, 0, 0)
+MAX_PDF_BYTES = 32_000_000
+MAX_PAGE_OPERATIONS = 1_000_000
+
+
+def validate_layer_usage(group):
+    """Illustrator CreatorInfo describes authorship, not layer visibility."""
+    usage = group.get('/Usage')
+    if usage is not None:
+        usage = usage.get_object()
+        if not isinstance(usage, DictionaryObject) or set(usage) - {'/CreatorInfo'}:
+            raise ValueError('Export without conditional PDF layer print/view rules.')
+
+
+def flattened_path(commands):
+    """Flatten only geometry used for cutting or clipping, never ordinary ink."""
+    points = []
+    for op, values in commands:
+        if op in ('m', 'l'):
+            points.append(values)
+        elif op == 'c':
+            points.extend(curve_points(points[-1], values[:2], values[2:4], values[4:6]))
+    return points
 
 
 def matrix(a, b):
@@ -74,8 +96,9 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
             value=resources.get('/Properties',DictionaryObject()).get_object().get(value)
             if value is None:raise ValueError('A PDF layer reference is missing.')
         value=value.get_object()
-        if not isinstance(value,DictionaryObject) or value.get('/Type')!='/OCG' or value.get('/Usage'):
+        if not isinstance(value,DictionaryObject) or value.get('/Type')!='/OCG':
             raise ValueError('Conditional PDF layer visibility is not supported. Export all layers visible.')
+        validate_layer_usage(value)
         return [str(value.get('/Name',''))]
 
     def visit(stream, resources, initial=IDENTITY, depth=0, inherited=None, clips=None, inherited_layers=None):
@@ -103,7 +126,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
 
         for operands,op in content.operations:
             budget[0]+=1
-            if budget[0]>300_000:raise ValueError('PDF page is too complex. Export a smaller print-only file.')
+            if budget[0]>MAX_PAGE_OPERATIONS:raise ValueError('PDF page is too complex. Export a smaller print-only file.')
             if op==b'q':stack.append(copy.deepcopy(state))
             elif op==b'Q':
                 if not stack:raise ValueError('PDF graphics state is unbalanced.')
@@ -146,7 +169,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
                 coords=[point(state['matrix'],operands[i:i+2]) for i in range(0,len(operands),2)]
                 if op==b'v':coords.insert(0,points[-1])
                 if op==b'y':coords.append(coords[-1])
-                points.extend(curve_points(points[-1],*coords));commands.append(('c',[v for p in coords for v in p]))
+                points.append(coords[-1]);commands.append(('c',[v for p in coords for v in p]))
             elif op==b're':
                 finish_path();x,y,w,h=map(float,operands)
                 points=[point(state['matrix'],p) for p in [(x,y),(x+w,y),(x+w,y+h),(x,y+h)]]
@@ -169,6 +192,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
                         if state['dashed']:raise ValueError('Dashed cut strokes are not supported. Expand them to explicit cut paths first.')
                         if pending_clip:raise ValueError('A cut stroke also changes the clipping path. Separate the cut from artwork clipping.')
                         for cmd,pts,closed in paths:
+                            pts=flattened_path(cmd)
                             if len(pts)<2 or len(pts)>5000 or any(not math.isfinite(v) for p in pts for v in p):raise ValueError('Invalid or oversized cut path.')
                             geom=Polygon(pts) if closed and len(pts)>=3 else LineString(pts)
                             if not geom.is_valid or geom.is_empty or (closed and geom.area*MM*MM<.01) or (not closed and geom.length*MM<.01):raise ValueError('A cut path is self-intersecting or too small.')
@@ -178,7 +202,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
                         if op in (b'b',b'b*'):output.append(([],b'h'))
                         op=(b'f*' if op.endswith(b'*') else b'f') if fills else b'n'
                 if pending_clip:
-                    state['clips'].append(Polygon(paths[0][1]) if len(paths)==1 and paths[0][2] else Polygon());pending_clip=None
+                    state['clips'].append(Polygon(flattened_path(paths[0][0])) if len(paths)==1 and paths[0][2] else Polygon());pending_clip=None
                 paths=[]
             elif op==b'Do':
                 ref=xobjects.get(operands[0])
@@ -264,12 +288,14 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None):
         properties=reader.root_object['/OCProperties'];default=properties.get('/D',DictionaryObject()).get_object()
         if str(default.get('/BaseState','/ON'))!='/ON' or default.get('/OFF') or default.get('/AS'):raise ValueError('Export a print-only PDF with all layers visible. Hidden or conditional visibility is unsupported.')
         for group in properties.get('/OCGs',[]):
-            if group.get_object().get('/Usage'):raise ValueError('Export without conditional PDF layer print/view rules.')
+            validate_layer_usage(group.get_object())
     writer=PdfWriter();pieces=[];registration_removed=0;path_count=0
     for i,original in enumerate(reader.pages):
         if original.get('/Annots'):raise ValueError('Flatten annotations/forms in a print-only PDF before nesting.')
         if float(original.get('/UserUnit',1))!=1:raise ValueError('PDF UserUnit scaling is unsupported. Export at actual size with standard PDF units.')
-        page=writer.add_page(original)
+        # Native Illustrator editing data is not PDF paint and is not needed in
+        # the local print source. Preserve the original uploaded AI separately.
+        page=writer.add_page(original, excluded_keys=['/PieceInfo', '/Thumb'])
         if page.rotation:page.transfer_rotation_to_content()
         paths,removed=extract_page(page,writer,cut_spot,i,mapping);registration_removed+=removed;path_count+=len(paths)
         if path_count>5000:raise ValueError('Use no more than 5000 cut paths per file.')
@@ -356,7 +382,7 @@ def sheet_id_operators(width_mm, height_mm, margin_mm, sheet_id):
     return f'q 0 g BT /EZSheetFont 6 Tf {x:.2f} {y:.2f} Td ({sheet_id}) Tj ET Q'
 
 
-def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutContour', sheet_filter=None, cut_mapping=None, sheet_id=None):
+def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutContour', sheet_filter=None, cut_mapping=None, sheet_id=None, preview=False):
     """Transform a piece's print art and every owned cut using one rigid matrix."""
     from cut_mapping import output_mapping,OPERATIONS
     mapping=output_mapping({'cutMapping':cut_mapping} if cut_mapping else {'cutSpot':cut_spot,'cutLayer':cut_layer})
@@ -395,7 +421,8 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
     for sheet in sheets:
         if sheet_filter is not None and sheet['index']!=sheet_filter:continue
         if not 0<sheet['usedLength']<=5000 or not 0<result['width']<=5000:raise ValueError('PDF sheets are limited to 5000 mm per side. Set a maximum sheet length for a longer batch.')
-        page=writer.add_blank_page(width=result['width']/MM,height=sheet['usedLength']/MM)
+        page_width=sheet.get('previewWidth',result['width']) if preview else result['width']
+        page=writer.add_blank_page(width=page_width/MM,height=sheet['usedLength']/MM)
         color_spaces={NameObject(keys[op][0]):spaces[op] for op in active}
         properties={NameObject(keys[op][1]):groups[op] for op in active}
         if print_group:
@@ -448,14 +475,25 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
     meta.update(id=ident,sourceHash=hashlib.sha256(raw).hexdigest())
     # Preview in a separate process through the import worker. PDFium is not thread-safe.
     import pypdfium2 as pdfium
-    preview_parts=[]
-    for piece in meta['pieces']:
+    preview_parts=[];preview_sheets=[];placements=[];preview_items=[];offset=0
+    for index,piece in enumerate(meta['pieces']):
         w=(piece['bounds'][2]-piece['bounds'][0])*MM; h=(piece['bounds'][3]-piece['bounds'][1])*MM
-        part={'id':piece['id'],'documentId':ident,'pdfPieceId':piece['id']}
-        preview=export_pdf({'parts':[part]}, {'width':w,'usedLength':h,'placements':[{'id':piece['id'],'x':0,'y':0,'rotation':0}]}, {ident:(clean,meta)},cut_spot,cut_mapping=meta['cutMapping'])
-        with pdfium.PdfDocument(preview) as doc:
-            page=doc[0]; bitmap=page.render(scale=min(2,600/max(page.get_size())),fill_color=(255,255,255,0))
-            image=bitmap.to_pil(); buffer=io.BytesIO(); image.save(buffer,format='PNG'); bitmap.close(); page.close()
+        preview_items.append({'id':piece['id'],'documentId':ident,'pdfPieceId':piece['id']})
+        preview_sheets.append({'index':index,'offset':offset,'usedLength':h,'previewWidth':w})
+        placements.append({'id':piece['id'],'x':0,'y':offset,'rotation':0,'sheet':index});offset+=h
+    # One PDF document shares the source Form across all preview pages. Parsing
+    # and copying a detailed AI once per piece can take minutes for a full kit.
+    preview=export_pdf({'parts':preview_items}, {'width':max(s['previewWidth'] for s in preview_sheets),'usedLength':offset,'placements':placements,'sheets':preview_sheets}, {ident:(clean,meta)},cut_spot,cut_mapping=meta['cutMapping'],preview=True)
+    with pdfium.PdfDocument(preview) as doc:
+      for index,piece in enumerate(meta['pieces']):
+        w=preview_sheets[index]['previewWidth']; h=preview_sheets[index]['usedLength']
+        page=doc[index]; bitmap=None
+        try:
+            bitmap=page.render(scale=min(2,600/max(page.get_size())),fill_color=(255,255,255,0))
+            image=bitmap.to_pil(); buffer=io.BytesIO(); image.save(buffer,format='PNG')
+        finally:
+            if bitmap is not None:bitmap.close()
+            page.close()
         unknown=[]
         for path in piece.get('cutPaths') or []:
             if path.get('operation') in ('thru','kiss','regmark'): continue
@@ -521,7 +559,7 @@ def worker(request, output):
     try:
         data=json.loads(request.read_text(encoding='utf-8'))
         raw=base64.b64decode(data['content'],validate=True)
-        if len(raw)>20_000_000: raise ValueError('PDF/AI files are limited to 20 MB in this build.')
+        if len(raw)>MAX_PDF_BYTES: raise ValueError('PDF/AI files are limited to 32 MB in this build.')
         result={'ok':True,'document':import_to_store(raw,output.parent/'documents',data.get('bleedMm',0),data.get('cutSpot','CutContour'),data.get('cutMapping'))}
     except Exception as error:
         result={'ok':False,'error':str(error)}

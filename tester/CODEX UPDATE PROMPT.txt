@@ -1,0 +1,46 @@
+HOW TO USE
+After the organizer gives you a newer tester ZIP, open its newly extracted
+folder in a local Codex chat. Paste the prompt below. Keep your old kit folder.
+This prompt helps apply a supplied update; it does not subscribe to updates.
+
+COPY FROM HERE
+
+Help update my separate EZ Nest tester installation to the kit in this local
+folder ({{KIT_ID}}, app build {{APP_BUILD}}). Read UPDATES.txt, READ FIRST.txt,
+KIT.json and BUILD.json. Verify every FILES.sha256.json hash with paths confined
+to this folder. Do not download an arbitrary build, pull source code, publish,
+enable automatic updates, weaken signature checks or change a production install.
+
+Identify the old kit and currently running executable, command line, session
+PID, trial data marker and output destination. Ask me for the old folder only
+if it cannot be determined. Do not stop an unrelated process or protected rc.4.
+Version text alone is insufficient because separate kits can share that label.
+If the app bytes and bundled runtime/scripts are identical, explain that this
+is a guide-only update: retain the running app and use the new guide/prompts.
+
+For an actual app update, preserve my current work. If a nest or send is active,
+wait for completion; if a job is awaiting review, ask me to finish it. Record
+the trial settings and saved-output hashes, without including sensitive paths
+or artwork in a shareable report. Stop only the positively identified trial
+using its own STOP Shop Test.cmd, and verify it stopped. Never kill arbitrary
+Python/eznest processes. If the stop command refuses, investigate rather than
+bypassing it. Respect required OS/tool approvals.
+
+While stopped, copy the existing marked eznest-shop-trial data/output folder
+to a new dated backup, without deleting or moving anything. Use the actual
+resolved data location, not an assumed path on another Windows account.
+Preserve browser material presets and keep using the same browser/origin.
+Do not restore old data over newer files automatically.
+
+Start this verified kit with START EZ NEST.cmd. Verify the expected executable
+owns the loopback server, saved settings/job/output survived, output still
+points to TEST Output, and updates/sharing remain off. Do not overwrite an
+existing job just to run a sample. Keep the old kit and backup as a fallback.
+If startup fails, retain the failure evidence and restart the old trial only
+after checking its data remains compatible; otherwise ask before any restoration.
+
+Write a dated local report with old/new kit and app IDs, checks performed,
+success/failure, and any remaining action for me. No customer names, artwork,
+session tokens or external messages. Do not claim this enables automatic updates.
+
+END OF PROMPT

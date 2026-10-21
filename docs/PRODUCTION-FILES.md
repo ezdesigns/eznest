@@ -14,6 +14,9 @@ cut boundaries define pieces; contained open/closed cut paths stay attached to t
 A kiss-only closed boundary is valid. Separate pieces nested inside another piece
 are not inferred: separate them in the source before import. Multiple pages, cubic curves, rotated
 pages, transformed/reused forms and static all-visible PDF layers are supported.
+Illustrator layer CreatorInfo metadata is accepted; print/view visibility rules
+remain unsupported. Native editing metadata is omitted from the local PDF print
+source. Previews share that source across pieces; exported artwork stays vector.
 
 Enter existing bleed in millimeters at import. Zero clips at the cut; a positive
 value reserves an outward envelope. It does not create missing ink. Review every
@@ -35,9 +38,15 @@ hidden/conditional layers, nonstandard UserUnit, missing boundaries, conflicting
 mappings, orphan open cuts, duplicate cuts, intersecting closed boundaries without
 a unique owner, filled/dashed cut shapes, clipped cuts, overlapping bleed regions
 or pieces outside the page. DeviceN cut colors are unsupported.
-Limits: 20 MB, 25 pages, 800 pieces/copies per batch, 2000 cut paths per page,
-5000 per document and 5000 sampled points per path.
+Limits: 32 MB, 25 pages, 800 pieces/copies per batch, 2000 cut paths per page,
+5000 per document, 5000 sampled points per path and 1,000,000 traversed drawing
+operators per page.
 This is narrower than arbitrary PDF/AI compatibility.
+
+Refreshing the shop page restores file rows, per-file sets and the saved layout's
+nesting settings, including while a search is running. To change a PDF's input
+cut mapping after refresh, start over and re-add its original file; the browser
+does not retain access to the original file picker selection.
 
 Source clipping is not redaction. Original referenced drawing objects may remain
 behind clips in exported PDFs. Use print-only sources without content that must

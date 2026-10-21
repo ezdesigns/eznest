@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from zipfile import ZipFile
+from unittest.mock import patch
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, DecodedStreamObject
@@ -43,6 +44,71 @@ def document_job(parsed):
 
 
 class PDFProductionTests(unittest.TestCase):
+    def test_creator_metadata_is_not_a_visibility_rule(self):
+        from pypdf.generic import TextStringObject
+        from cut_mapping import defaults
+        writer=PdfWriter(clone_from=io.BytesIO(pdf_fixture(spot=False)))
+        creator=DictionaryObject({NameObject('/Creator'):TextStringObject('Adobe Illustrator'),NameObject('/Subtype'):NameObject('/Artwork')})
+        group=DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject('thru-cut'),NameObject('/Usage'):DictionaryObject({NameObject('/CreatorInfo'):creator})})
+        ref=writer._add_object(group)
+        writer.root_object[NameObject('/OCProperties')]=DictionaryObject({NameObject('/OCGs'):ArrayObject([ref])})
+        page=writer.pages[0]
+        page['/Resources'][NameObject('/Properties')]=DictionaryObject({NameObject('/Cuts'):ref})
+        stream=DecodedStreamObject();stream.set_data(b'/OC /Cuts BDC 20 20 80 60 re S EMC')
+        page[NameObject('/Contents')]=writer._add_object(stream)
+        def raw():
+            out=io.BytesIO();writer.write(out);return out.getvalue()
+        clean,meta=read_document(raw(),cut_mapping=defaults())
+        self.assertEqual(meta['pieces'][0]['cutCounts']['thru'],1)
+        self.assertAlmostEqual(meta['pieces'][0]['points'][1][0],80*MM)
+        for key in ('/View','/Print','/Zoom','/Language','/User'):
+            group['/Usage'][NameObject(key)]=DictionaryObject()
+            with self.subTest(key=key),self.assertRaisesRegex(ValueError,'conditional'):
+                read_document(raw(),cut_mapping=defaults())
+            del group['/Usage'][key]
+
+    def test_detailed_ink_is_preserved_without_flattening_its_curves(self):
+        writer=PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+        stream=DecodedStreamObject()
+        ink=b'q 0 0 1 rg 15 15 m 20 40 40 40 60 15 c h f Q\n'
+        # More than the previous page-operation cap; cut geometry stays simple.
+        stream.set_data(ink*40000+b'/Contour CS 1 SCN 20 20 80 60 re S')
+        writer.pages[0][NameObject('/Contents')]=writer._add_object(stream)
+        raw=io.BytesIO();writer.write(raw)
+        with patch('pdf_io.curve_points',side_effect=AssertionError('Ordinary ink was flattened')):
+            clean,meta=read_document(raw.getvalue())
+        self.assertEqual(len(meta['pieces']),1)
+        self.assertEqual(PdfReader(io.BytesIO(clean)).pages[0].get_contents().get_data().count(b' c\n'),40000)
+        with patch('pdf_io.MAX_PAGE_OPERATIONS',100),self.assertRaisesRegex(ValueError,'too complex'):
+            read_document(raw.getvalue())
+
+    def test_curved_clipping_still_rejects_a_clipped_cut(self):
+        writer=PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+        stream=DecodedStreamObject()
+        stream.set_data(b'q 20 20 m 20 80 l 100 80 l 100 20 l 80 70 40 70 20 20 c h W n /Contour CS 1 SCN 30 25 50 30 re S Q')
+        writer.pages[0][NameObject('/Contents')]=writer._add_object(stream)
+        raw=io.BytesIO();writer.write(raw)
+        with self.assertRaisesRegex(ValueError,'clipped'):
+            read_document(raw.getvalue())
+
+    def test_shared_preview_pages_match_individual_vector_exports(self):
+        import pypdfium2 as pdfium
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as directory:
+            parsed=import_to_store(pdf_fixture(forms=True),directory)
+            ident=parsed['documentId']
+            meta=json.loads((Path(directory)/(ident+'.json')).read_text())
+            clean=(Path(directory)/(ident+'.pdf')).read_bytes()
+            for part,piece in zip(parsed['parts'],meta['pieces']):
+                w,h=part['previewWidth'],part['previewHeight']
+                single=export_pdf({'parts':[part]},{'width':w,'usedLength':h,'placements':[{'id':part['id'],'x':0,'y':0,'rotation':0}]},{ident:(clean,meta)},cut_mapping=meta['cutMapping'])
+                with pdfium.PdfDocument(single) as doc:
+                    page=doc[0];bitmap=page.render(scale=min(2,600/max(page.get_size())),fill_color=(255,255,255,0))
+                    expected=bitmap.to_pil().copy();bitmap.close();page.close()
+                actual=Image.open(io.BytesIO(base64.b64decode(part['preview'].split(',',1)[1])))
+                self.assertEqual(actual.size,expected.size)
+                self.assertEqual(actual.tobytes(),expected.tobytes())
+
     def test_cut_detection_retains_curves_and_source_colors(self):
         clean,meta=read_document(pdf_fixture(),2)
         self.assertEqual(len(meta['pieces']),2)

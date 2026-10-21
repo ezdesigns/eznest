@@ -46,6 +46,7 @@ jobs:
           node --check production-features.js
           node --check cut-mapping.js
           node --check web.js
+          node --check tester/feedback.js
       - name: Test queue and physical units
         run: node tests/test_queue.cjs
       - name: Test shop profiles

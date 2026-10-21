@@ -32,8 +32,17 @@ def main():
     parser.add_argument('--lan', action='store_true', help='Open the shop network on this computer')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--data-dir', type=Path)
+    parser.add_argument('--isolated', action='store_true', help='Require a separate data folder and refuse an existing server')
+    parser.add_argument('--shop-test', action='store_true', help='Start a separate local trial with TEST output and updates off')
     parser.add_argument('--update-confirm', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.shop_test:
+        from shop_test import default_data_directory
+        args.isolated = True
+        args.web = True
+        args.data_dir = args.data_dir or default_data_directory()
+    if args.isolated and (args.data_dir is None or args.lan):
+        raise ValueError('An isolated test requires --data-dir and loopback access; do not use --lan.')
     if args.host is not None and args.host != '127.0.0.1':
         raise ValueError('Bind to 127.0.0.1 by default. Use --lan to open the shop network.')
     if not 1024 <= args.port <= 65535:
@@ -46,6 +55,8 @@ def main():
     except (URLError, TimeoutError, OSError):
         existing = None
     if existing is not None:
+        if args.isolated:
+            raise RuntimeError(f'Port {args.port} is already in use. This isolated test will not open or change the running application.')
         if existing.get('app') != 'eznest' or existing.get('version') != VERSION:
             raise RuntimeError(f'Another application or eznest version is using port {args.port}. Close it before starting this build.')
         if not args.no_browser:
@@ -55,6 +66,10 @@ def main():
     package_root = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
     frozen = getattr(sys, 'frozen', False)
     data = data_directory(package_root, args.data_dir, frozen=frozen, program_files=os.environ.get('ProgramFiles'), program_data=os.environ.get('ProgramData'))
+    if args.shop_test:
+        from shop_test import prepare
+        prepare(data)
+        os.environ['EZ_NEST_UPDATES'] = '0'
     saved = load_shop(data)
     if args.lan:
         host, lan = '0.0.0.0', True
@@ -73,7 +88,7 @@ def main():
     # Do not expose development-only pages in a distributed executable.
     if getattr(sys, 'frozen', False):
         os.environ.pop('EZ_NEST_TEST_UI', None)
-    if not args.update_confirm:
+    if not args.update_confirm and not args.shop_test:
         import installer_update
         if installer_update.handoff_if_pending(installer_update.install_root(), data):
             return 0

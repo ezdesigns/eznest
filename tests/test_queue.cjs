@@ -51,3 +51,7 @@ assert.equal(groupName({...entry('a'),category:'Stickers'},'category'),'Stickers
 assert.equal(groupName(entry('a'),'material',[preset]),'Vinyl');
 assert.equal(unitScale('in'),25.4);assert.equal(unitScale('cm'),10);assert.equal(25.4/unitScale('in'),1);assert.throws(()=>unitScale('pixels'));
 console.log('Prepared queue lifecycle, source grouping and physical unit conversions passed.');
+
+const fullRoll={...automaticPreset,settings:{...automaticPreset.settings,maxLength:45720,sheetLength:1524}};
+assert.equal(importPresets({...shared,presets:[fullRoll]})[0].settings.maxLength,45720);
+assert.throws(()=>importPresets({...shared,presets:[{...fullRoll,settings:{...fullRoll.settings,maxLength:1000001}}]}),/Invalid/);

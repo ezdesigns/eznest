@@ -203,7 +203,7 @@ async function importFiles(files,role='required'){
   try{for(const file of files){
     if(!/\.(svg|pdf|ai)$/i.test(file.name)){unsupported++;continue;}
     const pdf=/\.(pdf|ai)$/i.test(file.name);
-    if(file.size>(pdf?20_000_000:8_000_000)){failures.push(file.name+' exceeds the '+(pdf?'20':'8')+' MB limit.');continue;}
+    if(file.size>(pdf?32_000_000:8_000_000)){failures.push(file.name+' exceeds the '+(pdf?'32':'8')+' MB limit.');continue;}
     status('Importing '+file.name+'…');
     try{if(pdf?await importDocument(file,role,documentOptions):await importText(await file.text(),file.name,{role}))added++;}catch(e){failures.push(file.name+': '+e.message);}
   }}finally{busy=false;importing=false;renderQueue();}

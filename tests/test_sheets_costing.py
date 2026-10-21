@@ -19,6 +19,14 @@ def job_fixture():
 
 
 class SheetCostTests(unittest.TestCase):
+    def test_interlocking_parts_use_one_sheet_instead_of_separate_bounding_boxes(self):
+        job={'settings':{'width':110,'maxLength':None,'sheetLength':120,'gap':2,'margin':3,'seconds':2,'rotations':[0,90,180,270],'seed':42},
+             'parts':[{'id':'corner','points':[[0,0],[80,0],[80,20],[20,20],[20,80],[0,80]],'quantity':2}]}
+        result=run(job)['result']
+        self.assertEqual(len(result['sheets']),1)
+        self.assertEqual(len(validate_result(job,result)),2)
+        self.assertLessEqual(result['usedLength'],120)
+
     def test_split_keeps_every_whole_piece_within_sheet_limits(self):
         job=job_fixture();result=run(job)['result'];shapes=validate_result(job,result)
         self.assertGreater(len(result['sheets']),1)
@@ -33,6 +41,13 @@ class SheetCostTests(unittest.TestCase):
         with self.assertRaises(ValueError):run(job)
         job=job_fixture();job['settings']['maxLength']=75
         with self.assertRaisesRegex(ValueError,'total roll'):run(job)
+
+    def test_available_roll_can_be_longer_than_one_sheet(self):
+        job=job_fixture();job['settings']['maxLength']=45720
+        result=run(job)['result']
+        self.assertGreater(len(result['sheets']),1)
+        self.assertEqual(len(validate_result(job,result)),5)
+        self.assertTrue(all(sheet['usedLength']<=70 for sheet in result['sheets']))
 
     def test_material_cost_allocates_shared_waste_and_rounds_exactly(self):
         job=job_fixture();job['settings'].update(costPerSquareMeter=17.5,currency='USD')

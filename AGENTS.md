@@ -27,6 +27,10 @@ or completed printing. Do not turn this into an order-management system or RIP.
 
 - Current readiness work belongs on draft PR #4, branch
   `cursor/shop-open-handoff-9891`, targeting `cursor/eznest-web-mvp-8f6a` (PR #1).
+- External contributors follow `CONTRIBUTOR-CODEX.md`: create a separate branch
+  from `cursor/shop-open-handoff-9891` and submit a draft PR back to that branch.
+  They must not push directly to the integration branch or target PR #1's base.
+  This does not retarget the owner's existing draft PR #4.
 - Protect PR #1 and rc.4 at `2c1f547a2449f600711ccb21ddf235f9b9114f00`.
   Do not modify that branch or replace its shop-test installation before the
   ONYX white-gloss test passes and v1 merges. Automated tests do not satisfy
@@ -69,8 +73,9 @@ cut spots are `CutContour_Thru-cut` and `CutContour_Kiss-cut`.
 
 Work on a separate production copy and never silently save over the source.
 The operator chooses an existing Adobe PDF preset. Regular is the only configured
-pilot material. Chrome and Holographic need actual shop rules before enabling
-them. Do not invent color substitutions, bleed values or PDF presets.
+Illustrator preparation material. Chrome and Holographic need actual shop rules
+before enabling specialty preparation. The browser may save named roll presets
+for already prepared artwork; these contain nesting dimensions and spacing only. Do not invent color substitutions, bleed values or PDF presets.
 `Nest in eznest.jsx` remembers those choices per Windows user; `EZ Nest Settings.jsx`
 changes them. Revalidate saved presets against Illustrator's available presets,
 never silently substitute. New exports start at one set. Auto-load only an empty
@@ -81,6 +86,13 @@ The pilot does not yet generate bleed, repair clipping groups, register template
 automatically recolor production art, or return the nest to Illustrator. Preserve
 those limitations in the UI/docs until implemented and validated. Keep
 `bridge-core.js` beside the JSX and compatible with ExtendScript's ES3 runtime.
+
+The separate portable trial is packaged with `build_shop_trial.py` after a
+`build_windows.py --portable-only` build. Its `--shop-test` launch creates marked
+local trial data and TEST Output, disables update checks and refuses other running
+servers. Preserve those isolation guards and the original shop installation.
+`Prepare and Nest.jsx` aliases the existing preparation flow; do not claim it
+adds automatic recoloring, bleed or a native editable Illustrator return path.
 
 ## Local tracking
 

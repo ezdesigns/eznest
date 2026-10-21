@@ -52,7 +52,7 @@ assert.equal(bridge.readPreferences(prefFile,['Other preset']),null);
 disk='{broken';assert.equal(bridge.readPreferences(prefFile,names),null);
 prefFile.open=()=>false;
 assert.throws(()=>bridge.writePreferences(prefFile,saved),/Cannot save/);
-for(const name of ['Nest in eznest.jsx','EZ Nest Settings.jsx']) {
+for(const name of ['Nest in eznest.jsx','Prepare and Nest.jsx','EZ Nest Settings.jsx']) {
   new vm.Script(fs.readFileSync(path.join(__dirname,'../illustrator',name),'utf8').replace(/^#.*$/gm,''));
 }
 console.log('Remembered Illustrator settings: roundtrip, removed presets, corrupt files, invalid materials and save failures passed.');

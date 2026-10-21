@@ -44,10 +44,13 @@ Test-Path (Join-Path $env:ProgramData 'eznest')
 py -3.12 --version
 ```
 
+For contributor changes and PRs, use [CONTRIBUTOR-CODEX.md](CONTRIBUTOR-CODEX.md).
+The remainder of this guide covers the Illustrator production-file pilot.
+
 If the port is occupied, identify the process and intended use. Do not kill it,
-change its settings or silently attach this test to it. The launcher can reuse
-an existing same-version server even when a different data directory was passed;
-the version alone does not prove isolation. This bridge currently requires port
+change its settings or silently attach this test to it. Use `--isolated` so the
+launcher refuses an existing server; without that flag, a same-version server
+can be reused even with a different data directory. This bridge requires port
 8765 on the same PC as Illustrator. A different port or remote host is not a
 supported workaround for the script.
 
@@ -97,7 +100,7 @@ py -3.12 -m venv .local/pilot-venv
 & ./.local/pilot-venv/Scripts/python.exe -m pip install -r requirements.txt
 if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
 $env:EZ_NEST_UPDATES = '0'
-& ./.local/pilot-venv/Scripts/python.exe launcher.py --web --data-dir (Join-Path $pilotRoot 'Data')
+& ./.local/pilot-venv/Scripts/python.exe launcher.py --isolated --web --data-dir (Join-Path $pilotRoot 'Data')
 ```
 
 Do not overwrite an existing environment without inspecting it. If Python is

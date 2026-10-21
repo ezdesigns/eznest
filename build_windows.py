@@ -16,6 +16,7 @@ STATIC=['production.html','queue.css','queue-app.js','queue-core.js','production
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--out',type=Path,required=True,help='Dedicated new build directory outside the source folder')
+    parser.add_argument('--portable-only',action='store_true',help='Build the portable app without compiling an installer')
     args=parser.parse_args();out=args.out.resolve()
     if sys.platform!='win32' or sys.version_info[:2]!=(3,12) or struct.calcsize('P')!=8:raise RuntimeError('Build with 64-bit Python 3.12 on Windows.')
     if out==ROOT or ROOT in out.parents:raise ValueError('Choose a build directory outside the source folder.')
@@ -56,7 +57,7 @@ def main():
     print(f'Portable app: {release}')
     if os.environ.get('WINDOWS_CERT_BASE64', '').strip():
         subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ROOT/'installer'/'sign-payload.ps1'), '-App', str(release/'eznest.exe')], check=True)
-    compile_setup(release)
+    if not args.portable_only:compile_setup(release)
 
 
 def compile_setup(release):

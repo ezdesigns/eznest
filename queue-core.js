@@ -62,7 +62,7 @@
   function validatePreset(p){
     if(!p||typeof p.name!=='string'||!p.name.trim()||p.name.length>80||!['mm','in','cm'].includes(p.units))throw Error('Invalid preset name or units.');
     const s=p.settings||{},finite=(k,lo,hi)=>typeof s[k]==='number'&&Number.isFinite(s[k])&&s[k]>=lo&&s[k]<=hi;
-    if(!finite('width',10,5000)||(s.maxLength!==null&&!finite('maxLength',10,5000))||!finite('gap',0,100)||!finite('margin',0,100)||!finite('seconds',1,120)||s.margin*2>=s.width||(s.maxLength!==null&&s.margin*2>=s.maxLength))throw Error('Invalid material dimensions, margins or search time.');
+    if(!finite('width',10,5000)||(s.maxLength!==null&&!finite('maxLength',10,1000000))||!finite('gap',0,100)||!finite('margin',0,100)||!finite('seconds',1,120)||s.margin*2>=s.width||(s.maxLength!==null&&s.margin*2>=s.maxLength))throw Error('Invalid material dimensions, margins or search time.');
     if(s.rotations!==null&&!['[0]','[0,180]','[0,90,180,270]'].includes(JSON.stringify(s.rotations)))throw Error('Invalid preset rotation rules.');
     if(s.sheetLength!=null&&(!finite('sheetLength',10,5000)||s.sheetLength<=s.margin*2))throw Error('Sheet length must leave room inside the margins.');
     if(s.costPerSquareMeter!=null&&!finite('costPerSquareMeter',0,1000000))throw Error('Enter a nonnegative material cost.');

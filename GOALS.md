@@ -24,7 +24,7 @@ Other shops use the same install. They type their own hot folder, printer, cut n
 
 v1 does not replace the RIP. Color, ICC profiles, and the RIP's own registration marks stay in the RIP.
 
-v1 does not take orders, track inventory, price the job as a product, or drive the printer or cutter directly. The readiness draft adds local workload observations as a foundation for OUTPUT; it does not add order management or printer completion tracking.
+v1 does not take orders, price the job as a product, or drive the printer or cutter directly. The design-PC draft adds a local material list with manually entered available roll length; it does not infer printed stock use or automatically deduct inventory. The readiness draft adds local workload observations as a foundation for OUTPUT; it does not add order management or printer completion tracking.
 
 v1 does not nest on a website. There is no account and no cloud queue.
 
@@ -71,3 +71,23 @@ replacement. EZ Nest Settings changes those choices. The bridge is same-PC only.
 1. **v1 shop test.** EZ Designs runs the release candidate on the shop PC, beside the current workflow.
 2. **Open source.** The repository is public, the license is MIT, and a shop can install, update, and report a problem with no token.
 3. **OUTPUT opt-in.** A shop can join the OUTPUT print production network. Only the machine list and free capacity would be shared, and only after the shop opts in.
+
+## Design-PC material and nesting draft
+
+The simple browser page stores named roll presets in that browser: Moto, Moto Regular,
+Holographic, Chrome and additional presets created with Custom. Holographic and
+Chrome and Moto require the operator to save their dimensions and spacing before use.
+These are nesting settings only; they do not configure ink, ICC profiles, Adobe
+PDF presets or specialty preparation rules. The Illustrator pilot still supports
+only Regular preparation.
+
+A preset includes printable and roll width, spacing, edge/mark clearance, rotation,
+sheet limit and an optional manually updated length left on that roll. Blank
+remaining length means unknown, not unlimited inventory. A nest must fit a known
+remaining length. Preparing, downloading or delivering a pack never deducts it.
+The list is stored in browser preferences, not synchronized inventory across PCs.
+
+Before splitting a job into conservative rectangular bins, the sheet allocator
+tries all contours together when their total area can fit on one sheet. The
+independent geometry checks still require every piece, allowed rotation, spacing
+and sheet boundaries. This is a best-found layout, not a proven optimum.

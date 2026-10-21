@@ -4,6 +4,10 @@ Ez Nest is a local nesting tool for print shops. Read [GOALS.md](GOALS.md) befor
 
 ## Setup
 
+For testing with Codex and proposing an improvement, start with
+[the contributor walkthrough and prompts](CONTRIBUTOR-CODEX.md). It creates a
+separate source environment and test data without replacing a shop installation.
+
 Use 64-bit Python 3.12.
 
 ```powershell
@@ -64,7 +68,11 @@ The Windows installer workflow signs `eznest-setup.exe` when the `WINDOWS_CERT_B
 
 ## Pull requests
 
-Open a pull request against the branch that holds the current shop candidate until v1 is merged. After that, target the default branch.
+Contributor PRs currently target `cursor/shop-open-handoff-9891`, the integration
+branch behind draft PR #4. Start a separate branch for each improvement. The
+owner's existing PR #4 retains its protected base; contributors must not target
+or push to that shop branch. Verify these targets before submitting; after v1
+merges, the owner will identify the next target. Do not assume `main` yet.
 
 Do not commit customer files, tokens, or `.local/`. Do not publish a release or change who can see the repository from a pull request.
 

@@ -2,6 +2,11 @@
 
 [Goals](GOALS.md)
 
+**Testing and suggesting improvements with Codex?** Use the
+[contributor setup and PR walkthrough](CONTRIBUTOR-CODEX.md) on the development
+branch `cursor/shop-open-handoff-9891`. This uses isolated source test data and
+does not replace the protected shop installation.
+
 [Employee quick start](docs/employee-quick-start.md) · [Host updates and rollout checks](docs/windows-updates.md)
 
 Ez Nest is a free, open-source, self-updating desktop nesting tool that any print shop can install in minutes. It nests files, adds cut marks, and sends them to the RIP hot folder.
@@ -101,7 +106,7 @@ Only `--lan` opens a non-loopback listener. A saved preference alone cannot open
 
 ## Limits
 
-One material and up to 800 pieces. PDF import is 20 MB and 25 pages. No EPS, no DeviceN cut colors, no inventory, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
+One material and up to 800 pieces. PDF import is 32 MB and 25 pages. No EPS, no DeviceN cut colors, no inventory, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
 
 Not in v1: job history, order intake, and cost tracking as a product.
 
@@ -155,3 +160,26 @@ Ez Nest is MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Dependencies keep t
 ![First-run setup](docs/screenshots/first-run.png)
 
 ![Settings](docs/screenshots/settings.png)
+
+### Saved materials in the simple browser page
+
+Use the material buttons below the preview. **Custom** creates a named preset;
+**Edit** in the Material row changes the selected roll. Save the roll width, printable width,
+spacing and edge clearance together. Enter the length left on a roll if known;
+update it after actual printing. Preparing a file never deducts stock. Presets
+stay in this browser. Chrome and Holographic are names for already prepared art,
+not automatic specialty color preparation. App settings remain in the top-right
+Settings corner.
+
+### Separate portable shop trial
+
+Build with `python build_windows.py --portable-only --out <new-build-folder>`, then
+package with `python build_shop_trial.py --app <build-folder>/dist/eznest --out
+<new-trial-folder> --build-id <trial-label>`. The trial folder and ZIP include the
+standalone app, Illustrator scripts, licenses, checksums and a short operator guide.
+No installer or service is run. `START Shop Test.cmd` uses `--shop-test`, which
+creates separate local trial data and TEST Output, disables update checks and
+refuses an occupied port. Existing unmarked data folders are never adopted.
+`Prepare and Nest.jsx` is the short-flow entry point for the existing Illustrator
+production-copy/export handoff. It does not add recoloring or bleed generation.
+Physical Illustrator/ONYX/print/cut acceptance remains an operator test.

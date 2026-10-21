@@ -32,7 +32,10 @@ class WorkloadTests(unittest.TestCase):
                         page.wait_for_function("() => document.querySelector('#setup').hidden")
                         page.set_input_files('#file', str(Path(__file__).parents[1] / 'sample-artwork.svg'))
                         page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate').textContent)", timeout=90000)
-                        self.assertGreater(page.locator('#sheet-frame').bounding_box()['width'], 1100)
+                        preview_box = page.locator('#sheet-frame').bounding_box()
+                        controls_box = page.locator('.job-panel').bounding_box()
+                        self.assertGreater(preview_box['width'], controls_box['width'] * 3)
+                        self.assertLessEqual(preview_box['x'] + preview_box['width'], controls_box['x'])
                         self.assertNotRegex(page.locator('body').inner_text(), r'[Ââ]')
                         page.select_option('#preview-zoom', '2')
                         self.assertGreater(page.locator('#preview').bounding_box()['width'],

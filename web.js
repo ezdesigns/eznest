@@ -17,6 +17,10 @@ let leaving = false;
 let nestTimer = 0;
 let illustratorHandoff = null;
 let illustratorLoading = false;
+let materialProfiles = {};
+let presetEditor = null;
+let activeMaterial = 'white-gloss';
+const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'available-length', 'auto-bleed', 'bleed', 'cost'];
 
 function status(message, failed) {
   const el = $('status');
@@ -30,8 +34,94 @@ function prefs() {
 }
 
 function savePrefs(patch) {
-  try { localStorage.setItem(PREF, JSON.stringify({...prefs(), ...patch})); }
-  catch { status('Browser preferences could not be saved. Shop settings are still saved on the host PC.', true); }
+  try { localStorage.setItem(PREF, JSON.stringify({...prefs(), ...patch})); return true; }
+  catch { status('This browser could not save your preferences. Check its storage settings.', true); return false; }
+}
+
+// Explain effects beside the controls, without adding instructions to the job flow.
+function installSettingsHelp() {
+  const help = {
+    'cut-preset': ['Cut line names', 'Choose the names your print software recognizes. This changes exported cut names; it does not create missing cut lines.'],
+    'thru-name': ['Cut through backing', 'The name your print software uses for a full cut. It must match your cutter setup. Changing this name does not set the blade depth.'],
+    'kiss-name': ['Cut sticker only', 'The name your print software uses to cut the sticker and leave the backing. It must match your cutter setup.'],
+    'generic-cut': ['Unlabelled cut lines', 'Choose how to treat lines named only CutContour in the next file you add. Ask me keeps you in control when the cut type is unclear.'],
+    'hot-folder': ['Save finished files to', 'After you review and send, files go to this folder. A folder watched by ONYX can start processing them. Use TEST Output for trials. Leave blank to download instead.'],
+    'printer': ['Printer name', 'A label for your shop setup. Changing it does not connect a printer or change print quality.'],
+    'staging-on': ['Keep an extra copy', 'Also save the finished pack in the extra copy folder when you send it.'],
+    'staging-folder': ['Extra copy folder', 'Choose where the extra copy is saved. This does not replace the main destination.'],
+    'onyx-pc': ['ONYX is on this computer', 'Changes the suggested output folder for this PC. It does not install ONYX or move your files.'],
+    'lan': ['Other computers can connect', 'Shows whether this app was started for the shop network. A saved setting cannot open network access. The separate trial stays on this PC.'],
+    'updates': ['Look for app updates', 'Checks for newer app versions. Separate shop trials keep update checks off and are updated by opening a new tested build.'],
+    'test-channel': ['Include test versions', 'When update checks are enabled, also show releases still being tested. Leave off for normal shop use.'],
+    'allow-undo': ['Show Undo send', 'Lets you remove a sent pack while it is still in the output folder. This cannot stop a job that ONYX has already picked up.'],
+    'preset-name': ['Material name', 'The name on the material button. Save separate materials when rolls need different widths or spacing.'],
+    'unit': ['Measurement units', 'Shows these dimensions in inches, millimeters or centimeters. Existing values are converted, so the artwork stays the same size.'],
+    'roll': ['Roll width', 'The full width of the material. Printable width must fit inside it. Increasing this alone does not make the layout wider.'],
+    'width': ['Printable width', 'How much of the roll your printer can use. A smaller width can make the layout longer. Pieces keep their original size.'],
+    'gap': ['Space between pieces', 'More space keeps neighboring pieces farther apart and usually uses more material. Less space fits them closer together.'],
+    'margin': ['Space at roll edges', 'Keeps pieces away from the sides. More space leaves less room for pieces and may make the layout longer.'],
+    'available-length': ['Material left on roll', 'Limits the batch to this much material. Leave blank if unknown. Update it yourself after printing; the app does not subtract used stock yet.'],
+    'sheet': ['Longest print section', 'Splits a long layout into sections no longer than this. A lower number can create more sections. Every piece must fit within one section.'],
+    'rotations': ['Allowed turns', 'Lets pieces turn to fit closer together. Keep orientation leaves them facing the original direction. Consider material grain and artwork direction.'],
+    'mark-margin': ['Room for cutter marks', 'Reserves extra space at the edges, in addition to edge spacing. This does not draw marks; your print software can add them.'],
+    'auto-bleed': ['Enlarge artwork at edges', 'Enlarges the artwork slightly around unchanged cut lines. It can change the design near the edges. Leave off for prepared print files and inspect any changed preview.'],
+    'bleed': ['Existing color beyond cuts', 'How far the artwork already extends beyond its cut lines, in millimeters. Set this before adding files. It preserves that area during import; it does not create new color.'],
+    'cost': ['Material cost per m²', 'Used for a material-cost estimate only. Changing it does not change the layout or charge a customer.'],
+    'draw-marks': ['Add cutter marks', 'Draws registration marks in the output. Leave off if ONYX adds its own marks, so you do not get two sets.']
+  };
+  for (const [setup, main] of Object.entries({'setup-hot': 'hot-folder', 'setup-onyx': 'onyx-pc', 'setup-printer': 'printer', 'setup-thru': 'thru-name', 'setup-kiss': 'kiss-name', 'setup-units': 'unit'})) help[setup] = help[main];
+  const tip = document.createElement('div');
+  tip.id = 'setting-help'; tip.className = 'setting-help'; tip.role = 'tooltip'; tip.hidden = true;
+  document.body.append(tip);
+  let active = null, pinned = false, timer = 0;
+  function close() {
+    clearTimeout(timer);
+    if (active) { active.setAttribute('aria-expanded', 'false'); active.removeAttribute('aria-describedby'); }
+    active = null; pinned = false; tip.hidden = true;
+  }
+  function show(button, message) {
+    clearTimeout(timer);
+    if (active !== button) close();
+    active = button; tip.textContent = message; tip.hidden = false;
+    button.setAttribute('aria-expanded', 'true'); button.setAttribute('aria-describedby', tip.id);
+    const r = button.getBoundingClientRect();
+    const box = tip.getBoundingClientRect();
+    tip.style.left = Math.max(12, Math.min(r.left, innerWidth - box.width - 12)) + 'px';
+    tip.style.top = Math.max(12, r.bottom + box.height + 8 < innerHeight ? r.bottom + 8 : r.top - box.height - 8) + 'px';
+  }
+  const later = () => { if (!pinned) timer = setTimeout(close, 180); };
+  tip.addEventListener('mouseenter', () => clearTimeout(timer));
+  tip.addEventListener('mouseleave', later);
+  for (const [id, [name, message]] of Object.entries(help)) {
+    const input = $(id), original = input.closest('label');
+    const field = document.createElement('div');
+    for (const attr of original.attributes) field.setAttribute(attr.name, attr.value);
+    field.classList.add('setting-field');
+    const heading = document.createElement('span'); heading.className = 'setting-heading';
+    const label = document.createElement('label'); label.htmlFor = id; label.textContent = name;
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'setting-info'; button.textContent = 'i';
+    button.setAttribute('aria-label', 'About ' + name); button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-controls', tip.id);
+    heading.append(label, button);
+    for (const child of [...original.childNodes]) {
+      if (child.nodeType === Node.TEXT_NODE && child.textContent.trim()) field.append(heading);
+      else field.append(child);
+    }
+    original.replaceWith(field);
+    button.addEventListener('mouseenter', () => show(button, message));
+    button.addEventListener('mouseleave', later);
+    button.addEventListener('focus', () => show(button, message));
+    button.addEventListener('blur', () => { if (!pinned) close(); });
+    button.addEventListener('click', () => {
+      if (active === button && pinned) close();
+      else { show(button, message); pinned = true; }
+    });
+  }
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
+  document.addEventListener('pointerdown', event => { if (!event.target.closest('.setting-info, .setting-help')) close(); });
+  document.addEventListener('scroll', close, true);
+  window.addEventListener('resize', close);
+  $('settings').addEventListener('toggle', close);
 }
 
 async function sha256(data) {
@@ -241,7 +331,7 @@ function preset() {
   // inside it, so pieces nest on that width minus the mark margins.
   const settings = {
     width: printable,
-    maxLength: null,
+    maxLength: $('available-length').value.trim() ? number('available-length') : null,
     gap: number('gap'),
     margin: edge + mark,
     edgeMargin: edge,
@@ -467,7 +557,7 @@ function syncFiles() {
   $('files').hidden = !show;
   $('add-files').hidden = !show || !!illustratorHandoff || document.body.dataset.step === 'nest';
   $('stop').hidden = document.body.dataset.step !== 'nest';
-  const locked = busy || document.body.dataset.step === 'nest';
+  const locked = busy || !!presetEditor || document.body.dataset.step === 'nest';
   for (const node of $('files').querySelectorAll('input, button')) node.disabled = locked;
 }
 
@@ -494,6 +584,7 @@ function renderFiles() {
       }
       if (count === entry.sets) return;
       entry.sets = count;
+      if (kits.every(item => item.sets === count)) $('sets').value = String(count);
       requestNest();
     };
     qty.addEventListener('input', commitQty);
@@ -533,9 +624,19 @@ function applySetsToFiles() {
 }
 
 function renderActions() {
-  $('confirm-send').disabled = saving || busy;
+  const confirming = document.body.dataset.step === 'confirm';
+  syncFiles();
+  for (const button of $('materials').querySelectorAll('button')) button.disabled = busy || saving || !!presetEditor || confirming;
+  $('confirm-send').disabled = saving || busy || !!presetEditor;
   $('confirm-back').disabled = saving;
-  $('start-over').disabled = saving;
+  $('start-over').disabled = saving || !!presetEditor;
+  $('nest-width').disabled = !!presetEditor || confirming;
+  $('sets').disabled = !!presetEditor || confirming;
+  $('sets-dec').disabled = !!presetEditor || confirming;
+  $('sets-inc').disabled = !!presetEditor || confirming;
+  $('file').disabled = !!presetEditor || confirming;
+  $('more').disabled = !!presetEditor || confirming;
+  $('edit-material').disabled = busy || saving || !!presetEditor || !!illustratorHandoff || confirming;
   const badInput = inputIssue();
   const missing = current && current.result ? pieceIssue(current) : '';
   const cuts = current && current.result ? cutProblem() : null;
@@ -551,12 +652,12 @@ function renderActions() {
   $('length').classList.toggle('over', !!(current && current.result && lengthOver(current)));
   $('undo').hidden = !(sent && $('allow-undo').checked && current && current.savedPath);
   if (sent) {
-    $('export').disabled = saving;
+    $('export').disabled = saving || !!presetEditor;
     return;
   }
   const actionable = step !== 'drop' && step !== 'nest';
   const reason = blockReason || missing || (cuts ? cuts.line : '') || tooLong || (actionable ? badInput : '');
-  $('export').disabled = busy || saving || !!reason || !current || !current.result;
+  $('export').disabled = busy || saving || !!presetEditor || !!reason || !current || !current.result;
   if (step === 'confirm') {
     $('export').hidden = true;
     $('confirm').hidden = false;
@@ -907,7 +1008,7 @@ function showResult(state) {
     showScreen('check');
     renderActions();
   }
-  status(state.note || (state.released && !state.deliveryCompleted ? 'Your saved layout is ready. Delivery is not complete; review and send it.' : 'Layout ready.'));
+  status(state.note || (state.released && !state.deliveryCompleted ? 'Your saved layout is ready. Delivery is not complete; review and send it.' : ''));
 }
 
 function sheetsIndex(state) {
@@ -968,6 +1069,7 @@ async function poll() {
 
 function requestNest() {
   clearTimeout(nestTimer);
+  if (presetEditor) return;
   nestTimer = setTimeout(() => {
     if (leaving || saving || !kits.length) return;
     if (busy) { pendingRenest = true; return; }
@@ -982,6 +1084,7 @@ async function nest() {
     const roll = preset();
     const job = EZNQueue.compose(kits, roll, 'combined');
     job.outputProfile = profileFor(kits);
+    job.webOptions = {units: $('unit').value, material: $('material').value, sets: sets(), genericCut: $('generic-cut').value};
     if (illustratorHandoff) {
       if (kits.length !== 1 || kits[0].revision !== illustratorHandoff.documentId) throw Error('Start over before mixing an Illustrator handoff with other jobs.');
       job.illustrator = {id: illustratorHandoff.id};
@@ -1125,6 +1228,7 @@ function openConfirm() {
   $('confirm-summary').textContent = sheetSummary();
   showScreen('confirm');
   showSheetId(current);
+  renderActions();
 }
 
 function closeConfirm() {
@@ -1192,7 +1296,7 @@ function nextKit() {
   renderKit();
   renderFiles();
   showScreen('drop');
-  status('Drop your files.');
+  status('');
 }
 
 async function stopNest() {
@@ -1219,7 +1323,7 @@ async function startOver() {
 function convertUnit(next) {
   const previous = $('unit').dataset.current || next;
   const factor = EZNQueue.unitScale(previous) / EZNQueue.unitScale(next);
-  for (const id of ['width', 'gap', 'margin', 'sheet', 'mark-margin', 'roll']) {
+  for (const id of ['width', 'gap', 'margin', 'sheet', 'mark-margin', 'roll', 'available-length']) {
     if (!$(id).value.trim()) continue;
     $(id).value = String(Number((Number($(id).value) * factor).toFixed(4)));
   }
@@ -1244,18 +1348,131 @@ function renderMaterialButtons() {
     button.dataset.value = option.value;
     button.textContent = option.dataset.name || option.textContent.split('·')[0].trim();
     button.setAttribute('aria-pressed', String(option.value === currentValue));
+    button.disabled = !!presetEditor || busy || saving;
     button.addEventListener('click', () => {
-      if ($('material').value === option.value) return;
-      $('material').value = option.value;
-      applyMaterial();
-      requestNest();
+      chooseMaterial(option.value);
     });
     box.append(button);
+  }
+  const remaining = $('available-length').value.trim();
+  $('material-summary').textContent = remaining ? `${Number(remaining)} ${$('unit').value} available` : '';
+
+}
+
+function materialValues() {
+  return {...Object.fromEntries(MATERIAL_FIELDS.map(id => [id, $(id).value])), drawMarks: $('draw-marks').checked};
+}
+
+function setMaterialValues(values) {
+  for (const id of MATERIAL_FIELDS) if (values[id] != null) $(id).value = values[id];
+  $('unit').dataset.current = $('unit').value;
+  $('draw-marks').checked = values.drawMarks === true;
+  for (const node of document.querySelectorAll('span[data-unit]')) node.textContent = $('unit').value;
+}
+
+function validateMaterial(values) {
+  if (!values || !['mm', 'cm', 'in'].includes(values.unit)) throw Error('Choose units for this preset.');
+  const factor = EZNQueue.unitScale(values.unit);
+  const n = id => Number(values[id]) * factor;
+  const edge = n('margin'), mark = n('mark-margin');
+  const settings = {width: n('width'), maxLength: values['available-length']?.trim() ? n('available-length') : null, gap: n('gap'), margin: edge + mark, edgeMargin: edge, markMargin: mark, seconds: 5,
+    rotations: values.rotations === 'free' ? null : String(values.rotations).split(',').map(Number), rollWidth: n('roll')};
+  if (values.sheet !== '') settings.sheetLength = n('sheet');
+  if (values.cost !== '') settings.costPerSquareMeter = Number(values.cost);
+  EZNQueue.validatePreset({name: values['preset-name'], units: values.unit, settings});
+  if (settings.width > settings.rollWidth) throw Error('Printable width cannot be wider than the roll.');
+  if (!['0', '0.0625', '0.125'].includes(values['auto-bleed'])) throw Error('Choose a supported bleed setting.');
+  if (!Number.isFinite(Number(values.bleed)) || Number(values.bleed) < 0 || Number(values.bleed) > 25) throw Error('Existing bleed must be from 0 to 25 mm.');
+  return {'available-length': '', ...values, 'preset-name': values['preset-name'].trim()};
+}
+
+function registerMaterial(id, values) {
+  let option = [...$('material').options].find(item => item.value === id);
+  if (!option) {
+    option = new Option(values['preset-name'], id);
+    $('material').insertBefore(option, $('material').querySelector('[value="custom"]'));
+  }
+  option.textContent = values['preset-name'];
+  Object.assign(option.dataset, {name: values['preset-name'], width: values.width, roll: values.roll, unit: values.unit});
+  materialProfiles[id] = values;
+}
+
+function loadMaterialProfiles(stored) {
+  registerMaterial('white-gloss', materialValues());
+  for (const [id, saved] of Object.entries(stored.presets || {})) {
+    if (id === 'custom' && !saved.label) continue;
+    const values = {...materialValues(), 'preset-name': saved.label?.split(' · ')[0] || 'Saved roll', width: saved.width || '51.5', unit: saved.unit || 'in'};
+    if (id === 'white-gloss' && /^White gloss/.test(values['preset-name'])) values['preset-name'] = 'Moto Regular';
+    try { registerMaterial(id === 'custom' ? 'saved-custom' : id, validateMaterial(values)); } catch { /* Keep legacy preferences intact if they need correction. */ }
+  }
+  for (const [id, values] of Object.entries(stored.materialProfiles || {})) {
+    if (!/^[a-zA-Z0-9-]{1,80}$/.test(id) || id === 'custom') continue;
+    try { registerMaterial(id, validateMaterial(values)); } catch { status('A saved preset needs to be set up again.', true); }
+  }
+}
+
+function chooseMaterial(id) {
+  if (busy || saving || presetEditor || document.body.dataset.step === 'confirm') return;
+  if (id === activeMaterial && materialProfiles[id]) return;
+  if (id === 'custom' || !materialProfiles[id]) { openPreset(id); return; }
+  $('material').value = id;
+  applyMaterial();
+  requestNest();
+}
+
+function openPreset(id) {
+  if (busy || saving || presetEditor || illustratorHandoff || document.body.dataset.step === 'confirm') return;
+  clearTimeout(nestTimer);
+  presetEditor = {id, values: materialValues(), selected: $('material').value, nestWidth: $('nest-width').value};
+  if (materialProfiles[id]) setMaterialValues(materialProfiles[id]);
+  else $('preset-name').value = id === 'custom' ? '' : [...$('material').options].find(option => option.value === id).textContent;
+  $('preset-title').textContent = id === 'custom' ? 'New preset' : 'Edit ' + $('preset-name').value;
+  $('preset-error').hidden = true;
+  $('preset-editor').hidden = false;
+  $('material-advanced').open = false;
+  renderMaterialButtons();
+  renderActions();
+  $('preset-name').focus();
+}
+
+function closePreset() {
+  if (!presetEditor) return;
+  const previous = presetEditor;
+  presetEditor = null;
+  setMaterialValues(previous.values);
+  $('material').value = previous.selected;
+  $('nest-width').value = previous.nestWidth;
+  $('preset-editor').hidden = true;
+  renderMaterialButtons();
+  renderActions();
+}
+
+function saveMaterial() {
+  if (!presetEditor) return;
+  try {
+    const values = validateMaterial(materialValues());
+    const id = presetEditor.id === 'custom' ? 'material-' + crypto.randomUUID() : presetEditor.id;
+    if (Object.entries(materialProfiles).some(([key, item]) => key !== id && item['preset-name'].toLowerCase() === values['preset-name'].toLowerCase())) throw Error('A preset with that name already exists. Choose another name.');
+    const profiles = {...materialProfiles, [id]: values};
+    localStorage.setItem(PREF, JSON.stringify({...prefs(), materialProfiles: profiles, material: id, nestWidth: String(Number(values.width) * EZNQueue.unitScale(values.unit) / 25.4)}));
+    registerMaterial(id, values);
+    presetEditor = null;
+    $('preset-editor').hidden = true;
+    $('material').value = id;
+    applyMaterial(true);
+    status('');
+    renderActions();
+    requestNest();
+  } catch (error) {
+    $('preset-error').textContent = error.message;
+    $('preset-error').hidden = false;
   }
 }
 
 function applyMaterial(quiet) {
   const option = $('material').selectedOptions[0];
+  activeMaterial = option.value;
+  if (materialProfiles[option.value]) setMaterialValues(materialProfiles[option.value]);
   const named = option.dataset.name || (option.dataset.width ? option.textContent.split('·')[0].trim() : '');
   $('preset-name').value = named || ($('preset-name').value || 'Custom roll');
   if (option.dataset.width) {
@@ -1271,12 +1488,13 @@ function applyMaterial(quiet) {
 }
 
 function saveShop() {
-  savePrefs({
+  return savePrefs({
     nestWidth: $('nest-width').value,
     material: $('material').value,
     thru: $('thru-name').value,
     kiss: $('kiss-name').value,
     cutPreset: $('cut-preset').value,
+    genericCut: $('generic-cut').value,
     hotFolder: $('hot-folder').value,
     stagingOn: $('staging-on').checked,
     stagingFolder: $('staging-folder').value
@@ -1298,25 +1516,13 @@ function matchCutPreset() {
 }
 
 function watchWidth() {
+  if (presetEditor) return;
   const width = $('width').value;
   const unit = $('unit').value;
   const match = [...$('material').options].find(option => option.dataset.unit === unit && option.dataset.width === width);
   $('material').value = match ? match.value : 'custom';
   renderMaterialButtons();
   renderActions();
-}
-
-function rememberPreset() {
-  const option = $('material').selectedOptions[0];
-  const name = $('preset-name').value.trim();
-  if (!name) return;
-  if (option.value === 'custom') option.textContent = name;
-  else option.textContent = name + ' · ' + ($('width').value || option.dataset.width || '') + ' ' + $('unit').value;
-  renderMaterialButtons();
-  const stored = prefs();
-  stored.presets = stored.presets || {};
-  stored.presets[option.value] = {label: option.textContent, width: $('width').value, unit: $('unit').value};
-  savePrefs(stored);
 }
 
 function showLan(shop) {
@@ -1468,11 +1674,30 @@ async function saveHotFolder() {
     $('hot-folder').value = result.path || '';
     saveShop();
     status(result.path ? 'Hot folder set. Send writes the frozen pack there.' : 'No hot folder. Send downloads the pack.');
+    return true;
   } catch (error) {
     $('hot-error').hidden = false;
     $('hot-error').textContent = error.message;
     status(error.message, true);
+    return false;
   }
+}
+
+async function saveSettings() {
+  const button = $('save-settings'), note = $('settings-saved');
+  const controls = [...$('settings').querySelectorAll('input, select, button')].map(node => [node, node.disabled]);
+  controls.forEach(([node]) => { node.disabled = true; });
+  button.disabled = true; note.textContent = 'Saving…'; note.classList.remove('error');
+  try {
+    cutMapping();
+    if (!await saveHotFolder()) throw Error($('hot-error').textContent);
+    await saveDeploy();
+    if (!saveShop() || !savePrefs({undo: $('allow-undo').checked})) throw Error('This browser could not save your preferences.');
+    note.textContent = 'Saved.';
+  } catch (error) {
+    note.textContent = 'Could not save all settings. ' + error.message;
+    note.classList.add('error');
+  } finally { controls.forEach(([node, disabled]) => { node.disabled = disabled; }); }
 }
 
 async function importPdf(file, operation) {
@@ -1492,7 +1717,7 @@ async function importPdf(file, operation) {
 async function readEntry(file) {
   const pdf = /\.(pdf|ai)$/i.test(file.name);
   if (!pdf && !/\.svg$/i.test(file.name)) throw Error(file.name + ' is not SVG, PDF, or PDF-compatible AI.');
-  if (file.size > (pdf ? 20_000_000 : 8_000_000)) throw Error(file.name + ' is over the ' + (pdf ? '20' : '8') + ' MB limit.');
+  if (file.size > (pdf ? 32_000_000 : 8_000_000)) throw Error(file.name + ' is over the ' + (pdf ? '32' : '8') + ' MB limit.');
   let data, revision, unresolvedCut = false;
   if (pdf) {
     const chosen = $('generic-cut').value;
@@ -1522,6 +1747,7 @@ async function readEntry(file) {
 }
 
 async function importFiles(fileList, replace) {
+  if (presetEditor) throw Error('Save or cancel the preset before adding files.');
   const files = [...fileList].filter(Boolean);
   if (!files.length || busy || saving) return;
   if (illustratorHandoff && !replace) throw Error('Start over before adding files to another Illustrator attempt.');
@@ -1555,6 +1781,10 @@ async function chooseCut(operation) {
   if (busy || saving || !unresolved()) return;
   const output = operation === 'kiss' ? $('kiss-name').value.trim() : $('thru-name').value.trim();
   if (kits.some(entry => entry.data?.format === 'pdf')) {
+    if (kits.some(entry => !entry.file)) {
+      showBlocked('Add the original files again to choose their cut type. Your saved layout is unchanged.');
+      return;
+    }
     const files = kits.map(entry => entry.file).filter(Boolean);
     $('generic-cut').value = operation;
     try {
@@ -1584,17 +1814,59 @@ async function chooseCut(operation) {
   requestNest();
 }
 
-async function boot() {
-  const stored = prefs();
-  if (stored.presets) {
-    for (const option of $('material').options) {
-      const saved = stored.presets[option.value];
-      if (!saved) continue;
-      option.textContent = saved.label || option.textContent;
-      if (saved.width) option.dataset.width = saved.width;
-      if (saved.unit) option.dataset.unit = saved.unit;
-    }
+function restoreJob(state) {
+  const job = state.job;
+  if (!job?.productionJobs?.length || job.materialId !== 'web-roll') return;
+  kits = job.productionJobs.map(source => {
+    const document = job.documentSources?.[source.id];
+    const parts = job.parts.filter(part => part.sourceJobId === source.id).map(part => ({
+      ...part, id: part.originalPartId, quantity: part.perSet || 1
+    }));
+    return {...source, origin: 'files', selected: true, status: 'ready', data: {
+      ...(document || {}), format: document ? 'pdf' : 'svg',
+      svgSource: job.svgSources?.[source.id], parts
+    }};
+  });
+  fileSerial = Math.max(kits.length, ...kits.map(entry => Number(entry.id.match(/-(\d+)$/)?.[1] || 0) + 1));
+  const options = job.webOptions || {};
+  const settings = job.settings;
+  if (['mm', 'in', 'cm'].includes(options.units)) $('unit').value = options.units;
+  $('unit').dataset.current = $('unit').value;
+  const factor = scale();
+  for (const node of document.querySelectorAll('span[data-unit]')) node.textContent = $('unit').value;
+  if (options.material && [...$('material').options].some(option => option.value === options.material)) $('material').value = options.material;
+  $('preset-name').value = job.materialName || job.media?.name || 'Custom roll';
+  $('width').value = (job.media?.maxPrintableMm || settings.width) / factor;
+  $('nest-width').value = settings.width / 25.4;
+  for (const [id, key] of [['available-length', 'maxLength'], ['gap', 'gap'], ['roll', 'rollWidth'], ['sheet', 'sheetLength'], ['mark-margin', 'markMargin']]) {
+    $(id).value = settings[key] == null ? '' : settings[key] / factor;
   }
+  $('margin').value = (settings.edgeMargin ?? (settings.margin - (settings.markMargin || 0))) / factor;
+  $('seconds').value = settings.seconds;
+  $('rotations').value = settings.rotations == null ? 'free' : settings.rotations.join(',');
+  $('auto-bleed').value = (settings.autoBleedMm || 0) / 25.4;
+  $('draw-marks').checked = settings.drawRegmarks === true;
+  $('cost').value = settings.costPerSquareMeter ?? '';
+  $('bleed').value = job.outputProfile?.bleedMm || 0;
+  $('sets').value = kits.every(entry => entry.sets === kits[0].sets) ? kits[0].sets : (options.sets || 1);
+  const mapping = job.outputProfile?.cutMapping;
+  if (mapping?.outputs) {
+    $('thru-name').value = mapping.outputs.thru.spot;
+    $('kiss-name').value = mapping.outputs.kiss.spot;
+    matchCutPreset();
+  }
+  $('generic-cut').value = options.genericCut || '';
+  if (job.illustrator) illustratorHandoff = {...job.illustrator, documentId: kits[0].revision};
+  activeMaterial = $('material').value;
+  renderMaterialButtons();
+  renderFiles();
+  showWidth();
+}
+
+async function boot() {
+  await ensureLibraries();
+  const stored = prefs();
+  loadMaterialProfiles(stored);
   if (stored.material && [...$('material').options].some(option => option.value === stored.material)) {
     $('material').value = stored.material;
     applyMaterial(true);
@@ -1606,6 +1878,7 @@ async function boot() {
   if (stored.thru) $('thru-name').value = stored.thru;
   if (stored.kiss) $('kiss-name').value = stored.kiss;
   if (stored.thru || stored.kiss) matchCutPreset();
+  if (['', 'thru', 'kiss', 'contour'].includes(stored.genericCut)) $('generic-cut').value = stored.genericCut;
   $('staging-on').checked = stored.stagingOn === true;
   if (stored.stagingFolder) $('staging-folder').value = stored.stagingFolder;
   $('staging-row').hidden = !$('staging-on').checked;
@@ -1625,9 +1898,10 @@ async function boot() {
     applyShop(await fetchJson('/api/shop', 5000));
   } catch { /* Shop network settings stay off when the lookup does not answer. */ }
   const state = await fetchJsonRetry('/api/state');
+  if (['running', 'ready'].includes(state.status)) restoreJob(state);
   if (state.status === 'running') { busy = true; showScreen('nest'); renderActions(); setTimeout(poll, 300); }
   else if (state.status === 'ready' && state.manifest) showResult(state);
-  else { showScreen('drop'); status('Drop your files.'); }
+  else { showScreen('drop'); status(''); }
   renderActions();
   refreshUpdate().catch(() => {});
   const handoffId = new URLSearchParams(location.search).get('illustrator');
@@ -1769,6 +2043,10 @@ async function refreshActivity() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  installSettingsHelp();
+  $('save-settings').addEventListener('click', saveSettings);
+  $('settings').addEventListener('input', () => { $('settings-saved').textContent = ''; });
+  $('generic-cut').addEventListener('change', saveShop);
   $('illustrator-load').addEventListener('click', openIllustrator);
   $('preview-zoom').addEventListener('change', () => {
     const width = Number($('preview-zoom').value) * 100 + '%';
@@ -1811,7 +2089,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $('sets').addEventListener('input', renestFromSets);
   $('sets').addEventListener('change', renestFromSets);
   $('unit').addEventListener('change', () => { convertUnit($('unit').value); watchWidth(); requestNest(); });
-  $('material').addEventListener('change', () => { applyMaterial(); requestNest(); });
+  $('material').addEventListener('change', () => { const id = $('material').value; $('material').value = activeMaterial; chooseMaterial(id); });
+  $('edit-material').addEventListener('click', () => openPreset($('material').value));
+  $('save-material').addEventListener('click', saveMaterial);
+  $('cancel-material').addEventListener('click', closePreset);
   $('width').addEventListener('input', () => { watchWidth(); requestNest(); });
   $('nest-width').addEventListener('input', () => { showWidth(); saveShop(); requestNest(); });
   $('nest-width').addEventListener('change', () => { saveShop(); requestNest(); });
@@ -1820,8 +2101,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('cut-preset').addEventListener('change', () => { applyCutPreset(); saveShop(); });
   $('thru-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
   $('kiss-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
-  $('auto-bleed').addEventListener('change', () => { if (current && current.result && !busy && !saving) renderPreview(activeSheet); });
-  $('preset-name').addEventListener('change', rememberPreset);
+  $('auto-bleed').addEventListener('change', () => { if (current && current.result && !busy && !saving && !presetEditor) renderPreview(activeSheet); });
   $('hot-folder').addEventListener('change', saveHotFolder);
   $('staging-on').addEventListener('change', () => {
     $('staging-row').hidden = !$('staging-on').checked;
@@ -1926,7 +2206,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #update, #setup')) return;
+    if (presetEditor || event.target.closest('input, select, textarea, summary, .setting-info, #settings, #choose-thru, #choose-kiss, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }
