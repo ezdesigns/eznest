@@ -322,6 +322,11 @@ class WebMvpTests(unittest.TestCase):
                 page.click('#export')
                 page.select_option('#save-destination', 'download')
                 page.select_option('#save-format', 'pdf')
+                self.assertEqual(page.input_value('#save-name'), 'kit')
+                with page.expect_download(timeout=30000) as pending:
+                    page.click('#confirm-send')
+                self.assertEqual(pending.value.suggested_filename, 'kit.pdf')
+                page.click('#export')
                 page.fill('#save-name', 'Customer kit - Chrome')
                 with page.expect_download(timeout=30000) as pending:
                     page.click('#confirm-send')

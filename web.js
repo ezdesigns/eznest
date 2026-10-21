@@ -1230,7 +1230,7 @@ function openConfirm() {
   $('confirm-summary').textContent = sheetSummary();
   const jobs = current.job.productionJobs || [];
   const sourceName = jobs[0]?.sourceFile || jobs[0]?.name || 'Print';
-  $('save-name').value = current.downloadName || cleanPrintName(sourceName.replace(/\.(pdf|ai|svg)$/i, '') + (jobs.length > 1 ? ' and ' + (jobs.length - 1) + ' more' : '') + ' - Print');
+  $('save-name').value = current.downloadName || cleanPrintName(sourceName.replace(/\.(pdf|ai|svg)$/i, '') + (jobs.length > 1 ? ' and ' + (jobs.length - 1) + ' more' : ''));
   $('save-destination').value = $('hot-folder').value.trim() && prefs().saveDestination !== 'download' ? 'folder' : 'download';
   $('save-destination').querySelector('[value="folder"]').disabled = !$('hot-folder').value.trim();
   const onePdf = !!current.job.documentSources && (current.result.sheets || [1]).length === 1;
