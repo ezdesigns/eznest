@@ -616,6 +616,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.locator('#files button').count(), 2)
                 page.locator('#files input').nth(1).fill('2')
                 self.assertEqual(page.locator('#files input').nth(1).input_value(), '2')
+                page.wait_for_function(ready(12), timeout=90000)
                 self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
                 page.screenshot(path=str(shots / 'gang-desktop.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
