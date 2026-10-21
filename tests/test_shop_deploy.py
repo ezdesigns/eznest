@@ -200,7 +200,7 @@ class ShopDeployTests(unittest.TestCase):
                 self.assertIn('anyone on the shop lan can send to onyx', status['warning'].casefold())
                 self.assertIn('guest wifi', status['warning'].casefold())
                 self.assertTrue(status['updates'])
-                self.assertEqual(status['version'], '1.0.0-rc.4')
+                self.assertEqual(status['version'], '1.0.0-rc.5')
                 self.assertIn(r'\\ONYX\EPSON SureColor S80600 ONYX Input', status['hotFolderDefault'])
             finally:
                 server.WORK, server.PORT, server.HOST, server.LAN = old

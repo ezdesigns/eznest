@@ -410,10 +410,18 @@ function setSentence(text, problem) {
   $('gate').hidden = !text;
 }
 
+function plainContour() {
+  const refs = unknownRefs();
+  return refs.length > 0 && refs.every(ref => ref.name === 'CutContour');
+}
+
 function cutProblem() {
   const refs = unknownRefs();
   if (!refs.length) return null;
-  const ref = refs.find(item => item.source === 'layer') || refs[0];
+  if (plainContour()) return {line: 'Plain CutContour found: Kiss or Thru?', plain: true};
+  const ref = refs.find(item => item.name !== 'CutContour' && item.source === 'layer')
+    || refs.find(item => item.name !== 'CutContour')
+    || refs[0];
   const kind = ref.source === 'layer' ? 'layer' : 'spot';
   return {line: 'Unknown cut ' + kind + ' "' + ref.name + '". Rename to thru or kiss.'};
 }
@@ -437,6 +445,7 @@ function showScreen(name) {
   $('confirm').hidden = !confirming;
   $('start-over').hidden = idle;
   $('choice').hidden = name !== 'blocked' || !unresolved();
+  if ($('choice').hidden) $('choose-confirm').hidden = true;
   if (idle) showSheetId(null);
   syncFiles();
   if (idle) {
@@ -537,19 +546,36 @@ function renderActions() {
     $('export').hidden = true;
     $('confirm').hidden = false;
     $('choice').hidden = true;
+    $('choose-confirm').hidden = true;
     return;
   }
   if (!actionable) return;
   if (reason) {
     document.body.dataset.step = 'blocked';
-    setSentence(reason, true);
-    $('choice').hidden = !cuts;
+    const plain = !!(cuts && cuts.plain && reason === cuts.line);
+    setSentence(reason, !plain);
+    if (plain) {
+      if ($('choose-confirm').hidden) cutChoice = 'kiss';
+      $('choice').hidden = false;
+      $('choose-confirm').hidden = false;
+      $('choose-kiss').setAttribute('aria-pressed', cutChoice === 'kiss' ? 'true' : 'false');
+      $('choose-thru').setAttribute('aria-pressed', cutChoice === 'thru' ? 'true' : 'false');
+    } else if (cuts) {
+      $('choice').hidden = false;
+      $('choose-confirm').hidden = true;
+      $('choose-kiss').setAttribute('aria-pressed', 'false');
+      $('choose-thru').setAttribute('aria-pressed', 'false');
+    } else {
+      $('choice').hidden = true;
+      $('choose-confirm').hidden = true;
+    }
     return;
   }
   if (current && current.manifest) {
     document.body.dataset.step = 'check';
     setSentence(pieceSentence(current), false);
     $('choice').hidden = true;
+    $('choose-confirm').hidden = true;
   }
 }
 
@@ -1396,9 +1422,34 @@ async function importFiles(fileList, replace) {
 }
 
 function renameCut(markup, from, to) {
-  return markup
+  const renamed = markup
     .replaceAll('data-name="' + from + '"', 'data-name="' + to + '"')
     .replaceAll('id="' + from + '"', 'id="' + to + '"');
+  if (renamed !== markup) return renamed;
+  const doc = new DOMParser().parseFromString('<svg xmlns="' + NS + '">' + markup + '</svg>', 'image/svg+xml');
+  const group = doc.createElementNS(NS, 'g');
+  group.setAttribute('id', to);
+  group.setAttribute('data-name', to);
+  while (doc.documentElement.firstChild) group.appendChild(doc.documentElement.firstChild);
+  return new XMLSerializer().serializeToString(group).replace(/ xmlns="[^"]*"/, '');
+}
+
+let cutChoice = 'kiss';
+
+function selectCut(operation) {
+  if (busy || saving || !unresolved()) return;
+  if (!plainContour()) {
+    chooseCut(operation);
+    return;
+  }
+  cutChoice = operation === 'thru' ? 'thru' : 'kiss';
+  $('choose-kiss').setAttribute('aria-pressed', cutChoice === 'kiss' ? 'true' : 'false');
+  $('choose-thru').setAttribute('aria-pressed', cutChoice === 'thru' ? 'true' : 'false');
+}
+
+function confirmCut() {
+  if (busy || saving || !plainContour()) return;
+  chooseCut(cutChoice === 'thru' ? 'thru' : 'kiss');
 }
 
 async function chooseCut(operation) {
@@ -1545,8 +1596,9 @@ document.addEventListener('DOMContentLoaded', () => {
   $('export').addEventListener('click', () => openConfirm());
   $('confirm-send').addEventListener('click', () => exportFile(false));
   $('confirm-back').addEventListener('click', closeConfirm);
-  $('choose-thru').addEventListener('click', () => chooseCut('thru'));
-  $('choose-kiss').addEventListener('click', () => chooseCut('kiss'));
+  $('choose-thru').addEventListener('click', () => selectCut('thru'));
+  $('choose-kiss').addEventListener('click', () => selectCut('kiss'));
+  $('choose-confirm').addEventListener('click', confirmCut);
   $('start-over').addEventListener('click', startOver);
   $('more').addEventListener('change', async event => {
     try { await importFiles(event.target.files); }
@@ -1569,7 +1621,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #update')) return;
+    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #update')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }
