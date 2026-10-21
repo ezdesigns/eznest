@@ -509,8 +509,16 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
             elif path.get('sourceSpot'): unknown.append({'source':'spot','name':str(path['sourceSpot'])})
         if not unknown and piece.get('cutCounts',{}).get('contour'):
             unknown.append({'source':'spot','name':cut_spot or 'CutContour'})
+        preview_cuts=[]
+        x0,y1=piece['anchor']
+        for cut in piece['cutPaths']:
+            commands=[]
+            for command,values in cut['commands']:
+                coords=[((value-x0) if index%2==0 else (y1-value))*MM for index,value in enumerate(values)]
+                commands.append(('Z' if command=='h' else command.upper())+' '+' '.join(f'{v:.6f}' for v in coords))
+            preview_cuts.append({'operation':cut['operation'],'d':' '.join(commands)})
         preview_parts.append({'id':piece['id'],'name':piece['name'],'points':piece['points'],'quantity':1,
-                              'documentId':ident,'pdfPieceId':piece['id'],'sourcePieceCount':piece.get('sourcePieceCount',1),'cutCounts':piece['cutCounts'],'cutRefs':unknown,'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h})
+                              'documentId':ident,'pdfPieceId':piece['id'],'sourcePieceCount':piece.get('sourcePieceCount',1),'cutCounts':piece['cutCounts'],'cutRefs':unknown,'previewCuts':preview_cuts,'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h})
     (folder/(ident+'.pdf')).write_bytes(clean)
     (folder/(ident+'.json')).write_text(json.dumps(meta),encoding='utf-8')
     return {'format':'pdf','documentId':ident,'parts':preview_parts,'warnings':meta['warnings'],'bleedMm':meta['bleedMm'],'artworkPreserved':bool(meta.get('artworkPreserved')),'sourcePieceCount':meta.get('sourcePieceCount',len(meta['pieces'])),'reviewed':False,'modelVersion':2,'registrationPaintRemoved':meta['registrationPaintRemoved'],'cutMapping':meta['cutMapping']}

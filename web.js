@@ -755,11 +755,15 @@ function documentPreview(state) {
       image.setAttribute('height', part.previewHeight);
       group.append(image);
     }
-    const counts = part.cutCounts || {};
-    if (part.points && (counts.thru || counts.kiss)) {
-      const outline = document.createElementNS(NS, 'polygon');
-      outline.setAttribute('points', part.points.map(point => point.join(',')).join(' '));
-      stroke(outline, counts.thru ? '#00B7FF' : '#E6007E', !counts.thru);
+    // Packing envelopes include bleed; only actual cuts get a coloured overlay.
+    // Older cached imports retain their raster cut preview until re-imported.
+    for (const cut of part.previewCuts || []) {
+      const outline = document.createElementNS(NS, 'path');
+      outline.setAttribute('d', cut.d);
+      outline.setAttribute('class', 'preview-cut');
+      outline.dataset.operation = cut.operation;
+      stroke(outline, cut.operation === 'kiss' ? '#E6007E' : '#00B7FF', cut.operation === 'kiss');
+      outline.setAttribute('stroke-width', '1');
       group.append(outline);
     }
     group.dataset.index = String(index + 1);
