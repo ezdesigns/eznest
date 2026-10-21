@@ -57,16 +57,16 @@ def point(m, p):
     return [a*x+c*y+e, b*x+d*y+f]
 
 
-def curve_points(p0, p1, p2, p3, depth=0):
+def curve_points(p0, p1, p2, p3, depth=0, tolerance=.02/MM):
     from shapely.geometry import LineString, Point
     chord = LineString([p0, p3])
-    if depth >= 14 or max(chord.distance(Point(p1)), chord.distance(Point(p2))) <= .02/MM:
+    if depth >= 14 or max(chord.distance(Point(p1)), chord.distance(Point(p2))) <= tolerance:
         return [p3]
     mid = lambda a, b: [(a[0]+b[0])/2, (a[1]+b[1])/2]
     a, b, c = mid(p0, p1), mid(p1, p2), mid(p2, p3)
     d, e = mid(a, b), mid(b, c)
     f = mid(d, e)
-    return curve_points(p0, a, d, f, depth+1) + curve_points(f, e, c, p3, depth+1)
+    return curve_points(p0, a, d, f, depth+1, tolerance) + curve_points(f, e, c, p3, depth+1, tolerance)
 
 
 def path_text(commands):
@@ -402,6 +402,8 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
     settings=job.get('settings') or {}
     draw_marks=settings.get('drawRegmarks') is True
     bleed_mm=settings.get('autoBleedMm') or 0
+    if bleed_mm and any(meta.get('artworkPreserved') for _,meta in documents.values()):
+        raise ValueError('Original artwork preservation does not allow automatic enlargement.')
     groups={};spaces={};keys={}
     for index,operation in enumerate(active):
         config=mapping['outputs'][operation];keys[operation]=('/EZCut'+(str(index) if index else ''),'/EZCutLayer'+(str(index) if index else ''))
@@ -468,10 +470,15 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
     out=io.BytesIO();writer.write(out);return out.getvalue()
 
 
-def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=None):
+def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, preserve=False):
     folder=Path(folder); folder.mkdir(parents=True,exist_ok=True)
-    clean,meta=read_document(raw,bleed_mm,cut_spot,cut_mapping)
-    ident=hashlib.sha256(raw+json.dumps([2,bleed_mm,cut_spot,meta['cutMapping']],sort_keys=True).encode()).hexdigest()
+    clean,meta=read_document(raw,0 if preserve else bleed_mm,cut_spot,cut_mapping)
+    if preserve:
+        from artwork_bounds import preserve_artwork
+        meta=preserve_artwork(clean,meta)
+    identity=[2,bleed_mm,cut_spot,meta['cutMapping']]
+    if preserve:identity=['preserve-artwork-v1',cut_spot,meta['cutMapping']]
+    ident=hashlib.sha256(raw+json.dumps(identity,sort_keys=True).encode()).hexdigest()
     meta.update(id=ident,sourceHash=hashlib.sha256(raw).hexdigest())
     # Preview in a separate process through the import worker. PDFium is not thread-safe.
     import pypdfium2 as pdfium
@@ -503,10 +510,10 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
         if not unknown and piece.get('cutCounts',{}).get('contour'):
             unknown.append({'source':'spot','name':cut_spot or 'CutContour'})
         preview_parts.append({'id':piece['id'],'name':piece['name'],'points':piece['points'],'quantity':1,
-                              'documentId':ident,'pdfPieceId':piece['id'],'cutCounts':piece['cutCounts'],'cutRefs':unknown,'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h})
+                              'documentId':ident,'pdfPieceId':piece['id'],'sourcePieceCount':piece.get('sourcePieceCount',1),'cutCounts':piece['cutCounts'],'cutRefs':unknown,'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h})
     (folder/(ident+'.pdf')).write_bytes(clean)
     (folder/(ident+'.json')).write_text(json.dumps(meta),encoding='utf-8')
-    return {'format':'pdf','documentId':ident,'parts':preview_parts,'warnings':meta['warnings'],'bleedMm':bleed_mm,'reviewed':False,'modelVersion':2,'registrationPaintRemoved':meta['registrationPaintRemoved'],'cutMapping':meta['cutMapping']}
+    return {'format':'pdf','documentId':ident,'parts':preview_parts,'warnings':meta['warnings'],'bleedMm':meta['bleedMm'],'artworkPreserved':bool(meta.get('artworkPreserved')),'sourcePieceCount':meta.get('sourcePieceCount',len(meta['pieces'])),'reviewed':False,'modelVersion':2,'registrationPaintRemoved':meta['registrationPaintRemoved'],'cutMapping':meta['cutMapping']}
 
 
 def load_documents(job, folder, require_review=True):
@@ -560,7 +567,7 @@ def worker(request, output):
         data=json.loads(request.read_text(encoding='utf-8'))
         raw=base64.b64decode(data['content'],validate=True)
         if len(raw)>MAX_PDF_BYTES: raise ValueError('PDF/AI files are limited to 32 MB in this build.')
-        result={'ok':True,'document':import_to_store(raw,output.parent/'documents',data.get('bleedMm',0),data.get('cutSpot','CutContour'),data.get('cutMapping'))}
+        result={'ok':True,'document':import_to_store(raw,output.parent/'documents',data.get('bleedMm',0),data.get('cutSpot','CutContour'),data.get('cutMapping'),preserve=data.get('preserveArtwork') is True)}
     except Exception as error:
         result={'ok':False,'error':str(error)}
     output.write_text(json.dumps(result),encoding='utf-8')

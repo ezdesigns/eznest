@@ -17,7 +17,7 @@
       if(!Number.isInteger(entry.sets)||entry.sets<1||entry.sets>800)throw Error('Sets must be a whole number from 1 to 800.');
       const source={id:entry.id,code:codeFor(index),name:entry.name,sourceFile:entry.sourceFile||entry.name,revision:entry.revision,sets:entry.sets,materialId:entry.materialId,partIds:[],role:entry.role==='fill'?'fill':'required',customer:entry.customer||'',order:entry.order||'',kit:entry.kit||''};
       const parts=[];
-      if(pdf){job.documentSources=job.documentSources||{};job.documentSources[entry.id]={documentId:entry.data.documentId,reviewed:entry.data.reviewed,bleedMm:entry.data.bleedMm};}
+      if(pdf){job.documentSources=job.documentSources||{};job.documentSources[entry.id]={documentId:entry.data.documentId,reviewed:entry.data.reviewed,bleedMm:entry.data.bleedMm,artworkPreserved:entry.data.artworkPreserved===true};}
       else job.svgSources[entry.id]=entry.data.svgSource;
       for(const part of entry.data.parts){
         const id=entry.id+':'+part.id,perSet=part.quantity||1;

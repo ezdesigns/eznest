@@ -1,7 +1,7 @@
 # Production files in 1.0.0-rc.4
 
 The MVP works without hardware details. Enter usable width; optionally configure
-sheet length, bleed, material cost and a shop profile. Equipment-specific validation
+sheet length, material cost and a shop profile. Equipment-specific validation
 is an operator task, not an onboarding requirement.
 
 ## PDF / AI
@@ -18,11 +18,18 @@ Illustrator layer CreatorInfo metadata is accepted; print/view visibility rules
 remain unsupported. Native editing metadata is omitted from the local PDF print
 source. Previews share that source across pieces; exported artwork stays vector.
 
-Enter existing bleed in millimeters at import. Zero clips at the cut; a positive
-value reserves an outward envelope. It does not create missing ink. Review every
-detected piece and confirm its size, completeness and bleed before nesting.
-This is operator review, not automated ink-coverage verification. Re-add a file
-to change bleed allowance or input cut mapping. Per-piece operation counts are
+The simple shop page automatically reserves the full prepared artwork, including
+existing bleed, using PDF paint paths and clipped object bounds. Nesting and gap
+checks use that outer envelope, with a conservative clearance guard; they do not
+use the cut line as the print edge. Original PDF paint and cut geometry keep their
+scale. No bleed amount or artwork enlargement is applied. Connected or very close
+artwork stays together as a group, and detached artwork without a cut owner blocks
+import instead of being discarded. Conservative envelopes can use extra material.
+
+Review every detected piece and confirm its size, completeness and bleed before
+printing. The legacy full workspace/API still supports an explicit bleed envelope;
+old simple-page layouts must be re-imported from the original prepared file.
+Re-add a file to change input cut mapping. Per-piece operation counts are
 shown during review. Generic CutContour without a mapped type requires an explicit
 choice in the import screen: thru, kiss, or generic for manual RIP assignment.
 
@@ -36,7 +43,7 @@ output profiles are rejected on export; eznest does not convert colors.
 Unsupported content fails closed: encrypted files, non-PDF AI, annotations/forms,
 hidden/conditional layers, nonstandard UserUnit, missing boundaries, conflicting
 mappings, orphan open cuts, duplicate cuts, intersecting closed boundaries without
-a unique owner, filled/dashed cut shapes, clipped cuts, overlapping bleed regions
+a unique owner, filled/dashed cut shapes, clipped cuts, overlapping explicit bleed regions
 or pieces outside the page. DeviceN cut colors are unsupported.
 Limits: 32 MB, 25 pages, 800 pieces/copies per batch, 2000 cut paths per page,
 5000 per document, 5000 sampled points per path and 1,000,000 traversed drawing

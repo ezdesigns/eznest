@@ -257,7 +257,7 @@
         <span class="measure"><input id="sheet" type="number" min="0" step="any" value="60" inputmode="decimal"><span data-unit>in</span></span>
       </label>
       </div>
-      <details id="material-advanced"><summary>Turning pieces, bleed &amp; cutter marks</summary>
+      <details id="material-advanced"><summary>Turning pieces &amp; cutter marks</summary>
       <div class="fields">
       <label>Rotation
         <select id="rotations">
@@ -271,14 +271,14 @@
         <span class="measure"><input id="mark-margin" type="number" min="0" step="any" value="0.4" inputmode="decimal"><span data-unit>in</span></span>
         <span class="hint">Space reserved for cutter marks</span>
       </label>
-      <label>Auto bleed
+      <label hidden>Auto bleed
         <select id="auto-bleed">
           <option value="0.0625">1/16 in</option>
           <option value="0.125">1/8 in</option>
           <option value="0" selected>Off</option>
         </select>
       </label>
-      <label>Existing bleed
+      <label hidden>Existing bleed
         <span class="measure"><input id="bleed" type="number" min="0" max="25" step="0.1" value="0" inputmode="decimal"><span>mm</span></span>
       </label>
       <label>Material $ / m²

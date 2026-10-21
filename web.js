@@ -61,7 +61,7 @@ function installSettingsHelp() {
     'unit': ['Units (inches or metric)', 'Shows these dimensions in inches, millimeters or centimeters. Existing values are converted, so the artwork stays the same size.'],
     'roll': ['Roll width', 'The full width of the material. Printable width must fit inside it. Increasing this alone does not make the layout wider.'],
     'width': ['Printable width', 'How much of the roll your printer can use. A smaller width can make the layout longer. Pieces keep their original size.'],
-    'gap': ['Space between pieces', 'More space keeps neighboring pieces farther apart and usually uses more material. Less space fits them closer together.'],
+    'gap': ['Space between pieces', 'Space between the outer artwork edges, including existing bleed. More space keeps pieces farther apart and usually uses more material.'],
     'margin': ['Space at roll edges', 'Keeps pieces away from the sides. More space leaves less room for pieces and may make the layout longer.'],
     'roll-length': ['Full roll length', 'The length of a new roll. This is a reference for your material list. Material left on roll is the amount available for this job.'],
     'available-length': ['Material left on roll', 'Limits the batch to this much material. Leave blank if unknown. Update it yourself after printing; the app does not subtract used stock yet.'],
@@ -231,9 +231,7 @@ const CUT_PRESETS = {
 const HOT_FOLDER_LABEL = 'EPSON SureColor S80600 ONYX Input';
 
 function autoBleedMm() {
-  const inches = Number($('auto-bleed').value);
-  if (!Number.isFinite(inches) || inches < 0) return 0;
-  return inches * 25.4;
+  return 0; // Prepared artwork keeps its original size and bleed.
 }
 
 function cutNames() {
@@ -372,7 +370,7 @@ function profileFor(entries) {
   }
   return EZNProfiles.validate({
     name: 'PDF / CutContour', rip: 'ONYX', format: 'pdf', acceptedFormats: ['pdf', 'ai'],
-    colorMode: 'preserve', iccProfile: '', bleedMm: Number($('bleed').value) || 0,
+    colorMode: 'preserve', iccProfile: '', bleedMm: 0,
     cutSpot: 'CutContour', cutLayer: 'CutContour', registrationOwner: 'rip',
     finishingSoftware: 'GoProduce', mediaOwner: 'rip', jobLogOwner: 'rip',
     cutMapping: mapping
@@ -472,6 +470,7 @@ function quantityIssue() {
 
 function pieceIssue(state) {
   if (!state?.manifest) return '';
+  if (Object.values(state.job?.documentSources || {}).some(source => !source.artworkPreserved)) return 'Re-add the original PDF to preserve its artwork and bleed. This older layout was clipped at import.';
   const expected = (state.manifest.jobs || []).reduce((sum, job) => sum + (job.expected || 0), 0);
   const placed = state.manifest.totalPieces;
   if (expected && placed < expected) return placed + ' of ' + expected + ' pieces · missing pieces';
@@ -687,7 +686,10 @@ function renderActions() {
 function pieceSentence(state) {
   const summary = placedCuts(state);
   const placed = state.manifest.totalPieces;
-  const bits = [placed + (placed === 1 ? ' piece' : ' pieces')];
+  const parts = new Map(state.job.parts.map(part => [part.id, part]));
+  const sourcePieces = state.result.placements.reduce((sum, item) => sum + (parts.get(item.id)?.sourcePieceCount || 1), 0);
+  const bits = [sourcePieces + (sourcePieces === 1 ? ' piece' : ' pieces')];
+  if (sourcePieces > placed) bits.push(placed + ' groups keep artwork together');
   if (summary.thru) bits.push(summary.thru + ' thru');
   if (summary.kiss) bits.push(summary.kiss + ' kiss');
   return bits.join(' · ') + ' · cuts OK';
@@ -1009,8 +1011,8 @@ function showResult(state) {
   renderPreview(Math.min(activeSheet, sheetsIndex(state)));
   const missing = pieceIssue(state);
   const cuts = cutProblem();
-  if (state.exportReceipt || (state.deliveryCompleted && state.savedPath)) showSent();
-  else if (missing) showBlocked(missing);
+  if (missing) showBlocked(missing);
+  else if (state.exportReceipt || (state.deliveryCompleted && state.savedPath)) showSent();
   else if (cuts) showBlocked(cuts.line, cuts.detail);
   else {
     showScreen('check');
@@ -1808,9 +1810,7 @@ async function importPdf(file, operation) {
     {source: 'layer', match: 'exact', name: 'thru-cut', operation: 'thru'},
     {source: 'layer', match: 'exact', name: 'kiss cut', operation: 'kiss'});
   mapping.genericOperation = operation;
-  const bleed = Number($('bleed').value);
-  if (!Number.isFinite(bleed) || bleed < 0 || bleed > 25) throw Error('Existing bleed must be from 0 to 25 mm.');
-  return api('/api/document/import', {content: btoa(binary), bleedMm: bleed, cutSpot: 'CutContour', cutMapping: EZNCuts.validate(mapping)});
+  return api('/api/document/import', {content: btoa(binary), preserveArtwork: true, cutSpot: 'CutContour', cutMapping: EZNCuts.validate(mapping)});
 }
 
 async function readEntry(file) {

@@ -87,6 +87,13 @@ automatically recolor production art, or return the nest to Illustrator. Preserv
 those limitations in the UI/docs until implemented and validated. Keep
 `bridge-core.js` beside the JSX and compatible with ExtendScript's ES3 runtime.
 
+The simple shop page preserves prepared PDF artwork automatically. `artwork_bounds.py`
+builds conservative paint envelopes for nesting and spacing; original PDF drawing
+objects and cut paths remain at their original scale. Connected/nearby paint stays
+grouped, and unowned paint rejects instead of disappearing. Do not reintroduce an
+operator-entered bleed amount or automatic enlargement in this flow. Legacy simple
+page jobs require re-import from the original, not a previously clipped export.
+
 The separate portable trial is packaged with `build_shop_trial.py` after a
 `build_windows.py --portable-only` build. Its `--shop-test` launch creates marked
 local trial data and TEST Output, disables update checks and refuses other running
