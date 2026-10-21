@@ -92,7 +92,18 @@ tries all contours together when their total area can fit on one sheet. The
 independent geometry checks still require every piece, allowed rotation, spacing
 and sheet boundaries. This is a best-found layout, not a proven optimum.
 
-The review screen offers a saved print folder or a named local download. A single
-PDF sheet can be saved directly; multi-sheet and SVG jobs use the complete pack.
-Local saves bypass print-folder and staging delivery. The browser download settings control whether files go directly to Downloads
-or a save-location dialog. The app does not use the browser file-system API.
+The review screen defaults to the saved print folder and keeps the imported
+filename. One-sheet PDF jobs save a named PDF; multi-sheet and SVG jobs save a
+ZIP pack. My computer opens the normal Windows Save As window on the PC running
+the app, with the filename suggested and no app-selected destination. Remote
+clients use browser download instead. Settings has a separate folder chooser
+for configuring the default print folder.
+Cancelling the chooser does not claim success or deliver a file. Replacing different
+bytes requires confirmation; previous bytes are retained under local app data in
+export-backups. The legacy full-workspace pack delivery and Undo remain separate.
+
+Saved material presets show a red Low stock notice at the configured alert
+length, or 10% of the full roll when the alert is blank and full length is known.
+Zero is Out of stock; unknown remaining stock does not generate an alert.
+Remaining length and alerts are manual and local to this browser. Saving or
+printing elsewhere does not automatically change stock.

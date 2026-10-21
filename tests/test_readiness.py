@@ -50,30 +50,37 @@ class ReadinessTests(unittest.TestCase):
                     page.wait_for_function("() => document.querySelector('#setup').hidden")
                     page.set_input_files('#file', str(Path(__file__).parents[1] / 'sample-artwork.svg'))
                     page.wait_for_function("() => document.body.dataset.step === 'check'", timeout=90000)
-                    with patch.object(server.OUTPUT, 'save', side_effect=ValueError('Test hot folder disconnected')):
+                    with patch.object(server.print_export, 'save_file', side_effect=ValueError('Test hot folder disconnected')):
                         page.click('#export')
                         page.click('#confirm-send')
-                        page.wait_for_function("() => document.body.dataset.step === 'blocked'")
+                        page.wait_for_function("() => document.querySelector('#status').textContent.includes('disconnected')")
                     self.assertTrue(server.STATE['released'])
                     self.assertFalse(server.STATE['deliveryCompleted'])
                     page.reload()
                     fixture.wait_ready(page)
                     self.assertEqual(page.get_attribute('body', 'data-step'), 'check')
                     self.assertTrue(page.locator('#delivery-receipt').is_hidden())
-                    self.assertIn('Delivery is not complete', page.locator('#status').inner_text())
-                    original = server.OUTPUT.save
+                    self.assertEqual(page.locator('#status').inner_text(), '')
+                    original = server.print_export.save_file
                     def slow_save(*args):
                         time.sleep(0.3)
                         return original(*args)
-                    with patch.object(server.OUTPUT, 'save', side_effect=slow_save) as delivered:
+                    with patch.object(server.print_export, 'save_file', side_effect=slow_save) as delivered:
                         page.click('#export')
                         page.evaluate('Promise.all([exportFile(false), exportFile(false)])')
                         self.assertEqual(delivered.call_count, 1)
-                    self.assertIn('Sent to the hot folder', page.locator('#delivery-receipt').inner_text())
+                    self.assertIn('Saved to', page.locator('#delivery-receipt').inner_text())
+                    self.assertTrue((hot / 'sample-artwork.zip').is_file())
+                    page.reload(); fixture.wait_ready(page)
+                    self.assertEqual(page.get_attribute('body', 'data-step'), 'sent')
                     self.assertEqual(page.locator('#start-over').inner_text(), 'Next job')
                     page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'production-delivered-desktop.png'), full_page=True)
                     page.set_viewport_size({'width': 390, 'height': 844})
                     page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'production-delivered-mobile.png'), full_page=True)
+                    self.assertTrue(page.locator('#undo').is_hidden())
+                    page.evaluate("async () => { await api('/api/release', {id: current.id, map: 'frozen retry'}); }")
+                    server.STATE.pop('exportReceipt', None); server.persist_state()
+                    page.reload(); fixture.wait_ready(page)
                     page.evaluate("document.querySelector('#allow-undo').checked = true; renderActions()")
                     page.click('#undo')
                     page.wait_for_function("() => document.querySelector('#status').textContent.includes('Removed the pack')")

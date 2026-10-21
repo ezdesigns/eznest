@@ -14,6 +14,7 @@ import socket
 import sqlite3
 import workload
 import illustrator_bridge
+import print_export
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -225,7 +226,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/web/':
             path = '/web'
         if path == '/api/session':
-            return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION, 'pid': os.getpid()})
+            return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION, 'pid': os.getpid(),
+                                   'localSave': os.name == 'nt' and self.client_address[0] == '127.0.0.1'})
         if path == '/api/changelog':
             import installer_update
             return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
@@ -428,8 +430,59 @@ class Handler(BaseHTTPRequestHandler):
                 finally:
                     request.unlink(missing_ok=True); output.unlink(missing_ok=True)
                     DOCUMENT_LOCK.release()
+            if self.path == '/api/export/pick':
+                if self.client_address[0] != '127.0.0.1':
+                    return self.send(403, {'error': 'Use browser download on another computer.'})
+                target = print_export.pick_save_path(data.get('name'), data.get('format'))
+                return self.send(200, {'path': target, 'cancelled': target is None})
+            if self.path == '/api/export/folders':
+                if self.client_address[0] != '127.0.0.1':
+                    return self.send(403, {'error': 'Browse folders on the PC running eznest.'})
+                return self.send(200, print_export.browse_folders(data.get('path'), OUTPUT.root))
+            if self.path == '/api/export/save':
+                with LOCK:
+                    if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id') or not STATE.get('released'):
+                        raise ValueError('Review and freeze the current layout before saving.')
+                    package = (WORK/'batches'/(STATE['id']+'.zip')).read_bytes()
+                    if hashlib.sha256(package).hexdigest() != data.get('sha256'):
+                        raise ValueError('The saved layout changed. Review it again.')
+                name, content = print_export.export_content(package, data.get('name'), data.get('format'))
+                mode = data.get('destination')
+                expected = data.get('replaceSha256')
+                if mode == 'choose':
+                    if self.client_address[0] != '127.0.0.1':
+                        return self.send(403, {'error': 'Choose a location on the PC running eznest, or use browser download.'})
+                    selected = data.get('path')
+                    if not isinstance(selected, str) or len(selected) > 1000 or not Path(selected).is_absolute():
+                        raise ValueError('Choose a file in the Windows save window first.')
+                    target = Path(selected)
+                    if target.suffix.lower() != Path(name).suffix:
+                        raise ValueError('Keep the selected PDF or ZIP file extension.')
+                    print_export.export_filename(target.name, data.get('format'))
+                elif mode == 'folder':
+                    if not OUTPUT.root:
+                        raise ValueError('Choose your default print folder in Settings first.')
+                    target = OUTPUT.root / name
+                else:
+                    raise ValueError('Choose the default print folder or My computer.')
+                with FOLDER_LOCK:
+                    saved = print_export.save_file(target, content, WORK, expected, FOLDER.root)
+                if saved.get('exists'):
+                    return self.send(200, saved)
+                if mode == 'folder':
+                    with FOLDER_LOCK:
+                        stage_pack(data.get('stagingFolder') or '', STATE['id'], package, FOLDER.root)
+                with LOCK:
+                    STATE['exportReceipt'] = {'path': saved['path'], 'destination': mode, 'format': data['format']}
+                    if mode == 'folder':
+                        STATE['deliveryCompleted'] = True
+                        record_workload('sent_to_folder')
+                    persist_state()
+                return self.send(200, dict(saved, ok=True))
             if self.path in ('/api/output/connect', '/api/output/pick'):
                 if self.path.endswith('/pick'):
+                    if self.client_address[0] != '127.0.0.1':
+                        return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
                     data = {'path': pick_folder('Select where eznest will save print packs')}
                     if not data['path']:
                         return self.send(200, {'cancelled': True})

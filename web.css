@@ -295,3 +295,23 @@ main { min-height: auto; padding: 20px 0 28px; gap: 18px; }
 .confirm .fields { width: min(100%, 560px); text-align: left; }
 .confirm .fields input, .confirm .fields select { width: 100%; min-width: 0; }
 #save-location-note { overflow-wrap: anywhere; }
+
+#save-location-note:empty { display: none; }
+.material-item { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; max-width: 100%; }
+.stock-alert { border-left: 4px solid #b42318; border-radius: 4px; background: #fff0ee; color: #971b12; padding: 9px 10px; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+.import-help { text-align: left; font-size: 12px; color: var(--muted); }
+.import-help summary { cursor: pointer; }
+body[data-step="confirm"] .job-panel > .quiet { display: none; }
+
+#folder-picker { width: min(560px, calc(100vw - 32px)); max-height: 85vh; padding: 24px; border: 1px solid #ddd; border-radius: 14px; color: var(--ink); }
+#folder-picker::backdrop { background: #0006; }
+#folder-picker h2 { margin: 0 0 18px; font-size: 20px; }
+#folder-picker label { display: grid; gap: 6px; font-size: 13px; }
+#folder-path { width: 100%; min-width: 0; }
+.folder-tools, .folder-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.folder-tools button { min-height: 34px; padding: 6px 12px; font-size: 12px; }
+.folder-actions { justify-content: flex-end; }
+#folder-list { display: grid; gap: 4px; max-height: 35vh; overflow: auto; margin-top: 14px; }
+.folder-entry { width: 100%; text-align: left; overflow-wrap: anywhere; padding: 10px 12px; border: 1px solid #e2e2dc; background: #fafaf7; color: #171717; }
+#folder-error { color: #971b12; font-size: 13px; }
+#folder-error:empty { display: none; }

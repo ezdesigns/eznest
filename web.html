@@ -12,7 +12,7 @@
 </header>
 <section id="setup" hidden>
   <h2>Set up this shop</h2>
-  <p class="hint">Set this up once on the shop host PC. Every employee uses the same saved printer and hot folder. Save checks that eznest can write there.</p>
+  <p class="hint">Choose your default print folder and cut line names.</p>
   <div class="fields">
     <label class="wide">Hot folder
       <input id="setup-hot" type="text" maxlength="400" placeholder="RIP hot folder or share" autocomplete="off" spellcheck="false">
@@ -50,7 +50,7 @@
   </summary>
   <div class="panel">
     <h2 class="settings-title">Settings</h2>
-    <p class="hint settings-intro">Hover or tap <b>i</b> for help. Changes save as you go.</p>
+    <p class="hint settings-intro">Hover or tap <b>i</b> for help.</p>
     <div class="fields">
       <label class="wide">Cut spot names
         <select id="cut-preset">
@@ -120,8 +120,8 @@
   <p id="sheet-id" class="sheet-id" hidden aria-label="Sheet ID"></p>
     </details>
     <details class="quick-guide"><summary>Help</summary>
-      <p>Add files, choose material and sets, then review the layout before sending.</p>
-      <p>Sending delivers to your RIP folder. Check the job there before printing.</p>
+      <p>Add files, choose material and sets, then review and save.</p>
+      <p>My computer lets you choose a folder. Default print folder uses the folder saved in Settings. Check the file in your print software before printing.</p>
     </details>
     <a class="workspace" href="/">Full workspace</a>
     <input id="seconds" type="hidden" value="5">
@@ -142,7 +142,8 @@
     <label id="drop" class="drop">Drop your files
       <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
     </label>
-    <p class="hint import-hint">AI, PDF or SVG · Save AI with “Create PDF Compatible File” on. From Illustrator, use Nest whole document for the complete visible design.</p>
+    <p class="hint import-hint">PDF, SVG or PDF-compatible AI</p>
+    <details class="import-help"><summary>Import help</summary><p>Save AI with “Create PDF Compatible File” on. In Illustrator, use Nest whole document to include the complete visible design.</p></details>
   </div>
   <div id="sheet-tabs" class="tabs" hidden></div>
   <div class="preview-tools" id="preview-tools" hidden>
@@ -193,16 +194,14 @@
     <button id="choose-kiss" type="button">KISS</button>
   </div>
   <div id="confirm" class="confirm" hidden>
-    <strong>Save your print</strong>
-    <p class="hint">Check pieces, cuts, and size. Your RIP controls printing.</p>
-    <p id="confirm-summary"></p>
+    <strong>Save print file</strong>
     <div class="fields">
-      <label class="wide">Save to<select id="save-destination"><option value="download">My computer</option><option value="folder">Saved print folder</option></select></label>
+      <label class="wide">Save to<select id="save-destination"><option value="folder">Default print folder</option><option value="choose">My computer</option><option value="download">Browser download</option></select></label>
       <label class="wide" id="save-name-row">File name<input id="save-name" maxlength="100" autocomplete="off"></label>
       <label class="wide" id="save-format-row">File type<select id="save-format"><option value="pack">Complete print pack (.zip)</option><option value="pdf">Print file (.pdf)</option></select></label>
     </div>
     <p id="save-location-note" class="hint"></p>
-    <button id="confirm-send" class="primary" type="button">Confirm send</button>
+    <button id="confirm-send" class="primary" type="button">Save</button>
     <button id="confirm-back" class="link" type="button">Back</button>
   </div>
   <button id="export" class="primary" type="button" hidden disabled>Send to ONYX</button>
@@ -251,6 +250,9 @@
         <span class="measure"><input id="available-length" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal"><span data-unit>in</span></span>
         <span class="hint">Update after printing.</span>
       </label>
+      <label>Low-stock alert at
+        <span class="measure"><input id="low-stock" type="number" min="0" step="any" placeholder="10% of full roll" inputmode="decimal"><span data-unit>in</span></span>
+      </label>
       <label>Max sheet length
         <span class="measure"><input id="sheet" type="number" min="0" step="any" value="60" inputmode="decimal"><span data-unit>in</span></span>
       </label>
@@ -291,6 +293,14 @@
     </section>
   </section>
 </main>
+<dialog id="folder-picker" aria-labelledby="folder-title">
+  <h2 id="folder-title">Choose a folder</h2>
+  <label>Folder path<input id="folder-path" type="text" autocomplete="off" spellcheck="false"></label>
+  <div class="folder-tools"><button id="folder-go" type="button">Open</button><button id="folder-up" type="button">Up one folder</button><button id="folder-drives" type="button">Drives</button></div>
+  <div id="folder-list" aria-label="Folders"></div>
+  <p id="folder-error" role="alert"></p>
+  <div class="folder-actions"><button id="folder-cancel" class="link" type="button">Cancel</button><button id="folder-use" class="primary" type="button">Use this folder</button></div>
+</dialog>
 <script src="/svg-io.js"></script>
 <script src="/queue-core.js"></script>
 <script src="/cut-mapping.js"></script>

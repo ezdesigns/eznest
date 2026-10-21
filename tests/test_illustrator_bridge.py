@@ -76,6 +76,7 @@ class IllustratorBridgeTests(unittest.TestCase):
                     browser = test_web_mvp.launch_browser(playwright)
                     try:
                         page = browser.new_page(viewport={'width':1440, 'height':1000})
+                        page.on('dialog', lambda dialog: dialog.accept())  # Replace only this temporary test export.
                         page.goto(fixture.url()+'/web?illustrator='+result['id'])
                         fixture.wait_ready(page)
                         page.fill('#setup-hot', str(hot))
@@ -101,8 +102,9 @@ class IllustratorBridgeTests(unittest.TestCase):
                             self.assertEqual(len(state['result']['placements']), 2)
                             page.click('#export')
                             page.click('#confirm-send')
-                            page.wait_for_function("async () => (await (await fetch('/api/state')).json()).deliveryCompleted === true", timeout=30000)
+                            page.wait_for_selector('#delivery-receipt:not([hidden])', timeout=30000)
                             state = json.load(urlopen(fixture.url()+'/api/state'))
+                            self.assertTrue(state['deliveryCompleted'])
                             self.assertEqual(state['job']['illustrator']['id'], result['id'])
                             # Refreshing the one-click URL must preserve the sent pack.
                             pack_id = state['id']

@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from urllib.request import urlopen
 from zipfile import ZipFile
@@ -29,6 +30,102 @@ def launch_browser(playwright):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_low_stock_threshold_restock_units_and_refresh(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                self.assertEqual(page.locator('.stock-alert').count(), 0)
+                page.click('#edit-material')
+                page.select_option('#unit', 'in')
+                page.fill('#roll-length', '1000')
+                page.fill('#available-length', '100')
+                page.click('#save-material')
+                expect(page.locator('.stock-alert')).to_have_text('Low stock · 100 in left')
+                page.screenshot(path=str(SCREENSHOTS / 'low-stock-desktop.png'), full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path=str(SCREENSHOTS / 'low-stock-mobile.png'), full_page=True)
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.reload(); self.wait_ready(page)
+                expect(page.locator('.stock-alert')).to_have_text('Low stock · 100 in left')
+                page.click('#edit-material')
+                page.fill('#low-stock', '50')
+                page.click('#save-material')
+                self.assertEqual(page.locator('.stock-alert').count(), 0)
+                page.click('#edit-material')
+                page.fill('#available-length', '50')
+                page.select_option('#unit', 'mm')
+                self.assertEqual(page.input_value('#low-stock'), '1270')
+                page.click('#save-material')
+                expect(page.locator('.stock-alert')).to_have_text('Low stock · 1270 mm left')
+                page.click('#edit-material')
+                page.fill('#available-length', '0')
+                page.click('#save-material')
+                expect(page.locator('.stock-alert')).to_have_text('Out of stock · 0 mm left')
+                page.reload(); self.wait_ready(page)
+                expect(page.locator('.stock-alert')).to_have_text('Out of stock · 0 mm left')
+                page.click('#edit-material')
+                page.fill('#available-length', '2000')
+                page.click('#save-material')
+                self.assertEqual(page.locator('.stock-alert').count(), 0)
+                page.click('#edit-material')
+                page.fill('#available-length', '')
+                page.click('#save-material')
+                self.assertEqual(page.locator('.stock-alert').count(), 0)
+            finally:
+                browser.close()
+
+    def test_windows_save_cancel_save_and_retained_receipt(self):
+        from playwright.sync_api import sync_playwright, expect
+        source = Path(self.tmp.name) / 'kit.pdf'
+        original = mixed_fixture()
+        source.write_bytes(original)
+        folder = Path(self.tmp.name) / 'chosen'
+        folder.mkdir()
+        target = folder / 'Renamed kit.pdf'
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                page.evaluate('localSave = true')
+                page.set_input_files('#file', str(source))
+                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
+                page.click('#export')
+                self.assertEqual(page.input_value('#save-destination'), 'choose')
+                expect(page.locator('#save-name-row')).not_to_be_visible()
+                with patch('print_export.pick_save_path', return_value=None) as picker:
+                    page.click('#confirm-send')
+                    expect(page.locator('#confirm-send')).to_be_enabled()
+                    picker.assert_called_once_with('kit', 'pdf')
+                self.assertEqual(page.get_attribute('body', 'data-step'), 'confirm')
+                self.assertTrue(page.locator('#delivery-receipt').is_hidden())
+                self.assertFalse(server.STATE.get('released'))
+                self.assertFalse(target.exists())
+                expect(page.locator('#folder-picker')).not_to_be_visible()
+                with patch('print_export.pick_save_path', return_value=str(target)):
+                    page.click('#confirm-send')
+                    expect(page.locator('#delivery-receipt')).to_have_text('Saved to ' + str(target))
+                self.assertTrue(target.read_bytes().startswith(b'%PDF'))
+                self.assertFalse(server.STATE['deliveryCompleted'])
+                self.assertIsNone(server.STATE.get('savedPath'))
+                self.assertEqual(source.read_bytes(), original)
+                page.reload(); self.wait_ready(page)
+                expect(page.locator('#delivery-receipt')).to_have_text('Saved to ' + str(target))
+                self.assertEqual(page.locator('#status').inner_text(), '')
+                page.locator('#settings').evaluate('node => { node.open = true }')
+                page.click('#browse-output')
+                page.fill('#folder-path', str(folder))
+                page.click('#folder-go')
+                expect(page.locator('#folder-use')).to_be_enabled()
+                page.click('#folder-use')
+                expect(page.locator('#folder-picker')).not_to_be_visible()
+                self.assertEqual(server.OUTPUT.root, folder.resolve())
+                page.reload(); self.wait_ready(page)
+                page.click('#export')
+                self.assertEqual(page.input_value('#save-destination'), 'folder')
+                self.assertEqual(page.input_value('#save-name'), 'Renamed kit')
+            finally:
+                browser.close()
+
     def setUp(self):
         self.old = (server.WORK, server.PORT, server.HOST, copy.deepcopy(server.STATE), server.PROCESS)
         self.old_output = server.OUTPUT
@@ -84,12 +181,12 @@ class WebMvpTests(unittest.TestCase):
         return f'http://127.0.0.1:{server.PORT}'
 
     def wait_ready(self, page):
-        # Test the browser-download fallback; native save dialogs need an operator.
-        page.evaluate('window.showSaveFilePicker = undefined')
         # Boot sets this only after the shop stylesheet is on the page and the
         # session call has returned. An empty status line was that signal never arriving.
         try:
             page.wait_for_function("() => document.body.dataset.ready === '1'")
+            # Most tests exercise the browser fallback; chooser coverage opts in.
+            page.evaluate('localSave = false')
         except Exception:
             detail = page.evaluate(
                 "() => JSON.stringify({ready: document.body && document.body.dataset.ready || '',"
@@ -165,7 +262,7 @@ class WebMvpTests(unittest.TestCase):
         return browser, page
 
     def download(self, page, shortcut=False):
-        page.evaluate('window.showSaveFilePicker = undefined')
+        page.evaluate('localSave = false')
         with page.expect_download(timeout=30000) as pending:
             if shortcut:
                 page.evaluate('document.activeElement && document.activeElement.blur()')
@@ -335,7 +432,7 @@ class WebMvpTests(unittest.TestCase):
                 direct = Path(self.tmp.name) / 'direct.pdf'
                 downloaded.save_as(str(direct))
                 self.assertEqual(direct.read_bytes(), pdf)
-                self.assertIn('did not send', page.locator('#delivery-receipt').inner_text())
+                self.assertEqual(page.locator('#delivery-receipt').inner_text(), 'Downloaded Customer kit - Chrome.pdf')
                 self.assertNotIn(b'LNThru-cut', pdf)
                 self.assertNotIn(b'LNKiss-cut', pdf)
                 from pypdf import PdfReader
@@ -620,7 +717,7 @@ class WebMvpTests(unittest.TestCase):
                 page.fill('#kiss-name', 'ShopKiss')
                 page.fill('#hot-folder', str(folder))
                 page.locator('#hot-folder').dispatch_event('change')
-                page.wait_for_function("() => /Hot folder set/i.test(document.querySelector('#status').textContent)", timeout=10000)
+                page.wait_for_function("() => /Default print folder saved/i.test(document.querySelector('#status').textContent)", timeout=10000)
                 page.reload()
                 self.wait_ready(page)
                 self.assertEqual(page.input_value('#material'), saved_material)
@@ -638,7 +735,7 @@ class WebMvpTests(unittest.TestCase):
                     page.locator('#settings').evaluate('node => { node.open = true }')
                     page.fill('#hot-folder', '')
                     page.locator('#hot-folder').dispatch_event('change')
-                    page.wait_for_function("() => /No hot folder/i.test(document.querySelector('#status').textContent)", timeout=10000)
+                    page.wait_for_function("() => /Choose a location when saving/i.test(document.querySelector('#status').textContent)", timeout=10000)
                 except Exception:
                     pass
                 browser.close()
@@ -800,13 +897,8 @@ class WebMvpTests(unittest.TestCase):
                 page.wait_for_selector('#confirm:not([hidden])')
                 self.assertTrue(page.locator('#edit-material').is_disabled())
                 self.assertTrue(page.locator('#nest-width').is_disabled())
-                summary = page.locator('#confirm-summary').inner_text()
-                self.assertIn('Moto Regular', summary)
-                self.assertIn('51.5 in wide', summary)
-                self.assertIn('in long', summary)
-                self.assertIn('piece', summary)
-                self.assertNotIn(state['id'], summary)
-                self.assertEqual(page.locator('#confirm-send').inner_text(), 'Save on my computer')
+                self.assertEqual(page.locator('#confirm-summary').count(), 0)
+                self.assertEqual(page.locator('#confirm-send').inner_text(), 'Download')
                 self.assertEqual(page.locator('#confirm-back').inner_text(), 'Back')
                 self.assertFalse(page.locator('#readout').is_hidden())
                 self.assertFalse(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
