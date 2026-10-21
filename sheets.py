@@ -5,7 +5,7 @@ import time
 from collections import Counter
 from shapely.geometry import Polygon
 from shapely.affinity import rotate
-from engine import solve, validate_result, number
+from engine import solve, validate_result, number, publish_result
 
 
 def subset(job, placements):
@@ -13,7 +13,7 @@ def subset(job, placements):
     return {**job,'parts':[{**p,'quantity':counts[p['id']]} for p in job['parts'] if counts[p['id']]]}
 
 
-def split_nest(job):
+def split_nest(job, progress_path=None):
     started=time.monotonic()
     settings=job['settings']
     limit=number(settings.get('sheetLength'),'Sheet length',10,5000)
@@ -62,7 +62,7 @@ def split_nest(job):
         whole['settings'].pop('sheetLength',None)
         attempted=time.monotonic()
         try:
-            candidate=solve(whole)
+            candidate=solve(whole, progress_path)
             validate_result(whole,candidate)
             candidate['placements']=[{**p,'sheet':0} for p in candidate['placements']]
             candidate['sheets']=[{'index':0,'offset':0,'usedLength':candidate['usedLength'],'pieces':len(candidate['placements']),'area':candidate['area']}]
@@ -85,7 +85,7 @@ def split_nest(job):
         result['usedLength']=max(s.bounds[3] for s in shapes)+margin
         try:
             if remaining>=1:
-                optimized=solve(local_job)
+                optimized=solve(local_job, progress_path if len(bins)==1 else None)
                 if optimized['usedLength']<result['usedLength']: result=optimized
         except ValueError:
             pass
@@ -99,6 +99,7 @@ def split_nest(job):
     result={'width':width,'usedLength':offset,'placements':all_placements,'sheets':sheets,'area':total_area,
             'utilization':total_area/(width*offset),'elapsed':time.monotonic()-started,'validated':True,'engine':'Sparrow with whole-piece sheet allocation'}
     validate_result(job,result)
+    publish_result(progress_path, result)
     return result
 
 

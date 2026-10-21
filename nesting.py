@@ -157,7 +157,7 @@ def _run(job):
         from sheets import split_nest, subset
         if not job.get('parts'):
             raise ValueError('For sticker-only fill, use a roll length and leave automatic sheets off.')
-        result = split_nest(job)
+        result = split_nest(job, progress if not job.get('fillJobs') else None)
         if job.get('fillJobs'):
             # Fill each sheet without extending it; carry remaining whole-set limits.
             merged=copy.deepcopy(job); merged.pop('fillJobs',None)

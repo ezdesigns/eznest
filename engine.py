@@ -113,6 +113,30 @@ def validate_result(job, result):
     return shapes
 
 
+def search_envelope(polygon):
+    """Reduce search work only; never change the source or its safety envelope."""
+    envelope = polygon.buffer(0.10, join_style=2)
+    if len(envelope.exterior.coords) <= 200:
+        return envelope
+    candidate = envelope.simplify(0.05, preserve_topology=True).buffer(0.051, quad_segs=2)
+    # Simplification is not inherently outward. Prove containment rather than
+    # trusting a tolerance, and retain the exact envelope if it cannot be proved.
+    if candidate.geom_type == 'Polygon' and candidate.is_valid and candidate.covers(envelope) and len(candidate.exterior.coords) < len(envelope.exterior.coords):
+        return candidate
+    return envelope
+
+
+def publish_result(path, result):
+    if not path:
+        return
+    import json
+    from pathlib import Path
+    path = Path(path)
+    temporary = path.with_suffix('.tmp')
+    temporary.write_text(json.dumps({'ok': True, 'result': result}), encoding='utf-8')
+    temporary.replace(path)
+
+
 def solve(job, progress_path=None):
     width, length, gap, margin, seconds = validate_job(job)
     started = time.monotonic()
@@ -136,19 +160,18 @@ def solve(job, progress_path=None):
             if polygon.bounds[2] - polygon.bounds[0] + 0.2 > width - 2 * margin:
                 raise ValueError(f"{part['id']}: part is too wide at every rotation.")
         base_rotations[part['id']] = base
-        envelope = polygon.buffer(0.10, join_style=2)
+        envelope = search_envelope(polygon)
         left, bottom, right, top = envelope.bounds
         span += (math.hypot(right - left, top - bottom) + gap + 0.02) * part.get('quantity', 1)
         items.append(spyrrow.Item(part['id'], [(y, x) for x, y in envelope.exterior.coords], part.get('quantity', 1), orientations))
     # Small extra clearance absorbs native floating-point error; zero gap remains valid.
-    config = spyrrow.StripPackingConfig(total_computation_time=int(seconds), min_items_separation=gap + 0.02, num_workers=2, seed=int(job['settings'].get('seed', 42)), early_termination=True)
     # Sparrow initializes strip length from area / width. For a tiny job on a
     # wide roll this can be smaller than its separation offset and panic.
     # No part needs more cross-roll space than its envelope diagonal. The sum
     # plus clearances accommodates every part side by side, at any orientation.
     # Restrict only the search region; retain the customer's full output width.
     instance = spyrrow.StripPackingInstance('eznest', min(width - 2 * margin, span), items)
-    progress_path = progress_path or job.pop('_progress', None)
+    progress_path = progress_path or job.get('_progress')
 
     def build(solution):
         result = {'placements': [{'id': p.id, 'rotation': base_rotations[p.id] - p.rotation, 'x': p.translation[1] + margin, 'y': p.translation[0] + margin} for p in solution.placed_items]}
@@ -158,47 +181,92 @@ def solve(job, progress_path=None):
         result.update({'width': width, 'usedLength': used_length, 'area': area, 'utilization': area / (width * used_length), 'elapsed': time.monotonic() - started, 'engine': 'Sparrow via spyrrow ' + spyrrow.__version__, 'validated': True})
         return result
 
-    if not progress_path:
-        return build(instance.solve(config))
-    import json
     import threading
-    from pathlib import Path
-    queue = spyrrow.ProgressQueue()
-    holder, failure, best = {}, {}, -1
+    best = None
+    last_error = None
+    part_polygons = {p['id']: Polygon(p['points']) for p in job['parts']}
+    rotated_tops = {}
     feasible = (spyrrow.ReportType.ExplFeas, spyrrow.ReportType.CmprFeas, spyrrow.ReportType.Final)
 
-    def run():
-        try:
-            holder['solution'] = instance.solve(config, queue)
-        except BaseException as error:
-            failure['error'] = error
+    def extent(solution):
+        tops = []
+        for placement in solution.placed_items:
+            angle = base_rotations[placement.id] - placement.rotation
+            key = (placement.id, angle)
+            if key not in rotated_tops:
+                rotated_tops[key] = rotate(part_polygons[placement.id], angle, origin=(0,0)).bounds[3]
+            tops.append(rotated_tops[key] + placement.translation[0] + 2 * margin)
+        return max(tops, default=math.inf)
 
-    def publish(reports):
+    def consider(solution):
         nonlocal best
-        for kind, solution in reports:
-            if kind not in feasible:
-                continue
-            try:
-                partial = build(solution)
-            except (ValueError, ZeroDivisionError):
-                continue
-            if partial['utilization'] <= best + 1e-9:
-                continue
-            best = partial['utilization']
-            path = Path(progress_path)
-            temporary = path.with_suffix('.tmp')
-            temporary.write_text(json.dumps({'ok': True, 'result': partial}), encoding='utf-8')
-            temporary.replace(path)
+        if best is not None and extent(solution) >= best['usedLength'] - 1e-7:
+            return
+        candidate = build(solution)
+        if best is None or candidate['usedLength'] < best['usedLength'] - 1e-7:
+            best = candidate
+            publish_result(progress_path, best)
 
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-    while thread.is_alive():
-        publish(queue.drain())
-        thread.join(0.2)
-    publish(queue.drain())
-    if 'error' in failure:
-        raise failure['error']
-    return build(holder['solution'])
+    # Give a quick first arrangement, then independently restart to escape a
+    # poor initial packing. All attempts share one budget and one best result.
+    attempts = 3 if seconds >= 15 else 1
+    deadline = time.monotonic() + seconds
+    completed = 0
+    for attempt in range(attempts):
+        remaining = deadline - time.monotonic()
+        if attempt and remaining < 1:
+            break
+        budget = max(1, int(remaining / (attempts - attempt)))
+        if attempts == 1:
+            budget = int(seconds)
+        if attempts > 1 and attempt == 0:
+            budget = min(5, budget)
+        config = spyrrow.StripPackingConfig(total_computation_time=budget,
+            min_items_separation=gap + 0.02, num_workers=2,
+            seed=(int(job['settings'].get('seed', 42)) + attempt * 104729) % 2147483648,
+            early_termination=True)
+        queue = spyrrow.ProgressQueue()
+        holder, failure = {}, {}
+
+        def run():
+            try:
+                holder['solution'] = instance.solve(config, queue)
+            except BaseException as error:
+                failure['error'] = error
+
+        def drain():
+            nonlocal last_error
+            # Validate the shortest report first. Rechecking every tiny native
+            # improvement can otherwise consume the search budget on complex art.
+            reports = [s for kind,s in queue.drain() if kind in feasible]
+            for solution in sorted(reports,key=extent):
+                try:
+                    consider(solution)
+                    break
+                except (ValueError, ZeroDivisionError) as error:
+                    last_error = error
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        while thread.is_alive():
+            drain()
+            thread.join(0.2)
+        drain()
+        completed += 1
+        if 'error' in failure:
+            if isinstance(failure['error'], (KeyboardInterrupt, SystemExit)):
+                raise failure['error']
+            last_error = failure['error']
+        if 'solution' in holder:
+            try:
+                consider(holder['solution'])
+            except (ValueError, ZeroDivisionError) as error:
+                last_error = error
+    if best is None:
+        raise last_error or ValueError('No valid layout was found within the search time.')
+    best.update(elapsed=time.monotonic() - started, searchAttempts=completed)
+    publish_result(progress_path, best)
+    return best
 
 
 if __name__ == '__main__':

@@ -340,7 +340,7 @@ function preset() {
     margin: edge + mark,
     edgeMargin: edge,
     markMargin: mark,
-    seconds: Number($('seconds').value) || 5,
+    seconds: Number($('seconds').value) || 30,
     rotations: $('rotations').value === 'free' ? null : $('rotations').value.split(',').map(Number),
     seed: 42,
     autoBleedMm: autoBleedMm(),
@@ -562,6 +562,7 @@ function syncFiles() {
   $('files').hidden = !show;
   $('add-files').hidden = !show || !!illustratorHandoff || document.body.dataset.step === 'nest';
   $('stop').hidden = document.body.dataset.step !== 'nest';
+  $('improve').hidden = document.body.dataset.step !== 'check' || busy || !current || current.released;
   const locked = busy || !!presetEditor || document.body.dataset.step === 'nest';
   for (const node of $('files').querySelectorAll('input, button')) node.disabled = locked;
 }
@@ -1045,7 +1046,7 @@ function showLive(state) {
   const placed = live.placements?.length || 0;
   setNum('length', (live.usedLength / 304.8).toFixed(1), 'ft');
   setNum('waste', String(Math.round((1 - (live.utilization || 0)) * 100)), '%');
-  setNum('sheets', '1');
+  setNum('sheets', String(live.sheets?.length || 1));
   $('readout').classList.remove('pending');
   showWidth();
   setSentence('Nesting… ' + placed + ' of ' + (expected || placed), false);
@@ -1123,7 +1124,7 @@ async function nest() {
     showScreen('nest');
     showLive({job});
     renderActions();
-    status('Nesting on ' + $('nest-width').value + ' in…');
+    status('Finding a tighter fit… You can stop and keep the best layout.');
     await api('/api/solve', job);
     setTimeout(poll, 300);
   } catch (error) {
@@ -1945,7 +1946,7 @@ function restoreJob(state) {
     $(id).value = settings[key] == null ? '' : settings[key] / factor;
   }
   $('margin').value = (settings.edgeMargin ?? (settings.margin - (settings.markMargin || 0))) / factor;
-  $('seconds').value = settings.seconds;
+  $('seconds').value = Math.max(30, settings.seconds || 30);
   $('rotations').value = settings.rotations == null ? 'free' : settings.rotations.join(',');
   $('auto-bleed').value = (settings.autoBleedMm || 0) / 25.4;
   $('draw-marks').checked = settings.drawRegmarks === true;
@@ -2315,6 +2316,7 @@ document.addEventListener('DOMContentLoaded', () => {
     finally { event.target.value = ''; }
   });
   $('stop').addEventListener('click', stopNest);
+  $('improve').addEventListener('click', improve);
   $('undo').addEventListener('click', async () => {
     if (!current?.savedPath) return;
     try {
@@ -2331,7 +2333,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if ($('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .setting-info, #settings, #choose-thru, #choose-kiss, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #update, #setup, #edit-material')) return;
+    if ($('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .setting-info, #settings, #choose-thru, #choose-kiss, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

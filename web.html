@@ -124,7 +124,7 @@
       <p>My computer lets you choose a folder. Default print folder uses the folder saved in Settings. Check the file in your print software before printing.</p>
     </details>
     <a class="workspace" href="/">Full workspace</a>
-    <input id="seconds" type="hidden" value="5">
+    <input id="seconds" type="hidden" value="30">
     <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
   </div>
 </details>
@@ -206,6 +206,7 @@
   </div>
   <button id="export" class="primary" type="button" hidden disabled>Send to ONYX</button>
   <button id="stop" class="link" type="button" hidden>Stop · keep best</button>
+  <button id="improve" class="link" type="button" hidden title="Try more arrangements. Your shorter layout is kept, with the same bleed and spacing.">Try tighter fit</button>
   <button id="start-over" class="link" type="button" hidden>Start over</button>
   <button id="undo" class="link" type="button" hidden>Undo send</button>
   <p id="delivery-receipt" class="delivery-receipt" role="status" hidden></p>

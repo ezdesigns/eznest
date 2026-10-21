@@ -92,6 +92,14 @@ tries all contours together when their total area can fit on one sheet. The
 independent geometry checks still require every piece, allowed rotation, spacing
 and sheet boundaries. This is a best-found layout, not a proven optimum.
 
+The simple page uses a 30-second search budget with up to three different starts,
+retaining the shortest independently checked layout. Geometry preparation and
+validation can add time. Try tighter fit searches again without replacing a
+shorter previous result, including when stopped early. Detailed search envelopes
+may be simplified only when they provably contain the complete guarded artwork;
+the original print objects and cut paths are unchanged. Saved rotation restrictions
+remain in effect; any-angle rotation is an operator choice for suitable material.
+
 The review screen defaults to the saved print folder and keeps the imported
 filename. One-sheet PDF jobs save a named PDF; multi-sheet and SVG jobs save a
 ZIP pack. My computer opens the normal Windows Save As window on the PC running

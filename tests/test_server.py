@@ -181,6 +181,15 @@ class ServerTests(unittest.TestCase):
                 request('/api/cancel', {}, token)
                 self.assertEqual(request('/api/state')['status'], 'cancelled')
                 self.assertIsNotNone(server.PROCESS.poll())
+                # A stopped retry can have a valid progress layout that is
+                # longer than the incumbent. Keep the shorter original.
+                best={'status':'ready','id':'best','job':{},'result':{'usedLength':100}}
+                directory_path=Path(directory)
+                (directory_path/'progress.json').write_text(json.dumps({'ok':True,'result':{'usedLength':120}}))
+                server.STATE.clear();server.STATE.update(status='running',id='retry',job={},output=str(directory_path/'result.json'),incumbent=best)
+                request('/api/cancel',{'keepBest':True},token)
+                self.assertEqual(server.STATE['id'],'best')
+                self.assertEqual(server.STATE['result']['usedLength'],100)
                 with self.assertRaises(HTTPError) as stale:
                     request('/api/prepare-apply', {'id': 'stale'}, token)
                 self.assertEqual(stale.exception.code, 400)

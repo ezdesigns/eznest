@@ -3,11 +3,55 @@ import json
 import math
 import unittest
 from pathlib import Path
-from engine import solve, validate_job, validate_result
+from engine import solve, validate_job, validate_result, search_envelope
+from unittest.mock import patch
+from types import SimpleNamespace
+import tempfile
+from shapely.geometry import Point, Polygon
 
 SAMPLE=json.loads((Path(__file__).resolve().parents[1]/'sample.json').read_text())
 
 class EngineTests(unittest.TestCase):
+    def test_search_outline_contains_the_complete_guarded_artwork(self):
+        circle = Point(0,0).buffer(50,quad_segs=400)
+        detailed = circle.union(Polygon([[0,-4],[70,-4],[70,4],[0,4]]))
+        exact = detailed.buffer(.10,join_style=2)
+        envelope = search_envelope(detailed)
+        self.assertTrue(envelope.covers(exact))
+        self.assertLess(len(envelope.exterior.coords),len(exact.exterior.coords)/2)
+        self.assertLess(envelope.area/exact.area,1.01)
+
+    def test_multiple_starts_keep_the_shortest_valid_layout_after_failure(self):
+        job=self.job();job['settings'].update(width=100,margin=3,gap=2,seconds=30)
+        job['parts']=[{'id':'a','points':[[0,0],[10,0],[10,10],[0,10]]}]
+        def solution(y):
+            return SimpleNamespace(placed_items=[SimpleNamespace(id='a',rotation=0,translation=(y,0))])
+        with patch('engine.spyrrow.StripPackingInstance') as factory:
+            factory.return_value.solve.side_effect=[solution(30),solution(10),ValueError('later attempt failed')]
+            with tempfile.TemporaryDirectory() as folder:
+                path=Path(folder)/'progress.json'
+                result=solve(job,path)
+                self.assertEqual(result['usedLength'],26)
+                self.assertEqual(json.loads(path.read_text())['result']['usedLength'],26)
+            self.assertEqual(result['searchAttempts'],3)
+            seeds=[call.args[0].seed for call in factory.return_value.solve.call_args_list]
+            self.assertEqual(len(set(seeds)),3)
+            validate_result(job,result)
+
+    def test_valid_progress_beats_a_worse_final_solution(self):
+        import itertools
+        import spyrrow
+        job=self.job();job['settings'].update(width=100,margin=3,gap=2,seconds=1)
+        job['parts']=[{'id':'a','points':[[0,0],[10,0],[10,10],[0,10]]}]
+        def solution(y):
+            return SimpleNamespace(placed_items=[SimpleNamespace(id='a',rotation=0,translation=(y,0))])
+        with patch('engine.spyrrow.StripPackingInstance') as factory, patch('engine.spyrrow.ProgressQueue') as queue:
+            factory.return_value.solve.return_value=solution(30)
+            queue.return_value.drain.side_effect=itertools.chain([[(spyrrow.ReportType.ExplFeas,solution(10)),(spyrrow.ReportType.Final,SimpleNamespace(placed_items=[]))]],itertools.repeat([]))
+            result=solve(job)
+            self.assertEqual(result['usedLength'],26)
+            validate_result(job,result)
+
     def job(self):
         job=copy.deepcopy(SAMPLE)
         job['settings']['seconds']=1

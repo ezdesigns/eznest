@@ -555,6 +555,7 @@ class Handler(BaseHTTPRequestHandler):
                         incumbent = copy.deepcopy(STATE)
                         data = copy.deepcopy(STATE.get('requestJob', STATE['job']))
                         data['settings']['seed'] = secrets.randbelow(2147483647)
+                        data['settings']['seconds'] = max(30, data['settings']['seconds'])
                     validate_request(data)
                     if data.get('illustrator'):
                         handoff = illustrator_bridge.read(WORK, data['illustrator']['id'])
@@ -597,14 +598,11 @@ class Handler(BaseHTTPRequestHandler):
                         except (OSError, ValueError):
                             live = None
                     if live:
-                        STATE.pop('incumbent', None)
                         STATE.pop('output', None)
-                        STATE.update(status='ready', ok=True, result=live, note='Stopped. This is the best layout so far.')
-                        if STATE.get('job', {}).get('productionJobs'):
-                            STATE['manifest'] = manifest(STATE['job'], STATE['result'], STATE['id'])
-                            check = batch_output_check(STATE['job'])
-                            if check:
-                                STATE['manifest']['outputCheck'] = check
+                        # Stopping a retry must not replace the previous best
+                        # with a worse intermediate arrangement.
+                        finish_search({'ok':True, 'result':live})
+                        STATE['note'] = 'Stopped. Your best layout is retained.'
                     else:
                         incumbent = STATE.get('incumbent')
                         STATE.clear()

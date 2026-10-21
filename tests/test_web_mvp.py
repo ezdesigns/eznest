@@ -30,6 +30,34 @@ def launch_browser(playwright):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_tighter_fit_keyboard_action_and_stop_preserve_best(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                self.assertEqual(page.input_value('#seconds'),'30')
+                page.locator('#seconds').evaluate("node => node.value = '1'")
+                page.set_input_files('#file',str(Path(__file__).resolve().parents[1]/'sample-artwork.svg'))
+                page.wait_for_function("() => document.body.dataset.step === 'check'",timeout=90000)
+                before=json.load(urlopen(self.url()+'/api/state'))
+                expect(page.locator('#improve')).to_be_visible()
+                page.locator('#improve').focus()
+                with page.expect_response(lambda r:r.url.endswith('/api/improve')) as request:
+                    page.keyboard.press('Enter')
+                self.assertEqual(request.value.status,200)
+                self.assertNotEqual(page.get_attribute('body','data-step'),'confirm')
+                page.click('#stop')
+                page.wait_for_function("() => document.body.dataset.step === 'check'",timeout=10000)
+                after=json.load(urlopen(self.url()+'/api/state'))
+                self.assertLessEqual(after['result']['usedLength'],before['result']['usedLength'])
+                self.assertEqual(after['job']['parts'],before['job']['parts'])
+                self.assertEqual(after['job']['settings']['rotations'],before['job']['settings']['rotations'])
+                page.screenshot(path=str(SCREENSHOTS/'tighter-fit-desktop.png'),full_page=True)
+                page.set_viewport_size({'width':390,'height':844})
+                page.screenshot(path=str(SCREENSHOTS/'tighter-fit-mobile.png'),full_page=True)
+            finally:
+                browser.close()
+
     def test_low_stock_threshold_restock_units_and_refresh(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as playwright:
@@ -690,7 +718,7 @@ class WebMvpTests(unittest.TestCase):
                         after = json.load(urlopen(self.url() + '/api/state', timeout=10))
                         self.assertEqual(after['job']['productionJobs'][0]['sets'], 3)
                         self.assertEqual(len(after['result']['placements']) * 2, len(before['result']['placements']) * 3)
-                        self.assertEqual(after['job']['settings'], before['job']['settings'])
+                        self.assertEqual(after['job']['settings'], {**before['job']['settings'],'seconds':30})
                         self.assertEqual(page.locator('#files input').input_value(), '3')
                         self.assertEqual(page.input_value('#sets'), '3')
                         self.assertEqual(after['job'].get('documentSources'), before['job'].get('documentSources'))
