@@ -2257,7 +2257,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('cut-preset').addEventListener('change', () => { applyCutPreset(); saveShop(); });
   $('thru-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
   $('kiss-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
-  $('auto-bleed').addEventListener('change', () => { if (current && current.result && !busy && !saving && !presetEditor) renderPreview(activeSheet); });
+  $('auto-bleed').addEventListener('change', requestNest);
   $('save-destination').addEventListener('change', updateSaveChoice);
   $('folder-path').addEventListener('input', () => { $('folder-use').disabled = true; });
   $('folder-go').addEventListener('click', () => browseExportFolder($('folder-path').value.trim()));

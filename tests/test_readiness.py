@@ -107,7 +107,9 @@ class ReadinessTests(unittest.TestCase):
             root = Path(tmp) / 'Program Files' / 'eznest'
             root.mkdir(parents=True)
             (root / 'eznest.exe').write_bytes(b'MZ')
-            with patch.dict('os.environ', {'ProgramFiles': str(root.parent)}), patch.object(installer_update.os, 'name', 'nt'):
+            from types import SimpleNamespace
+            windows = SimpleNamespace(name='nt', environ={'ProgramFiles': str(root.parent)})
+            with patch.object(installer_update, 'os', windows):
                 self.assertFalse(installer_update.apply_supported(root))
                 with patch.object(installer_update, 'spawn_helper') as spawn:
                     self.assertFalse(installer_update.handoff_if_pending(root, tmp))

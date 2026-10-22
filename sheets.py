@@ -5,7 +5,7 @@ import time
 from collections import Counter
 from shapely.geometry import Polygon
 from shapely.affinity import rotate
-from engine import solve, validate_result, number, publish_result
+from engine import part_polygon, solve, validate_result, number, publish_result
 
 
 def subset(job, placements):
@@ -24,7 +24,7 @@ def split_nest(job, progress_path=None):
     # sheet is then optimized with true contours; a worse/failed solve is discarded.
     bins=[]; copies=[]
     for part in job['parts']:
-        poly=Polygon(part['points'])
+        poly=part_polygon(part)
         angles=settings['rotations']
         if angles is None:
             corners=list(poly.minimum_rotated_rectangle.exterior.coords)
@@ -56,7 +56,7 @@ def split_nest(job, progress_path=None):
     all_placements=[]; sheets=[]; offset=0; total_area=0
     # Bounding boxes cannot interlock. Before committing several bins, let the
     # contour solver try the complete job on one sheet when its area permits it.
-    area=sum(Polygon(p['points']).area*p.get('quantity',1) for p in job['parts'])
+    area=sum(part_polygon(p).area*p.get('quantity',1) for p in job['parts'])
     if len(bins)>1 and area <= usable_w*usable_h:
         whole={**job,'settings':{**settings,'maxLength':min(limit,settings.get('maxLength') or limit)}}
         whole['settings'].pop('sheetLength',None)

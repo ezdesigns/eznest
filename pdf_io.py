@@ -16,7 +16,8 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import (ArrayObject, ContentStream, DecodedStreamObject,
                            DictionaryObject, NameObject, NumberObject,
                            TextStringObject)
-from shapely.geometry import Polygon, box
+from shapely.geometry import Polygon, box, MultiPoint
+from shapely.affinity import rotate, translate
 
 MM = 25.4 / 72
 IDENTITY = (1, 0, 0, 1, 0, 0)
@@ -351,6 +352,72 @@ def bleed_artwork_matrix(bounds, bleed_mm):
     return (sx, 0, 0, sy, cx * (1 - sx), cy * (1 - sy))
 
 
+
+def prepare_nesting_geometry(job, documents=None):
+    """Reserve exported paint while preserving source coordinates and cut paths.
+
+    PDF Bezier controls enclose the exact clipped path, so the convex hull is
+    conservative even when the cut polygon was flattened for the search. Apply
+    the same nonuniform matrix as export, including any existing import bleed.
+    Never accept a client-supplied print envelope.
+    """
+    bleed = job.get('settings', {}).get('autoBleedMm') or 0
+    if type(bleed) not in (int, float) or not math.isfinite(bleed) or not 0 <= bleed <= 25:
+        raise ValueError('Auto bleed must be from 0 to 25 mm.')
+    parts = job.get('parts', []) + [p for fill in job.get('fillJobs', []) for p in fill['parts']]
+    for part in parts:
+        part.pop('nestingPoints', None)
+        if not bleed:
+            continue
+        original = Polygon(part['points'])
+        if part.get('documentId'):
+            if not documents or part['documentId'] not in documents:
+                raise ValueError('Load the original PDF before adding auto bleed.')
+            meta = documents[part['documentId']][1]
+            if meta.get('artworkPreserved'):
+                raise ValueError('Prepared artwork already retains its bleed; automatic enlargement is unavailable.')
+            piece = next(p for p in meta['pieces'] if p['id'] == part['pdfPieceId'])
+            transform = bleed_artwork_matrix(cut_bounds(piece), bleed)
+            if transform is None:
+                continue
+            controls = [point(transform, values[i:i+2]) for op, values in piece['clipCommands']
+                        for i in range(0, len(values), 2)]
+            x0, y1 = piece['anchor']
+            envelope = MultiPoint([((x-x0)*MM, (y1-y)*MM) for x, y in controls]).convex_hull
+            envelope = original.union(envelope).convex_hull
+        else:
+            # SVG auto bleed uses round strokes; miter space contains that paint.
+            envelope = original.buffer(bleed, join_style=2)
+        part['nestingPoints'] = [list(p) for p in envelope.exterior.coords[:-1]]
+
+
+def validate_auto_bleed_export(job, result, documents):
+    """Independently reject a stale/tampered layout at the final PDF boundary."""
+    if not job.get('settings', {}).get('autoBleedMm'):
+        return
+    checked = copy.deepcopy(job)
+    prepare_nesting_geometry(checked, documents)
+    parts = {p['id']: p for p in checked['parts']}
+    settings = checked.get('settings', {})
+    margin, gap = settings.get('margin', 0), settings.get('gap', 0)
+    sheets = result.get('sheets') or [{'index': 0, 'offset': 0, 'usedLength': result['usedLength']}]
+    for sheet in sheets:
+        boundary = box(margin, margin, result['width']-margin, sheet['usedLength']-margin)
+        occupied = []
+        for placement in result['placements']:
+            if placement.get('sheet', 0) != sheet['index']:
+                continue
+            part = parts[placement['id']]
+            shape = translate(rotate(Polygon(part.get('nestingPoints', part['points'])),
+                                     placement['rotation'], origin=(0, 0)),
+                              placement['x'], placement['y']-sheet['offset'])
+            if not boundary.buffer(.001).covers(shape) or any(
+                    shape.intersection(other).area > .0001 or shape.distance(other)+.001 < gap
+                    for other in occupied):
+                raise ValueError('Auto bleed needs more space. Nest again with this bleed setting before exporting.')
+            occupied.append(shape)
+
+
 def regmark_operators(width_mm, height_mm, margin_mm):
     """Corner LNRegmark strokes in PDF points. No barcode."""
     band = margin_mm if isinstance(margin_mm, (int, float)) and not isinstance(margin_mm, bool) and margin_mm > 1 else 6
@@ -384,6 +451,7 @@ def sheet_id_operators(width_mm, height_mm, margin_mm, sheet_id):
 
 def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutContour', sheet_filter=None, cut_mapping=None, sheet_id=None, preview=False):
     """Transform a piece's print art and every owned cut using one rigid matrix."""
+    validate_auto_bleed_export(job, result, documents)
     from cut_mapping import output_mapping,OPERATIONS
     mapping=output_mapping({'cutMapping':cut_mapping} if cut_mapping else {'cutSpot':cut_spot,'cutLayer':cut_layer})
     writer=PdfWriter();writer.pdf_header='%PDF-1.7'

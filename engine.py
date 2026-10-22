@@ -43,7 +43,7 @@ def validate_job(job):
         if type(quantity) is not int or not 1 <= quantity <= PIECE_CAP:
             raise ValueError(f'Quantity must be an integer from 1 to {PIECE_CAP}.')
         total += quantity
-        points = part['points']
+        points = part.get('nestingPoints', part['points'])
         if not 3 <= len(points) <= 5000:
             raise ValueError(f'{ident}: invalid contour size.')
         for point in points:
@@ -69,8 +69,13 @@ def validate_job(job):
     return width, length, gap, margin, seconds
 
 
+def part_polygon(part):
+    # Original source/cut points stay unchanged; the server derives print space.
+    return Polygon(part.get('nestingPoints', part['points']))
+
+
 def placed_polygon(part, placement):
-    return translate(rotate(Polygon(part['points']), placement['rotation'], origin=(0, 0)), placement['x'], placement['y'])
+    return translate(rotate(part_polygon(part), placement['rotation'], origin=(0, 0)), placement['x'], placement['y'])
 
 
 def validate_result(job, result):
@@ -88,7 +93,7 @@ def validate_result(job, result):
     if length is None:
         length = 2 * margin + 1
         for part in job['parts']:
-            x0, y0, x1, y1 = Polygon(part['points']).bounds
+            x0, y0, x1, y1 = part_polygon(part).bounds
             length += (math.hypot(x1-x0, y1-y0) + gap + .5) * part.get('quantity', 1)
     boundary = box(margin, margin, width - margin, length - margin)
     shapes = []
@@ -145,7 +150,7 @@ def solve(job, progress_path=None):
     orientations = None if job['settings']['rotations'] is None else [-a for a in job['settings']['rotations']]
     items, base_rotations, span = [], {}, 0.0
     for part in job['parts']:
-        polygon = Polygon(part['points'])
+        polygon = part_polygon(part)
         base = 0
         if orientations is None:
             # Native initialization can fail if a freely rotating shape starts
@@ -184,7 +189,7 @@ def solve(job, progress_path=None):
     import threading
     best = None
     last_error = None
-    part_polygons = {p['id']: Polygon(p['points']) for p in job['parts']}
+    part_polygons = {p['id']: part_polygon(p) for p in job['parts']}
     rotated_tops = {}
     feasible = (spyrrow.ReportType.ExplFeas, spyrrow.ReportType.CmprFeas, spyrrow.ReportType.Final)
 

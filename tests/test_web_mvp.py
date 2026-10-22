@@ -129,15 +129,15 @@ class WebMvpTests(unittest.TestCase):
                 self.assertFalse(server.STATE.get('released'))
                 self.assertFalse(target.exists())
                 expect(page.locator('#folder-picker')).not_to_be_visible()
-                with patch('print_export.pick_save_path', return_value=str(target)):
+                with patch('print_export.pick_save_path', return_value=str(target.resolve())):
                     page.click('#confirm-send')
-                    expect(page.locator('#delivery-receipt')).to_have_text('Saved to ' + str(target))
+                    expect(page.locator('#delivery-receipt')).to_have_text('Saved to ' + str(target.resolve()))
                 self.assertTrue(target.read_bytes().startswith(b'%PDF'))
                 self.assertFalse(server.STATE['deliveryCompleted'])
                 self.assertIsNone(server.STATE.get('savedPath'))
                 self.assertEqual(source.read_bytes(), original)
                 page.reload(); self.wait_ready(page)
-                expect(page.locator('#delivery-receipt')).to_have_text('Saved to ' + str(target))
+                expect(page.locator('#delivery-receipt')).to_have_text('Saved to ' + str(target.resolve()))
                 self.assertEqual(page.locator('#status').inner_text(), '')
                 page.locator('#settings').evaluate('node => { node.open = true }')
                 page.click('#browse-output')
@@ -302,7 +302,7 @@ class WebMvpTests(unittest.TestCase):
             page.locator('#confirm-send').click()
         item = pending.value
         target = Path(self.tmp.name) / (item.suggested_filename or 'eznest.zip')
-        item.save_as(str(target))
+        item.save_as(str(target.resolve()))
         return target.read_bytes()
 
     def test_settings_help_and_save_feedback(self):
@@ -471,6 +471,31 @@ class WebMvpTests(unittest.TestCase):
                 content = PdfReader(io.BytesIO(pdf)).pages[0].get_contents().get_data()
                 self.assertNotIn(b'LNRegmark', content)
                 self.assertNotIn(b'barcode', pdf.lower())
+            finally:
+                browser.close()
+
+    def test_prepared_artwork_keeps_auto_bleed_disabled(self):
+        from playwright.sync_api import sync_playwright
+        source = Path(self.tmp.name) / 'bleed.pdf'
+        source.write_bytes(mixed_fixture())
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                page.set_input_files('#file', str(source))
+                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
+                before = json.load(urlopen(self.url() + '/api/state', timeout=10))
+                self.assertTrue(page.locator('#auto-bleed').is_hidden())
+                page.locator('#auto-bleed').evaluate("node => { node.value = '0.125'; node.dispatchEvent(new Event('change', {bubbles:true})); }")
+                page.wait_for_function("old => current && current.id !== old && !busy && current.status === 'ready'", arg=before['id'], timeout=90000)
+                after = json.load(urlopen(self.url() + '/api/state', timeout=10))
+                self.assertNotEqual(before['id'], after['id'])
+                self.assertEqual(after['job']['settings']['autoBleedMm'], 0)
+                self.assertTrue(all('nestingPoints' not in p for p in after['job']['parts']))
+                from engine import validate_result
+                validate_result(after['job'], after['result'])
+                first = self.download(page)
+                with ZipFile(io.BytesIO(first)) as archive:
+                    self.assertIn('artwork.pdf', archive.namelist())
             finally:
                 browser.close()
 
@@ -892,7 +917,7 @@ class WebMvpTests(unittest.TestCase):
             page.click('#confirm-send')
         item = pending.value
         target = Path(self.tmp.name) / (item.suggested_filename or 'eznest.zip')
-        item.save_as(str(target))
+        item.save_as(str(target.resolve()))
         with ZipFile(target) as archive:
             return archive.read('artwork.svg').decode('utf-8')
 
@@ -932,6 +957,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.input_value('#kiss-name'), 'LNKiss-cut')
                 self.drop_plain_contour(page, 'plain-thru.svg')
                 self.assertTrue(page.locator('#export').is_disabled())
+                page.locator('#settings').evaluate('node => { node.open = false }')
                 page.click('#choose-thru')
                 self.assertEqual(page.locator('#choose-thru').get_attribute('aria-pressed'), 'true')
                 self.assertEqual(page.locator('#choose-kiss').get_attribute('aria-pressed'), 'false')
@@ -1051,7 +1077,7 @@ class WebMvpTests(unittest.TestCase):
                     page.click('#confirm-send')
                 item = pending.value
                 target = Path(self.tmp.name) / (item.suggested_filename or 'eznest.zip')
-                item.save_as(str(target))
+                item.save_as(str(target.resolve()))
                 with ZipFile(target) as archive:
                     artwork = archive.read('artwork.svg').decode('utf-8')
                 self.assertIn(state['id'], artwork)

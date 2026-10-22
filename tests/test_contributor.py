@@ -14,7 +14,7 @@ class ContributorTests(unittest.TestCase):
 
     def test_checkout_data_is_separate_and_stable_across_dependencies(self):
         with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder); a = self.checkout(root, 'a'); b = self.checkout(root, 'b')
+            root = Path(folder).resolve(); a = self.checkout(root, 'a'); b = self.checkout(root, 'b')
             first = locations(a, root/'local'); other = locations(b, root/'local')
             self.assertNotEqual(first['data'], other['data'])
             self.assertTrue(first['data'].is_relative_to(root/'local'/'eznest-contributors'))
@@ -31,7 +31,7 @@ class ContributorTests(unittest.TestCase):
 
     def test_setup_preserves_unowned_environment(self):
         with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder); paths=locations(self.checkout(root,'repo'),root/'local')
+            root=Path(folder).resolve(); paths=locations(self.checkout(root,'repo'),root/'local')
             paths['environment'].mkdir(parents=True)
             protected=paths['environment']/'keep.txt';protected.write_text('unchanged')
             with patch('contributor.subprocess.run') as run:
@@ -42,7 +42,7 @@ class ContributorTests(unittest.TestCase):
 
     def test_failed_dependency_install_can_resume_only_owned_environment(self):
         with tempfile.TemporaryDirectory() as folder:
-            root=Path(folder); paths=locations(self.checkout(root,'repo'),root/'local')
+            root=Path(folder).resolve(); paths=locations(self.checkout(root,'repo'),root/'local')
             def create(_):
                 paths['python'].parent.mkdir(parents=True,exist_ok=True)
                 paths['python'].write_bytes(b'test stub')
