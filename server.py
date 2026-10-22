@@ -341,12 +341,18 @@ class Handler(BaseHTTPRequestHandler):
                         incumbent = copy.deepcopy(STATE)
                         data = copy.deepcopy(STATE.get('requestJob', STATE['job']))
                         data['settings']['seed'] = secrets.randbelow(2147483647)
+                    for part in data.get('parts', []) + [p for fill in data.get('fillJobs', []) for p in fill['parts']]:
+                        part.pop('nestingPoints', None)
                     validate_request(data)
+                    documents = None
                     if data.get('documentSources'):
                         from pdf_io import load_documents
                         complete={**data,'productionJobs':data.get('productionJobs',[])+[f['source'] for f in data.get('fillJobs',[])],
                                   'parts':data['parts']+[p for f in data.get('fillJobs',[]) for p in f['parts']]}
-                        load_documents(complete,WORK/'documents')
+                        documents = load_documents(complete,WORK/'documents')
+                    from pdf_io import prepare_nesting_geometry
+                    prepare_nesting_geometry(data, documents)
+                    validate_request(data)
                     if 'outputProfile' in data:
                         data['outputProfile'] = validate_profile(data['outputProfile'])
                     run_id = uuid.uuid4().hex
@@ -411,23 +417,27 @@ class Handler(BaseHTTPRequestHandler):
                 elif self.path == '/api/release':
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('Calculate and review the current layout before exporting.')
+                    export_job = copy.deepcopy(STATE['job'])
                     if not STATE.get('released'):
-                        apply_web_export(STATE['job'], data)
-                    check = batch_output_check(STATE['job'])
+                        apply_web_export(export_job, data)
+                    check = batch_output_check(export_job)
                     if check and not check['ready'] and data.get('workingOnly') is not True:
                         raise ValueError('This layout does not meet the shop output requirements. Save working files explicitly or use a supported output profile.')
                     if not STATE.get('released'):
                         documents=None
-                        if STATE['job'].get('documentSources'):
+                        if export_job.get('documentSources'):
                             from pdf_io import load_documents
-                            documents=load_documents(STATE['job'],WORK/'documents')
-                        content, details = make_package(STATE['job'],STATE['result'],STATE['id'],data.get('artwork'),data['map'],documents,check)
+                            documents=load_documents(export_job,WORK/'documents')
+                        from pdf_io import prepare_nesting_geometry, validate_auto_bleed_export
+                        prepare_nesting_geometry(export_job, documents)
+                        validate_auto_bleed_export(export_job, STATE['result'], documents)
+                        content, details = make_package(export_job,STATE['result'],STATE['id'],data.get('artwork'),data['map'],documents,check)
                         directory = WORK / 'batches'
                         directory.mkdir(exist_ok=True)
                         temporary = directory / (STATE['id']+'.tmp')
                         temporary.write_bytes(content)
                         temporary.replace(directory / (STATE['id']+'.zip'))
-                        STATE.update(released=True, manifest=details, deliveryCompleted=False)
+                        STATE.update(job=export_job, released=True, manifest=details, deliveryCompleted=False)
                         persist_state()
                     package = (WORK/'batches'/(STATE['id']+'.zip')).read_bytes()
                     digest = hashlib.sha256(package).hexdigest()

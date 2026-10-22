@@ -270,6 +270,30 @@ class WebMvpTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_changing_auto_bleed_recalculates_before_export(self):
+        from playwright.sync_api import sync_playwright
+        source = Path(self.tmp.name) / 'bleed.pdf'
+        source.write_bytes(mixed_fixture())
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                page.set_input_files('#file', str(source))
+                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
+                before = json.load(urlopen(self.url() + '/api/state', timeout=10))
+                page.select_option('#auto-bleed', '0.125')
+                page.wait_for_function("old => current && current.id !== old && !busy && current.status === 'ready'", arg=before['id'], timeout=90000)
+                after = json.load(urlopen(self.url() + '/api/state', timeout=10))
+                self.assertNotEqual(before['id'], after['id'])
+                self.assertAlmostEqual(after['job']['settings']['autoBleedMm'], 3.175)
+                self.assertTrue(all('nestingPoints' in p for p in after['job']['parts']))
+                from engine import validate_result
+                validate_result(after['job'], after['result'])
+                first = self.download(page)
+                with ZipFile(io.BytesIO(first)) as archive:
+                    self.assertIn('artwork.pdf', archive.namelist())
+            finally:
+                browser.close()
+
     def test_red_status_disables_send(self):
         from playwright.sync_api import sync_playwright
         with sync_playwright() as playwright:
@@ -388,7 +412,7 @@ class WebMvpTests(unittest.TestCase):
         label = Path(self.tmp.name) / 'label.svg'
         badge.write_text(sample, encoding='utf-8')
         label.write_text(sample, encoding='utf-8')
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = Path(self.tmp.name) / 'screenshots'
         shots.mkdir(parents=True, exist_ok=True)
 
         def ready(count):
@@ -439,7 +463,7 @@ class WebMvpTests(unittest.TestCase):
         bad = Path(self.tmp.name) / 'poster.ai'
         good.write_bytes(mixed_fixture())
         bad.write_bytes(b'%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 200 100\n')
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = Path(self.tmp.name) / 'screenshots'
         shots.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as playwright:
             browser, page = self.open_page(playwright)
@@ -508,7 +532,7 @@ class WebMvpTests(unittest.TestCase):
 
     def test_shop_server_gear(self):
         from playwright.sync_api import sync_playwright
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = Path(self.tmp.name) / 'screenshots'
         shots.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as playwright:
             browser = launch_browser(playwright)
@@ -631,7 +655,7 @@ class WebMvpTests(unittest.TestCase):
 
     def test_plain_cutcontour_blocks_send_until_chosen(self):
         from playwright.sync_api import sync_playwright
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = Path(self.tmp.name) / 'screenshots'
         shots.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as playwright:
             browser = launch_browser(playwright)
@@ -663,7 +687,7 @@ class WebMvpTests(unittest.TestCase):
         </svg>'''
         source = Path(self.tmp.name) / 'cut-2.svg'
         source.write_text(artwork, encoding='utf-8')
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = Path(self.tmp.name) / 'screenshots'
         shots.mkdir(parents=True, exist_ok=True)
         sentence = 'Unknown cut layer "Cut 2". Rename to thru or kiss.'
         with sync_playwright() as playwright:
@@ -700,7 +724,7 @@ class WebMvpTests(unittest.TestCase):
 
     def test_send_confirms_sheet_summary_before_the_file_leaves(self):
         from playwright.sync_api import sync_playwright
-        shots = Path('/opt/cursor/artifacts/screenshots')
+        shots = Path(self.tmp.name) / 'screenshots'
         shots.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as playwright:
             browser = launch_browser(playwright)

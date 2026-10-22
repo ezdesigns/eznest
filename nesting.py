@@ -9,7 +9,7 @@ from shapely.geometry import Polygon
 from shapely.affinity import rotate, translate
 from shapely.ops import unary_union
 from shapely.prepared import prep
-from engine import PIECE_CAP, solve, validate_job, validate_result, number
+from engine import part_polygon, PIECE_CAP, solve, validate_job, validate_result, number
 from production import validate_identity
 
 
@@ -77,7 +77,7 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
     orientations = {}
     for fill in fills:
         for part in fill['parts']:
-            orientations[part['id']] = [(angle, rotate(Polygon(part['points']), angle, origin=(0, 0))) for angle in angles]
+            orientations[part['id']] = [(angle, rotate(part_polygon(part), angle, origin=(0, 0))) for angle in angles]
 
     def find(part, occupied):
         forbidden = prep(unary_union([p.buffer(gap + guard * 2, join_style=2) for p in occupied])) if occupied else None

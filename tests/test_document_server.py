@@ -12,12 +12,48 @@ from urllib.request import Request,urlopen
 from zipfile import ZipFile
 from unittest.mock import patch
 import server
-from test_pdf_production import pdf_fixture,document_job
+from test_pdf_production import pdf_fixture,document_job,square_pdf_fixture
 from test_mixed_cuts import mixed_fixture
 from cut_mapping import defaults
 
 
 class DocumentServerTests(unittest.TestCase):
+    def test_changed_bleed_cannot_freeze_an_unsafe_old_layout(self):
+        from pdf_io import import_to_store
+        old_work, old_port, old_state = server.WORK, server.PORT, copy.deepcopy(server.STATE)
+        with tempfile.TemporaryDirectory() as directory:
+            server.WORK = Path(directory)
+            parsed = import_to_store(square_pdf_fixture(), server.WORK/'documents', 0)
+            job = document_job(parsed)
+            job['settings'].update(width=100, gap=1, margin=2, rotations=[0], autoBleedMm=0)
+            result = {'width':100, 'usedLength':40, 'placements':[
+                {'id':job['parts'][0]['id'], 'x':10, 'y':10, 'rotation':0},
+                {'id':job['parts'][1]['id'], 'x':31.02, 'y':10, 'rotation':0}]}
+            service = server.ThreadingHTTPServer(('127.0.0.1',0), server.Handler)
+            server.PORT = service.server_port
+            thread = threading.Thread(target=service.serve_forever, daemon=True); thread.start()
+            try:
+                server.STATE.clear()
+                server.STATE.update(status='ready', id='a'*32, job=copy.deepcopy(job), result=result)
+                data = {'id':'a'*32, 'autoBleedMm':3.175,
+                        'map':'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 40"/>'}
+                request = Request(f'http://127.0.0.1:{server.PORT}/api/release',
+                                  data=json.dumps(data).encode(),
+                                  headers={'Content-Type':'application/json','X-EZ-Token':server.TOKEN})
+                with patch.object(server.OUTPUT, 'save') as deliver:
+                    with self.assertRaises(HTTPError) as rejected:
+                        urlopen(request, timeout=10)
+                    self.assertEqual(rejected.exception.code, 400)
+                    self.assertIn('Auto bleed needs more space', rejected.exception.read().decode())
+                    deliver.assert_not_called()
+                self.assertFalse(server.STATE.get('released'))
+                self.assertEqual(server.STATE['job'], job)
+                self.assertFalse((server.WORK/'batches'/('a'*32+'.zip')).exists())
+            finally:
+                service.shutdown(); service.server_close(); thread.join()
+                server.WORK, server.PORT = old_work, old_port
+                server.STATE.clear(); server.STATE.update(old_state)
+
     def test_import_solve_export_acknowledgment_and_frozen_retry(self):
         old_work,old_port,old_state=server.WORK,server.PORT,copy.deepcopy(server.STATE)
         with tempfile.TemporaryDirectory() as directory:
