@@ -88,12 +88,31 @@ class WebMvpTests(unittest.TestCase):
         self.assertIn('/svg-io.js', page)
         self.assertNotIn('<script>', page.lower().split('<body', 1)[-1].replace('src=', ''))
 
+    def wait_for_status(self, page, timeout=60000):
+        """Retry until #status has text. Windows boot can leave it empty on the first load."""
+        last = None
+        attempts = 3
+        slice_ms = max(int(timeout / attempts), 10000)
+        for attempt in range(attempts):
+            try:
+                page.wait_for_function(
+                    "() => { const el = document.querySelector('#status'); return !!(el && el.textContent.length > 0); }",
+                    timeout=slice_ms,
+                )
+                return
+            except Exception as error:
+                last = error
+                if attempt + 1 >= attempts:
+                    break
+                page.reload(wait_until='domcontentloaded')
+        raise last
+
     def open_page(self, playwright, shots=False):
         browser = launch_browser(playwright)
         context = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True)
         page = context.new_page()
         page.goto(self.url() + '/web', wait_until='domcontentloaded')
-        page.wait_for_function("() => document.querySelector('#status').textContent.length > 0")
+        self.wait_for_status(page)
         page.locator('#settings').evaluate('node => { node.open = true }')
         self.assertEqual(page.locator('#material option:checked').inner_text(), 'White gloss, 54" roll, 51.5" printable')
         self.assertEqual(page.input_value('#width'), '51.5')
