@@ -756,7 +756,7 @@ function renderSheet(frame, state, index) {
   const sheet = sheets[index] || sheets[0];
   const art = state.job.documentSources ? documentPreview(state) : EZNSVG.buildSVG(state.job, result);
   if (!state.job.documentSources) {
-    applyAutoBleed(art);
+    applyAutoBleed(art, state.job, result);
     emphasizeCuts(art);
   }
   frame.replaceChildren();
@@ -1045,28 +1045,49 @@ function sheetMap(state) {
   return svg;
 }
 
-function applyAutoBleed(svg) {
+function applyAutoBleed(svg, job, result) {
   const mm = autoBleedMm();
   if (!(mm > 0)) return svg;
-  const width = (2 * mm).toFixed(3);
-  const nodes = [...svg.querySelectorAll('path,rect,circle,ellipse,polygon')];
-  for (const node of nodes) {
-    if (node.closest('defs') || node.getAttribute('data-ezn-bleed') === '1') continue;
-    const id = node.getAttribute('id') || '';
-    const boundary = node.getAttribute('data-ezn-boundary') === 'true' || /cutcontour|kiss-cut|thru-cut|ezn_boundary|boundary/i.test(id);
-    if (!boundary) continue;
-    const fill = node.getAttribute('fill');
-    if (!fill || fill === 'none' || fill === 'transparent' || /^url\(/i.test(fill)) continue;
-    const clone = node.cloneNode(true);
-    clone.removeAttribute('id');
-    clone.setAttribute('data-ezn-bleed', '1');
-    clone.setAttribute('fill', fill);
-    clone.setAttribute('stroke', fill);
-    clone.setAttribute('stroke-width', width);
-    clone.setAttribute('stroke-linejoin', 'round');
-    clone.removeAttribute('stroke-dasharray');
-    node.parentNode.insertBefore(clone, node);
-  }
+  result.placements.forEach((placement, index) => {
+    const part = job.parts.find(item => item.id === placement.id);
+    const artwork = svg.querySelector('#ez-part-' + (index + 1));
+    const node = artwork?.querySelector('[data-ezn-boundary="true"]');
+    if (!node || node.closest('defs')) return;
+    // A source viewBox or nested transform can make one source unit many mm.
+    // Imported points already include those transforms. Draw their bleed in
+    // output millimeters, cancelling the source-parent transform while keeping
+    // its clipping and opacity ancestry. The original artwork/cut is untouched.
+    let fill = null;
+    for (let ancestor = node; ancestor && ancestor !== svg; ancestor = ancestor.parentElement) {
+      if (ancestor.hasAttribute('fill')) { fill = ancestor.getAttribute('fill'); break; }
+    }
+    if (!fill || fill === 'none' || fill === 'transparent' || /^url\(/i.test(fill)) return;
+    if (node.hasAttribute('clip-path')) throw Error('SVG auto bleed cannot preserve this boundary clip. Turn auto bleed off or export a PDF.');
+    let parent = svg.createSVGMatrix();
+    for (let ancestor = node.parentElement; ancestor && ancestor !== svg; ancestor = ancestor.parentElement) {
+      const local = ancestor.transform?.baseVal.consolidate()?.matrix;
+      if (local) parent = local.multiply(parent);
+    }
+    let inverse;
+    try { inverse = parent.inverse(); }
+    catch (_) { throw Error('SVG auto bleed cannot use this transform. Turn auto bleed off or export a PDF.'); }
+    const values = [inverse.a, inverse.b, inverse.c, inverse.d, inverse.e, inverse.f];
+    if (!values.every(Number.isFinite)) throw Error('SVG auto bleed cannot use this transform. Turn auto bleed off or export a PDF.');
+    const bleed = document.createElementNS(NS, 'polygon');
+    bleed.setAttribute('data-ezn-bleed', '1');
+    bleed.setAttribute('points', part.points.map(point => point.join(',')).join(' '));
+    bleed.setAttribute('transform', `matrix(${values.join(' ')}) translate(${placement.x} ${placement.y}) rotate(${placement.rotation})`);
+    bleed.setAttribute('fill', fill);
+    bleed.setAttribute('stroke', fill);
+    bleed.setAttribute('stroke-width', String(2 * mm));
+    bleed.setAttribute('stroke-linejoin', 'round');
+    bleed.setAttribute('stroke-dasharray', 'none');
+    bleed.setAttribute('stroke-opacity', '1');
+    for (const name of ['fill-opacity', 'opacity', 'color']) {
+      if (node.hasAttribute(name)) bleed.setAttribute(name, node.getAttribute(name));
+    }
+    node.parentNode.insertBefore(bleed, node);
+  });
   return svg;
 }
 
@@ -1078,7 +1099,7 @@ async function lock() {
     let artwork = null;
     if (!current.job.documentSources) {
       const art = EZNSVG.buildSVG(current.job, current.result);
-      applyAutoBleed(art);
+      applyAutoBleed(art, current.job, current.result);
       artwork = EZNSVG.serialize(art);
     }
     const released = await api('/api/release', {
