@@ -12,6 +12,15 @@ from unittest.mock import patch
 
 
 class ServerTests(unittest.TestCase):
+    def test_failed_bind_never_marks_update_healthy(self):
+        import installer_update
+        with patch.object(server, 'restore_state'), \
+             patch.object(server, 'LocalServer', side_effect=OSError('address already in use')), \
+             patch.object(installer_update, 'mark_healthy') as healthy:
+            with self.assertRaisesRegex(OSError, 'address already in use'):
+                server.serve()
+            healthy.assert_not_called()
+
     def test_download_only_never_delivers_and_print_is_from_frozen_pack(self):
         import io
         from zipfile import ZipFile

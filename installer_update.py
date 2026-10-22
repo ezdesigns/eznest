@@ -327,11 +327,13 @@ def wait_until_exit(pid, timeout=180):
 def _wait_healthy(path, process, version, timeout):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        payload = read_json(path)
-        if payload and payload.get('version') == version:
-            return True
+        # An early/stale marker is not proof that the expected child survived.
         if process.poll() is not None:
             return False
+        payload = read_json(path)
+        if (payload and payload.get('version') == version
+                and payload.get('pid') == process.pid):
+            return process.poll() is None
         time.sleep(0.2)
     return False
 

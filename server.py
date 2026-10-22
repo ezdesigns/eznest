@@ -727,7 +727,6 @@ def check_updates(stop):
 def serve(open_browser=False, page='/'):
     restore_state()
     import installer_update
-    installer_update.mark_healthy(WORK)
     service = LocalServer((HOST, PORT), Handler)
     update_stop = threading.Event()
     threading.Thread(target=check_updates, args=(update_stop,), daemon=True).start()
@@ -739,6 +738,8 @@ def serve(open_browser=False, page='/'):
         if LAN:
             print(f'Shop network: http://{socket.gethostname()}:{PORT}{page}', flush=True)
     try:
+        # The listening socket and startup initialization must succeed first.
+        installer_update.mark_healthy(WORK)
         service.serve_forever()
     finally:
         update_stop.set()
