@@ -4,7 +4,7 @@ import math
 from collections import Counter
 from shapely.geometry import Polygon
 from shapely.affinity import rotate
-from engine import solve, validate_result, number
+from engine import part_polygon, solve, validate_result, number
 
 
 def subset(job, placements):
@@ -22,7 +22,7 @@ def split_nest(job):
     # sheet is then optimized with true contours; a worse/failed solve is discarded.
     bins=[]; copies=[]
     for part in job['parts']:
-        poly=Polygon(part['points'])
+        poly=part_polygon(part)
         angles=settings['rotations']
         if angles is None:
             corners=list(poly.minimum_rotated_rectangle.exterior.coords)

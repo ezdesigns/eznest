@@ -1610,7 +1610,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('cut-preset').addEventListener('change', () => { applyCutPreset(); saveShop(); });
   $('thru-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
   $('kiss-name').addEventListener('input', () => { matchCutPreset(); saveShop(); });
-  $('auto-bleed').addEventListener('change', () => { if (current && current.result && !busy && !saving) renderPreview(activeSheet); });
+  $('auto-bleed').addEventListener('change', requestNest);
   $('preset-name').addEventListener('change', rememberPreset);
   $('settings').addEventListener('toggle', () => { if ($('settings').open) refreshUpdate(true).catch(() => {}); });
   $('hot-folder').addEventListener('change', saveHotFolder);

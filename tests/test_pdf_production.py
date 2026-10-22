@@ -9,7 +9,7 @@ from zipfile import ZipFile
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, DecodedStreamObject
-from pdf_io import read_document, import_to_store, export_pdf, load_documents, output_check, bleed_artwork_matrix, cut_bounds, MM
+from pdf_io import read_document, import_to_store, export_pdf, load_documents, output_check, bleed_artwork_matrix, cut_bounds, prepare_nesting_geometry, MM
 from production import make_package
 
 
@@ -32,6 +32,17 @@ def pdf_fixture(forms=False, spot=True, opened=False, overlap=False):
         stream.set_data((first+'\n'+(first if overlap else second)).encode())
     page[NameObject('/Contents')]=writer._add_object(stream)
     buffer=io.BytesIO(); writer.write(buffer); return buffer.getvalue()
+
+
+def square_pdf_fixture():
+    writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+    stream = DecodedStreamObject()
+    width = 20 / MM
+    stream.set_data(('q 1 0 0 0 k 20 20 {0} {0} re f /Contour CS 1 SCN 20 20 {0} {0} re S Q\n'
+                     'q 0 0 1 0 k 200 20 {0} {0} re f /Contour CS 1 SCN 200 20 {0} {0} re S Q').format(width).encode())
+    writer.pages[0][NameObject('/Contents')] = writer._add_object(stream)
+    out = io.BytesIO(); writer.write(out)
+    return out.getvalue()
 
 
 def document_job(parsed):
@@ -137,6 +148,75 @@ class PDFProductionTests(unittest.TestCase):
         self.assertIsNone(bleed_artwork_matrix((0, 0, 72, 72), 0))
         eighth = bleed_artwork_matrix((0, 0, 72, 72), 25.4 / 8)
         self.assertAlmostEqual(eighth[0], (72 + 2 * (25.4 / 8) / MM) / 72, places=6)
+
+    def test_auto_bleed_rejects_old_layout_and_nests_expanded_artwork(self):
+        from engine import solve, validate_result
+        with tempfile.TemporaryDirectory() as directory:
+            parsed = import_to_store(square_pdf_fixture(), directory, 0)
+            job = document_job(parsed)
+            job['settings'].update(width=100, gap=1, margin=2, rotations=[0])
+            docs = load_documents(job, directory)
+            original = copy.deepcopy(job['parts'])
+            old = {'width':100, 'usedLength':40, 'placements':[
+                {'id':job['parts'][0]['id'], 'x':10, 'y':10, 'rotation':0},
+                {'id':job['parts'][1]['id'], 'x':31.02, 'y':10, 'rotation':0}]}
+            validate_result(job, old)
+            export_pdf(job, old, docs)
+            # This is the release-time setting change that previously corrupted
+            # neighboring print areas while all original cut checks still passed.
+            job['settings']['autoBleedMm'] = 3.175
+            with self.assertRaisesRegex(ValueError, 'Auto bleed needs more space'):
+                export_pdf(job, old, docs)
+            prepare_nesting_geometry(job, docs)
+            for before, after in zip(original, job['parts']):
+                self.assertEqual(before, {k:v for k,v in after.items() if k != 'nestingPoints'})
+            with self.assertRaisesRegex(ValueError, 'overlap/spacing'):
+                validate_result(job, old)
+            nested = solve(job)
+            shapes = validate_result(job, nested)
+            self.assertGreaterEqual(shapes[0].distance(shapes[1]), .999)
+            raw = export_pdf(job, nested, docs)
+            _, exported = read_document(raw)
+            # The original two 20 mm cuts survive unchanged despite larger paint.
+            self.assertEqual(len(exported['pieces']), 2)
+            for piece in exported['pieces']:
+                bounds = cut_bounds(piece)
+                self.assertAlmostEqual((bounds[2]-bounds[0])*MM, 20, places=5)
+                self.assertAlmostEqual((bounds[3]-bounds[1])*MM, 20, places=5)
+
+    def test_auto_bleed_respects_sheet_edges_rotations_and_existing_bleed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parsed = import_to_store(square_pdf_fixture(), directory, 1)
+            job = document_job(parsed)
+            job['settings'].update(autoBleedMm=3.175, margin=0, gap=1)
+            docs = load_documents(job, directory)
+            prepare_nesting_geometry(job, docs)
+            # Existing 1 mm bleed is enlarged by the same nonuniform matrix;
+            # reserving only 3.175 mm around the old 22 mm outline is insufficient.
+            xs = [p[0] for p in job['parts'][0]['nestingPoints']]
+            self.assertAlmostEqual(max(xs)-min(xs), 22*(1+2*3.175/20), places=5)
+            ident = job['parts'][0]['id']
+            edge = {'width':100, 'usedLength':40, 'placements':[
+                {'id':ident, 'x':0, 'y':10, 'rotation':0}]}
+            with self.assertRaisesRegex(ValueError, 'Auto bleed needs more space'):
+                export_pdf(job, edge, docs)
+            valid = {'width':100, 'usedLength':100,
+                     'sheets':[{'index':0,'offset':0,'usedLength':50}, {'index':1,'offset':50,'usedLength':50}],
+                     'placements':[{'id':ident,'x':40,'y':10,'rotation':90,'sheet':0},
+                                   {'id':ident,'x':40,'y':60,'rotation':90,'sheet':1}]}
+            self.assertEqual(len(PdfReader(io.BytesIO(export_pdf(job, valid, docs))).pages), 2)
+            valid['placements'][1]['y'] = 51
+            with self.assertRaisesRegex(ValueError, 'Auto bleed needs more space'):
+                export_pdf(job, valid, docs)
+
+    def test_envelopes_are_recomputed_and_cleared_when_auto_bleed_is_off(self):
+        job = {'settings':{'autoBleedMm':1}, 'parts':[{'points':[[0,0],[20,0],[20,20],[0,20]],
+                'nestingPoints':[[0,0],[1,0],[0,1]]}]}
+        prepare_nesting_geometry(job)
+        self.assertLess(min(p[0] for p in job['parts'][0]['nestingPoints']), 0)
+        job['settings']['autoBleedMm'] = 0
+        prepare_nesting_geometry(job)
+        self.assertNotIn('nestingPoints', job['parts'][0])
 
     def test_auto_bleed_scales_art_and_leaves_cut_paths(self):
         with tempfile.TemporaryDirectory() as directory:
