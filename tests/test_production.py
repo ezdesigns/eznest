@@ -52,7 +52,10 @@ class ProductionTests(unittest.TestCase):
             self.assertEqual(saved['totalPieces'],5)
             self.assertEqual(saved['jobs'][0]['sets'],2)
             self.assertIn('A2.02',archive.read('piece-checklist.csv').decode('utf-8-sig'))
-            self.assertNotIn('LNRegmark', archive.read('artwork.svg').decode())
+            artwork = archive.read('artwork.svg').decode()
+            self.assertIn('a' * 32, artwork)
+            self.assertNotIn('barcode', artwork.casefold())
+            self.assertNotIn('LNRegmark', artwork)
 
     def test_optional_regmarks_and_media_stay_out_of_the_default_pack(self):
         source='<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="16mm" viewBox="0 0 100 16">'+''.join(f'<g id="ez-part-{i+1}"/>' for i in range(5))+'</svg>'

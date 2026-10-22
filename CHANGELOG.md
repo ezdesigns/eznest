@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.0.0-rc.5
+
+Older files that use a plain CutContour name can be sent as kiss or thru.
+
+- A file whose cut layer is exactly CutContour asks once: Plain CutContour found: Kiss or Thru? Kiss is already selected. Confirm renames that layer in the locked file to the kiss or thru name in the gear, including the LN preset.
+- Any other unmapped cut name still blocks Send and shows that name.
+
+## 1.0.0-rc.4
+
+Uninstall removes the shop service account.
+
+- Uninstall stops and deletes the `eznest` startup task, then removes the local user `eznest-svc` and the folder permissions granted to that account. If the account is still signed in, uninstall disables it. Shop files in `%ProgramData%\eznest` stay on disk.
+- Opening the shop page no longer waits on a hostname lookup. On Windows that lookup ignores the socket timeout and could sit on DNS until the page looked stuck.
+- The problem sentence stays red when Windows high contrast is on. That mode otherwise paints it black.
+- The shop page does not count as open until its stylesheet and scripts have loaded. A dropped file is requested again. The server keeps the connection open so the file queued behind the page is not dropped. The computer name lookup cannot sit on DNS.
+
+## 1.0.0-rc.3
+
+Ez Ink's audit of the shop-server install.
+
+- The boot task runs as the local user `eznest-svc` with limited rights. That account is not an administrator. It can read and write `%ProgramData%\eznest`, and on the ONYX PC it can write the local hot folder.
+- Shop network stays off until it is turned on. There is no login. The gear and the install notes say anyone on the shop LAN can Send to ONYX, and this network must not be shared with guest WiFi.
+- Disable updates is off unless the installer task or the gear turns updates off. While updates are off, eznest does not call GitHub and does not read an update token.
+- `BUILD.json` next to `eznest-setup.exe` records the version, the commit SHA, and the SHA-256 of that exe. The same file is in the Actions artifact.
+
+## 1.0.0-rc.2
+
+Ez Ink's shop answers for the ONYX handoff.
+
+- Cut spots default to CutContour_Thru-cut and CutContour_Kiss-cut. LNThru-cut and LNKiss-cut stay as the alternate preset.
+- A cut path whose name is not thru or kiss blocks Send. The red sentence names that layer or spot, and THRU / KISS assigns it.
+- Mark margin defaults to 0.4 in, labeled so it matches the CutServer mark setup. Max sheet length defaults to 60 in. White gloss stays 54 in stock, 51.5 in printable, Quick Set Substance Gloss GL [EZ Designs 80600] @ 720-CT.
+- Material presets are buttons. The last material and width are remembered.
+- Material used, waste, and sheets stay on screen. Send to ONYX asks once, with the material, width, length, pieces, and sheet ID, then Confirm send or Back.
+- Staging folder is optional and off until it is turned on.
+- The sheet ID is on screen and printed as small text in the file margin. No barcode.
+
 ## 1.0.0-rc.1
 
 Shop release candidate. v1 is nesting only: drop artwork, nest it, and send the sheet to ONYX.

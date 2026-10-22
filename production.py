@@ -127,6 +127,32 @@ def regmark_d(width, height, margin):
     return ' '.join(parts)
 
 
+def add_sheet_label(root, width, height, margin, sheet_id):
+    """Small layout id in the sheet margin, clear of the corner mark area. No barcode."""
+    if not isinstance(sheet_id, str) or not sheet_id or len(sheet_id) > 80 or any(ord(c) < 32 for c in sheet_id):
+        return
+    ns = '{http://www.w3.org/2000/svg}'
+    if any(child.get('id') == 'ez-sheet-id' for child in root):
+        return
+    band = margin if isinstance(margin, (int, float)) and not isinstance(margin, bool) and margin > 0 else 0
+    size = 2.2
+    inset = max(band * 0.45, 8) if band else 2
+    label = ET.SubElement(root, ns + 'text', {
+        'id': 'ez-sheet-id',
+        'x': f'{width / 2:.2f}',
+        'y': f'{height - max(band * 0.35, 1.4):.2f}',
+        'fill': '#111111',
+        'font-size': f'{size:.2f}',
+        'font-family': 'sans-serif',
+        'text-anchor': 'middle',
+    })
+    # Keep the glyphs inside the margin band and away from corner registration marks.
+    if inset > width * 0.45:
+        label.set('text-anchor', 'start')
+        label.set('x', f'{min(inset, width * 0.2):.2f}')
+    label.text = sheet_id
+
+
 def add_regmarks(root, width, height, margin):
     ns = '{http://www.w3.org/2000/svg}'
     if any(child.get('id') == 'LNRegmark' for child in root):
@@ -208,7 +234,7 @@ def make_package(job, result, run_id, artwork, sheet_map, pdf_documents=None, ou
         profile=job.get('outputProfile',{})
         for sheet in data['sheets']:
             name='artwork.pdf' if len(data['sheets'])==1 else f"sheet-{sheet['index']+1:03}.pdf"
-            print_files[name]=export_pdf(job,result,pdf_documents,profile.get('cutSpot') or 'CutContour',profile.get('cutLayer') or 'CutContour',sheet['index'],profile.get('cutMapping'))
+            print_files[name]=export_pdf(job,result,pdf_documents,profile.get('cutSpot') or 'CutContour',profile.get('cutLayer') or 'CutContour',sheet['index'],profile.get('cutMapping'),run_id)
         instructions='PDF artwork preserves source drawing objects and named cut contours. Color conversion and registration marks belong in your RIP.\nBleed coverage was reviewed by the operator, not automatically certified. Verify this beta in your RIP before production.\n'
         instructions+='Output profile: '+profile.get('name','PDF')+'; registration owner: '+profile.get('registrationOwner','rip')+'\n'
         for operation,names in data['cutOutputs'].items():
@@ -217,9 +243,11 @@ def make_package(job, result, run_id, artwork, sheet_map, pdf_documents=None, ou
                 if names['toolHint']:instructions+='Operator reference: '+names['toolHint']+' (not a cutter command)\n'
         if readiness.get('ready') is False: instructions='WORKING PDF PACKAGE - REQUIREMENTS NOT MET\n'+'\n'.join(readiness['issues'])+'\n'+instructions
     elif len(data['sheets'])==1:
-        if root is not None and job.get('settings', {}).get('drawRegmarks') is True:
-            band = job['settings'].get('markMargin') or job['settings'].get('margin') or 0
-            add_regmarks(root, result['width'], result['usedLength'], band)
+        if root is not None:
+            band = job.get('settings', {}).get('markMargin') or job.get('settings', {}).get('margin') or 0
+            if job.get('settings', {}).get('drawRegmarks') is True:
+                add_regmarks(root, result['width'], result['usedLength'], band)
+            add_sheet_label(root, result['width'], result['usedLength'], band, run_id)
             artwork = ET.tostring(root, encoding='unicode')
         print_files['artwork.svg']=artwork
     else:
@@ -235,6 +263,7 @@ def make_package(job, result, run_id, artwork, sheet_map, pdf_documents=None, ou
                 holder=ET.SubElement(page,ns+'g',{'transform':f"translate(0 {-sheet['offset']})"}); holder.append(copy.deepcopy(groups[i]))
             if draw_marks:
                 add_regmarks(page, result['width'], sheet['usedLength'], band)
+            add_sheet_label(page, result['width'], sheet['usedLength'], band, run_id)
             print_files[f"sheet-{sheet['index']+1:03}.svg"]=ET.tostring(page,encoding='unicode')
         instructions='Each numbered sheet SVG is a separate print file. Do not print the sorting map.\n'+instructions.replace('Artwork is in artwork.svg.','Artwork is in the numbered sheet files.')
     data['printFiles']=list(print_files)

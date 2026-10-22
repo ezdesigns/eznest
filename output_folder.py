@@ -66,3 +66,19 @@ class OutputFolder:
             if temporary.exists() and not temporary.is_symlink() and not temporary.is_junction() and temporary.resolve().is_relative_to(root):
                 shutil.rmtree(temporary)
         return str(destination)
+
+
+def stage_pack(folder, run_id, content, source=None):
+    """Copy one frozen pack into an optional staging folder. An empty path stays off."""
+    if not folder:
+        return None
+    if not isinstance(folder, str) or len(folder) > 400:
+        raise ValueError('Staging folder path is invalid.')
+    try:
+        root = Path(folder).expanduser().resolve(strict=True)
+    except OSError:
+        raise ValueError('Staging folder is not a folder on this computer.') from None
+    holder = OutputFolder.__new__(OutputFolder)
+    holder.root = root
+    holder.storage = None
+    return holder.save(run_id, content, source)

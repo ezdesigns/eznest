@@ -1,4 +1,5 @@
 import json
+import socket
 import tempfile
 import threading
 import unittest
@@ -11,6 +12,50 @@ from unittest.mock import patch
 
 
 class ServerTests(unittest.TestCase):
+    def test_failed_bind_never_marks_update_healthy(self):
+        import installer_update
+        with patch.object(server, 'restore_state'), \
+             patch.object(server, 'LocalServer', side_effect=OSError('address already in use')), \
+             patch.object(installer_update, 'mark_healthy') as healthy:
+            with self.assertRaisesRegex(OSError, 'address already in use'):
+                server.serve()
+            healthy.assert_not_called()
+
+    def test_one_connection_returns_the_stylesheet_and_a_script(self):
+        old_port = server.PORT
+        service = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+        server.PORT = service.server_port
+        thread = threading.Thread(target=service.serve_forever, daemon=True)
+        thread.start()
+        try:
+            sock = socket.create_connection(('127.0.0.1', server.PORT), timeout=5)
+            try:
+                sock.settimeout(5)
+                sock.sendall((
+                    f'GET /web.css HTTP/1.1\r\nHost: 127.0.0.1:{server.PORT}\r\n\r\n'
+                    f'GET /shop-profiles.js HTTP/1.1\r\nHost: 127.0.0.1:{server.PORT}\r\nConnection: close\r\n\r\n'
+                ).encode())
+                chunks = []
+                while True:
+                    try:
+                        block = sock.recv(65536)
+                    except socket.timeout:
+                        break
+                    if not block:
+                        break
+                    chunks.append(block)
+                payload = b''.join(chunks)
+            finally:
+                sock.close()
+            self.assertGreaterEqual(payload.count(b'HTTP/1.1 200'), 2)
+            self.assertIn(b'--alarm', payload)
+            self.assertIn(b'EZNProfiles', payload)
+        finally:
+            service.shutdown()
+            service.server_close()
+            thread.join(timeout=3)
+            server.PORT = old_port
+
     def test_shutdown_requires_session_and_idle_worker(self):
         original,old_port=copy.deepcopy(server.STATE),server.PORT
         service=server.ThreadingHTTPServer(('127.0.0.1',0),server.Handler)

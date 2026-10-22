@@ -6,6 +6,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 import uuid
 import copy
 import socket
@@ -15,13 +16,35 @@ from urllib.parse import urlparse, parse_qs
 from engine import validate_job
 from production import validate_identity, manifest, make_package
 from folder_queue import FolderQueue
-from output_folder import OutputFolder
+from output_folder import OutputFolder, stage_pack
 from nesting import validate_request
 from shop_profiles import validate_profile, inspect_output
 from app_info import VERSION
-from shop_deploy import WARNING, default_hot_folder, lan_addresses, load_shop, peek_latest, pull_latest, save_shop, shop_name_allowed
+from shop_deploy import WARNING, default_hot_folder, host_name, lan_addresses, load_shop, peek_latest, pull_latest, save_shop, shop_name_allowed
 
 ROOT = Path(__file__).resolve().parent
+_STATIC_CACHE = {}
+
+
+def static_bytes(name):
+    """Read a shop file, retrying when Windows briefly locks it."""
+    cached = _STATIC_CACHE.get(name)
+    if cached is not None:
+        return cached
+    path = ROOT / name
+    last = None
+    for _ in range(8):
+        try:
+            data = path.read_bytes()
+        except OSError as error:
+            last = error
+            time.sleep(0.05)
+            continue
+        _STATIC_CACHE[name] = data
+        return data
+    raise last
+
+
 WORK = Path(os.environ.get('EZ_NEST_DATA', ROOT / '.local')).resolve()
 WORK.mkdir(parents=True, exist_ok=True)
 TOKEN = secrets.token_urlsafe(32)
@@ -40,16 +63,18 @@ DOCUMENT_LOCK = threading.Lock()
 def shop_status():
     saved = load_shop(WORK)
     running = LAN and HOST == '0.0.0.0'
+    name = host_name()
     return {
         'version': VERSION,
         'onyxPc': saved['onyxPc'],
         'lan': saved['lan'],
+        'updates': saved['updates'],
         'runningLan': running,
         'restart': saved['lan'] != running,
         'port': PORT,
-        'name': socket.gethostname(),
+        'name': name,
         'addresses': lan_addresses(),
-        'url': f'http://{socket.gethostname()}:{PORT}/web',
+        'url': f'http://{name}:{PORT}/web',
         'warning': WARNING,
         'hotFolderDefault': default_hot_folder(saved['onyxPc']),
     }
@@ -124,6 +149,11 @@ def finish_search(payload):
 
 
 class Handler(BaseHTTPRequestHandler):
+    # HTTP/1.1 so a stylesheet or script queued on the same connection is answered.
+    # Closing after the page was dropping that next file on Windows.
+    protocol_version = 'HTTP/1.1'
+    timeout = 30
+
     def log_message(self, *args):
         pass
 
@@ -139,6 +169,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(body)
+        self.wfile.flush()
 
     def local_name(self, value):
         name, separator, port = (value or '').partition(':')
@@ -245,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
         if path not in static:
             return self.send(404, {'error': 'Not found'})
         name, mime = static[path]
-        return self.send(200, (ROOT / name).read_bytes(), mime)
+        return self.send(200, static_bytes(name), mime)
 
     def do_POST(self):
         global PROCESS
@@ -284,7 +315,9 @@ class Handler(BaseHTTPRequestHandler):
                 with FOLDER_LOCK:
                     return self.send(200, OUTPUT.connect(data.get('path',''), FOLDER.root))
             if self.path == '/api/shop':
-                save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True)
+                current = load_shop(WORK)
+                updates = current['updates'] if 'updates' not in data else data.get('updates') is True
+                save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates)
                 return self.send(200, shop_status())
             if self.path == '/api/update':
                 with LOCK:
@@ -424,6 +457,7 @@ class Handler(BaseHTTPRequestHandler):
                     digest = hashlib.sha256(package).hexdigest()
                     with FOLDER_LOCK:
                         saved = OUTPUT.save(STATE['id'], package, FOLDER.root)
+                        stage_pack(data.get('stagingFolder') or '', STATE['id'], package, FOLDER.root)
                     STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved, sha256=digest)
                     persist_state()
                     return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check,'deliveryCompleted':STATE['deliveryCompleted'],'sha256':digest})
@@ -467,7 +501,6 @@ class LocalServer(ThreadingHTTPServer):
 def serve(open_browser=False, page='/'):
     restore_state()
     import installer_update
-    installer_update.mark_healthy(WORK)
     service = LocalServer((HOST, PORT), Handler)
     if open_browser:
         import webbrowser
@@ -477,6 +510,8 @@ def serve(open_browser=False, page='/'):
         if LAN:
             print(f'Shop network: http://{socket.gethostname()}:{PORT}{page}', flush=True)
     try:
+        # The listening socket and startup initialization must succeed first.
+        installer_update.mark_healthy(WORK)
         service.serve_forever()
     finally:
         service.server_close()

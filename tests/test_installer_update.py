@@ -7,26 +7,32 @@ import textwrap
 import time
 import unittest
 import zipfile
+from unittest.mock import Mock
 from io import BytesIO
 from pathlib import Path
 
 import installer_update
 
 OK = textwrap.dedent('''
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
 data = Path(os.environ["EZ_NEST_DATA"])
 if "--update-confirm" in sys.argv:
     applying = json.loads((data / "updates" / "applying.json").read_text(encoding="utf-8"))
-    (data / "updates" / "healthy.json").write_text(json.dumps({"version": applying["version"]}), encoding="utf-8")
+    (data / "updates" / "healthy.json").write_text(json.dumps({"version": applying["version"], "pid": os.getpid()}), encoding="utf-8")
+time.sleep(1)
 raise SystemExit(0)
 ''')
 FAIL = 'import sys\nraise SystemExit(1)\n'
 
 
 class InstallerUpdateTests(unittest.TestCase):
+    def tearDown(self):
+        installer_update.reap_left_running()
+
     def settle(self):
         """Let a stub launcher exit before the temp directory disappears."""
+        installer_update.reap_left_running()
         if os.name == 'nt':
             return
         deadline = time.time() + 5
@@ -116,6 +122,36 @@ class InstallerUpdateTests(unittest.TestCase):
             self.assertTrue(result['ok'])
             self.assertEqual(json.loads((data / 'shop.json').read_text(encoding='utf-8')), shop)
             self.assertEqual(json.loads((data / 'output-folder.json').read_text(encoding='utf-8')), folder)
+            self.settle()
+
+    def test_health_marker_requires_the_expected_live_process(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'healthy.json'
+            child = Mock(pid=42)
+            installer_update.write_json(path, {'version': 'new', 'pid': 42})
+            child.poll.return_value = 1
+            self.assertFalse(installer_update._wait_healthy(path, child, 'new', .05))
+            child.poll.return_value = None
+            installer_update.write_json(path, {'version': 'new', 'pid': 99})
+            self.assertFalse(installer_update._wait_healthy(path, child, 'new', .05))
+            installer_update.write_json(path, {'version': 'new', 'pid': 42})
+            self.assertTrue(installer_update._wait_healthy(path, child, 'new', .05))
+
+    def test_early_health_marker_does_not_prevent_rollback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            install, data = root / 'app', root / 'data'
+            self.install(install, 'old', 'raise SystemExit(0)\n')
+            self.settings(data)
+            self.stage(data, 'new', b'MZ-bad', 'eznest-setup.exe')
+            def runner(setup, install_root, data_dir):
+                (install_root / 'version.json').write_text(json.dumps({'version': 'new'}))
+                # A child that reports healthy and then fails before serving.
+                (install_root / 'eznest.py').write_text(OK.replace('time.sleep(1)', '').replace('SystemExit(0)', 'SystemExit(1)'))
+            result = installer_update.apply_and_confirm(install, data, timeout=1, runner=runner)
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['restored'], 'old')
+            self.assertEqual(installer_update.read_version(install), 'old')
             self.settle()
 
     def test_zip_slip_is_refused(self):

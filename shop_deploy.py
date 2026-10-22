@@ -9,6 +9,8 @@ import ipaddress
 import json
 import os
 import socket
+import threading
+import time
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -17,7 +19,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 LOCAL_HOT_FOLDER = r'C:\ONYX\EPSON SureColor S80600 ONYX Input'
 UNC_HOT_FOLDER = r'\\ONYX\EPSON SureColor S80600 ONYX Input'
 RELEASE_API = 'https://api.github.com/repos/ezdesigns/eznest/releases?per_page=20'
-WARNING = 'Shop network only. Other computers on this network can open this page.'
+WARNING = 'Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.'
 MAX_RELEASE_BYTES = 300_000_000
 REDIRECT_HOSTS = {
     'github.com',
@@ -54,53 +56,131 @@ def load_shop(directory):
         data = {}
     if not isinstance(data, dict):
         data = {}
-    return {'onyxPc': data.get('onyxPc') is True, 'lan': data.get('lan') is True}
+    return {
+        'onyxPc': data.get('onyxPc') is True,
+        'lan': data.get('lan') is True,
+        'updates': data.get('updates') is not False,
+    }
 
 
-def save_shop(directory, onyx_pc, lan):
+def save_shop(directory, onyx_pc, lan, updates=None):
     path = Path(directory) / 'shop.json'
+    if updates is None:
+        updates = load_shop(directory)['updates']
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({'onyxPc': bool(onyx_pc), 'lan': bool(lan)}, indent=2) + '\n', encoding='utf-8')
+    path.write_text(json.dumps({'onyxPc': bool(onyx_pc), 'lan': bool(lan), 'updates': bool(updates)}, indent=2) + '\n', encoding='utf-8')
     return load_shop(directory)
 
 
-def lan_addresses():
-    found = []
+# Windows getaddrinfo and getfqdn ignore the Python socket timeout and can sit
+# on DNS for longer than a minute. The shop page waits on this during boot.
+_LOOKUP_TIMEOUT = 1.0
+_LOOKUP_TTL = 30.0
+_lookup_lock = threading.Lock()
+_address_cache = {'expires': 0.0, 'values': []}
+_fqdn_cache = {'expires': 0.0, 'value': ''}
+_host_cache = {'expires': 0.0, 'value': ''}
 
-    def add(ip):
-        if not ip or ip.startswith('127.') or ip in found:
-            return
+
+def clear_name_cache():
+    with _lookup_lock:
+        _address_cache['expires'] = 0.0
+        _address_cache['values'] = []
+        _fqdn_cache['expires'] = 0.0
+        _fqdn_cache['value'] = ''
+        _host_cache['expires'] = 0.0
+        _host_cache['value'] = ''
+
+
+def _call_within(function, timeout):
+    """Return function's result, or None when it is still running after timeout."""
+    done = threading.Event()
+    box = {}
+
+    def run():
         try:
-            if not ipaddress.ip_address(ip).is_private:
-                return
-        except ValueError:
-            return
-        found.append(ip)
+            box['result'] = function()
+        except Exception:
+            box['result'] = None
+        finally:
+            done.set()
 
+    threading.Thread(target=run, daemon=True).start()
+    if not done.wait(timeout):
+        return None
+    return box.get('result')
+
+
+def _remember_address(found, ip):
+    if not ip or ip.startswith('127.') or ip in found:
+        return
+    try:
+        if not ipaddress.ip_address(ip).is_private:
+            return
+    except ValueError:
+        return
+    found.append(ip)
+
+
+def _route_address():
+    found = []
     try:
         probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             probe.connect(('192.0.2.1', 9))
-            add(probe.getsockname()[0])
+            _remember_address(found, probe.getsockname()[0])
         finally:
             probe.close()
     except OSError:
         pass
-    previous = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(2)
-    try:
-        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET, socket.SOCK_STREAM):
-            add(info[4][0])
-    except OSError:
-        pass
-    finally:
-        socket.setdefaulttimeout(previous)
     return found
 
 
+def _hostname_ips():
+    infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET, socket.SOCK_STREAM)
+    return [info[4][0] for info in infos]
+
+
+def lan_addresses():
+    with _lookup_lock:
+        if time.monotonic() < _address_cache['expires']:
+            return list(_address_cache['values'])
+        found = _route_address()
+        looked_up = _call_within(_hostname_ips, _LOOKUP_TIMEOUT)
+        for ip in looked_up or []:
+            _remember_address(found, ip)
+        _address_cache['values'] = list(found)
+        _address_cache['expires'] = time.monotonic() + _LOOKUP_TTL
+        return list(found)
+
+
+def _cached_fqdn():
+    with _lookup_lock:
+        if time.monotonic() < _fqdn_cache['expires']:
+            return _fqdn_cache['value']
+        looked_up = _call_within(lambda: socket.getfqdn().strip().rstrip('.'), _LOOKUP_TIMEOUT)
+        _fqdn_cache['value'] = looked_up or ''
+        _fqdn_cache['expires'] = time.monotonic() + _LOOKUP_TTL
+        return _fqdn_cache['value']
+
+
+def host_name():
+    """This computer's name, or localhost when Windows is still resolving it."""
+    with _lookup_lock:
+        if time.monotonic() < _host_cache['expires']:
+            return _host_cache['value']
+        looked_up = _call_within(lambda: socket.gethostname().strip().rstrip('.'), _LOOKUP_TIMEOUT)
+        _host_cache['value'] = looked_up or 'localhost'
+        _host_cache['expires'] = time.monotonic() + _LOOKUP_TTL
+        return _host_cache['value']
+
+
 def shop_names():
-    host = socket.gethostname().strip().rstrip('.')
-    names = {host.casefold(), host.split('.')[0].casefold(), socket.getfqdn().strip().rstrip('.').casefold()}
+    host = host_name()
+    names = {host.casefold(), host.split('.')[0].casefold()}
+    fqdn = _cached_fqdn()
+    if fqdn:
+        names.add(fqdn.casefold())
     names.update(ip.casefold() for ip in lan_addresses())
     names.discard('')
     return names
@@ -291,8 +371,8 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
     until the next start, or until Install now asks the helper to swap it in.
     """
     directory = Path(directory)
-    if os.environ.get('EZ_NEST_UPDATES', '1') == '0':
-        return {'ok': True, 'current': current, 'latest': current, 'updated': False, 'staged': False, 'applyOnRestart': False, 'message': 'Update checks are off.'}
+    if os.environ.get('EZ_NEST_UPDATES', '1') == '0' or not load_shop(directory)['updates']:
+        return {'ok': True, 'current': current, 'latest': current, 'updated': False, 'staged': False, 'applyOnRestart': False, 'message': 'Updates are off.'}
     if when not in ('now', 'restart'):
         raise ValueError('Choose Update or install on the next start.')
     token = github_token(directory)
@@ -359,8 +439,8 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
 
 def peek_latest(directory, current, opener=None):
     """Say whether a newer release exists. This does not download the installer."""
-    if os.environ.get('EZ_NEST_UPDATES', '1') == '0':
-        return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': current, 'message': 'Update checks are off.', 'error': None}
+    if os.environ.get('EZ_NEST_UPDATES', '1') == '0' or not load_shop(directory)['updates']:
+        return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': current, 'message': 'Updates are off.', 'error': None}
     directory = Path(directory)
     token = github_token(directory)
     opener = opener or build_opener(_StopRedirect)

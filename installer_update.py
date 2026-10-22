@@ -23,8 +23,9 @@ CONFIRM_ATTEMPTS = 3
 CONFIRM_TIMEOUT = 120
 
 
-def updates_enabled():
-    return os.environ.get('EZ_NEST_UPDATES', '1') != '0'
+def updates_enabled(data_dir=None):
+    return (os.environ.get('EZ_NEST_UPDATES', '1') != '0'
+            and (data_dir is None or shop_deploy.load_shop(data_dir)['updates']))
 
 
 def install_root():
@@ -312,19 +313,74 @@ def wait_until_exit(pid, timeout=180):
 def _wait_healthy(path, process, version, timeout):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        payload = read_json(path)
-        if payload and payload.get('version') == version:
-            return True
+        # An early/stale marker is not proof that the expected child survived.
         if process.poll() is not None:
             return False
+        payload = read_json(path)
+        if (payload and payload.get('version') == version
+                and payload.get('pid') == process.pid):
+            return process.poll() is None
         time.sleep(0.2)
     return False
+
+
+_left_running = []
 
 
 def _leave_running(process):
     """The shop app outlives this helper. Don't warn that its handle is still open."""
     if process.poll() is None:
+        _left_running.append(process.pid)
         process.returncode = 0
+
+
+def _end_pid(pid):
+    if os.name == 'nt':
+        subprocess.run(['taskkill', '/PID', str(pid), '/F'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+    try:
+        os.kill(pid, 15)
+    except ProcessLookupError:
+        return
+
+
+def _reap_unix(pid, timeout):
+    deadline = time.time() + timeout
+    while True:
+        try:
+            found, _status = os.waitpid(pid, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if found == pid:
+            return
+        if time.time() >= deadline:
+            _end_pid(pid)
+            try:
+                os.waitpid(pid, 0)
+            except ChildProcessError:
+                return
+            return
+        time.sleep(0.05)
+
+
+def reap_left_running(timeout=8):
+    """Wait out a stub the tests relaunched, so Windows can delete its folder."""
+    pids = list(_left_running)
+    _left_running.clear()
+    for pid in pids:
+        if os.name == 'nt':
+            try:
+                wait_until_exit(pid, timeout=timeout)
+            except TimeoutError:
+                _end_pid(pid)
+                try:
+                    wait_until_exit(pid, timeout=3)
+                except TimeoutError:
+                    pass
+        else:
+            _reap_unix(pid, timeout)
+    if pids and os.name == 'nt':
+        time.sleep(0.3)
 
 
 def _stop(process):
@@ -450,7 +506,7 @@ def begin_apply(data_dir, install_root):
 
 
 def handoff_if_pending(install_root, data_dir):
-    if not updates_enabled() or not apply_supported(install_root):
+    if not updates_enabled(data_dir) or not apply_supported(install_root):
         return False
     pending = pending_state(data_dir)
     if not pending or not pending.get('applyOnRestart'):

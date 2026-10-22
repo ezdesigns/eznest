@@ -33,6 +33,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Python
@@ -62,13 +63,23 @@ jobs:
 
       - name: Build the shop installer
         shell: pwsh
+        env:
+          EZ_NEST_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           python build_windows.py --out (Join-Path $env:RUNNER_TEMP "eznest-build")
           $setup = "installer\Output\eznest-setup.exe"
+          $pin = "installer\Output\BUILD.json"
           if (-not (Test-Path $setup)) { throw "eznest-setup.exe was not produced" }
+          if (-not (Test-Path $pin)) { throw "BUILD.json was not produced" }
+          Get-Item $setup | Select-Object FullName, Length
+          Get-Content $pin
+          $expected = (Get-Content $pin -Raw | ConvertFrom-Json).sha256
+          $actual = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) { throw "BUILD.json sha256 does not match eznest-setup.exe" }
           $artifact = Join-Path $env:RUNNER_TEMP "artifact"
           New-Item -ItemType Directory -Force -Path $artifact | Out-Null
           Copy-Item $setup $artifact
+          Copy-Item $pin $artifact
           $version = (Get-Content -Raw version.json | ConvertFrom-Json).version
           python installer_update.py --write-sidecars (Join-Path $artifact "eznest-setup.exe") $artifact $version
           Get-ChildItem $artifact | Select-Object Name, Length
@@ -121,7 +132,7 @@ jobs:
           tag=$(cat dist/release-tag)
           gh release view "$tag" && exists=1 || exists=0
           if [ "$exists" = "1" ]; then
-            gh release upload "$tag" dist/eznest-setup.exe dist/eznest-setup.exe.sha256 dist/manifest.json --clobber
+            gh release upload "$tag" dist/eznest-setup.exe dist/eznest-setup.exe.sha256 dist/manifest.json dist/BUILD.json --clobber
           else
-            gh release create "$tag" dist/eznest-setup.exe dist/eznest-setup.exe.sha256 dist/manifest.json --title "$tag" --notes-file dist/notes.md --prerelease
+            gh release create "$tag" dist/eznest-setup.exe dist/eznest-setup.exe.sha256 dist/manifest.json dist/BUILD.json --title "$tag" --notes-file dist/notes.md --prerelease
           fi

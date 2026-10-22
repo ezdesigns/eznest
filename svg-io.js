@@ -109,19 +109,33 @@ window.EZNSVG = (() => {
     for(let p=node;p&&p!==root.parentElement;p=p.parentElement) if(p.getAttribute('display')==='none'||p.getAttribute('visibility')==='hidden'||p.getAttribute('visibility')==='collapse'||p.getAttribute('opacity')==='0')return false;
     return true;
   }
+  function looksLikeCut(name) {
+    if (!name || /^EZN_BOUNDARY(?:$|[-_])/i.test(name)) return false;
+    return /cut|regmark|thru-cut|kiss-cut/i.test(name);
+  }
+  function cutRefsFor(part, layers) {
+    const refs=[];
+    for (const name of layers) if (looksLikeCut(name)) refs.push({source:'layer', name});
+    const shapes=[part,...part.querySelectorAll('*')].filter(node => geometry.has(node.localName) && !node.closest('defs'));
+    for (const node of shapes) for (const name of [node.id, node.getAttribute('data-name')]) {
+      if (looksLikeCut(name)) refs.push({source: 'spot', name});
+    }
+    return refs;
+  }
   function partsOf(root) {
     const result=[];
-    function visit(parent) {
+    function visit(parent, layers) {
       for (const node of parent.children) {
         if (['defs','title','desc'].includes(node.localName)||!visible(node,root))continue;
         const layer = node.localName==='g' && (node.getAttribute('data-ezn-layer')==='true'||/^layer[_ -]?\d+$/i.test(node.id));
         if(layer) {
           if(node.hasAttribute('clip-path')||node.hasAttribute('opacity'))fail('A layer has clipping or opacity. Make each complete part a top-level group before importing.');
-          visit(node);
-        } else result.push(node);
+          const name=(node.getAttribute('data-name')||node.id||'').trim();
+          visit(node, name ? layers.concat(name) : layers);
+        } else result.push({node, layers});
       }
     }
-    visit(root); return result;
+    visit(root, []); return result;
   }
   function closed(node) {
     if(!geometry.has(node.localName))fail('A nesting boundary must be a closed path, polygon, rectangle, ellipse or circle.');
@@ -188,7 +202,7 @@ window.EZNSVG = (() => {
       const nodes=partsOf(live);
       if(!nodes.length||nodes.length>800)fail('SVG needs between 1 and 800 visible parts.');
       const definitions=[...live.querySelectorAll('defs')].filter(n=>!n.parentElement.closest('defs')).map(serialize).join('');
-      const parts=nodes.map((part,index)=>{
+      const parts=nodes.map(({node:part, layers},index)=>{
         const b=boundary(part,live), points=flatten(b.node,b.matrix), origin=[Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1]))];
         const parent=part.parentElement.getCTM();
         const inheritedAttributes={};
@@ -197,6 +211,7 @@ window.EZNSVG = (() => {
         const clone=part.cloneNode(true);clone.querySelectorAll('defs').forEach(n=>n.remove());
         clone.removeAttribute('data-ezn-layer');
         return {id:'svg-'+(index+1),name:part.getAttribute('data-name')||part.id||'Part '+(index+1),quantity:1,boundaryKind:b.kind,objectCount:1+part.querySelectorAll('*').length,
+          cutRefs:cutRefsFor(part, layers),
           points:points.map(p=>[p[0]-origin[0],p[1]-origin[1]]),svg:{markup:serialize(clone),parent:[parent.a,parent.b,parent.c,parent.d,parent.e,parent.f].map(x=>x*MM),origin,inherited:inheritedAttributes}};
       });
       return {name,parts,svgSource:{defs:definitions,widthMM:w.mm,heightMM:h.mm},importNote:(w.assumed||h.assumed?'SVG pixel dimensions interpreted at 96 pixels per inch. ':'')+'Imported '+nodes.length+' complete parts. Check the cut boundaries and physical dimensions before production.'};

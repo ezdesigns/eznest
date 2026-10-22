@@ -80,5 +80,5 @@
     if(document?.format!=='eznest.material-presets'||document.version!==1||!Array.isArray(document.presets)||!document.presets.length||document.presets.length>100)throw Error('Choose an eznest material preset file (version 1).');
     return document.presets.map(validatePreset);
   }
-  const api={compose,count,codeFor,validatePreset,importPresets,isPrepared,markPrepared,restorePrepared,groupName,unitScale};if(typeof module!=='undefined')module.exports=api;else root.EZNQueue=api;
+  const api={compose,count,codeFor,validatePreset,importPresets,isPrepared,markPrepared,restorePrepared,groupName,unitScale};root.EZNQueue=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:this);

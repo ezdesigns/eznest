@@ -26,7 +26,8 @@
         <span class="measure"><input id="width" type="number" min="0" step="any" value="51.5" inputmode="decimal"><span data-unit>in</span></span>
       </label>
       <label>Mark margin
-        <span class="measure"><input id="mark-margin" type="number" min="0" step="any" value="0.5" inputmode="decimal"><span data-unit>in</span></span>
+        <span class="measure"><input id="mark-margin" type="number" min="0" step="any" value="0.4" inputmode="decimal"><span data-unit>in</span></span>
+        <span class="hint">must match CutServer mark setup</span>
       </label>
       <label>Spacing
         <span class="measure"><input id="gap" type="number" min="0" step="any" value="0.12" inputmode="decimal"><span data-unit>in</span></span>
@@ -50,7 +51,7 @@
         </select>
       </label>
       <label>Max sheet length
-        <span class="measure"><input id="sheet" type="number" min="0" step="any" value="96" inputmode="decimal"><span data-unit>in</span></span>
+        <span class="measure"><input id="sheet" type="number" min="0" step="any" value="60" inputmode="decimal"><span data-unit>in</span></span>
       </label>
       <label>Auto bleed
         <select id="auto-bleed">
@@ -64,16 +65,16 @@
       </label>
       <label class="wide">Cut spot names
         <select id="cut-preset">
-          <option value="ln" selected>LNThru-cut / LNKiss-cut</option>
-          <option value="output">CutContour_Thru-cut / CutContour_Kiss-cut</option>
+          <option value="output" selected>CutContour_Thru-cut / CutContour_Kiss-cut</option>
+          <option value="ln">LNThru-cut / LNKiss-cut</option>
           <option value="custom">Custom</option>
         </select>
       </label>
       <label>Thru spot
-        <input id="thru-name" type="text" maxlength="80" value="LNThru-cut" spellcheck="false" autocomplete="off">
+        <input id="thru-name" type="text" maxlength="80" value="CutContour_Thru-cut" spellcheck="false" autocomplete="off">
       </label>
       <label>Kiss spot
-        <input id="kiss-name" type="text" maxlength="80" value="LNKiss-cut" spellcheck="false" autocomplete="off">
+        <input id="kiss-name" type="text" maxlength="80" value="CutContour_Kiss-cut" spellcheck="false" autocomplete="off">
       </label>
       <label>Unnamed CutContour
         <select id="generic-cut">
@@ -91,11 +92,17 @@
         <span id="hot-default" class="hint"></span>
       </label>
     </div>
+    <label class="check"><input id="staging-on" type="checkbox"> Staging folder</label>
+    <label class="wide" id="staging-row" hidden>Staging folder
+      <input id="staging-folder" type="text" placeholder="Off" autocomplete="off">
+      <span class="hint">Optional. Off until you turn it on.</span>
+    </label>
     <label class="check"><input id="onyx-pc" type="checkbox"> This PC runs ONYX</label>
     <label class="check"><input id="lan" type="checkbox"> Shop network</label>
-    <p id="lan-note" class="lan-note" hidden>Shop network only. Other computers on this network can open this page.</p>
+    <p id="lan-note" class="lan-note" hidden>Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.</p>
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
+    <label class="check"><input id="updates" type="checkbox" checked> Check for updates</label>
     <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
     <p id="update-note" class="hint" hidden></p>
     <details id="notes">
@@ -122,8 +129,9 @@
     <svg id="live" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nest in progress" hidden></svg>
   </div>
   <p id="legend" class="key" hidden><i class="thru"></i> Thru <i class="kiss"></i> Kiss</p>
+  <div id="materials" class="materials" role="group" aria-label="Material"></div>
   <div class="quiet">
-    <select id="material" aria-label="Material">
+    <select id="material" class="material-native" aria-label="Material" tabindex="-1">
       <option value="white-gloss" data-name="White gloss" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>White gloss, 54" roll, 51.5" printable</option>
       <option value="vinyl-gloss" data-width="54" data-unit="in">Vinyl + gloss lam · 54 in</option>
       <option value="vinyl" data-width="54" data-unit="in">Vinyl · 54 in</option>
@@ -143,6 +151,7 @@
   <label id="add-files" class="link" hidden>Add files
     <input id="more" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
   </label>
+  <p id="sheet-id" class="sheet-id" hidden aria-label="Sheet ID"></p>
   <p class="metrics pending" id="readout" hidden>
     <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong></span>
     <span class="metric"><span class="label">Waste</span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
@@ -151,8 +160,14 @@
   </p>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
   <div id="choice" class="choice" hidden>
-    <button id="choose-thru" type="button">Thru</button>
-    <button id="choose-kiss" type="button">Kiss</button>
+    <button id="choose-thru" type="button" aria-pressed="false">THRU</button>
+    <button id="choose-kiss" type="button" aria-pressed="false">KISS</button>
+    <button id="choose-confirm" type="button" hidden>Confirm</button>
+  </div>
+  <div id="confirm" class="confirm" hidden>
+    <p id="confirm-summary"></p>
+    <button id="confirm-send" class="primary" type="button">Confirm send</button>
+    <button id="confirm-back" class="link" type="button">Back</button>
   </div>
   <button id="export" class="primary" type="button" hidden disabled>Send to ONYX</button>
   <button id="stop" class="link" type="button" hidden>Stop · keep best</button>

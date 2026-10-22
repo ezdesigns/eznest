@@ -2,7 +2,7 @@
 
 **Add artwork → set material width and quantities → nest → review → export.**
 
-**1.0.0-rc.1 · shop release candidate.** Standalone local nesting for
+**1.0.0-rc.5 · shop release candidate.** Standalone local nesting for
 complete kits, decals and stickers. Illustrator, a printer model and an account
 are not required. Width comes from the material; length comes from the layout.
 
@@ -55,7 +55,7 @@ Source folder (this repository, with 64-bit Python 3.12 installed):
 2. The first time, it creates `.local\venv` and installs the engine. That window can sit for a minute. Later double-clicks open straight away.
 3. The browser opens the same address, http://127.0.0.1:8765/web.
 
-If a message says another version is using port 8765, double-click `Stop EZ Nest.cmd`, or open the old window and use Help → Quit eznest. Then double-click `eznest-web.bat` again. A 0.12 server will not share the port with 1.0.0-rc.1.
+If a message says another version is using port 8765, double-click `Stop EZ Nest.cmd`, or open the old window and use Help → Quit eznest. Then double-click `eznest-web.bat` again. A 0.12 server will not share the port with 1.0.0-rc.5.
 
 Closing the browser leaves eznest running. Double-click `Stop EZ Nest.cmd` to stop it. Help → Quit eznest does the same from the full workspace.
 
@@ -74,6 +74,8 @@ The workflow is `.github/workflows/windows-installer.yml`.
 - Open Actions, choose Windows installer, and run the workflow. That uploads `eznest-setup.exe`, its `.sha256` file, and an unpublished manifest. It does not publish a release. GitHub shows Run workflow after this file is on the default branch, or after the workflow has run once.
 - To publish, create a GitHub environment named `eznest-release` and add a required reviewer. Then either push a `v*` tag or run the workflow with publish_release on, and approve that environment. The release gets the installer and the checksum Update requires. See [docs/updates.md](docs/updates.md).
 
+`BUILD.json` records the version, the commit SHA, and the SHA-256 of `eznest-setup.exe`. Compare the exe's SHA-256 with `sha256`, and compare `commit` with the git commit, before you install it. When `BUILD.json` sits next to `eznest-setup.exe`, the installer copies it into `C:\Program Files\eznest`. The portable folder's `BUILD.json` is a dependency list. The installer does not bake that copy in.
+
 To build it on a Windows machine instead, install 64-bit Python 3.12 and [Inno Setup 6](https://jrsoftware.org/isinfo.php):
 
 ```powershell
@@ -81,28 +83,31 @@ py -3.12 -m pip install -r requirements.txt -r requirements-build.txt
 py -3.12 build_windows.py --out ..\eznest-build
 ```
 
-`build_windows.py` makes the portable folder, then runs `ISCC` when Inno Setup 6 is installed. The result is `installer\Output\eznest-setup.exe`. If Inno Setup is missing, the portable folder is still there and `ISCC installer\eznest.iss /DSourceDir=..\eznest-build\dist\eznest` finishes the setup program. This Linux checkout cannot compile that exe.
+`build_windows.py` makes the portable folder, then runs `ISCC` when Inno Setup 6 is installed. The result is `installer\Output\eznest-setup.exe` and `installer\Output\BUILD.json`. If Inno Setup is missing, the portable folder is still there and `ISCC installer\eznest.iss /DSourceDir=..\eznest-build\dist\eznest` finishes the setup program. This Linux checkout cannot compile that exe.
 
 On the shop server:
 
 1. Close any older eznest, including a 0.12 build on port 8765. Double-click `Stop EZ Nest.cmd`, or use Help → Quit eznest.
 2. Run `eznest-setup.exe`.
 3. It installs to `C:\Program Files\eznest` and adds a desktop shortcut named eznest.
-4. Leave "Start eznest when Windows starts" on if this PC should come up ready. That registers a Task Scheduler task named `eznest`. At boot it runs `eznest-server.cmd`, which is `eznest.exe --web --no-browser` with its data in `%ProgramData%\eznest`. The desktop shortcut opens the browser. Boot does not.
-5. Leave "Shop network" off unless other PCs on this network will open the page. Leave "This PC runs ONYX" off unless this is the ONYX computer.
+4. Leave "Start eznest when Windows starts" on if this PC should come up ready. That registers a Task Scheduler task named `eznest`. The task runs as the local user `eznest-svc`, which the installer creates with no administrator rights, and the task uses limited rights. At boot it runs `eznest-server.cmd`, which is `eznest.exe --web --no-browser` with its data in `%ProgramData%\eznest`. The desktop shortcut opens the browser. Boot does not.
+5. `eznest-svc` can read and write `%ProgramData%\eznest`. When "This PC runs ONYX" is checked, the installer also grants that account write on `C:\ONYX\EPSON SureColor S80600 ONYX Input`. A hot folder on another PC is a share, and this installer cannot change that share's permissions. On the ONYX PC, allow the sending account to write to the share, or check "This PC runs ONYX" and run eznest on that PC so the folder is local. The account password is random. It is not written into the eznest folder. Task Scheduler keeps it so the task can start at boot. The account can read Program Files the same way other standard users can.
+6. Leave "Shop network" off unless other PCs on this network will open the page. Leave "This PC runs ONYX" off unless this is the ONYX computer. Leave "Disable updates (offline install)" unchecked unless this PC must not call GitHub. When that task is checked, eznest does not check for a release and does not read an update token. The gear has the same switch, "Check for updates".
 
 Settings and the hot-folder path for an installed copy live in `%ProgramData%\eznest`, because Program Files is not writable. A portable folder that is not under Program Files still uses `data\` beside the exe.
 
 Closing the browser does not stop eznest. Double-click `Stop EZ Nest.cmd` in the install folder, or use Help → Quit eznest from the full workspace.
 
+Uninstall removes the `eznest` startup task, then removes the `eznest-svc` account and the folder permissions granted to it on `%ProgramData%\eznest` and, when that folder is present, on `C:\ONYX\EPSON SureColor S80600 ONYX Input`. If the account is still signed in, uninstall disables it. Shop files in `%ProgramData%\eznest` stay on disk. The ONYX hot folder stays on disk.
+
 ## Open from other PCs
 
-Shop network is off until you turn it on. When it is on, eznest listens on this computer's addresses and the gear warns that the page is for the shop network only.
+Shop network is off until you turn it on. There is no login on the page. Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.
 
 1. In the installer, check Shop network, or after install open the gear on the server and check Shop network. Restart eznest so the new binding is the one that is running.
 2. The gear shows the address, `http://<server-name>:8765/web`, and the first private address. Other shop PCs open that address. They do not install eznest.
 3. The installer opens Windows Firewall for TCP 8765 on the private profile only when Shop network is selected. It does not open a public profile.
-4. The warning in the gear stays visible while Shop network is on: other computers on this network can open the page. Do not forward port 8765 to the internet.
+4. The warning in the gear stays visible while Shop network is on: anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi. Do not forward port 8765 to the internet.
 
 A container still uses `--host 0.0.0.0` without shop-network mode. That accepts loopback host names on the published port and rejects every other name.
 
@@ -160,16 +165,22 @@ The gear holds the shop handoff. Width, next to the material and the sets, is th
 nest width in inches. It starts at the material's printable width and can be
 lowered. Nesting uses that width minus the mark margins. A width above the
 material, a width that cannot hold the widest piece, or a blank width is one red
-sentence and Send stays off. Sheets still split at 96 in unless you change it.
-A mark margin is reserved around the sheet so ONYX CutServer can add registration
-marks and barcodes. Those marks are not drawn unless Draw registration marks is
-on. Cut spots default to LNThru-cut and LNKiss-cut; CutContour_Thru-cut and
-CutContour_Kiss-cut are the alternate preset, pending Ez Ink's ONYX mapping.
-Full-bleed artwork is offset 1/16 in past the cut (or 1/8 in) without moving the
-cut paths. Sheets split at the max length, 96 in unless you change it. Send to
-ONYX writes the frozen pack into the hot-folder path labeled EPSON SureColor
-S80600 ONYX Input, or downloads it when that path is empty. On the ONYX PC the suggested path is `C:\ONYX\EPSON SureColor S80600 ONYX Input`. On every other PC it is `\\ONYX\EPSON SureColor S80600 ONYX Input`. The gear shows that default and does not connect it until you set the path. The page does not
-build OXF files, manifests for the cutter, or cut recipes.
+sentence and Send stays off. Sheets still split at 60 in unless you change it.
+A mark margin, 0.4 in by default, is reserved around the sheet so ONYX CutServer
+can add registration marks and barcodes. The gear says it must match the CutServer
+mark setup. Those marks are not drawn unless Draw registration marks is on.
+Cut spots default to CutContour_Thru-cut and CutContour_Kiss-cut. LNThru-cut and
+LNKiss-cut are the alternate preset. A cut name that is not thru or kiss blocks
+Send and names that layer or spot. The sheet ID is on screen and printed in the
+file margin. Send to ONYX confirms the material, width, length, pieces, and sheet
+ID before it writes the pack. Full-bleed artwork is offset 1/16 in past the cut
+(or 1/8 in) without moving the cut paths. The hot-folder path is labeled EPSON
+SureColor S80600 ONYX Input, or the pack downloads when that path is empty. An
+optional staging folder is off until you turn it on. On the ONYX PC the suggested
+path is `C:\ONYX\EPSON SureColor S80600 ONYX Input`. On every other PC it is
+`\\ONYX\EPSON SureColor S80600 ONYX Input`. The gear shows that default and does
+not connect it until you set the path. The page does not build OXF files,
+manifests for the cutter, or cut recipes.
 
 Not in v1: job history, order intake, AI batching, cost tracking, an ONYX or GoProduce proof, and laminate cost.
 The nest, the file import, and the saved shop settings stay separate so those can be added later.

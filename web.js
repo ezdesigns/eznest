@@ -36,6 +36,75 @@ async function sha256(data) {
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function fetchJson(path, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(path, {signal: controller.signal}).then(response => {
+    clearTimeout(timer);
+    if (!response.ok) throw Error('Request failed.');
+    return response.json();
+  }, error => {
+    clearTimeout(timer);
+    throw error;
+  });
+}
+
+async function fetchJsonRetry(path) {
+  let last = Error('Request failed.');
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await fetchJson(path, 4000); }
+    catch (error) { last = error; }
+  }
+  throw last;
+}
+
+function stylesApplied() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--alarm').toLowerCase().includes('d92f00');
+}
+
+function loadStylesheet() {
+  return new Promise((resolve, reject) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/web.css?ts=' + Date.now();
+    const timer = setTimeout(() => { link.remove(); reject(Error('The shop stylesheet did not load.')); }, 4000);
+    link.onload = () => { clearTimeout(timer); resolve(); };
+    link.onerror = () => { clearTimeout(timer); link.remove(); reject(Error('The shop stylesheet did not load.')); };
+    document.head.appendChild(link);
+  });
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src + '?ts=' + Date.now();
+    const timer = setTimeout(() => { script.remove(); reject(Error(src + ' did not load.')); }, 4000);
+    script.onload = () => { clearTimeout(timer); resolve(); };
+    script.onerror = () => { clearTimeout(timer); script.remove(); reject(Error(src + ' did not load.')); };
+    document.head.appendChild(script);
+  });
+}
+
+async function ensureLibraries() {
+  const need = [['EZNQueue', '/queue-core.js'], ['EZNCuts', '/cut-mapping.js'], ['EZNProfiles', '/shop-profiles.js']];
+  for (const [name, src] of need) {
+    for (let attempt = 0; attempt < 3 && typeof window[name] === 'undefined'; attempt++) {
+      try { await loadScript(src); }
+      catch { /* Ask for the script again. */ }
+    }
+    if (typeof window[name] === 'undefined') throw Error(name + ' did not load.');
+  }
+}
+
+async function ensureStyles() {
+  if (stylesApplied()) return;
+  for (let attempt = 0; attempt < 3 && !stylesApplied(); attempt++) {
+    try { await loadStylesheet(); }
+    catch { /* Ask for the stylesheet again. */ }
+  }
+  if (!stylesApplied()) throw Error('The shop stylesheet did not load.');
+}
+
 async function api(path, data) {
   const response = await fetch(path, {
     method: 'POST',
@@ -231,8 +300,36 @@ function cutTotals() {
   return totals;
 }
 
+function mappedOperation(source, name) {
+  const thru = $('thru-name').value.trim();
+  const kiss = $('kiss-name').value.trim();
+  if (name === thru) return 'thru';
+  if (name === kiss) return 'kiss';
+  const rules = EZNCuts.defaults().rules.filter(rule => rule.source === source);
+  const matches = rules.filter(rule => rule.match === 'exact' ? rule.name === name : name.startsWith(rule.name));
+  const exact = matches.filter(rule => rule.match === 'exact');
+  const chosen = exact.length ? exact : matches;
+  if (chosen.length) return chosen[0].operation;
+  const other = EZNCuts.defaults().rules.find(rule => rule.source !== source && rule.match === 'exact' && rule.name === name);
+  return other ? other.operation : '';
+}
+
+function unknownRefs() {
+  const found = [];
+  for (const entry of kits) {
+    for (const part of entry.data?.parts || []) {
+      for (const ref of part.cutRefs || []) {
+        const operation = mappedOperation(ref.source, ref.name);
+        if (operation === 'thru' || operation === 'kiss' || operation === 'regmark') continue;
+        found.push(ref);
+      }
+    }
+  }
+  return found;
+}
+
 function unresolved() {
-  return kits.some(entry => entry.unresolved);
+  return unknownRefs().length > 0;
 }
 
 function renderKit() {
@@ -313,35 +410,43 @@ function setSentence(text, problem) {
   $('gate').hidden = !text;
 }
 
+function plainContour() {
+  const refs = unknownRefs();
+  return refs.length > 0 && refs.every(ref => ref.name === 'CutContour');
+}
+
 function cutProblem() {
-  if (!unresolved()) return null;
-  const names = [];
-  let count = 0;
-  for (const entry of kits) {
-    if (!entry.unresolved) continue;
-    const copies = entry.sets || 1;
-    for (const part of entry.data.parts || []) {
-      const found = part.cutCounts?.contour || 0;
-      if (!found) continue;
-      count += found * copies;
-      names.push(part.name || part.id);
-    }
-  }
-  if (!count) return {line: 'Cuts have no type', detail: 'Choose thru or kiss. Enter does nothing until this is resolved.'};
-  const noun = count === 1 ? 'cut has no type' : 'cuts have no type';
-  return {line: count + ' ' + noun, detail: names.join(', ') + ' use plain CutContour.'};
+  const refs = unknownRefs();
+  if (!refs.length) return null;
+  if (plainContour()) return {line: 'Plain CutContour found: Kiss or Thru?', plain: true};
+  const ref = refs.find(item => item.name !== 'CutContour' && item.source === 'layer')
+    || refs.find(item => item.name !== 'CutContour')
+    || refs[0];
+  const kind = ref.source === 'layer' ? 'layer' : 'spot';
+  return {line: 'Unknown cut ' + kind + ' "' + ref.name + '". Rename to thru or kiss.'};
+}
+
+function showSheetId(state) {
+  const node = $('sheet-id');
+  const id = state && state.id ? String(state.id) : '';
+  node.textContent = id;
+  node.hidden = !id;
 }
 
 function showScreen(name) {
   document.body.dataset.step = name;
   const idle = name === 'drop';
+  const confirming = name === 'confirm';
   $('drop-screen').hidden = !idle;
   $('sheet-frame').hidden = idle;
   $('legend').hidden = idle;
   $('readout').hidden = idle;
-  $('export').hidden = idle;
+  $('export').hidden = idle || confirming;
+  $('confirm').hidden = !confirming;
   $('start-over').hidden = idle;
   $('choice').hidden = name !== 'blocked' || !unresolved();
+  if ($('choice').hidden) $('choose-confirm').hidden = true;
+  if (idle) showSheetId(null);
   syncFiles();
   if (idle) {
     clearReadout();
@@ -437,17 +542,40 @@ function renderActions() {
   const actionable = step !== 'drop' && step !== 'nest';
   const reason = blockReason || missing || (cuts ? cuts.line : '') || tooLong || (actionable ? badInput : '');
   $('export').disabled = busy || saving || !!reason || !current || !current.result;
+  if (step === 'confirm') {
+    $('export').hidden = true;
+    $('confirm').hidden = false;
+    $('choice').hidden = true;
+    $('choose-confirm').hidden = true;
+    return;
+  }
   if (!actionable) return;
   if (reason) {
     document.body.dataset.step = 'blocked';
-    setSentence(reason, true);
-    $('choice').hidden = !cuts;
+    const plain = !!(cuts && cuts.plain && reason === cuts.line);
+    setSentence(reason, !plain);
+    if (plain) {
+      if ($('choose-confirm').hidden) cutChoice = 'kiss';
+      $('choice').hidden = false;
+      $('choose-confirm').hidden = false;
+      $('choose-kiss').setAttribute('aria-pressed', cutChoice === 'kiss' ? 'true' : 'false');
+      $('choose-thru').setAttribute('aria-pressed', cutChoice === 'thru' ? 'true' : 'false');
+    } else if (cuts) {
+      $('choice').hidden = false;
+      $('choose-confirm').hidden = true;
+      $('choose-kiss').setAttribute('aria-pressed', 'false');
+      $('choose-thru').setAttribute('aria-pressed', 'false');
+    } else {
+      $('choice').hidden = true;
+      $('choose-confirm').hidden = true;
+    }
     return;
   }
   if (current && current.manifest) {
     document.body.dataset.step = 'check';
     setSentence(pieceSentence(current), false);
     $('choice').hidden = true;
+    $('choose-confirm').hidden = true;
   }
 }
 
@@ -767,6 +895,7 @@ function showResult(state) {
   document.body.dataset.nestWidth = state.result ? String(state.result.width) : '';
   showMetrics(state);
   showLock(state);
+  showSheetId(state);
   renderPreview(Math.min(activeSheet, sheetsIndex(state)));
   const missing = pieceIssue(state);
   const cuts = cutProblem();
@@ -810,7 +939,7 @@ function showLive(state) {
 async function poll() {
   if (!busy) return;
   try {
-    const state = await (await fetch('/api/state')).json();
+    const state = await fetchJson('/api/state', 4000);
     if (leaving || !kits.length) { busy = false; if (!kits.length) showScreen('drop'); return; }
     if (state.status === 'running') {
       showScreen('nest');
@@ -828,6 +957,7 @@ async function poll() {
     if (state.status === 'ready' && state.manifest) showResult(state);
     else showBlocked(state.error || state.note || 'That file does not fit this roll.');
   } catch (error) {
+    if (error && error.name === 'AbortError' && busy && !leaving) { setTimeout(poll, 300); return; }
     busy = false;
     if (pendingRenest && kits.length && !leaving) { pendingRenest = false; nest(); return; }
     showBlocked(error.message);
@@ -865,6 +995,7 @@ async function nest() {
     };
     busy = true;
     current = null;
+    showSheetId(null);
     blockReason = '';
     activeSheet = 0;
     showScreen('nest');
@@ -956,13 +1087,15 @@ async function lock() {
       map: EZNSVG.serialize(sheetMap(current)),
       autoBleedMm: autoBleedMm(),
       drawRegmarks: $('draw-marks').checked === true,
-      cutMapping: cutMapping()
+      cutMapping: cutMapping(),
+      stagingFolder: stagingPath()
     });
     current.released = true;
     current.sha256 = released.sha256;
     current.savedPath = released.savedPath || '';
     current.deliveryCompleted = released.deliveryCompleted === true;
     showLock(current);
+    showSheetId(current);
     return current;
   } finally {
     saving = false;
@@ -970,11 +1103,45 @@ async function lock() {
   }
 }
 
+function sheetSummary() {
+  const option = $('material').selectedOptions[0];
+  const material = (option.dataset.name || option.textContent || 'Material').trim();
+  const width = String(Number(Number($('nest-width').value).toFixed(4)));
+  const length = (current.result.usedLength / 25.4).toFixed(1);
+  const pieces = current.manifest ? current.manifest.totalPieces : 0;
+  return [
+    material,
+    width + ' in wide',
+    length + ' in long',
+    pieces + (pieces === 1 ? ' piece' : ' pieces'),
+    current.id
+  ].join('\n');
+}
+
+function openConfirm() {
+  if (busy || saving || !current || !current.result || $('export').disabled) return;
+  $('confirm-summary').textContent = sheetSummary();
+  showScreen('confirm');
+  showSheetId(current);
+}
+
+function closeConfirm() {
+  if (document.body.dataset.step !== 'confirm') return;
+  showScreen('check');
+  showSheetId(current);
+  renderActions();
+}
+
 async function exportFile(forceDownload) {
-  if (!current || busy || saving || $('export').disabled) return;
+  if (!current || busy || saving) return;
+  if (document.body.dataset.step !== 'confirm' && $('export').disabled) return;
   try {
     if (!current.released) await lock();
-    else await api('/api/release', {id: current.id, map: EZNSVG.serialize(sheetMap(current))});
+    else await api('/api/release', {
+      id: current.id,
+      map: EZNSVG.serialize(sheetMap(current)),
+      stagingFolder: stagingPath()
+    });
     saving = true;
     const response = await fetch('/api/batch/' + current.id);
     if (!response.ok) throw Error('The locked file is saved, but the download failed. Send again.');
@@ -1041,6 +1208,31 @@ function convertUnit(next) {
   for (const node of document.querySelectorAll('span[data-unit]')) node.textContent = next;
 }
 
+function stagingPath() {
+  if (!$('staging-on').checked) return '';
+  return $('staging-folder').value.trim();
+}
+
+function renderMaterialButtons() {
+  const box = $('materials');
+  const currentValue = $('material').value;
+  box.replaceChildren();
+  for (const option of $('material').options) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.value = option.value;
+    button.textContent = option.dataset.name || option.textContent.split('·')[0].trim();
+    button.setAttribute('aria-pressed', String(option.value === currentValue));
+    button.addEventListener('click', () => {
+      if ($('material').value === option.value) return;
+      $('material').value = option.value;
+      applyMaterial();
+      requestNest();
+    });
+    box.append(button);
+  }
+}
+
 function applyMaterial(quiet) {
   const option = $('material').selectedOptions[0];
   const named = option.dataset.name || (option.dataset.width ? option.textContent.split('·')[0].trim() : '');
@@ -1053,6 +1245,7 @@ function applyMaterial(quiet) {
     $('roll').value = option.dataset.roll || option.dataset.width;
     for (const node of document.querySelectorAll('span[data-unit]')) node.textContent = $('unit').value;
   }
+  renderMaterialButtons();
   if (!quiet) saveShop();
 }
 
@@ -1063,7 +1256,9 @@ function saveShop() {
     thru: $('thru-name').value,
     kiss: $('kiss-name').value,
     cutPreset: $('cut-preset').value,
-    hotFolder: $('hot-folder').value
+    hotFolder: $('hot-folder').value,
+    stagingOn: $('staging-on').checked,
+    stagingFolder: $('staging-folder').value
   });
 }
 
@@ -1086,6 +1281,7 @@ function watchWidth() {
   const unit = $('unit').value;
   const match = [...$('material').options].find(option => option.dataset.unit === unit && option.dataset.width === width);
   $('material').value = match ? match.value : 'custom';
+  renderMaterialButtons();
   renderActions();
 }
 
@@ -1095,6 +1291,7 @@ function rememberPreset() {
   if (!name) return;
   if (option.value === 'custom') option.textContent = name;
   else option.textContent = name + ' · ' + ($('width').value || option.dataset.width || '') + ' ' + $('unit').value;
+  renderMaterialButtons();
   const stored = prefs();
   stored.presets = stored.presets || {};
   stored.presets[option.value] = {label: option.textContent, width: $('width').value, unit: $('unit').value};
@@ -1104,7 +1301,7 @@ function rememberPreset() {
 function showLan(shop) {
   const on = $('lan').checked;
   $('lan-note').hidden = !on;
-  $('lan-note').textContent = (shop && shop.warning) || 'Shop network only. Other computers on this network can open this page.';
+  $('lan-note').textContent = (shop && shop.warning) || 'Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.';
   const bits = [];
   if (shop && shop.url) bits.push(shop.url);
   if (shop && shop.addresses && shop.addresses.length) bits.push(shop.addresses[0]);
@@ -1132,13 +1329,15 @@ function applyShop(shop) {
   $('app-version').textContent = shop.version || '';
   $('onyx-pc').checked = shop.onyxPc === true;
   $('lan').checked = shop.lan === true;
+  $('updates').checked = !shop || shop.updates !== false;
+  $('update').hidden = !$('updates').checked;
   showLan(shop);
   showRestart(shop);
   showHotDefault(shop.hotFolderDefault);
 }
 
 async function saveDeploy() {
-  const result = await api('/api/shop', {lan: $('lan').checked, onyxPc: $('onyx-pc').checked});
+  const result = await api('/api/shop', {lan: $('lan').checked, onyxPc: $('onyx-pc').checked, updates: $('updates').checked});
   applyShop(result);
   if (result.restart && result.lan) status('Restart eznest to open the shop network.');
   else if (result.restart) status('Shop network turns off after you restart eznest.');
@@ -1222,17 +1421,68 @@ async function importFiles(fileList, replace) {
   requestNest();
 }
 
+function renameCut(markup, from, to) {
+  const renamed = markup
+    .replaceAll('data-name="' + from + '"', 'data-name="' + to + '"')
+    .replaceAll('id="' + from + '"', 'id="' + to + '"');
+  if (renamed !== markup) return renamed;
+  const doc = new DOMParser().parseFromString('<svg xmlns="' + NS + '">' + markup + '</svg>', 'image/svg+xml');
+  const group = doc.createElementNS(NS, 'g');
+  group.setAttribute('id', to);
+  group.setAttribute('data-name', to);
+  while (doc.documentElement.firstChild) group.appendChild(doc.documentElement.firstChild);
+  return new XMLSerializer().serializeToString(group).replace(/ xmlns="[^"]*"/, '');
+}
+
+let cutChoice = 'kiss';
+
+function selectCut(operation) {
+  if (busy || saving || !unresolved()) return;
+  if (!plainContour()) {
+    chooseCut(operation);
+    return;
+  }
+  cutChoice = operation === 'thru' ? 'thru' : 'kiss';
+  $('choose-kiss').setAttribute('aria-pressed', cutChoice === 'kiss' ? 'true' : 'false');
+  $('choose-thru').setAttribute('aria-pressed', cutChoice === 'thru' ? 'true' : 'false');
+}
+
+function confirmCut() {
+  if (busy || saving || !plainContour()) return;
+  chooseCut(cutChoice === 'thru' ? 'thru' : 'kiss');
+}
+
 async function chooseCut(operation) {
   if (busy || saving || !unresolved()) return;
-  const files = kits.map(entry => entry.file).filter(Boolean);
-  $('generic-cut').value = operation;
-  try {
-    await importFiles(files, true);
-    $('generic-cut').value = '';
-  } catch (error) {
-    $('generic-cut').value = '';
-    showBlocked(error.message);
+  const output = operation === 'kiss' ? $('kiss-name').value.trim() : $('thru-name').value.trim();
+  if (kits.some(entry => entry.data?.format === 'pdf')) {
+    const files = kits.map(entry => entry.file).filter(Boolean);
+    $('generic-cut').value = operation;
+    try {
+      await importFiles(files, true);
+    } catch (error) {
+      showBlocked(error.message);
+    } finally {
+      $('generic-cut').value = '';
+    }
+    return;
   }
+  for (const entry of kits) {
+    for (const part of entry.data?.parts || []) {
+      const unknowns = (part.cutRefs || []).filter(ref => !['thru', 'kiss', 'regmark'].includes(mappedOperation(ref.source, ref.name)));
+      if (part.svg && part.svg.markup) {
+        let markup = part.svg.markup;
+        for (const ref of unknowns) markup = renameCut(markup, ref.name, output);
+        part.svg.markup = markup;
+      }
+      if (!unknowns.length) continue;
+      part.cutRefs = (part.cutRefs || []).filter(ref => !unknowns.includes(ref));
+      part.cutRefs.push({source: 'spot', name: output});
+    }
+    entry.unresolved = false;
+  }
+  blockReason = '';
+  requestNest();
 }
 
 async function boot() {
@@ -1257,23 +1507,30 @@ async function boot() {
   if (stored.thru) $('thru-name').value = stored.thru;
   if (stored.kiss) $('kiss-name').value = stored.kiss;
   if (stored.thru || stored.kiss) matchCutPreset();
+  $('staging-on').checked = stored.stagingOn === true;
+  if (stored.stagingFolder) $('staging-folder').value = stored.stagingFolder;
+  $('staging-row').hidden = !$('staging-on').checked;
+  renderMaterialButtons();
   $('allow-undo').checked = stored.undo === true;
   $('allow-hold').checked = stored.hold === true;
-  const session = await (await fetch('/api/session')).json();
+  await ensureLibraries();
+  await ensureStyles();
+  const session = await fetchJsonRetry('/api/session');
   token = session.token;
   try {
-    const folder = await (await fetch('/api/output')).json();
+    const folder = await fetchJson('/api/output', 5000);
     if (folder.path) $('hot-folder').value = folder.path;
     else if (stored.hotFolder) $('hot-folder').value = stored.hotFolder;
   } catch { /* The folder status is optional. */ }
   try {
-    applyShop(await (await fetch('/api/shop')).json());
-  } catch { /* Shop network settings stay off when the server has none. */ }
-  const state = await (await fetch('/api/state')).json();
+    applyShop(await fetchJson('/api/shop', 5000));
+  } catch { /* Shop network settings stay off when the lookup does not answer. */ }
+  const state = await fetchJsonRetry('/api/state');
   if (state.status === 'running') { busy = true; showScreen('nest'); renderActions(); setTimeout(poll, 300); }
   else if (state.status === 'ready' && state.manifest) showResult(state);
   else { showScreen('drop'); status('Drop your files.'); }
   renderActions();
+  document.body.dataset.ready = '1';
   refreshUpdate().catch(() => {});
 }
 
@@ -1311,6 +1568,7 @@ async function refreshUpdate(remote) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  renderMaterialButtons();
   $('file').addEventListener('change', async event => {
     if (ignoreFileChange) { ignoreFileChange = false; event.target.value = ''; return; }
     try { await importFiles(event.target.files); }
@@ -1356,8 +1614,14 @@ document.addEventListener('DOMContentLoaded', () => {
   $('preset-name').addEventListener('change', rememberPreset);
   $('settings').addEventListener('toggle', () => { if ($('settings').open) refreshUpdate(true).catch(() => {}); });
   $('hot-folder').addEventListener('change', saveHotFolder);
+  $('staging-on').addEventListener('change', () => {
+    $('staging-row').hidden = !$('staging-on').checked;
+    saveShop();
+  });
+  $('staging-folder').addEventListener('change', saveShop);
   $('lan').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('onyx-pc').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  $('updates').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('update').addEventListener('click', async () => {
     const installNow = $('update').textContent === 'Install now';
     try {
@@ -1379,9 +1643,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('allow-undo').addEventListener('change', () => { savePrefs({undo: $('allow-undo').checked}); renderActions(); });
   $('allow-hold').addEventListener('change', () => savePrefs({hold: $('allow-hold').checked}));
-  $('export').addEventListener('click', () => exportFile(false));
-  $('choose-thru').addEventListener('click', () => chooseCut('thru'));
-  $('choose-kiss').addEventListener('click', () => chooseCut('kiss'));
+  $('export').addEventListener('click', () => openConfirm());
+  $('confirm-send').addEventListener('click', () => exportFile(false));
+  $('confirm-back').addEventListener('click', closeConfirm);
+  $('choose-thru').addEventListener('click', () => selectCut('thru'));
+  $('choose-kiss').addEventListener('click', () => selectCut('kiss'));
+  $('choose-confirm').addEventListener('click', confirmCut);
   $('start-over').addEventListener('click', startOver);
   $('more').addEventListener('change', async event => {
     try { await importFiles(event.target.files); }
@@ -1404,11 +1671,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #update')) return;
+    if (event.target.closest('input, select, textarea, summary, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #update')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }
-    if (document.body.dataset.step === 'check' && current && current.result && !$('export').disabled) { event.preventDefault(); exportFile(); }
+    if (document.body.dataset.step === 'confirm') { event.preventDefault(); exportFile(); return; }
+    if (document.body.dataset.step === 'check' && current && current.result && !$('export').disabled) { event.preventDefault(); openConfirm(); }
   });
   boot().catch(error => status(error.message, true));
 });

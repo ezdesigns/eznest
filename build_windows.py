@@ -1,5 +1,6 @@
 """Build the portable Windows app. Run using the project's pinned build venv."""
 import argparse
+import hashlib
 import importlib.metadata as metadata
 import json
 import os
@@ -36,6 +37,7 @@ def main():
     docs=release/'docs'
     docs.mkdir(exist_ok=True)
     for name in ['getting-started.md','testing-plan.md','updates.md']:shutil.copy2(ROOT/'docs'/name,docs/name)
+    shutil.copy2(ROOT/'installer'/'uninstall-shop.ps1',release/'uninstall-shop.ps1')
     (release/'examples').mkdir();shutil.copy2(ROOT/'sample-artwork.svg',release/'examples'/'sample-artwork.svg')
     shutil.copytree(ROOT/'licenses',release/'licenses')
     licenses=release/'licenses'
@@ -50,6 +52,7 @@ def main():
     shutil.copy2(Path(sys.base_prefix)/'LICENSE.txt',licenses/'Python-LICENSE.txt')
     manifest={name:metadata.version(name) for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer','pyinstaller','pyinstaller-hooks-contrib']}
     manifest['python']=sys.version;manifest['app']=json.loads((ROOT/'version.json').read_text())
+    # Portable dependency list. The setup pin (version, commit, exe sha256) is installer/Output/BUILD.json.
     (release/'BUILD.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     print(f'Portable app: {release}')
     compile_setup(release)
@@ -66,6 +69,37 @@ def compile_setup(release):
         print('Inno Setup 6 is not installed. The portable folder is ready. Run ISCC on installer/eznest.iss to build eznest-setup.exe.')
         return
     subprocess.run([iscc, '/DSourceDir=' + str(release), str(ROOT / 'installer' / 'eznest.iss')], cwd=ROOT, check=True)
-    print('Installer: ' + str(ROOT / 'installer' / 'Output' / 'eznest-setup.exe'))
+    setup = ROOT / 'installer' / 'Output' / 'eznest-setup.exe'
+    version = json.loads((ROOT / 'version.json').read_text(encoding='utf-8'))['version']
+    pin = write_release_pin(setup.parent / 'BUILD.json', version, git_commit(), setup)
+    print('Installer: ' + str(setup))
+    print('commit: ' + pin['commit'])
+    print('sha256: ' + pin['sha256'])
+
+
+def git_commit():
+    for name in ('EZ_NEST_COMMIT', 'GITHUB_SHA'):
+        value = os.environ.get(name, '').strip()
+        if value:
+            return value
+    try:
+        return subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ''
+
+
+def write_release_pin(dest, version, commit, exe_path):
+    """Write version, commit, and the setup exe's SHA-256 beside the exe.
+
+    The hash is of the finished installer, so this file stays outside the exe.
+    """
+    exe = Path(exe_path)
+    pin = {
+        'version': version,
+        'commit': commit,
+        'sha256': hashlib.sha256(exe.read_bytes()).hexdigest(),
+    }
+    Path(dest).write_text(json.dumps(pin, indent=2) + '\n', encoding='utf-8')
+    return pin
 
 if __name__=='__main__':main()

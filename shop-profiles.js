@@ -29,5 +29,5 @@
     return {ready:issues.length===0,actualFormat:'svg',issues};
   }
   function importProfiles(data){if(data?.format!=='eznest.shop-profiles'||data.version!==1||!Array.isArray(data.profiles)||!data.profiles.length||data.profiles.length>50)throw Error('Choose an eznest shop profile file (version 1).');return data.profiles.map(validate);}
-  const api={defaults,validate,inspect,importProfiles};if(typeof module!=='undefined')module.exports=api;else root.EZNProfiles=api;
+  const api={defaults,validate,inspect,importProfiles};root.EZNProfiles=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:this);

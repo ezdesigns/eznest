@@ -1,4 +1,4 @@
-# Production files in 1.0.0-rc.1
+# Production files in 1.0.0-rc.5
 
 The MVP works without hardware details. Enter usable width; optionally configure
 sheet length, bleed, material cost and a shop profile. Equipment-specific validation
@@ -63,8 +63,9 @@ a suspect prefix also stop import; unrelated brand spots are retained. An unknow
 cut name outside those prefixes cannot be identified automatically.
 
 Defaults include reported LNThru-cut/LNKiss-cut/LNRegmark as optional literal
-aliases, alongside Thru-cut/Kiss-cut/Regmark and common CutContour variants. These
-are starter recognition rules, not confirmed source names or downstream commands.
+aliases, alongside Thru-cut/Kiss-cut/Regmark and common CutContour variants. The
+shop page writes CutContour_Thru-cut and CutContour_Kiss-cut unless the operator
+picks the LN preset. These are starter recognition rules, not cutter commands.
 Tool notes are informational only. Output spots and layers must be distinct for
 each operation; configure ONYX/GoProduce to recognize the chosen names.
 
