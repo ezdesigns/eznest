@@ -185,8 +185,9 @@ body.dragging .drop { opacity: .55; }
 .metrics .over .num, .metrics .over .unit { color: var(--alarm); }
 .gate { font-size: 18px; font-weight: 700; text-align: center; color: var(--muted); }
 .gate.problem { color: var(--alarm); forced-color-adjust: none; }
-.choice { display: flex; gap: 12px; justify-content: center; }
+.choice { display: flex; gap: 12px; justify-content: center; align-items: center; }
 .choice button { min-height: 40px; padding: 0 18px; border: 0; background: transparent; font-size: 16px; font-weight: 700; }
+.choice button[aria-pressed="true"] { text-decoration: underline; text-underline-offset: 3px; }
 button.primary {
   min-height: 44px; padding: 0 22px; border: 0; border-radius: 10px;
   background: #111; color: #fff; font-size: 16px; font-weight: 700; white-space: nowrap;

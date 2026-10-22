@@ -2,6 +2,10 @@
 
 [Goals](GOALS.md)
 
+**1.0.0-rc.5 · shop release candidate.** Standalone local nesting for
+complete kits, decals and stickers. Illustrator, a printer model and an account
+are not required. Width comes from the material; length comes from the layout.
+
 **Testing and suggesting improvements with Codex?** Use the
 [contributor setup and PR walkthrough](CONTRIBUTOR-CODEX.md) on the development
 branch `cursor/shop-open-handoff-9891`. This uses isolated source test data and

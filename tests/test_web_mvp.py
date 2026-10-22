@@ -840,7 +840,7 @@ class WebMvpTests(unittest.TestCase):
                 page.click('#setup-preset')
                 page.locator('#setup').screenshot(path=str(shots / 'first-run-preset-desktop.png'))
                 page.locator('#settings').evaluate('node => { node.open = true }')
-                self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.4')
+                self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.5')
                 self.assertEqual(page.locator('#update').inner_text(), 'Check for update')
                 self.assertTrue(page.locator('#updates').is_checked())
                 self.assertFalse(page.locator('#update').is_hidden())
@@ -865,6 +865,108 @@ class WebMvpTests(unittest.TestCase):
                 page.locator('#settings .panel').screenshot(path=str(shots / 'lan-desktop.png'))
                 page.set_viewport_size({'width': 390, 'height': 900})
                 page.locator('#settings .panel').screenshot(path=str(shots / 'lan-mobile.png'))
+            finally:
+                browser.close()
+
+    def contour_file(self, name):
+        artwork = '''<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="80mm" viewBox="0 0 200 80">
+          <g id="CutContour" data-name="CutContour" data-ezn-layer="true">
+            <rect id="piece" x="8" y="8" width="160" height="60" fill="#f2c14e"/>
+          </g>
+        </svg>'''
+        source = Path(self.tmp.name) / name
+        source.write_text(artwork, encoding='utf-8')
+        return source
+
+    def drop_plain_contour(self, page, name):
+        page.set_input_files('#file', str(self.contour_file(name)))
+        page.wait_for_function(
+            "text => (document.querySelector('#checks')?.textContent || '').trim() === text",
+            arg='Plain CutContour found: Kiss or Thru?',
+            timeout=90000)
+
+    def sent_artwork(self, page):
+        page.click('#export')
+        page.wait_for_selector('#confirm:not([hidden])')
+        with page.expect_download(timeout=30000) as pending:
+            page.click('#confirm-send')
+        item = pending.value
+        target = Path(self.tmp.name) / (item.suggested_filename or 'eznest.zip')
+        item.save_as(str(target))
+        with ZipFile(target) as archive:
+            return archive.read('artwork.svg').decode('utf-8')
+
+    def test_plain_cutcontour_maps_to_kiss(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True).new_page()
+            try:
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                self.wait_ready(page)
+                self.drop_plain_contour(page, 'plain-kiss.svg')
+                self.assertEqual(page.locator('#checks').inner_text().strip(), 'Plain CutContour found: Kiss or Thru?')
+                self.assertEqual(page.locator('#choose-kiss').get_attribute('aria-pressed'), 'true')
+                self.assertEqual(page.locator('#choose-thru').get_attribute('aria-pressed'), 'false')
+                self.assertFalse(page.locator('#choose-confirm').is_hidden())
+                self.assertTrue(page.locator('#export').is_disabled())
+                page.click('#choose-confirm')
+                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
+                artwork = self.sent_artwork(page)
+                self.assertIn('CutContour_Kiss-cut', artwork)
+                self.assertNotIn('CutContour', artwork.replace('CutContour_Kiss-cut', ''))
+            finally:
+                browser.close()
+
+    def test_plain_cutcontour_maps_to_thru(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True).new_page()
+            try:
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                self.wait_ready(page)
+                page.locator('#settings').evaluate('node => { node.open = true }')
+                page.select_option('#cut-preset', 'ln')
+                self.assertEqual(page.input_value('#thru-name'), 'LNThru-cut')
+                self.assertEqual(page.input_value('#kiss-name'), 'LNKiss-cut')
+                self.drop_plain_contour(page, 'plain-thru.svg')
+                self.assertTrue(page.locator('#export').is_disabled())
+                page.click('#choose-thru')
+                self.assertEqual(page.locator('#choose-thru').get_attribute('aria-pressed'), 'true')
+                self.assertEqual(page.locator('#choose-kiss').get_attribute('aria-pressed'), 'false')
+                self.assertTrue(page.locator('#export').is_disabled())
+                page.click('#choose-confirm')
+                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
+                artwork = self.sent_artwork(page)
+                self.assertIn('LNThru-cut', artwork)
+                self.assertNotIn('LNKiss-cut', artwork)
+                self.assertNotIn('CutContour', artwork)
+            finally:
+                browser.close()
+
+    def test_plain_cutcontour_blocks_send_until_chosen(self):
+        from playwright.sync_api import sync_playwright
+        shots = SCREENSHOTS
+        shots.mkdir(parents=True, exist_ok=True)
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+            try:
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                self.wait_ready(page)
+                self.drop_plain_contour(page, 'plain-wait.svg')
+                self.assertEqual(page.locator('#checks').inner_text().strip(), 'Plain CutContour found: Kiss or Thru?')
+                self.assertEqual(page.locator('#choose-kiss').get_attribute('aria-pressed'), 'true')
+                self.assertFalse(page.locator('#choose-confirm').is_hidden())
+                self.assertTrue(page.locator('#export').is_disabled())
+                self.assertFalse(page.locator('#choice').is_hidden())
+                page.keyboard.press('Enter')
+                self.assertTrue(page.locator('#export').is_disabled())
+                self.assertTrue(page.locator('#confirm').is_hidden())
+                page.screenshot(path=str(shots / 'rc5-cutcontour-desktop.png'), full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                page.screenshot(path=str(shots / 'rc5-cutcontour-mobile.png'), full_page=True)
             finally:
                 browser.close()
 
@@ -898,6 +1000,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertFalse(page.locator('#choose-kiss').is_hidden())
                 self.assertEqual(page.locator('#choose-thru').inner_text(), 'THRU')
                 self.assertEqual(page.locator('#choose-kiss').inner_text(), 'KISS')
+                self.assertTrue(page.locator('#choose-confirm').is_hidden())
                 page.screenshot(path=str(shots / 'rc2-unknown-desktop.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
                 page.screenshot(path=str(shots / 'rc2-unknown-mobile.png'), full_page=True)

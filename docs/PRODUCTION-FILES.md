@@ -1,4 +1,4 @@
-# Production files in 1.0.0-rc.4
+# Production files in 1.0.0-rc.5
 
 The MVP works without hardware details. Enter usable width; optionally configure
 sheet length, material cost and a shop profile. Equipment-specific validation

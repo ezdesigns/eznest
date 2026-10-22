@@ -10,6 +10,13 @@ First run, checked updates, and a shop that is not hard-wired to one hot folder.
 - Join OUTPUT network is off. It sends nothing.
 - The release address, the token, and the problem-report link can be set without rebuilding. A public repository needs no token.
 
+## 1.0.0-rc.5
+
+Older files that use a plain CutContour name can be sent as kiss or thru.
+
+- A file whose cut layer is exactly CutContour asks once: Plain CutContour found: Kiss or Thru? Kiss is already selected. Confirm renames that layer in the locked file to the kiss or thru name in the gear, including the LN preset.
+- Any other unmapped cut name still blocks Send and shows that name.
+
 ## 1.0.0-rc.4
 
 Uninstall removes the shop service account.
