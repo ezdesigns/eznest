@@ -171,12 +171,44 @@ class InstallerUpdateTests(unittest.TestCase):
                     raise OSError('backup disk full')
                 return copy_entry(source, destination)
             with patch.object(installer_update, '_copy_entry', side_effect=fail_second), \
-                 patch.object(installer_update, 'run_setup') as setup:
+                 patch.object(installer_update, 'run_setup') as setup, \
+                 patch.object(installer_update, 'launch', wraps=installer_update.launch) as launch:
                 with self.assertRaisesRegex(OSError, 'backup disk full'):
                     installer_update.apply_and_confirm(install, data)
                 setup.assert_not_called()
+                launch.assert_called_once_with(install / 'eznest.py', data, False)
+            self.assertFalse(installer_update.pending_state(data)['applyOnRestart'])
+            self.assertFalse(installer_update.handoff_if_pending(install, data))
+            self.settle()
             self.assertEqual({p.name: p.read_bytes() for p in install.iterdir()}, before)
             self.assertIsNotNone(installer_update.pending_state(data))
+
+    def test_failed_install_restarts_old_app_without_automatic_retry(self):
+        for failure in ('installer error', 'missing executable'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                install, data = root / 'app', root / 'data'
+                self.install(install, 'old', 'raise SystemExit(0)\n')
+                shop, folder = self.settings(data)
+                self.stage(data, 'new', b'MZ-new', 'eznest-setup.exe')
+                def runner(setup, install_root, data_dir):
+                    (install_root / 'version.json').write_text(json.dumps({'version': 'new'}))
+                    (install_root / 'eznest.py').unlink()
+                    (data_dir / 'shop.json').write_text('{}')
+                    if failure == 'installer error':
+                        raise OSError('installer denied')
+                with patch.object(installer_update, 'launch', wraps=installer_update.launch) as launch:
+                    with self.assertRaises((OSError, ValueError)):
+                        installer_update.apply_and_confirm(install, data, runner=runner)
+                    launch.assert_called_once_with(install / 'eznest.py', data, False)
+                self.assertEqual(installer_update.read_version(install), 'old')
+                self.assertEqual(json.loads((data / 'shop.json').read_text()), shop)
+                self.assertEqual(json.loads((data / 'output-folder.json').read_text()), folder)
+                pending = installer_update.pending_state(data)
+                self.assertIsNotNone(pending)
+                self.assertFalse(pending['applyOnRestart'])
+                self.assertFalse(installer_update.handoff_if_pending(install, data))
+                self.settle()
 
     def test_launch_error_restores_previous_build(self):
         with tempfile.TemporaryDirectory() as tmp:
