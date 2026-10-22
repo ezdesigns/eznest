@@ -474,6 +474,60 @@ class WebMvpTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_svg_prepared_artwork_stays_unexpanded_through_source_transforms(self):
+        from playwright.sync_api import sync_playwright
+        cases = [
+            '<rect width="2" height="2" fill="#ff0000"/>',
+            '<g transform="translate(1 1) scale(2)"><g transform="scale(.5 1.5)"><rect width="2" height="1" fill="#ff0000"/></g></g>',
+            '<g transform="translate(1 1)"><g transform="matrix(2 .25 .5 .75 0 0)"><rect width="1" height="2" fill="#ff0000"/></g></g>',
+        ]
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                page.evaluate("document.querySelector('#auto-bleed').value = '0.125'")
+                self.assertEqual(page.evaluate('autoBleedMm()'), 0)
+                for index, body in enumerate(cases):
+                    with self.subTest(transform=index):
+                        measured = page.evaluate(r"""async ({body, angle}) => {
+                            const source = '<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 10 10">' + body + '</svg>';
+                            const job = EZNSVG.importSVG(source);
+                            const part = job.parts[0];
+                            const result = {width:120, usedLength:120, placements:[{id:part.id, x:50, y:30, rotation:angle}]};
+                            const svg = EZNSVG.buildSVG(job, result);
+                            const original = svg.querySelector('[data-ezn-boundary="true"]');
+                            const before = original.outerHTML;
+                            applyAutoBleed(svg, job, result);
+                            const radians = angle*Math.PI/180;
+                            const points = part.points.map(([x,y]) => [50+x*Math.cos(radians)-y*Math.sin(radians),30+x*Math.sin(radians)+y*Math.cos(radians)]);
+                            const expected = [Math.min(...points.map(p=>p[0])), Math.min(...points.map(p=>p[1])),
+                                              Math.max(...points.map(p=>p[0])), Math.max(...points.map(p=>p[1]))];
+                            const bounds = [];
+                            for (const density of [5,10]) {
+                                svg.setAttribute('width', String(120*density));
+                                svg.setAttribute('height', String(120*density));
+                                const image = new Image();
+                                const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(EZNSVG.serialize(svg));
+                                try {
+                                    await new Promise((resolve,reject) => {image.onload=resolve; image.onerror=reject; image.src=url;});
+                                    const canvas = document.createElement('canvas'); canvas.width=canvas.height=120*density;
+                                    const context = canvas.getContext('2d'); context.drawImage(image,0,0);
+                                    const pixels = context.getImageData(0,0,canvas.width,canvas.height).data;
+                                    let x0=canvas.width,y0=canvas.height,x1=0,y1=0;
+                                    for(let y=0;y<canvas.height;y++) for(let x=0;x<canvas.width;x++) {
+                                        if(pixels[(y*canvas.width+x)*4+3]>127) {x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x+1);y1=Math.max(y1,y+1);}
+                                    }
+                                    bounds.push([x0/density,y0/density,x1/density,y1/density]);
+                                } finally {URL.revokeObjectURL(url);}
+                            }
+                            return {expected,bounds,originalUnchanged:before===original.outerHTML};
+                        }""", {'body':body, 'angle':31 if index == 2 else 0})
+                        self.assertTrue(measured['originalUnchanged'])
+                        for bounds in measured['bounds']:
+                            for actual, expected in zip(bounds, measured['expected']):
+                                self.assertAlmostEqual(actual, expected, delta=.22)
+            finally:
+                browser.close()
+
     def test_prepared_artwork_keeps_auto_bleed_disabled(self):
         from playwright.sync_api import sync_playwright
         source = Path(self.tmp.name) / 'bleed.pdf'
