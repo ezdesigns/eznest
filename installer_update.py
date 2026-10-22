@@ -328,9 +328,14 @@ def _leave_running(process):
 
 
 def _stop(process):
-    if process.poll() is None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=8)
+    except subprocess.TimeoutExpired:
         process.kill()
-    process.wait()
+        process.wait(timeout=5)
 
 
 def apply_and_confirm(install_root, data_dir, wait_pid=None, timeout=CONFIRM_TIMEOUT, runner=None):
@@ -396,7 +401,7 @@ def apply_and_confirm(install_root, data_dir, wait_pid=None, timeout=CONFIRM_TIM
         })
         restored = find_exe(install_root)
         if restored is not None:
-            _stop(launch(restored, data_dir, False))
+            _leave_running(launch(restored, data_dir, False))
         return {'ok': False, 'restored': previous, 'failed': version}
     if backup.exists():
         shutil.rmtree(backup, ignore_errors=True)
