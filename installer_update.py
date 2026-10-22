@@ -414,13 +414,18 @@ def apply_and_confirm(install_root, data_dir, wait_pid=None, timeout=CONFIRM_TIM
     if not pending:
         raise ValueError('No checked update is waiting to be installed.')
     version = pending['version']
+    # Only an explicit retry may attempt this payload again after a failure.
+    pending['applyOnRestart'] = False
+    write_json(directory / 'pending.json', pending)
     settings = snapshot_settings(data_dir)
     previous = read_version(install_root)
     backup = directory / 'backup'
     _log(data_dir, f'Installing {version} over {previous}.')
     # A failed/partial copy must never be used to restore over the intact app.
-    snapshot_app(install_root, backup)
+    backed_up = False
     try:
+        snapshot_app(install_root, backup)
+        backed_up = True
         if runner is not None:
             runner(Path(pending['file']), install_root, data_dir)
         else:
@@ -429,20 +434,25 @@ def apply_and_confirm(install_root, data_dir, wait_pid=None, timeout=CONFIRM_TIM
         installed = read_version(install_root)
         if installed != version:
             raise ValueError(f'The installed build is {installed}, not {version}.')
+        exe = find_exe(install_root)
+        if exe is None:
+            raise ValueError('The new build does not contain eznest.exe.')
     except Exception:
         _log(data_dir, f'Install failed. Restoring {previous}.')
-        if backup.is_dir() and any(backup.iterdir()):
+        if backed_up:
             rollback_files(install_root, backup)
-        restore_settings(data_dir, settings)
+            restore_settings(data_dir, settings)
+        (directory / 'applying.json').unlink(missing_ok=True)
+        restored = find_exe(install_root)
+        if restored is not None:
+            try:
+                _leave_running(launch(restored, data_dir, False))
+            except OSError as error:
+                _log(data_dir, f'{previous} could not restart: {error}')
         raise
     write_json(directory / 'applying.json', {'version': version, 'previous': previous, 'startedAt': time.time()})
     (directory / 'pending.json').unlink(missing_ok=True)
     (directory / 'healthy.json').unlink(missing_ok=True)
-    exe = find_exe(install_root)
-    if exe is None:
-        rollback_files(install_root, backup)
-        restore_settings(data_dir, settings)
-        raise ValueError('The new build does not contain eznest.exe.')
     started = False
     for attempt in range(1, CONFIRM_ATTEMPTS + 1):
         (directory / 'healthy.json').unlink(missing_ok=True)
