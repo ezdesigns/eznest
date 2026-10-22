@@ -88,7 +88,10 @@ class ShopDeployTests(unittest.TestCase):
             same = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: current}))
             self.assertFalse(same['updated'])
             self.assertEqual(same['message'], 'This is the latest release.')
-            saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: body, sha_url: sha}))
+            portable = root / 'app'
+            portable.mkdir()
+            (portable / 'eznest.exe').write_bytes(b'MZ')
+            saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', install_root=portable, opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: body, sha_url: sha}))
             self.assertTrue(saved['updated'])
             self.assertTrue(saved['applyOnRestart'])
             self.assertIn('checked', saved['message'])

@@ -34,14 +34,14 @@ The helper:
 1. Waits until eznest has exited.
 2. Checks the checksum again.
 3. Copies the current app files aside, skipping the data directory.
-4. Runs `eznest-setup.exe` silently into the same Program Files folder, or unpacks the zip of app files. Anything named `data` inside a zip is ignored.
+4. Updates a writable portable installation from the checked package. Anything named `data` inside a zip is ignored. Program Files installations require the manual installer.
 5. Puts `shop.json` and `output-folder.json` back.
 6. Starts the new build and waits until it reports that it is listening.
 7. If that does not happen, deletes the new files, restores the copy, writes `updates\rollback.json`, and starts the previous build.
 
 What's new shows that rollback. The browser queue stays because the address is still `http://127.0.0.1:8765/web`.
 
-The silent installer needs permission to write Program Files. The startup task runs as SYSTEM and can do that. If you opened eznest from the desktop shortcut and Windows refuses the install, the checked setup program is left in the updates folder. Run that `eznest-setup.exe` as administrator. The same restore of settings and the hot folder applies.
+The startup task runs as limited `eznest-svc`, which cannot overwrite Program Files. This updater keeps that server running and leaves the checked setup program in the updates folder. An administrator must run `eznest-setup.exe` manually. The portable helper rollback described above does not certify a manual Program Files upgrade.
 
 Leave a few times the installer's size free on disk. The helper keeps a second copy of the app while it installs.
 

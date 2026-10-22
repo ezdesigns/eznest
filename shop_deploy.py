@@ -416,14 +416,16 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
         raise ValueError('Could not reach the release.') from error
     import installer_update
     pending = installer_update.stage_file(directory, latest, digest, body, name)
-    message = f'{name} is checked and installs the next time eznest starts. Settings and the hot folder stay.'
+    message = (f'{name} is checked and installs the next time eznest starts. Settings and the hot folder stay.'
+               if installer_update.apply_supported(install_root) else
+               f'{name} is checked. Run this installer manually on the shop PC; automatic installation is unavailable here.')
     result = {
         'ok': True,
         'current': current,
         'latest': latest,
         'updated': True,
         'staged': True,
-        'applyOnRestart': True,
+        'applyOnRestart': installer_update.apply_supported(install_root),
         'path': pending['file'],
         'message': message,
         'restarting': False,
@@ -433,7 +435,7 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
             result.update(installer_update.begin_apply(directory, install_root))
         else:
             result['message'] = f'{name} is checked. Run it on the shop PC. Settings and the hot folder stay in the data folder.'
-            result['applyOnRestart'] = True
+            result['applyOnRestart'] = False
     return result
 
 

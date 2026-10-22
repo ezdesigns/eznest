@@ -109,6 +109,7 @@ jobs:
       - name: Attach the installer to the release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -eu
           python3 - <<'PY'

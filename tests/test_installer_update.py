@@ -7,7 +7,7 @@ import textwrap
 import time
 import unittest
 import zipfile
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from io import BytesIO
 from pathlib import Path
 
@@ -153,6 +153,70 @@ class InstallerUpdateTests(unittest.TestCase):
             self.assertEqual(result['restored'], 'old')
             self.assertEqual(installer_update.read_version(install), 'old')
             self.settle()
+
+    def test_partial_backup_never_replaces_intact_installation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            install, data = root / 'app', root / 'data'
+            self.install(install, 'old', 'raise SystemExit(0)\n')
+            (install / 'critical.dll').write_bytes(b'original library')
+            self.settings(data)
+            self.stage(data, 'new', b'MZ-new', 'eznest-setup.exe')
+            before = {p.name: p.read_bytes() for p in install.iterdir()}
+            copy_entry = installer_update._copy_entry
+            calls = []
+            def fail_second(source, destination):
+                calls.append(source)
+                if len(calls) == 2:
+                    raise OSError('backup disk full')
+                return copy_entry(source, destination)
+            with patch.object(installer_update, '_copy_entry', side_effect=fail_second), \
+                 patch.object(installer_update, 'run_setup') as setup:
+                with self.assertRaisesRegex(OSError, 'backup disk full'):
+                    installer_update.apply_and_confirm(install, data)
+                setup.assert_not_called()
+            self.assertEqual({p.name: p.read_bytes() for p in install.iterdir()}, before)
+            self.assertIsNotNone(installer_update.pending_state(data))
+
+    def test_launch_error_restores_previous_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            install, data = root / 'app', root / 'data'
+            self.install(install, 'old', 'raise SystemExit(0)\n')
+            self.settings(data)
+            self.stage(data, 'new', b'MZ-new', 'eznest-setup.exe')
+            original_launch = installer_update.launch
+            def launch(exe, data_dir, confirm):
+                if confirm:
+                    raise OSError('bad executable format')
+                return original_launch(exe, data_dir, confirm)
+            def runner(setup, install_root, data_dir):
+                (install_root / 'version.json').write_text(json.dumps({'version': 'new'}))
+                (install_root / 'eznest.py').write_text('invalid executable')
+            with patch.object(installer_update, 'launch', side_effect=launch):
+                result = installer_update.apply_and_confirm(install, data, runner=runner)
+            self.assertFalse(result['ok'])
+            self.assertEqual(installer_update.read_version(install), 'old')
+            self.assertEqual((install / 'eznest.py').read_text(), 'raise SystemExit(0)\n')
+            self.assertTrue((data / 'updates' / 'rollback.json').is_file())
+            self.settle()
+
+    def test_protected_install_does_not_shutdown_for_pending_update(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            install, data = root / 'ProgramFiles' / 'app', root / 'data'
+            install.parent.mkdir()
+            self.install(install, 'old', 'raise SystemExit(0)\n')
+            self.settings(data)
+            self.stage(data, 'new', b'MZ-new', 'eznest-setup.exe')
+            windows = SimpleNamespace(name='nt', environ={'ProgramFiles': str(install.parent)})
+            with patch.object(installer_update, 'os', windows), \
+                 patch.object(installer_update, 'spawn_helper') as spawn:
+                self.assertFalse(installer_update.apply_supported(install))
+                self.assertFalse(installer_update.handoff_if_pending(install, data))
+                self.assertFalse(installer_update.local_state(data, install)['applyOnRestart'])
+                spawn.assert_not_called()
 
     def test_zip_slip_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
