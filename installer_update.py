@@ -202,23 +202,29 @@ def _clear_app(root):
             entry.unlink()
 
 
-def apply_files(install_root, payload, backup):
-    install_root, payload, backup = Path(install_root), Path(payload), Path(backup)
+def snapshot_app(install_root, backup):
+    """Finish the backup before any installation mutation can begin."""
+    backup = Path(backup)
     if backup.exists():
         shutil.rmtree(backup)
     backup.mkdir(parents=True)
     for entry in app_entries(install_root):
         _copy_entry(entry, backup / entry.name)
+
+
+def replace_app_files(install_root, payload):
+    _clear_app(install_root)
+    for entry in Path(payload).iterdir():
+        if entry.name not in ('data', 'updates', '__MACOSX'):
+            _copy_entry(entry, Path(install_root) / entry.name)
+
+
+def apply_files(install_root, payload, backup):
+    snapshot_app(install_root, backup)
     try:
-        _clear_app(install_root)
-        for entry in payload.iterdir():
-            if entry.name in ('data', 'updates', '__MACOSX'):
-                continue
-            _copy_entry(entry, install_root / entry.name)
+        replace_app_files(install_root, payload)
     except Exception:
-        _clear_app(install_root)
-        for entry in backup.iterdir():
-            _copy_entry(entry, install_root / entry.name)
+        rollback_files(install_root, backup)
         raise
 
 
@@ -245,16 +251,10 @@ def run_setup(setup, install_root, data_dir):
     if setup.suffix.lower() == '.zip':
         payload = safe_extract(setup, updates_dir(data_dir) / 'extracted')
         archive_version = read_version(payload)
-        apply_files(install_root, payload, updates_dir(data_dir) / 'backup')
+        replace_app_files(install_root, payload)
         return archive_version
     if os.name != 'nt':
         raise ValueError('The installer runs on the shop PC.')
-    backup = updates_dir(data_dir) / 'backup'
-    if backup.exists():
-        shutil.rmtree(backup)
-    backup.mkdir(parents=True)
-    for entry in app_entries(install_root):
-        _copy_entry(entry, backup / entry.name)
     completed = subprocess.run(installer_command(setup, install_root), timeout=600)
     if completed.returncode != 0:
         raise ValueError('The installer did not finish. Settings and the hot folder were kept.')
@@ -423,13 +423,10 @@ def apply_and_confirm(install_root, data_dir, wait_pid=None, timeout=CONFIRM_TIM
     previous = read_version(install_root)
     backup = directory / 'backup'
     _log(data_dir, f'Installing {version} over {previous}.')
+    # A failed/partial copy must never be used to restore over the intact app.
+    snapshot_app(install_root, backup)
     try:
         if runner is not None:
-            if backup.exists():
-                shutil.rmtree(backup)
-            backup.mkdir(parents=True)
-            for entry in app_entries(install_root):
-                _copy_entry(entry, backup / entry.name)
             runner(Path(pending['file']), install_root, data_dir)
         else:
             run_setup(pending['file'], install_root, data_dir)
@@ -454,10 +451,17 @@ def apply_and_confirm(install_root, data_dir, wait_pid=None, timeout=CONFIRM_TIM
     started = False
     for attempt in range(1, CONFIRM_ATTEMPTS + 1):
         (directory / 'healthy.json').unlink(missing_ok=True)
-        process = launch(exe, data_dir, True)
-        if _wait_healthy(directory / 'healthy.json', process, version, timeout):
-            started = True
-            _leave_running(process)
+        process = None
+        try:
+            process = launch(exe, data_dir, True)
+            if _wait_healthy(directory / 'healthy.json', process, version, timeout):
+                started = True
+                _leave_running(process)
+                break
+        except (OSError, ValueError) as error:
+            _log(data_dir, f'{version} could not start: {error}')
+            if process is not None:
+                _stop(process)
             break
         _stop(process)
         _log(data_dir, f'{version} did not start (attempt {attempt}).')
