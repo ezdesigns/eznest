@@ -105,10 +105,11 @@ class WebMvpTests(unittest.TestCase):
 
     def test_windows_save_cancel_save_and_retained_receipt(self):
         from playwright.sync_api import sync_playwright, expect
-        source = Path(self.tmp.name) / 'kit.pdf'
+        tmp = Path(self.tmp.name).resolve()
+        source = tmp / 'kit.pdf'
         original = mixed_fixture()
         source.write_bytes(original)
-        folder = Path(self.tmp.name) / 'chosen'
+        folder = tmp / 'chosen'
         folder.mkdir()
         target = folder / 'Renamed kit.pdf'
         with sync_playwright() as playwright:

@@ -8,7 +8,7 @@ from shop_test import prepare
 class ShopTrialTests(unittest.TestCase):
     def test_new_trial_uses_separate_output_and_preserves_later_settings(self):
         with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder);data = root / 'Data'
+            root = Path(folder).resolve();data = root / 'Data'
             prepare(data)
             shop = json.loads((data / 'shop.json').read_text())
             self.assertEqual(Path(shop['hotFolder']), root / 'TEST Output')

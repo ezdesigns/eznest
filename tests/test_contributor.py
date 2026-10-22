@@ -14,7 +14,7 @@ class ContributorTests(unittest.TestCase):
 
     def test_checkout_data_is_separate_and_stable_across_dependencies(self):
         with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder); a = self.checkout(root, 'a'); b = self.checkout(root, 'b')
+            root = Path(folder).resolve(); a = self.checkout(root, 'a'); b = self.checkout(root, 'b')
             first = locations(a, root/'local'); other = locations(b, root/'local')
             self.assertNotEqual(first['data'], other['data'])
             self.assertTrue(first['data'].is_relative_to(root/'local'/'eznest-contributors'))
