@@ -496,7 +496,9 @@ class WebMvpTests(unittest.TestCase):
                             const svg = EZNSVG.buildSVG(job, result);
                             const original = svg.querySelector('[data-ezn-boundary="true"]');
                             const before = original.outerHTML;
+                            const artworkBefore = EZNSVG.serialize(svg);
                             applyAutoBleed(svg, job, result);
+                            const artworkUnchanged = artworkBefore === EZNSVG.serialize(svg);
                             const radians = angle*Math.PI/180;
                             const points = part.points.map(([x,y]) => [50+x*Math.cos(radians)-y*Math.sin(radians),30+x*Math.sin(radians)+y*Math.cos(radians)]);
                             const expected = [Math.min(...points.map(p=>p[0])), Math.min(...points.map(p=>p[1])),
@@ -519,12 +521,13 @@ class WebMvpTests(unittest.TestCase):
                                     bounds.push([x0/density,y0/density,x1/density,y1/density]);
                                 } finally {URL.revokeObjectURL(url);}
                             }
-                            return {expected,bounds,originalUnchanged:before===original.outerHTML};
+                            return {expected,bounds,artworkUnchanged,originalUnchanged:before===original.outerHTML};
                         }""", {'body':body, 'angle':31 if index == 2 else 0})
                         self.assertTrue(measured['originalUnchanged'])
-                        for bounds in measured['bounds']:
+                        self.assertTrue(measured['artworkUnchanged'])
+                        for density, bounds in zip([5, 10], measured['bounds']):
                             for actual, expected in zip(bounds, measured['expected']):
-                                self.assertAlmostEqual(actual, expected, delta=.22)
+                                self.assertAlmostEqual(actual, expected, delta=2/density + .02)
             finally:
                 browser.close()
 

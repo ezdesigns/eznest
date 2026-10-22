@@ -1,5 +1,6 @@
 name: Windows installer
 
+# CI produces unsigned test installers and never reads publisher credentials.
 # version.json is the only version number. build_windows.py passes it to Inno Setup.
 # A v* tag attaches eznest-setup.exe to that GitHub release.
 # workflow_dispatch uploads the same exe as an artifact and does not publish a release.
@@ -13,7 +14,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: windows-installer-${{ github.ref }}
@@ -60,8 +61,6 @@ jobs:
         shell: pwsh
         env:
           EZ_NEST_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
-          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
           python build_windows.py --out (Join-Path $env:RUNNER_TEMP "eznest-build")
           $setup = "installer\Output\eznest-setup.exe"
@@ -73,29 +72,6 @@ jobs:
           $expected = (Get-Content $pin -Raw | ConvertFrom-Json).sha256
           $actual = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
           if ($expected -ne $actual) { throw "BUILD.json sha256 does not match eznest-setup.exe" }
-
-      - name: Sign the installer when a certificate secret is set
-        shell: pwsh
-        env:
-          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
-          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERT_BASE64)) {
-            Write-Host "No Authenticode certificate secret is set. Skipping signing."
-            exit 0
-          }
-          $setup = "installer\Output\eznest-setup.exe"
-          $pfx = Join-Path $env:RUNNER_TEMP "eznest-codesign.pfx"
-          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERT_BASE64))
-          $signtool = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match '\\x64\\signtool.exe$' } |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $signtool) { throw "signtool.exe was not found" }
-          & $signtool sign /fd SHA256 /f $pfx /p $env:WINDOWS_CERT_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $setup
-          $signed = $LASTEXITCODE
-          Remove-Item -LiteralPath $pfx -Force
-          if ($signed -ne 0) { throw "signtool failed" }
 
       - name: Write the checksum from version.json
         shell: pwsh
@@ -118,7 +94,6 @@ jobs:
         run: pwsh -NoProfile -File tests/test_installed_shop.ps1
 
       - name: Upload the installer artifact
-        if: github.event_name != 'push'
         uses: actions/upload-artifact@v4
         with:
           name: eznest-setup
@@ -129,11 +104,27 @@ jobs:
             installer/Output/manifest.json
           if-no-files-found: error
 
+  publish:
+    name: Publish approved tag build
+    needs: installer
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    environment: eznest-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download the installer
+        uses: actions/download-artifact@v4
+        with:
+          name: eznest-setup
+          path: installer/Output
+
       - name: Attach the installer to the release
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           $tag = "${{ github.ref_name }}"
           $setup = "installer\Output\eznest-setup.exe"

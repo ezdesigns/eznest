@@ -21,6 +21,23 @@ class ServerTests(unittest.TestCase):
                 server.serve()
             healthy.assert_not_called()
 
+    def test_session_advertises_native_save_only_when_dialog_is_available(self):
+        old_port = server.PORT
+        service = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+        server.PORT = service.server_port
+        thread = threading.Thread(target=service.serve_forever, daemon=True)
+        thread.start()
+        try:
+            for available in (False, True):
+                with patch.object(server.print_export, 'native_save_available', return_value=available):
+                    with urlopen(f'http://127.0.0.1:{server.PORT}/api/session') as response:
+                        self.assertEqual(json.load(response)['localSave'], available)
+        finally:
+            service.shutdown()
+            service.server_close()
+            thread.join()
+            server.PORT = old_port
+
     def test_download_only_never_delivers_and_print_is_from_frozen_pack(self):
         import io
         from zipfile import ZipFile

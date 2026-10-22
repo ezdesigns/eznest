@@ -49,11 +49,23 @@ def export_filename(name, kind):
     return name + extension
 
 
+def native_save_available():
+    """Session-zero services cannot show a dialog on the employee's desktop."""
+    if os.name != 'nt':
+        return False
+    import ctypes
+    session = ctypes.c_ulong()
+    try:
+        return bool(ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(session)) and session.value != 0)
+    except (AttributeError, OSError):
+        return False
+
+
 def pick_save_path(name, kind):
     """Ask Windows for a destination; cancellation never creates a file."""
     filename = export_filename(name, kind)
-    if os.name != 'nt':
-        raise ValueError('Windows Save As is unavailable. Use browser download.')
+    if not native_save_available():
+        raise ValueError('Windows Save As is unavailable in this session. Use browser download.')
     script = r'''
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.Encoding]::UTF8

@@ -46,10 +46,13 @@ startup task running as the limited local `eznest-svc` account. The task's exist
 credentials, triggers and explicit `--lan` arguments are preserved. The helper
 does not create an administrator service or store an account password.
 
-Set the existing build secrets `WINDOWS_CERT_BASE64` and `WINDOWS_CERT_PASSWORD`
-to a trusted code-signing certificate. The build signs the app before packaging
-and records its publisher thumbprint inside Program Files; the workflow signs the
-installer with that same certificate. No signing material belongs in Git.
+The signing scripts support an explicitly approved release build with
+`WINDOWS_CERT_BASE64` and `WINDOWS_CERT_PASSWORD` supplied by its operator. The
+current GitHub workflow deliberately does not read those credentials: PR, manual,
+and tag CI builds remain unsigned. Before enabling signing in CI, create a
+separate protected release environment with required reviewers, trusted branch
+restrictions, and environment-scoped credentials. Do not store publisher keys as
+repository-wide secrets. No signing material belongs in Git.
 Unsigned builds remain installable manually but cannot use this elevated flow.
 Certificate rotation requires a separately validated/manual bootstrap upgrade.
 
@@ -105,3 +108,10 @@ Before employee rollout, test two signed versions on a disposable Windows PC/VM:
 Record actual versions, signatures, account identity and results in the draft PR.
 Keep the readiness checklist's real install/rollback item open until this passes.
 
+
+### Release workflow boundary
+
+The tag publication job has a separate write token and uses the `eznest-release`
+environment; configure its required reviewers before release. CI artifacts remain
+unsigned and retain the manual-install guard. Signed Windows upgrade/rollback
+validation and a separately approved signing workflow remain rollout prerequisites.

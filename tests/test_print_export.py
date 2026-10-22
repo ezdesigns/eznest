@@ -12,7 +12,7 @@ import print_export
 class PrintExportTests(unittest.TestCase):
     @unittest.skipUnless(print_export.os.name == 'nt', 'Windows Save As')
     def test_native_picker_cancel_path_and_failure_never_write(self):
-        with patch('print_export.subprocess.run') as run:
+        with patch('print_export.subprocess.run') as run, patch('print_export.native_save_available', return_value=True):
             run.return_value.stdout = b''
             self.assertIsNone(print_export.pick_save_path('kit', 'pdf'))
             run.return_value.stdout = 'C:\\Prints\\Changed name.pdf'.encode('utf-8')
@@ -20,6 +20,25 @@ class PrintExportTests(unittest.TestCase):
             run.side_effect = subprocess.TimeoutExpired('powershell', 300)
             with self.assertRaisesRegex(ValueError, 'could not finish'):
                 print_export.pick_save_path('kit', 'pdf')
+
+    def test_native_save_rejects_service_session_without_starting_dialog(self):
+        import ctypes
+        from types import SimpleNamespace
+        for session_id, query_ok in [(0, True), (1, True), (1, False)]:
+            def query(pid, pointer):
+                pointer._obj.value = session_id
+                return query_ok
+            windows = SimpleNamespace(name='nt', getpid=lambda: 123)
+            library = SimpleNamespace(kernel32=SimpleNamespace(ProcessIdToSessionId=query))
+            with self.subTest(session=session_id, query=query_ok), \
+                 patch.object(print_export, 'os', windows), \
+                 patch.object(ctypes, 'windll', library, create=True):
+                self.assertEqual(print_export.native_save_available(), session_id != 0 and query_ok)
+        with patch('print_export.native_save_available', return_value=False), \
+             patch('print_export.subprocess.run') as run:
+            with self.assertRaisesRegex(ValueError, 'browser download'):
+                print_export.pick_save_path('kit', 'pdf')
+            run.assert_not_called()
 
     def test_folder_chooser_lists_folders_only_and_checks_paths(self):
         with tempfile.TemporaryDirectory() as folder:

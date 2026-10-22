@@ -227,7 +227,7 @@ class Handler(BaseHTTPRequestHandler):
             path = '/web'
         if path == '/api/session':
             return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION, 'pid': os.getpid(),
-                                   'localSave': os.name == 'nt' and self.client_address[0] == '127.0.0.1'})
+                                   'localSave': self.client_address[0] == '127.0.0.1' and print_export.native_save_available()})
         if path == '/api/changelog':
             import installer_update
             return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
