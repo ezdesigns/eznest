@@ -38,6 +38,7 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Name: "{userdesktop}\EZ Nest Tester"; Filename: "{app}\app\eznest.exe"; Parameters: "--shop-test"
 Name: "{group}\EZ Nest Tester"; Filename: "{app}\app\eznest.exe"; Parameters: "--shop-test"
 Name: "{group}\Stop EZ Nest Tester"; Filename: "{app}\STOP Shop Test.cmd"
+Name: "{group}\EZ Nest test guide"; Filename: "{app}\READ FIRST.txt"
 
 [Run]
 Filename: "{app}\app\eznest.exe"; Parameters: "--shop-test"; Description: "Open EZ Nest Tester"; Flags: nowait postinstall skipifsilent

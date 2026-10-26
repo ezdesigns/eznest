@@ -187,11 +187,20 @@ def preserve_artwork(clean, meta):
                         separated.append(group)
                 groups = separated
                 owned = []
+                missing = 0
                 for group in groups:
                     owners = [i for i, cut in enumerate(cuts) if group.intersects(cut)]
-                    if not owners or group.geom_type != 'Polygon':
-                        raise ValueError('Some artwork is separate from every cut piece. Group it with its piece in Illustrator before nesting; nothing has been trimmed.')
+                    if not owners:
+                        missing += 1
+                        continue
+                    if group.geom_type != 'Polygon':
+                        raise ValueError('An artwork outline could not be read safely. Check its shape in Illustrator; nothing was removed.')
                     owned.append((min(owners), group, owners))
+                if missing:
+                    label = 'artwork group has' if missing == 1 else 'artwork groups have'
+                    raise ValueError(f'Page {page_index+1}: {missing} separate {label} no cut boundary. '
+                                     'Add closed cut lines for separate stickers, or place decoration with its intended piece in Illustrator. '
+                                     'Nothing was removed.')
                 if sorted(i for _, _, owners in owned for i in owners) != list(range(len(cuts))):
                     raise ValueError('Artwork ownership is ambiguous. Keep connected pieces together in Illustrator.')
                 for _, group, owners in sorted(owned, key=lambda item: item[0]):

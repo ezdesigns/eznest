@@ -158,11 +158,22 @@ class ArtworkPreservationTests(unittest.TestCase):
             self.assertEqual(sum(data['parts'][0]['cutCounts'].values()),2)
 
     def test_unowned_artwork_is_flagged_instead_of_silently_discarded(self):
-        writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
-        page = writer.pages[0]; stream = DecodedStreamObject()
-        stream.set_data(page.get_contents().get_data()+b'\n0 0 0 rg 330 200 20 20 re f\n')
-        page[NameObject('/Contents')] = writer._add_object(stream)
-        raw = io.BytesIO(); writer.write(raw)
-        with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaisesRegex(ValueError,'separate from every cut piece'):
-                import_to_store(raw.getvalue(),directory,preserve=True)
+        for page_number, count in ((1,1),(2,2)):
+            with self.subTest(page=page_number, groups=count):
+                writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+                if page_number == 2:
+                    writer.add_page(PdfReader(io.BytesIO(pdf_fixture())).pages[0])
+                page = writer.pages[page_number-1]; stream = DecodedStreamObject()
+                extra = b'\n0 0 0 rg 330 200 20 20 re f\n'
+                if count == 2:
+                    extra += b'280 200 20 20 re f\n'
+                stream.set_data(page.get_contents().get_data()+extra)
+                page[NameObject('/Contents')] = writer._add_object(stream)
+                raw = io.BytesIO(); writer.write(raw)
+                with tempfile.TemporaryDirectory() as directory:
+                    with self.assertRaises(ValueError) as error:
+                        import_to_store(raw.getvalue(),directory,preserve=True)
+                    self.assertIn(f'Page {page_number}: {count} separate artwork group',str(error.exception))
+                    self.assertIn('no cut boundary',str(error.exception))
+                    self.assertIn('Add closed cut lines',str(error.exception))
+                    self.assertEqual(list(Path(directory).glob('*')),[])

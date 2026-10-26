@@ -10,6 +10,12 @@ by `BUILD.json` (build ID, source fingerprint, executable checksum). Check the
 installer checksum supplied with the tested build. No release or signing claim
 is implied by a local build.
 
+The Start menu includes **EZ Nest test guide**. The packaged `READ FIRST.txt`
+starts with adding the synthetic example, choosing material/copies and saving;
+Illustrator preparation is optional. `CODEX TEST PROMPT.txt` is a ready-to-paste
+prompt for helping a tester on their own PC, preserving local-only trial data
+and keeping contributor changes on separate draft PR branches.
+
 ## Clean-PC acceptance
 
 1. Use a separate Windows 10/11 x64-compatible PC without an existing EZ Nest
@@ -32,6 +38,11 @@ is implied by a local build.
 Record build ID, Windows version, install/start/import/save/restart outcomes and
 any exact errors. A result from a developer PC is not a clean-PC result. A PDF
 export is not proof of RIP color management, printed scale or cutter registration.
+Keep the detailed `TEST RESULTS.txt` local; use the app's previewable feedback
+report when sharing. Missing cut boundaries are not repaired automatically:
+separate stickers need closed cut lines, while decoration belongs with its
+intended piece. The import error identifies the page and number of unowned
+artwork groups without dropping them from the print.
 
 The Windows installer workflow has a separate **Install and exercise the separate
 Windows tester** job on a fresh GitHub-hosted runner. It builds `tester.iss`, checks
