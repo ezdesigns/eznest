@@ -44,7 +44,9 @@ class WebMvpTests(unittest.TestCase):
                 page.fill('#roll-length','1200'); page.fill('#roll-cost','300')
                 page.click('#save-material')
                 page.select_option('#nesting-effort','5')
-                page.set_input_files('#file',str(Path(__file__).resolve().parents[1]/'sample-artwork.svg'))
+                sample=Path(__file__).resolve().parents[1]/'sample-artwork.svg'
+                page.set_input_files('#file', {'name':'sample-artwork-long-job-name-for-quantity-review.svg',
+                                             'mimeType':'image/svg+xml','buffer':sample.read_bytes()})
                 try:
                     page.wait_for_function("() => document.body.dataset.step === 'check'",timeout=90000)
                 except Exception:
@@ -61,6 +63,15 @@ class WebMvpTests(unittest.TestCase):
                 page.reload();self.wait_ready(page)
                 self.assertEqual(page.input_value('#roll-cost'),'300')
                 self.assertEqual(page.input_value('#previous-length'),'10')
+                # Core result and Save action fit on a common shop laptop display.
+                page.set_viewport_size({'width':1366,'height':768})
+                page.evaluate('scrollTo(0, 0)')
+                save_box=page.locator('#export').bounding_box()
+                self.assertLessEqual(save_box['y']+save_box['height'],768)
+                self.assertGreaterEqual(save_box['y'],0)
+                self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+                self.assertEqual(page.locator('select[aria-label="Material"]:visible').count(),0)
+                self.assertTrue(page.locator('.file-name').evaluate('n => n.scrollWidth <= n.clientWidth && n.scrollHeight <= n.clientHeight'))
                 page.screenshot(path=str(SCREENSHOTS/'tester-savings-desktop.png'),full_page=True)
                 page.set_viewport_size({'width':390,'height':844})
                 page.screenshot(path=str(SCREENSHOTS/'tester-savings-mobile.png'),full_page=True)
@@ -319,7 +330,7 @@ class WebMvpTests(unittest.TestCase):
             page = response.read().decode()
         self.assertIn('Nest selected jobs', desktop)
         self.assertIn('href="/web"', desktop)
-        self.assertIn('Drop your file', page)
+        self.assertIn('Drop files or click to browse', page)
         self.assertIn('Stop · keep best', page)
         self.assertIn('id="files"', page)
         self.assertIn('Add files', page)

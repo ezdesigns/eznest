@@ -130,115 +130,8 @@
   </div>
 </details>
 <main>
-  <div class="workspace-grid">
-  <section class="canvas-area" aria-label="Layout">
-
-  <section id="illustrator-handoff" class="handoff" hidden>
-    <strong>Nest in eznest · Illustrator · Regular</strong>
-    <p id="illustrator-note">Your production copy is ready to load.</p>
-    <button id="illustrator-load" class="primary" type="button">Load Illustrator selection</button>
-    <p class="hint">Review the detected pieces before sending. Colors are preserved. No automatic bleed or color substitutions.</p>
-  </section>
-  <div id="drop-screen">
-    <label id="drop" class="drop">Drop your files
-      <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
-    </label>
-    <p class="hint import-hint">PDF, SVG or PDF-compatible AI</p>
-    <details class="import-help"><summary>Import help</summary><p>Save AI with “Create PDF Compatible File” on. In Illustrator, use Nest whole document to include the complete visible design.</p></details>
-  </div>
-  <div id="sheet-tabs" class="tabs" hidden></div>
-  <div class="preview-tools" id="preview-tools" hidden>
-    <strong>Preview</strong>
-    <label>Zoom <select id="preview-zoom" aria-label="Preview zoom">
-      <option value="1">Fit width</option><option value="1.5">150%</option>
-      <option value="2">200%</option><option value="3">300%</option>
-    </select></label>
-  </div>
-  <div id="sheet-frame" class="sheet-frame" hidden>
-    <svg id="preview" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nested sheet"></svg>
-    <svg id="live" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nest in progress" hidden></svg>
-  </div>
-  <p id="legend" class="key" hidden><i class="thru"></i> Thru <i class="kiss"></i> Kiss</p>
-  <details id="piece-review" class="piece-review" hidden>
-    <summary id="piece-review-title">Check pieces</summary>
-    <div id="piece-cards" class="piece-cards"></div>
-  </details>
-  </section>
-  <aside class="job-panel" aria-label="Job controls">
-    <h2>Job</h2>
-  <div class="quiet">
-    <select id="material" class="material-native" aria-label="Material" tabindex="-1">
-      <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>Moto Regular</option>
-      <option value="holographic" data-name="Moto Holographic">Moto Holographic</option>
-      <option value="chrome" data-name="Moto Chrome">Moto Chrome</option>
-      <option value="custom">+ Add material</option>
-    </select>
-    <label class="width">Width
-      <input id="nest-width" type="number" min="0" step="any" value="51.5" inputmode="decimal">
-      <span>in</span>
-    </label>
-    <div class="sets"><span>Sets</span>
-      <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
-      <input id="sets" type="number" min="1" max="800" step="1" value="1" inputmode="numeric" aria-label="Sets">
-      <button id="sets-inc" type="button" aria-label="More sets">+</button>
-    </div>
-  </div>
-  <ul id="files" class="files" hidden></ul>
-  <label id="add-files" class="link" hidden>Add files
-    <input id="more" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
-  </label>
-  <p class="metrics pending" id="readout" hidden>
-    <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong></span>
-    <span class="metric"><span class="label">Unused space <button id="unused-info" type="button" class="setting-info" aria-label="About unused space" aria-expanded="false" aria-controls="unused-note">i</button></span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
-    <span class="metric"><span class="label">Sheets</span> <strong id="sheets"><span class="num">–</span></strong></span>
-    <span id="used-width" class="used-width">on 51.5" wide</span>
-  </p>
-  <p id="unused-note" class="hint" hidden>Share of the printable sheet outside the protected artwork outlines, including gaps and margins. It is not ink coverage or money saved.</p>
-  <p id="gate" class="gate" hidden><span id="checks"></span></p>
-  <section id="nest-savings" class="nest-savings" aria-live="polite" hidden>
-    <span>Material savings</span><strong id="savings-value"></strong><span id="savings-reference"></span>
-    <details><summary>Compare a previous layout</summary>
-      <label>Previous print length (feet)<input id="previous-length" type="number" min="0" step="any" placeholder="Optional"></label>
-      <p>Use the same material, width and quantities. Leave blank to compare tighter-fit attempts.</p>
-      <button id="comparison-save" type="button" class="link">Save comparison</button>
-    </details>
-  </section>
-  <label>Nesting effort
-    <select id="nesting-effort">
-      <option value="5">Quick · 5 seconds</option>
-      <option value="30" selected>Balanced · 30 seconds</option>
-      <option value="90">Best fit · 90 seconds</option>
-    </select>
-  </label>
-  <div id="choice" class="choice" hidden>
-    <button id="choose-thru" type="button" aria-pressed="false">THRU</button>
-    <button id="choose-kiss" type="button" aria-pressed="false">KISS</button>
-    <button id="choose-confirm" type="button" hidden>Confirm</button>
-  </div>
-  <div id="confirm" class="confirm" hidden>
-    <strong>Save print file</strong>
-    <div class="fields">
-      <label class="wide">Save to<select id="save-destination"><option value="folder">Default print folder</option><option value="choose">My computer</option><option value="download">Browser download</option></select></label>
-      <label class="wide" id="save-name-row">File name<input id="save-name" maxlength="100" autocomplete="off"></label>
-      <label class="wide" id="save-format-row">File type<select id="save-format"><option value="pack">Complete print pack (.zip)</option><option value="pdf">Print file (.pdf)</option></select></label>
-    </div>
-    <p id="save-location-note" class="hint"></p>
-    <button id="confirm-send" class="primary" type="button">Save</button>
-    <button id="confirm-back" class="link" type="button">Back</button>
-  </div>
-  <button id="export" class="primary" type="button" hidden disabled>Send to ONYX</button>
-  <button id="stop" class="link" type="button" hidden>Stop · keep best</button>
-  <button id="improve" class="link" type="button" hidden title="Try more arrangements. Your shorter layout is kept, with the same bleed and spacing.">Try tighter fit</button>
-  <button id="start-over" class="link" type="button" hidden>Start over</button>
-  <button id="undo" class="link" type="button" hidden>Undo send</button>
-  <p id="delivery-receipt" class="delivery-receipt" role="status" hidden></p>
-  <p id="status" role="status" aria-live="polite"></p>
-  <input id="layout-id" hidden readonly tabindex="-1" aria-label="Layout ID">
-  <input id="layout-hash" hidden readonly tabindex="-1" aria-label="SHA-256">
-  </aside>
-  </div>
   <section class="material-area" aria-label="Material presets">
-    <div class="material-heading"><strong>Material</strong><button id="edit-material" class="link" type="button">Edit</button></div>
+    <div class="material-heading"><strong>Material</strong><button id="edit-material" class="link" type="button">Edit material</button></div>
     <div id="materials" class="materials" role="group" aria-label="Material"></div>
     <p id="material-summary" class="hint"></p>
     <section id="preset-editor" class="preset-editor" aria-labelledby="preset-title" hidden>
@@ -316,6 +209,119 @@
       <p class="hint">Presets are saved in this browser.</p>
     </section>
   </section>
+  <div class="workspace-grid">
+  <section class="canvas-area" aria-label="Layout">
+
+  <section id="illustrator-handoff" class="handoff" hidden>
+    <strong>Nest in eznest · Illustrator · Regular</strong>
+    <p id="illustrator-note">Your production copy is ready to load.</p>
+    <button id="illustrator-load" class="primary" type="button">Load Illustrator selection</button>
+    <p class="hint">Review the detected pieces before sending. Colors are preserved. No automatic bleed or color substitutions.</p>
+  </section>
+  <div id="drop-screen">
+    <label id="drop" class="drop">Drop files or click to browse
+      <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
+    </label>
+    <p class="hint import-hint">PDF, SVG or PDF-compatible AI</p>
+    <details class="import-help"><summary>Import help</summary><p>Save AI with “Create PDF Compatible File” on. In Illustrator, use Nest whole document to include the complete visible design.</p></details>
+  </div>
+  <div class="result-overview" aria-label="Layout results">
+  <section id="nest-savings" class="nest-savings" aria-live="polite" hidden>
+    <span>Material savings</span><strong id="savings-value"></strong><span id="savings-reference"></span>
+    <details><summary>Compare a previous layout</summary>
+      <label>Previous print length (feet)<input id="previous-length" type="number" min="0" step="any" placeholder="Optional"></label>
+      <p>Use the same material, width and quantities. Leave blank to compare tighter-fit attempts.</p>
+      <button id="comparison-save" type="button" class="link">Save comparison</button>
+    </details>
+  </section>
+  <div class="result-measures">
+  <p class="metrics pending" id="readout" hidden>
+    <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong></span>
+    <span class="metric"><span class="label">Unused space <button id="unused-info" type="button" class="setting-info" aria-label="About unused space" aria-expanded="false" aria-controls="unused-note">i</button></span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
+    <span class="metric"><span class="label">Sheets</span> <strong id="sheets"><span class="num">–</span></strong></span>
+    <span id="used-width" class="used-width">on 51.5" wide</span>
+  </p>
+  <p id="unused-note" class="hint" hidden>Share of the printable sheet outside the protected artwork outlines, including gaps and margins. It is not ink coverage or money saved.</p>
+  </div>
+  </div>
+  <div id="sheet-tabs" class="tabs" hidden></div>
+  <div class="preview-tools" id="preview-tools" hidden>
+    <strong>Print layout</strong>
+    <label>Zoom <select id="preview-zoom" aria-label="Preview zoom">
+      <option value="1">Fit width</option><option value="1.5">150%</option>
+      <option value="2">200%</option><option value="3">300%</option>
+    </select></label>
+  </div>
+  <div id="sheet-frame" class="sheet-frame" hidden>
+    <svg id="preview" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nested sheet"></svg>
+    <svg id="live" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nest in progress" hidden></svg>
+  </div>
+  <p id="legend" class="key" hidden><i class="thru"></i> Through cut <i class="kiss"></i> Kiss cut</p>
+  <details id="piece-review" class="piece-review" hidden>
+    <summary id="piece-review-title">Check pieces</summary>
+    <div id="piece-cards" class="piece-cards"></div>
+  </details>
+  </section>
+  <aside class="job-panel" aria-label="Job controls">
+    <h2>Job setup</h2>
+  <div class="quiet">
+    <select id="material" class="material-native" aria-label="Material" hidden>
+      <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>Moto Regular</option>
+      <option value="holographic" data-name="Moto Holographic">Moto Holographic</option>
+      <option value="chrome" data-name="Moto Chrome">Moto Chrome</option>
+      <option value="custom">+ Add material</option>
+    </select>
+    <label class="width">Printable width
+      <input id="nest-width" type="number" min="0" step="any" value="51.5" inputmode="decimal">
+      <span>in</span>
+    </label>
+    <div class="sets"><span>Copies of every file</span>
+      <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
+      <input id="sets" type="number" min="1" max="800" step="1" value="1" inputmode="numeric" aria-label="Sets">
+      <button id="sets-inc" type="button" aria-label="More sets">+</button>
+    </div>
+  </div>
+  <ul id="files" class="files" hidden></ul>
+  <label id="add-files" class="link" hidden>Add files
+    <input id="more" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
+  </label>
+
+  <label>Nesting effort
+    <select id="nesting-effort">
+      <option value="5">Quick · 5 seconds</option>
+      <option value="30" selected>Balanced · 30 seconds</option>
+      <option value="90">Best fit · 90 seconds</option>
+    </select>
+  </label>
+  <p id="gate" class="gate" hidden><span id="checks"></span></p>
+  <div id="choice" class="choice" hidden>
+    <button id="choose-thru" type="button" aria-pressed="false">THRU</button>
+    <button id="choose-kiss" type="button" aria-pressed="false">KISS</button>
+    <button id="choose-confirm" type="button" hidden>Confirm</button>
+  </div>
+  <div id="confirm" class="confirm" hidden>
+    <strong>Save print file</strong>
+    <div class="fields">
+      <label class="wide">Save to<select id="save-destination"><option value="folder">Default print folder</option><option value="choose">My computer</option><option value="download">Browser download</option></select></label>
+      <label class="wide" id="save-name-row">File name<input id="save-name" maxlength="100" autocomplete="off"></label>
+      <label class="wide" id="save-format-row">File type<select id="save-format"><option value="pack">Complete print pack (.zip)</option><option value="pdf">Print file (.pdf)</option></select></label>
+    </div>
+    <p id="save-location-note" class="hint"></p>
+    <button id="confirm-send" class="primary" type="button">Save</button>
+    <button id="confirm-back" class="link" type="button">Back</button>
+  </div>
+  <button id="export" class="primary" type="button" hidden disabled>Send to ONYX</button>
+  <button id="stop" class="link" type="button" hidden>Stop · keep best</button>
+  <button id="improve" class="link" type="button" hidden title="Try more arrangements. Your shorter layout is kept, with the same bleed and spacing.">Try tighter fit</button>
+  <button id="start-over" class="link" type="button" hidden>Start over</button>
+  <button id="undo" class="link" type="button" hidden>Undo send</button>
+  <p id="delivery-receipt" class="delivery-receipt" role="status" hidden></p>
+  <p id="status" role="status" aria-live="polite"></p>
+  <input id="layout-id" hidden readonly tabindex="-1" aria-label="Layout ID">
+  <input id="layout-hash" hidden readonly tabindex="-1" aria-label="SHA-256">
+  </aside>
+  </div>
+
 </main>
 <footer class="tester-footer"><details><summary>Known limits</summary><p>Use prepared PDF, PDF-compatible AI or SVG. PDF/AI limit: 32 MB. Existing artwork and bleed stay unchanged; connected pieces may stay grouped. Unsupported or ambiguous cuts block import. Best fit is the best layout found, not a proven optimum. Stock is updated manually. Check size, colors, bleed and cuts before printing. No jobs are sent to OUTPUT.</p></details></footer>
 <dialog id="feedback-dialog" aria-labelledby="feedback-title">

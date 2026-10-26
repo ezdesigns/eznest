@@ -848,6 +848,7 @@ function showNestSavings(state) {
   $('previous-length').value = previous ?? '';
   const saving = EZNResults.comparison(state, previous);
   $('nest-savings').hidden = !state.result;
+  $('nest-savings').dataset.saving = saving && saving.savedFt >= 0.005 ? 'positive' : 'neutral';
   if (!saving) {
     $('savings-value').textContent = 'Add a length to compare';
     $('savings-reference').textContent = 'No previous layout measured yet.';
@@ -856,8 +857,8 @@ function showNestSavings(state) {
   const less = saving.savedFt >= 0;
   const length = Math.abs(saving.savedFt).toFixed(2);
   const money = saving.savedDollars == null ? '' : ' · $' + Math.abs(saving.savedDollars).toFixed(2);
-  $('savings-value').textContent = length === '0.00' ? 'Same length at 0.01 ft precision' : `${length} ft${money} ${less ? 'saved' : 'more'}`;
-  $('savings-reference').textContent = `Compared with ${saving.reference}.` + (saving.savedDollars == null ? ' Add full roll cost and length in Material to estimate dollars.' : ' Material cost only.');
+  $('savings-value').textContent = length === '0.00' ? 'No change in length' : `${length} ft${money} ${less ? 'saved' : 'more'}`;
+  $('savings-reference').textContent = `Compared with ${saving.reference}.` + (length === '0.00' ? ' Rounded to 0.01 ft.' : '') + (saving.savedDollars == null ? ' Add full roll cost and length in Material to estimate dollars.' : ' Material cost only.');
 }
 
 function feedbackText() {
