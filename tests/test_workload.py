@@ -31,6 +31,7 @@ class WorkloadTests(unittest.TestCase):
                         page.click('#setup-save')
                         page.wait_for_function("() => document.querySelector('#setup').hidden")
                         page.set_input_files('#file', str(Path(__file__).parents[1] / 'sample-artwork.svg'))
+                        page.click('#start-nesting')
                         page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate').textContent)", timeout=90000)
                         preview_box = page.locator('#sheet-frame').bounding_box()
                         controls_box = page.locator('.job-panel').bounding_box()

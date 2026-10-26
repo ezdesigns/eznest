@@ -392,3 +392,52 @@ body[data-step="confirm"] #layout-options { display: none; }
 #feedback-dialog p, #feedback-dialog .check, #feedback-dialog details { margin: 14px 0; font-size: 13px; }
 #feedback-preview { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
 .piece-card strong { overflow-wrap: anywhere; }
+
+/* A deliberate three-step job, followed by one primary save action. */
+.step-number { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-right: 7px; border-radius: 50%; background: #edf2fa; color: #315ca0; font-size: 12px; }
+.job-panel { gap: 14px; }
+.job-panel .material-heading { font-size: 16px; }
+#layout-options h2 { margin-bottom: 10px; }
+#layout-options > .setting-field > .setting-heading { display: none; }
+#layout-options .setting-field { margin: 0; }
+#job-options { font-size: 12px; color: var(--muted); }
+#job-options summary { cursor: pointer; }
+#job-options .quiet { margin-top: 12px; color: var(--ink); }
+#copies-summary { color: #315ca0; font-weight: 700; }
+#start-nesting, #export.primary, #confirm-send { background: #2265d5; border-color: #2265d5; color: #fff; }
+#start-nesting:hover:enabled, #export.primary:hover:enabled, #confirm-send:hover:enabled { background: #194fae; }
+#start-nesting:disabled { opacity: .5; cursor: default; }
+#drop-screen .drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 52vh; width: 100%; padding: 32px; background: #efefea; color: #252b33; text-align: center; }
+#drop-screen .drop strong { font-size: 25px; font-weight: 700; }
+#drop-screen .drop span { font-size: 14px; color: var(--muted); max-width: 380px; }
+#drop-screen .drop:focus-within { outline: 3px solid #2265d5; outline-offset: 3px; }
+#drop-screen .import-help { text-align: center; margin-top: 8px; }
+#drop-screen .import-help p { max-width: 560px; margin: 6px auto; }
+.preview-tools #add-files { margin-left: auto; font-size: 13px; }
+#add-files input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.result-overview { grid-template-columns: minmax(0, 3fr) minmax(180px, 1.3fr); gap: 0; background: #fff; border: 1px solid #e1e1da; border-radius: 12px; }
+.result-measures { border: 0; background: transparent; padding: 18px 12px; }
+.nest-savings, .nest-savings[data-saving="positive"] { border: 0; border-left: 1px solid #e7e7e1; border-radius: 0; padding: 16px; background: transparent; gap: 4px; }
+.nest-savings > strong { font-size: 22px; }
+.nest-savings details[open] { margin-top: 6px; }
+.nest-savings summary { font-size: 11px; }
+.piece-card details { font-size: 11px; color: var(--muted); }
+.piece-card details summary { font-weight: 400; }
+.piece-card details span { display: block; margin-top: 6px; }
+#feedback-open { position: fixed; right: 22px; bottom: 20px; z-index: 4; display: flex; align-items: center; gap: 8px; border: 1px solid #d9dedf; border-radius: 28px; padding: 12px 17px; background: #fff; box-shadow: 0 3px 18px #0002; font-size: 13px; }
+#feedback-welcome { position: fixed; right: 22px; bottom: 84px; z-index: 4; width: min(280px, calc(100vw - 44px)); padding: 18px 35px 18px 18px; border: 1px solid #d9dedf; border-radius: 14px; background: #fff; box-shadow: 0 4px 24px #0002; font-size: 13px; }
+#feedback-welcome p { margin-top: 6px; color: var(--muted); }
+#feedback-dismiss { position: absolute; right: 4px; top: 4px; width: 30px; min-height: 30px; padding: 0; background: transparent; border: 0; font-size: 22px; }
+#feedback-dialog { width: min(480px, calc(100vw - 24px)); }
+#feedback-version { color: var(--muted); font-size: 11px !important; }
+#feedback-dialog textarea { padding: 12px; border: 1px solid #c8cdc8; border-radius: 8px; }
+.tester-footer { padding-bottom: 96px; }
+body[data-step="confirm"] #job-options { display: none; }
+@media (max-width: 800px) {
+  body[data-step="drop"] .job-panel { grid-row: auto; }
+  #drop-screen .drop { min-height: 30vh; padding: 24px 16px; }
+  #drop-screen .drop strong { font-size: 22px; }
+  .result-overview { grid-template-columns: minmax(0, 1fr); }
+  .nest-savings, .nest-savings[data-saving="positive"] { border-left: 0; border-top: 1px solid #e7e7e1; }
+  #feedback-open { right: 16px; bottom: 16px; }
+}

@@ -48,6 +48,7 @@ def browser_check(url, report_dir, build_id, output_dir):
             page.select_option('#nesting-effort','5')
             source=mixed_fixture()
             page.set_input_files('#file',{'name':'synthetic-kit.pdf','mimeType':'application/pdf','buffer':source})
+            page.click('#start-nesting')
             page.wait_for_function("() => document.body.dataset.step === 'check'",timeout=90000)
             state=request(url,'/api/state')
             assert len(state['job']['parts'])==2

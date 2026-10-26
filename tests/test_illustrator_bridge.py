@@ -88,6 +88,7 @@ class IllustratorBridgeTests(unittest.TestCase):
                                 page.click('#start-over')
                                 page.click('#illustrator-load')
                             try:
+                                page.click('#start-nesting')
                                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate').textContent)", timeout=30000)
                             except Exception:
                                 self.fail(page.locator('#illustrator-note').inner_text() + ' / ' + page.locator('#gate').inner_text() + ' / ' + page.locator('#status').inner_text())

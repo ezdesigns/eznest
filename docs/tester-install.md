@@ -11,7 +11,8 @@ installer checksum supplied with the tested build. No release or signing claim
 is implied by a local build.
 
 The Start menu includes **EZ Nest test guide**. The packaged `READ FIRST.txt`
-starts with adding the synthetic example, choosing material/copies and saving;
+starts with uploading the synthetic example, choosing material and effort,
+clicking Start nesting and saving; optional copies live in Width & copies.
 Illustrator preparation is optional. `CODEX TEST PROMPT.txt` is a ready-to-paste
 prompt for helping a tester on their own PC, preserving local-only trial data
 and keeping contributor changes on separate draft PR branches.

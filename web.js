@@ -111,7 +111,8 @@ function installSettingsHelp() {
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'setting-info'; button.textContent = 'i';
     button.setAttribute('aria-label', 'About ' + name); button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-controls', tip.id);
-    heading.append(label, button);
+    heading.append(label);
+    if (!['preset-name', 'unit', 'roll', 'roll-length', 'roll-cost', 'printer', 'nesting-effort'].includes(id)) heading.append(button);
     for (const child of [...original.childNodes]) {
       if (child.nodeType === Node.TEXT_NODE && child.textContent.trim()) field.append(heading);
       else field.append(child);
@@ -546,15 +547,22 @@ function showSheetId(state) {
 function showScreen(name) {
   document.body.dataset.step = name;
   const idle = name === 'drop';
+  const configuring = name === 'configure';
+  const empty = idle || configuring || (!current?.result && name === 'blocked');
   const confirming = name === 'confirm';
-  $('drop-screen').hidden = !idle;
-  $('sheet-frame').hidden = idle;
-  $('preview-tools').hidden = idle;
-  $('legend').hidden = idle;
-  $('piece-review').hidden = idle || name === 'nest' || !current?.result;
-  $('nest-savings').hidden = idle || name === 'nest' || !current?.result;
-  $('readout').hidden = idle;
-  $('export').hidden = idle || confirming;
+  $('drop-screen').hidden = !empty;
+  $('upload-title').textContent = kits.length ? 'Files ready to nest' : 'Upload your print here';
+  $('upload-hint').textContent = kits.length ? 'Choose material and effort, then Start nesting. Click here to add files.' : 'Click to choose files or drop them here';
+  $('job-empty').hidden = kits.length > 0;
+  $('sheet-frame').hidden = empty;
+  $('preview-tools').hidden = empty;
+  $('legend').hidden = empty;
+  $('piece-review').hidden = empty || name === 'nest' || !current?.result;
+  $('nest-savings').hidden = empty || name === 'nest' || !current?.result;
+  $('readout').hidden = empty;
+  $('export').hidden = empty || confirming || name === 'nest';
+  $('start-nesting').hidden = !kits.length || !!current?.result || !['configure', 'blocked'].includes(name);
+  if (empty) $('sheet-tabs').hidden = true;
   $('confirm').hidden = !confirming;
   $('start-over').hidden = idle || confirming;
   $('delivery-receipt').hidden = name !== 'sent';
@@ -579,6 +587,8 @@ function showScreen(name) {
 function syncFiles() {
   const show = kits.length > 0 && !['drop', 'confirm', 'sent'].includes(document.body.dataset.step);
   $('files').hidden = !show;
+  $('copies-summary').textContent = kits.some(entry => entry.sets !== 1) ? kits.map(entry => entry.sets + '×').join(', ') : '';
+  $('start-nesting').disabled = busy || importing || saving || !!presetEditor || !kits.length || !!inputIssue();
   $('add-files').hidden = !show || !!illustratorHandoff || document.body.dataset.step === 'nest';
   $('stop').hidden = document.body.dataset.step !== 'nest';
   $('improve').hidden = document.body.dataset.step !== 'check' || busy || !current || current.released;
@@ -658,12 +668,12 @@ function renderActions() {
   $('confirm-send').disabled = saving || busy || !!presetEditor;
   $('confirm-back').disabled = saving;
   $('start-over').disabled = saving || !!presetEditor;
-  $('nest-width').disabled = !!presetEditor || confirming;
-  $('sets').disabled = !!presetEditor || confirming;
-  $('sets-dec').disabled = !!presetEditor || confirming;
-  $('sets-inc').disabled = !!presetEditor || confirming;
-  $('file').disabled = !!presetEditor || confirming;
-  $('more').disabled = !!presetEditor || confirming;
+  $('nest-width').disabled = busy || saving || !!presetEditor || confirming;
+  $('sets').disabled = busy || saving || !!presetEditor || confirming;
+  $('sets-dec').disabled = busy || saving || !!presetEditor || confirming;
+  $('sets-inc').disabled = busy || saving || !!presetEditor || confirming;
+  $('file').disabled = busy || saving || !!presetEditor || confirming;
+  $('more').disabled = busy || saving || !!presetEditor || confirming;
   $('edit-material').disabled = busy || saving || !!presetEditor || !!illustratorHandoff || confirming;
   if (importing) {
     for (const id of ['material', 'confirm-send', 'start-over', 'nest-width', 'sets', 'sets-dec', 'sets-inc', 'file', 'more', 'edit-material', 'improve', 'export']) $(id).disabled = true;
@@ -685,6 +695,12 @@ function renderActions() {
   $('undo').hidden = !(sent && $('allow-undo').checked && current && current.savedPath);
   if (sent) {
     $('export').disabled = saving || !!presetEditor;
+    return;
+  }
+  if (step === 'configure' || (step === 'blocked' && !current?.result)) {
+    $('export').hidden = true; $('export').disabled = true;
+    $('start-nesting').hidden = !kits.length;
+    setSentence(badInput || blockReason, true);
     return;
   }
   const actionable = step !== 'drop' && step !== 'nest';
@@ -722,6 +738,8 @@ function renderActions() {
   if (current && current.manifest) {
     document.body.dataset.step = 'check';
     setSentence(pieceSentence(current), false);
+    $('job-checks').textContent = pieceSentence(current);
+    $('gate').hidden = true;
     $('choice').hidden = true;
     $('choose-confirm').hidden = true;
   }
@@ -846,13 +864,15 @@ function renderPieceReview() {
     const cuts = part.cutCounts || namedCuts(part.svg?.markup || '');
     const detail = document.createElement('span'); detail.className = 'piece-detail';
     const bits = [];
-    if ((part.sourcePieceCount || 1) > 1) { if (!part.name) title.textContent = 'Group ' + (index + 1); bits.push(part.sourcePieceCount + ' pieces kept together'); }
+    if ((part.sourcePieceCount || 1) > 1) { if (!part.name) title.textContent = 'Piece ' + (index + 1); bits.push(part.sourcePieceCount + ' pieces kept together'); }
     if (cuts.thru) bits.push(cuts.thru + ' thru');
     if (cuts.kiss) bits.push(cuts.kiss + ' kiss');
     if (cuts.contour) bits.push(cuts.contour + ' cuts need a type');
     if (!cuts.thru && !cuts.kiss && !cuts.contour) bits.push('Check cut lines');
     detail.textContent = bits.join(' · ');
-    card.append(image, title, quantity, detail, source); cards.append(card);
+    const more = document.createElement('details'), summary = document.createElement('summary');
+    summary.textContent = 'Details'; more.append(summary, quantity, detail, source);
+    card.append(image, title, more); cards.append(card);
   });
 }
 
@@ -864,7 +884,7 @@ function showNestSavings(state) {
   $('nest-savings').hidden = !state.result;
   $('nest-savings').dataset.saving = saving && saving.savedFt >= 0.005 ? 'positive' : 'neutral';
   if (!saving) {
-    $('savings-value').textContent = 'Add a length to compare';
+    $('savings-value').textContent = '—';
     $('savings-reference').textContent = 'No previous layout measured yet.';
     return;
   }
@@ -1100,7 +1120,7 @@ function showSent() {
   $('delivery-receipt').textContent = current?.exportReceipt ? 'Saved to ' + current.exportReceipt.path : current?.savedPath
     ? 'Sent to the hot folder. Check the job in your RIP before printing.'
     : 'Pack downloaded. It has not been sent to a printer. Check your browser downloads.';
-  if (current && current.manifest) setSentence(pieceSentence(current), false);
+  if (current && current.manifest) { $('job-checks').textContent = pieceSentence(current); setSentence('', false); }
   renderActions();
 }
 
@@ -1186,7 +1206,7 @@ async function poll() {
     busy = false;
     if (pendingRenest && kits.length && !leaving) {
       pendingRenest = false;
-      nest();
+      requestNest();
       return;
     }
     if (state.status === 'ready' && state.manifest) showResult(state);
@@ -1194,7 +1214,7 @@ async function poll() {
   } catch (error) {
     if (error && error.name === 'AbortError' && busy && !leaving) { setTimeout(poll, 300); return; }
     busy = false;
-    if (pendingRenest && kits.length && !leaving) { pendingRenest = false; nest(); return; }
+    if (pendingRenest && kits.length && !leaving) { pendingRenest = false; requestNest(); return; }
     showBlocked(error.message);
   }
   renderActions();
@@ -1202,12 +1222,16 @@ async function poll() {
 
 function requestNest() {
   clearTimeout(nestTimer);
-  if (presetEditor) return;
-  nestTimer = setTimeout(() => {
-    if (leaving || saving || !kits.length) return;
-    if (busy || importing) { pendingRenest = true; return; }
-    nest();
-  }, 150);
+  if (presetEditor || leaving || saving || !kits.length) return;
+  if (busy || importing) { pendingRenest = true; return; }
+  // A changed job has no saveable result until the operator starts a new search.
+  current = null;
+  blockReason = '';
+  showScreen('configure');
+  showSheetId(null);
+  $('job-checks').textContent = '';
+  status('');
+  renderActions();
 }
 
 async function nest() {
@@ -1507,6 +1531,9 @@ function nextKit() {
   current = null;
   blockReason = '';
   activeSheet = 0;
+  $('sets').value = '1';
+  $('job-options').open = false;
+  $('job-checks').textContent = '';
   pendingRenest = false;
   renderKit();
   renderFiles();
@@ -2068,8 +2095,6 @@ async function importFiles(fileList, replace) {
   blockReason = '';
   leaving = false;
   renderFiles();
-  showScreen('nest');
-  status('Nesting…');
   requestNest();
 }
 
@@ -2303,9 +2328,8 @@ async function loadIllustrator() {
   blockReason = '';
   leaving = false;
   renderFiles();
-  $('illustrator-note').textContent = 'Choose sets, review every piece, colors and cut paths, then send. Regular material; your saved Illustrator PDF preset was used.';
+  $('illustrator-note').textContent = 'Choose nesting effort, then Start nesting. Review colors and cuts before saving. Your saved Illustrator PDF preset was used.';
   $('illustrator-load').hidden = true;
-  showScreen('nest');
   requestNest();
 }
 
@@ -2557,7 +2581,12 @@ document.addEventListener('DOMContentLoaded', () => {
     savePrefs({lengthComparison: raw ? {signature: EZNResults.signature(current), lengthFt: value} : null});
     showNestSavings(current);
   });
+  const dismissWelcome = () => { $('feedback-welcome').hidden = true; savePrefs({feedbackWelcomed: true}); };
+  $('feedback-welcome').hidden = !!prefs().feedbackWelcomed;
+  $('feedback-dismiss').addEventListener('click', dismissWelcome);
+  $('start-nesting').addEventListener('click', () => { dismissWelcome(); nest(); });
   $('feedback-open').addEventListener('click', () => {
+    dismissWelcome();
     $('feedback-numbers').checked = false;
     $('feedback-version').textContent = 'App version: ' + $('app-version').textContent;
     updateFeedbackPreview(); $('feedback-dialog').showModal();
@@ -2596,7 +2625,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .setting-info, #settings, #nest-savings, #feedback-open, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
+    if (importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .setting-info, #settings, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

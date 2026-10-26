@@ -42,10 +42,10 @@ START Shop Test.cmd. Neither option needs Python or a developer setup.
 Use a separate test PC. Keep the protected shop installation running as it is.
 
 TRY IT IN FIVE MINUTES
-1. Click Add file and choose Examples/sample-artwork.svg from this trial folder.
+1. Click Upload your print here and choose Examples/sample-artwork.svg.
    It contains four sample designs, with no customer information.
-2. Choose a material, check printable width, and enter copies. The layout starts
-   automatically. Layout settings lets you choose Quick, Balanced or Best fit.
+2. Choose a material and Quick, Balanced or Best fit, then click Start nesting.
+   Width & copies holds optional adjustments. Each new job starts at one copy.
 3. Check pieces and the large preview. Read Material used and Unused space.
 4. Click Review and save, then My computer to choose a local test folder in the
    normal Save As window. Saving a file does not send it to a printer.
@@ -55,7 +55,7 @@ TRY IT IN FIVE MINUTES
 
 DAILY FLOW
 Finish colors, bleed and cut lines in Illustrator. Save a prepared print PDF.
-Add file > choose material and copies > check the layout > Review and save.
+Upload > choose material and effort > Start nesting > Review and save.
 The app keeps existing artwork and bleed; do not enter or add a new bleed amount.
 It nests around the protected artwork, not just the cut lines. It does not yet
 create missing cuts. If separate stickers have no cuts, add their cut lines first.

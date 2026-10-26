@@ -49,6 +49,7 @@ class ReadinessTests(unittest.TestCase):
                     page.click('#setup-save')
                     page.wait_for_function("() => document.querySelector('#setup').hidden")
                     page.set_input_files('#file', str(Path(__file__).parents[1] / 'sample-artwork.svg'))
+                    page.click('#start-nesting')
                     page.wait_for_function("() => document.body.dataset.step === 'check'", timeout=90000)
                     with patch.object(server.print_export, 'save_file', side_effect=ValueError('Test hot folder disconnected')):
                         page.click('#export')

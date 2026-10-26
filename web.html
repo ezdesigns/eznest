@@ -9,7 +9,6 @@
 <body data-step="drop">
 <header class="shop-header">
   <strong>eznest</strong>
-  <button id="feedback-open" type="button" class="link">Send feedback</button>
 </header>
 <section id="setup" hidden>
   <h2>Ready to nest</h2>
@@ -46,7 +45,7 @@
   <summary aria-label="Settings">
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
       <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
-      <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 3.2v2.2M12 18.6V21M3.2 12h2.2M18.6 12H21M5.8 5.8l1.6 1.6M16.6 16.6l1.6 1.6M18.2 5.8l-1.6 1.6M7.4 16.6l-1.6 1.6"/>
+      <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M9 3h6l.6 3 2.2 1.3 2.9-.9 3 5.2-2.3 2.1v2.6l2.3 2.1-3 5.2-2.9-.9-2.2 1.3-.6 3H9l-.6-3-2.2-1.3-2.9.9-3-5.2 2.3-2.1v-2.6L.3 9.6l3-5.2 2.9.9L8.4 4z" transform="translate(3 0) scale(.75)"/>
     </svg>
   </summary>
   <div class="panel">
@@ -118,10 +117,11 @@
       <button id="activity-refresh" class="link" type="button">Refresh activity</button>
     </details>
     <details id="job-details"><summary>Job details</summary>
+  <p id="job-checks" class="hint"></p>
   <p id="sheet-id" class="sheet-id" hidden aria-label="Sheet ID"></p>
     </details>
     <details class="quick-guide"><summary>Help</summary>
-      <p>Add files, choose material and sets, then review and save.</p>
+      <p>Add files, choose material and effort, then Start nesting. Review the layout and save.</p>
       <p>My computer lets you choose a folder. Default print folder uses the folder saved in Settings. Check the file in your print software before printing.</p>
     </details>
     <a class="workspace" href="/">Full workspace</a>
@@ -139,16 +139,15 @@
     <button id="illustrator-load" class="primary" type="button">Load Illustrator selection</button>
     <p class="hint">Review the detected pieces before sending. Colors are preserved. No automatic bleed or color substitutions.</p>
   </section>
-  <div class="empty-layout"><strong>Your print layout</strong><span>Add files in Job to get started.</span></div>
+  <div id="drop-screen" class="upload-area">
+    <label id="drop" class="drop"><strong id="upload-title">Upload your print here</strong><span id="upload-hint">Click to choose files or drop them here</span>
+      <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
+    </label>
+    <p class="hint import-hint">PDF, SVG or PDF-compatible AI</p>
+    <details class="import-help"><summary>Import help</summary><p>Save AI with “Create PDF Compatible File” on. In Illustrator, use Nest whole document to include the complete visible design.</p></details>
+  </div>
+
   <div class="result-overview" aria-label="Layout results">
-  <section id="nest-savings" class="nest-savings" aria-live="polite" hidden>
-    <span>Material savings</span><strong id="savings-value"></strong><span id="savings-reference"></span>
-    <details><summary>Compare a previous layout</summary>
-      <label>Previous print length (feet)<input id="previous-length" type="number" min="0" step="any" placeholder="Optional"></label>
-      <p>Use the same material, width and quantities. Leave blank to compare tighter-fit attempts.</p>
-      <button id="comparison-save" type="button" class="link">Save comparison</button>
-    </details>
-  </section>
   <div class="result-measures">
   <p class="metrics pending" id="readout" hidden>
     <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong></span>
@@ -158,10 +157,19 @@
   </p>
   <p id="unused-note" class="hint" hidden>Share of the printable sheet outside the protected artwork outlines, including gaps and margins. It is not ink coverage or money saved.</p>
   </div>
+  <section id="nest-savings" class="nest-savings" aria-live="polite" hidden>
+    <span>Savings</span><strong id="savings-value"></strong>
+    <details><summary>Compare lengths</summary><p id="savings-reference"></p>
+      <label>Previous print length (feet)<input id="previous-length" type="number" min="0" step="any" placeholder="Optional"></label>
+      <p>Use the same material, width and quantities. Leave blank to compare tighter-fit attempts.</p>
+      <button id="comparison-save" type="button" class="link">Save comparison</button>
+    </details>
+  </section>
   </div>
   <div id="sheet-tabs" class="tabs" hidden></div>
   <div class="preview-tools" id="preview-tools" hidden>
     <strong>Print layout</strong>
+    <label id="add-files" class="link" hidden>Add files<input id="more" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple></label>
     <label>Zoom <select id="preview-zoom" aria-label="Preview zoom">
       <option value="1">Fit width</option><option value="1.5">150%</option>
       <option value="2">200%</option><option value="3">300%</option>
@@ -178,21 +186,12 @@
   </details>
   </section>
   <aside class="job-panel" aria-label="Job controls">
-    <h2>Job</h2>
-  <div id="drop-screen">
-    <label id="drop" class="drop">Add files or drop here
-      <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
-    </label>
-    <p class="hint import-hint">PDF, SVG or PDF-compatible AI</p>
-    <details class="import-help"><summary>Import help</summary><p>Save AI with “Create PDF Compatible File” on. In Illustrator, use Nest whole document to include the complete visible design.</p></details>
-  </div>
-  <label id="add-files" class="link" hidden>Add files
-    <input id="more" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
-  </label>
+    <h2><span class="step-number">1</span> Job</h2>
+    <p id="job-empty" class="hint">Add a print file to get started.</p>
   <ul id="files" class="files" hidden></ul>
 
   <section class="material-area" aria-label="Job material">
-    <div class="material-heading"><label for="material">Material</label><button id="edit-material" class="link" type="button">Edit</button></div>
+    <div class="material-heading"><label for="material"><span class="step-number">2</span> Material</label><button id="edit-material" class="link" type="button">Edit</button></div>
     <select id="material" aria-label="Material">
       <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>Moto Regular</option>
       <option value="holographic" data-name="Moto Holographic">Moto Holographic</option>
@@ -203,7 +202,7 @@
     <p id="material-summary" class="hint"></p>
   </section>
 
-  <div class="quiet">
+  <details id="job-options"><summary>Width &amp; copies <span id="copies-summary"></span></summary><div class="quiet">
 
     <label class="width">Printable width
       <input id="nest-width" type="number" min="0" step="any" value="51.5" inputmode="decimal">
@@ -217,7 +216,9 @@
   </div>
 
 
-  <details id="layout-options" class="layout-options"><summary>Layout settings <span id="effort-summary">Balanced · 30 seconds</span></summary>
+  </details>
+  <section id="layout-options" class="layout-options">
+  <h2><span class="step-number">3</span> Nesting effort</h2><span id="effort-summary" hidden></span>
   <label>Nesting effort
     <select id="nesting-effort">
       <option value="5">Quick · 5 seconds</option>
@@ -225,7 +226,8 @@
       <option value="90">Best fit · 90 seconds</option>
     </select>
   </label>
-  </details>
+  </section>
+  <button id="start-nesting" class="primary" type="button" hidden disabled>Start nesting</button>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
   <div id="choice" class="choice" hidden>
     <button id="choose-thru" type="button" aria-pressed="false">THRU</button>
@@ -256,7 +258,7 @@
   </div>
 
 </main>
-<footer class="tester-footer"><details><summary>Known limits</summary><p>Use prepared PDF, PDF-compatible AI or SVG. PDF/AI limit: 32 MB. Existing artwork and bleed stay unchanged; connected pieces may stay grouped. Unsupported or ambiguous cuts block import. Best fit is the best layout found, not a proven optimum. Stock is updated manually. Check size, colors, bleed and cuts before printing. No jobs are sent to OUTPUT.</p></details></footer>
+<footer class="tester-footer"><details><summary>Known limits</summary><p>Use prepared PDF, PDF-compatible AI or SVG. PDF/AI limit: 32 MB. Start new nests from the original file; complex nested PDFs may not re-import. Existing artwork and bleed stay unchanged; connected pieces may stay grouped. Unsupported or ambiguous cuts block import. Best fit is the best layout found, not a proven optimum. Stock is updated manually. Check size, colors, bleed and cuts before printing. No jobs are sent to OUTPUT.</p></details></footer>
 <dialog id="guide-review" aria-labelledby="guide-title" aria-describedby="guide-summary">
   <h2 id="guide-title">Review possible guides</h2>
   <p id="guide-file"></p>
@@ -286,16 +288,19 @@
       <label>Printable width
         <span class="measure"><input id="width" type="number" min="0" step="any" value="51.5" inputmode="decimal"><span data-unit>in</span></span>
       </label>
+      <label>Full roll length
+        <span class="measure"><input id="roll-length" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal"><span data-unit>in</span></span>
+      </label>
+      <label>Full roll cost ($)<input id="roll-cost" type="number" min="0" step="0.01" placeholder="Optional" inputmode="decimal"></label>
+      </div>
+      <details id="material-advanced"><summary>Spacing, stock &amp; cutter settings</summary>
+      <div class="fields">
       <label>Spacing
         <span class="measure"><input id="gap" type="number" min="0" step="any" value="0.12" inputmode="decimal"><span data-unit>in</span></span>
       </label>
       <label>Edge clearance
         <span class="measure"><input id="margin" type="number" min="0" step="any" value="0.25" inputmode="decimal"><span data-unit>in</span></span>
       </label>
-      <label>Full roll length
-        <span class="measure"><input id="roll-length" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal"><span data-unit>in</span></span>
-      </label>
-      <label>Full roll cost ($)<input id="roll-cost" type="number" min="0" step="0.01" placeholder="Optional" inputmode="decimal"></label>
       <label>Available length
         <span class="measure"><input id="available-length" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal"><span data-unit>in</span></span>
         <span class="hint">Update after printing.</span>
@@ -306,9 +311,7 @@
       <label>Max sheet length
         <span class="measure"><input id="sheet" type="number" min="0" step="any" value="60" inputmode="decimal"><span data-unit>in</span></span>
       </label>
-      </div>
-      <details id="material-advanced"><summary>Turning pieces &amp; cutter marks</summary>
-      <div class="fields">
+
       <label>Rotation
         <select id="rotations">
           <option value="0,90,180,270">Quarter turns</option>
@@ -342,14 +345,19 @@
       <p class="hint">Presets are saved in this browser.</p>
     </section>
 </dialog>
+<aside id="feedback-welcome" hidden aria-label="Welcome">
+  <button id="feedback-dismiss" type="button" aria-label="Dismiss welcome">×</button>
+  <strong>Thanks for trying EZ Nest.</strong><p>Have an idea or hit a snag? We'd love your feedback.</p>
+</aside>
+<button id="feedback-open" type="button" aria-label="Send feedback"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M7 9h10M7 13h7" stroke="currentColor" stroke-width="1.8"/></svg><span>Feedback</span></button>
 <dialog id="feedback-dialog" aria-labelledby="feedback-title">
   <h2 id="feedback-title">Send feedback</h2>
   <p id="feedback-version"></p>
   <label>What happened, or what would make this easier?<textarea id="feedback-message" maxlength="4000" rows="5"></textarea></label>
-  <label class="check"><input id="feedback-numbers" type="checkbox"> Include result numbers (counts, dimensions, unused space and time)</label>
-  <p class="hint">No artwork, filenames or folder paths are attached. Please leave customer details out of your message. GitHub opens a draft for you to review and submit; repository access is required. You can also save the report to share yourself.</p>
-  <details><summary>Preview report</summary><pre id="feedback-preview"></pre></details>
-  <div class="folder-actions"><button id="feedback-close" class="link" type="button">Cancel</button><button id="feedback-download" type="button">Save report</button><button id="feedback-send" class="primary" type="button">Continue to GitHub</button></div>
+  <label class="check"><input id="feedback-numbers" type="checkbox"> Include layout numbers (optional)</label>
+  <p class="hint">App version is included. No customer files are attached. Leave customer details out of your message.</p>
+  <details><summary>Report details &amp; save a copy</summary><pre id="feedback-preview"></pre><button id="feedback-download" type="button">Save report</button><p>GitHub opens a draft for you to submit. Repository access is required; you can save a copy to share yourself instead.</p></details>
+  <div class="folder-actions"><button id="feedback-close" class="link" type="button">Cancel</button><button id="feedback-send" class="primary" type="button">Continue to GitHub</button></div>
 </dialog>
 <dialog id="folder-picker" aria-labelledby="folder-title">
   <h2 id="folder-title">Choose a folder</h2>
