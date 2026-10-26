@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pypdfium2 as pdfium
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import DecodedStreamObject, NameObject
+from pypdf.generic import DecodedStreamObject, NameObject, DictionaryObject, FloatObject
 from shapely.geometry import Polygon
 
 from pdf_io import read_document, import_to_store, export_pdf, MM
@@ -26,6 +26,75 @@ def rendered(raw):
 
 
 class ArtworkPreservationTests(unittest.TestCase):
+    def test_nearby_decoration_without_its_own_cut_stays_with_the_piece(self):
+        writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+        stream = DecodedStreamObject()
+        stream.set_data(b'1 0 0 rg 10 10 110 90 re f 124 30 5 20 re f '
+                        b'/Contour CS 1 SCN .25 w 20 20 90 70 re S')
+        writer.pages[0][NameObject('/Contents')] = writer._add_object(stream)
+        raw = io.BytesIO(); writer.write(raw)
+        with tempfile.TemporaryDirectory() as directory:
+            data = import_to_store(raw.getvalue(), directory, preserve=True)
+            self.assertEqual(len(data['parts']), 1)
+            self.assertEqual(data['sourcePieceCount'], 1)
+            self.assertGreater(data['parts'][0]['previewWidth'], 119*MM)
+
+    def test_nearby_bleed_stays_independent_without_losing_or_copying_ink(self):
+        # A 4-point ink gap exceeds the paint guards but not the former double
+        # guard. Translucency exposes duplicate ink in source-position reassembly.
+        for kind, gap in (('path', 4), ('image', 4), ('path', 3)):
+            with self.subTest(kind=kind, gap=gap), tempfile.TemporaryDirectory() as directory:
+                writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+                page = writer.pages[0]
+                page['/Resources'][NameObject('/ExtGState')] = DictionaryObject({
+                    NameObject('/Half'): DictionaryObject({NameObject('/ca'): FloatObject(.5)})})
+                content = b'q /Half gs 1 0 0 rg 10 10 110 90 re f Q\n'
+                if kind == 'path':
+                    content += b'q /Half gs 0 0 1 rg 124 10 100 90 re f Q\n'
+                else:
+                    content += (b'q 100 0 0 90 124 10 cm '
+                                b'BI /W 1 /H 1 /CS /RGB /BPC 8 /F /AHx ID 0000ff> EI Q\n')
+                content += (b'/Contour CS 1 SCN .25 w 20 20 90 70 re S '
+                            b'134 20 80 70 re S\n')
+                content = content.replace(b'124', str(120+gap).encode()).replace(b'134', str(130+gap).encode())
+                stream = DecodedStreamObject(); stream.set_data(content)
+                page[NameObject('/Contents')] = writer._add_object(stream)
+                raw = io.BytesIO(); writer.write(raw)
+                data = import_to_store(raw.getvalue(), directory, preserve=True)
+                if gap == 3:
+                    # A guard reaches its neighbour's protected paint, so keep
+                    # the two pieces together instead of risking copied ink.
+                    self.assertEqual(len(data['parts']), 1)
+                    self.assertEqual(data['parts'][0]['sourcePieceCount'], 2)
+                    self.assertEqual(sum(data['parts'][0]['cutCounts'].values()), 2)
+                    continue
+                self.assertEqual(len(data['parts']), 2)
+                self.assertEqual([p['sourcePieceCount'] for p in data['parts']], [1, 1])
+                ident = data['documentId']
+                clean = (Path(directory)/(ident+'.pdf')).read_bytes()
+                meta = json.loads((Path(directory)/(ident+'.json')).read_text())
+                clip_polygons = [Polygon([values for op, values in p['clipCommands'] if op in ('m', 'l')])
+                                 for p in meta['pieces']]
+                # Their extra guards overlap only in blank source space.
+                from shapely.geometry import box
+                self.assertFalse(clip_polygons[0].disjoint(clip_polygons[1]))
+                self.assertTrue(clip_polygons[0].disjoint(box(124, 10, 224, 100)))
+                self.assertTrue(clip_polygons[1].disjoint(box(10, 10, 120, 100)))
+                for part, piece, clip in zip(data['parts'], meta['pieces'], clip_polygons):
+                    x0, y1 = piece['anchor']
+                    search = Polygon([(x0+x/MM, y1-y/MM) for x, y in part['points']])
+                    self.assertTrue(search.buffer(1e-8).covers(clip))
+                    self.assertGreaterEqual(search.area + 1e-8, clip.area)
+                placements = [{'id':part['id'], 'rotation':0, 'x':piece['anchor'][0]*MM,
+                               'y':300*MM-piece['anchor'][1]*MM}
+                              for part, piece in zip(data['parts'], meta['pieces'])]
+                output = export_pdf({'parts':data['parts']},
+                                    {'width':400*MM, 'usedLength':300*MM, 'placements':placements},
+                                    {ident:(clean, meta)})
+                cleaned, exported_meta = read_document(output)
+                self.assertTrue(np.array_equal(rendered(clean), rendered(cleaned)))
+                self.assertEqual(sum(len(p['cutPaths']) for p in exported_meta['pieces']), 2)
+
     def test_complex_outline_reduction_contains_every_original_vertex(self):
         import math
         from artwork_bounds import compact_enclosure

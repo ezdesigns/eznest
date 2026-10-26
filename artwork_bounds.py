@@ -129,6 +129,9 @@ def paint_envelopes(page):
                     parts += [LineString(p).buffer(max(width.value/2, .05/MM), cap_style=3,
                               join_style=2, mitre_limit=1000000) for p in paths if len(p) >= 2]
                 shape = transformed(unary_union(parts), total).buffer(PAD)
+            else:
+                # Bounds-based paint needs the same enclosure guard as paths.
+                shape = shape.buffer(PAD)
             if not shape.is_empty:
                 yield shape.intersection(clipping)
 
@@ -147,13 +150,42 @@ def preserve_artwork(clean, meta):
                 source = [p for p in meta['pieces'] if p['page'] == page_index]
                 cuts = [Polygon(p['pdfPoints']) for p in source]
                 paint = paint_envelopes(page)
-                combined = unary_union([p.buffer(PAD) for p in cuts] + [p.buffer(PAD) for p in paint if not p.is_empty])
+                # Paint already includes its first enclosure guard. Preserve the
+                # extra export guard too: PDF edge antialiasing can reach beyond
+                # a flattened paint boundary. Only blank guard overlap may split.
+                combined = unary_union([p.buffer(PAD) for p in cuts] + [p for p in paint if not p.is_empty])
+                cores = list(combined.geoms) if combined.geom_type == 'MultiPolygon' else [combined]
+                cores = [g for g in cores if g.geom_type == 'Polygon']
+                guarded = [Polygon(g.exterior).buffer(PAD) for g in cores]
+                combined = unary_union(guarded)
                 groups = list(combined.geoms) if combined.geom_type == 'MultiPolygon' else [combined]
                 envelopes = [Polygon(g.exterior) for g in groups if g.geom_type == 'Polygon']
-                # Large outlines get a conservative enclosing hull. Union again
-                # before ownership so enlargement cannot clip a neighbouring unit.
                 combined = unary_union([g.convex_hull if len(g.exterior.coords) > 5000 else g for g in envelopes])
                 groups = list(combined.geoms) if combined.geom_type == 'MultiPolygon' else [combined]
+                # A union can create a new enclosed void. Include anything in
+                # that void before using exterior-only clips and envelopes.
+                while True:
+                    combined = unary_union([Polygon(g.exterior) for g in groups])
+                    filled = list(combined.geoms) if combined.geom_type == 'MultiPolygon' else [combined]
+                    stable = len(filled) == len(groups)
+                    groups = filled
+                    if stable:
+                        break
+                separated = []
+                for group in groups:
+                    members = [i for i, core in enumerate(cores) if group.intersects(core)]
+                    # Each candidate retains both guards and must exclude every
+                    # other protected paint core, including cores outside this
+                    # component. Otherwise retain the conservative whole group.
+                    safe = members and all(
+                        any(cores[i].intersects(cut) for cut in cuts) and
+                        all(guarded[i].disjoint(core) for j, core in enumerate(cores) if i != j)
+                        for i in members)
+                    if safe:
+                        separated.extend(guarded[i] for i in members)
+                    else:
+                        separated.append(group)
+                groups = separated
                 owned = []
                 for group in groups:
                     owners = [i for i, cut in enumerate(cuts) if group.intersects(cut)]
@@ -163,15 +195,17 @@ def preserve_artwork(clean, meta):
                 if sorted(i for _, _, owners in owned for i in owners) != list(range(len(cuts))):
                     raise ValueError('Artwork ownership is ambiguous. Keep connected pieces together in Illustrator.')
                 for _, group, owners in sorted(owned, key=lambda item: item[0]):
-                    # Fill internal voids for nesting; no source pixels change.
-                    envelope = compact_enclosure(Polygon(group.exterior))
+                    # Search simplification may grow an outline. Keep that
+                    # growth out of the export clip so it cannot copy nearby ink.
+                    clip = Polygon(group.exterior)
+                    envelope = compact_enclosure(clip)
                     x0, y0, x1, y1 = envelope.bounds
                     piece = dict(source[owners[0]])
                     piece.update(id='pdf-'+str(len(pieces)+1), sourcePieceCount=len(owners),
                                  name=source[owners[0]]['name'] if len(owners)==1 else f'Page {page_index+1} · group {len(pieces)+1} ({len(owners)} pieces)',
                                  anchor=[x0,y1], bounds=[x0,y0,x1,y1],
                                  points=[[(x-x0)*MM,(y1-y)*MM] for x,y in envelope.exterior.coords[:-1]],
-                                 clipCommands=[('m',list(envelope.exterior.coords[0]))]+[('l',list(p)) for p in envelope.exterior.coords[1:]]+[('h',[])],
+                                 clipCommands=[('m',list(clip.exterior.coords[0]))]+[('l',list(p)) for p in clip.exterior.coords[1:]]+[('h',[])],
                                  cutPaths=[cut for i in owners for cut in source[i]['cutPaths']])
                     piece['cutCounts'] = counts(piece)
                     pieces.append(piece)

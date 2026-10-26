@@ -89,8 +89,12 @@ those limitations in the UI/docs until implemented and validated. Keep
 
 The simple shop page preserves prepared PDF artwork automatically. `artwork_bounds.py`
 builds conservative paint envelopes for nesting and spacing; original PDF drawing
-objects and cut paths remain at their original scale. Connected/nearby paint stays
-grouped, and unowned paint rejects instead of disappearing. Do not reintroduce an
+objects and cut paths remain at their original scale. Connected paint stays
+grouped. Separate pieces may overlap only in blank source clearance before
+nesting: each export guard must exclude every other protected paint core, and
+each separated unit needs its own cuts. Preserve the full export guard; reducing
+it can change edge pixels. Nesting envelopes still include that guard and spacing.
+Unowned paint rejects instead of disappearing. Do not reintroduce an
 operator-entered bleed amount or automatic enlargement in this flow. Legacy simple
 page jobs require re-import from the original, not a previously clipped export.
 

@@ -109,6 +109,12 @@ remain in effect; any-angle rotation is an operator choice for suitable material
 Existing bleed remains part of the protected artwork envelope. The simple page
 does not permit printed bleed to overlap another piece. Cut-line spacing alone
 cannot prove that overlaid ink will preserve neighboring artwork or cut tolerance.
+An extra blank export margin does not by itself join independent pieces: they can
+separate when every export guard excludes the other protected paint cores and
+each unit has its own cuts. The original guards remain around exported artwork;
+search simplification never enlarges the export clip. Truly connected paint and
+ambiguous nearby decoration remain grouped. Existing saved jobs retain their
+previous geometry; re-import the original prepared file to use new grouping.
 
 PDF cut validation understands compound clipping masks using their original
 nonzero or even-odd fill rule. It checks whether each cut stroke is visible;

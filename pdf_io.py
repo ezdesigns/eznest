@@ -617,7 +617,7 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
         from artwork_bounds import preserve_artwork
         meta=preserve_artwork(clean,meta)
     identity=[2,bleed_mm,cut_spot,meta['cutMapping']]
-    if preserve:identity=['preserve-artwork-v1',cut_spot,meta['cutMapping']]
+    if preserve:identity=['preserve-artwork-v2',cut_spot,meta['cutMapping']]
     ident=hashlib.sha256(raw+json.dumps(identity,sort_keys=True).encode()).hexdigest()
     meta.update(id=ident,sourceHash=hashlib.sha256(raw).hexdigest())
     # Preview in a separate process through the import worker. PDFium is not thread-safe.
