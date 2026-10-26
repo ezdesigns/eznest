@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 ROOT=Path(__file__).resolve().parent
-STATIC=['production.html','queue.css','queue-app.js','queue-core.js','production-features.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','CHANGELOG.md','app.js','style.css','web.html','web.css','web.js']
+STATIC=['production.html','queue.css','queue-app.js','queue-core.js','production-features.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','CHANGELOG.md','app.js','style.css','web.html','web.css','web.js','tester-results.js']
 
 def main():
     parser=argparse.ArgumentParser()

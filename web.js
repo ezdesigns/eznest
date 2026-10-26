@@ -23,7 +23,7 @@ let illustratorLoading = false;
 let materialProfiles = {};
 let presetEditor = null;
 let activeMaterial = 'white-gloss';
-const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'roll-length', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
+const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
 
 function status(message, failed) {
   const el = $('status');
@@ -65,6 +65,7 @@ function installSettingsHelp() {
     'gap': ['Space between pieces', 'Space between the outer artwork edges, including existing bleed. More space keeps pieces farther apart and usually uses more material.'],
     'margin': ['Space at roll edges', 'Keeps pieces away from the sides. More space leaves less room for pieces and may make the layout longer.'],
     'roll-length': ['Full roll length', 'The length of a new roll. This is a reference for your material list. Material left on roll is the amount available for this job.'],
+    'roll-cost': ['Full roll cost ($)', 'What you paid for a full roll, in US dollars. Enter its full length too. Savings use cost divided by full length; ink and labor are not included. Save material to remember this.'],
     'available-length': ['Material left on roll', 'Limits the batch to this much material. Leave blank if unknown. Update it yourself after printing; the app does not subtract used stock yet.'],
     'low-stock': ['Low-stock alert at', 'Show a red Low stock notice when the saved material left is at or below this length. Leave blank to use 10% of the full roll length, when known. Update material left after printing.'],
     'sheet': ['Longest print section', 'Splits a long layout into sections no longer than this. A lower number can create more sections. Every piece must fit within one section.'],
@@ -185,7 +186,7 @@ function loadScript(src) {
 }
 
 async function ensureLibraries() {
-  const need = [['EZNQueue', '/queue-core.js'], ['EZNCuts', '/cut-mapping.js'], ['EZNProfiles', '/shop-profiles.js']];
+  const need = [['EZNQueue', '/queue-core.js'], ['EZNCuts', '/cut-mapping.js'], ['EZNProfiles', '/shop-profiles.js'], ['EZNResults', '/tester-results.js']];
   for (const [name, src] of need) {
     for (let attempt = 0; attempt < 3 && typeof window[name] === 'undefined'; attempt++) {
       try { await loadScript(src); }
@@ -545,7 +546,7 @@ function showScreen(name) {
   $('preview-tools').hidden = idle;
   $('legend').hidden = idle;
   $('piece-review').hidden = idle || name === 'nest' || !current?.result;
-  $('nest-savings').hidden = idle || name === 'nest' || !current?.nestSavings;
+  $('nest-savings').hidden = idle || name === 'nest' || !current?.result;
   $('readout').hidden = idle;
   $('export').hidden = idle || confirming;
   $('confirm').hidden = !confirming;
@@ -812,7 +813,7 @@ function renderPieceReview() {
   const sources = new Map((current.job.productionJobs || []).map(source => [source.id, source.name]));
   current.job.parts.forEach((part, index) => {
     const card = document.createElement('article'); card.className = 'piece-card';
-    const title = document.createElement('strong'); title.textContent = 'Piece ' + (index + 1);
+    const title = document.createElement('strong'); title.textContent = part.name || 'Piece ' + (index + 1);
     const quantity = document.createElement('span'); quantity.className = 'piece-quantity';
     quantity.textContent = (counts.get(part.id) || 0) + ' of ' + part.quantity + ' copies';
     const image = document.createElement('img'); image.loading = 'lazy'; image.alt = 'Artwork for piece ' + (index + 1);
@@ -831,7 +832,7 @@ function renderPieceReview() {
     const cuts = part.cutCounts || namedCuts(part.svg?.markup || '');
     const detail = document.createElement('span'); detail.className = 'piece-detail';
     const bits = [];
-    if ((part.sourcePieceCount || 1) > 1) { title.textContent = 'Group ' + (index + 1); bits.push(part.sourcePieceCount + ' pieces kept together'); }
+    if ((part.sourcePieceCount || 1) > 1) { if (!part.name) title.textContent = 'Group ' + (index + 1); bits.push(part.sourcePieceCount + ' pieces kept together'); }
     if (cuts.thru) bits.push(cuts.thru + ' thru');
     if (cuts.kiss) bits.push(cuts.kiss + ' kiss');
     if (cuts.contour) bits.push(cuts.contour + ' cuts need a type');
@@ -842,13 +843,28 @@ function renderPieceReview() {
 }
 
 function showNestSavings(state) {
-  const saving = state.nestSavings;
-  const node = $('nest-savings');
-  node.hidden = !saving;
-  node.textContent = !saving ? '' : saving.savedLengthMm > 0.254
-    ? `${(saving.savedLengthMm / 25.4).toFixed(2)} in less material · ${saving.percent.toFixed(1)}% saved since the first fit`
-    : 'Best layout kept · no measurable length saving yet';
+  const stored = prefs().lengthComparison;
+  const previous = stored?.signature === EZNResults.signature(state) ? stored.lengthFt : null;
+  $('previous-length').value = previous ?? '';
+  const saving = EZNResults.comparison(state, previous);
+  $('nest-savings').hidden = !state.result;
+  if (!saving) {
+    $('savings-value').textContent = 'Add a length to compare';
+    $('savings-reference').textContent = 'No previous layout measured yet.';
+    return;
+  }
+  const less = saving.savedFt >= 0;
+  const length = Math.abs(saving.savedFt).toFixed(2);
+  const money = saving.savedDollars == null ? '' : ' · $' + Math.abs(saving.savedDollars).toFixed(2);
+  $('savings-value').textContent = length === '0.00' ? 'Same length at 0.01 ft precision' : `${length} ft${money} ${less ? 'saved' : 'more'}`;
+  $('savings-reference').textContent = `Compared with ${saving.reference}.` + (saving.savedDollars == null ? ' Add full roll cost and length in Material to estimate dollars.' : ' Material cost only.');
 }
+
+function feedbackText() {
+  return EZNResults.feedback($('app-version').textContent, $('feedback-message').value, current, $('feedback-numbers').checked);
+}
+
+function updateFeedbackPreview() { $('feedback-preview').textContent = feedbackText(); }
 
 function setNestingEffort(seconds) {
   const value = [5, 30, 90].includes(Number(seconds)) ? Number(seconds) : 30;
@@ -1037,7 +1053,7 @@ function renderPreview(index) {
 
 function showMetrics(state) {
   const result = state.result;
-  setNum('length', (result.usedLength / 304.8).toFixed(1), 'ft');
+  setNum('length', (result.usedLength / 304.8).toFixed(2), 'ft');
   setNum('waste', String(Math.round((1 - result.utilization) * 100)), '%');
   const sheets = sheetList(state);
   setNum('sheets', String(sheets.length));
@@ -1109,7 +1125,7 @@ function showResult(state) {
     showScreen('check');
     renderActions();
   }
-  status(state.note || '');
+  status(state.nestSavings && ['Found a better layout.', 'Kept your best layout; this search did not improve it.'].includes(state.note) ? '' : (state.note || ''));
 }
 
 function sheetsIndex(state) {
@@ -1185,7 +1201,9 @@ async function nest() {
     const roll = preset();
     const job = EZNQueue.compose(kits, roll, 'combined');
     job.outputProfile = profileFor(kits);
-    job.webOptions = {units: $('unit').value, material: $('material').value, sets: sets(), genericCut: $('generic-cut').value};
+    job.webOptions = {units: $('unit').value, material: $('material').value, sets: sets(), genericCut: $('generic-cut').value,
+      rollCost: $('roll-cost').value.trim() ? Number($('roll-cost').value) : null,
+      fullRollLengthMm: $('roll-length').value.trim() ? Number($('roll-length').value) * scale() : null};
     if (illustratorHandoff) {
       if (kits.length !== 1 || kits[0].revision !== illustratorHandoff.documentId) throw Error('Start over before mixing an Illustrator handoff with other jobs.');
       job.illustrator = {id: illustratorHandoff.id};
@@ -1586,10 +1604,11 @@ function validateMaterial(values) {
   if (!['0', '0.0625', '0.125'].includes(values['auto-bleed'])) throw Error('Choose a supported bleed setting.');
   if (!Number.isFinite(Number(values.bleed)) || Number(values.bleed) < 0 || Number(values.bleed) > 25) throw Error('Existing bleed must be from 0 to 25 mm.');
   if (values['roll-length']?.trim() && (!Number.isFinite(n('roll-length')) || n('roll-length') <= 0)) throw Error('Enter a positive full roll length or leave it blank.');
+  if (values['roll-cost']?.trim() && (!Number.isFinite(Number(values['roll-cost'])) || Number(values['roll-cost']) < 0 || !(n('roll-length') > 0))) throw Error('Enter a full roll length and a cost of zero or more to estimate savings.');
   if (values['roll-length']?.trim() && values['available-length']?.trim() && n('available-length') > n('roll-length')) throw Error('Material left cannot exceed the full roll length.');
   if (values['low-stock']?.trim() && (!Number.isFinite(n('low-stock')) || n('low-stock') < 0)) throw Error('Enter a low-stock alert of zero or more, or leave it blank.');
   if (values['roll-length']?.trim() && values['low-stock']?.trim() && n('low-stock') > n('roll-length')) throw Error('The low-stock alert cannot exceed the full roll length.');
-  return {'roll-length': '', 'available-length': '', 'low-stock': '', ...values, 'preset-name': values['preset-name'].trim()};
+  return {'roll-length': '', 'roll-cost': '', 'available-length': '', 'low-stock': '', ...values, 'preset-name': values['preset-name'].trim()};
 }
 
 function registerMaterial(id, values) {
@@ -1766,7 +1785,7 @@ function showRestart(shop) {
 }
 
 function applyShop(shop) {
-  $('app-version').textContent = shop.version || '';
+  $('app-version').textContent = (shop.version || '') + (shop.buildId ? ' · build ' + shop.buildId : '');
   $('onyx-pc').checked = shop.onyxPc === true;
   $('lan').checked = shop.runningLan === true;
   $('updates').checked = !shop || shop.updates !== false;
@@ -1845,7 +1864,8 @@ async function saveSetup(shop) {
   }));
   applyShop(result);
   saveShop();
-  await saveHotFolder();
+  if ($('hot-folder').value.trim()) await saveHotFolder();
+  else $('hot-error').hidden = true;
   if ($('hot-error').hidden) {
     $('setup').hidden = true;
     $('setup-error').hidden = true;
@@ -1938,8 +1958,7 @@ async function readEntry(file) {
       if (!chosen && /unspecified cut type/i.test(error.message)) {
         data = await importPdf(file, 'contour');
         unresolvedCut = true;
-      } else if (/\.ai$/i.test(file.name)) throw Error('Save as PDF');
-      else throw error;
+      } else throw error;
     }
     data.reviewed = true;
     data.format = 'pdf';
@@ -2069,6 +2088,8 @@ function restoreJob(state) {
   if (['mm', 'in', 'cm'].includes(options.units)) $('unit').value = options.units;
   $('unit').dataset.current = $('unit').value;
   const factor = scale();
+  $('roll-cost').value = options.rollCost ?? '';
+  $('roll-length').value = options.fullRollLengthMm == null ? '' : options.fullRollLengthMm / factor;
   for (const node of document.querySelectorAll('span[data-unit]')) node.textContent = $('unit').value;
   if (options.material && [...$('material').options].some(option => option.value === options.material)) $('material').value = options.material;
   $('preset-name').value = job.materialName || job.media?.name || 'Custom roll';
@@ -2452,6 +2473,35 @@ document.addEventListener('DOMContentLoaded', () => {
   $('stop').addEventListener('click', stopNest);
   $('improve').addEventListener('click', improve);
   $('piece-review').addEventListener('toggle', renderPieceReview);
+  $('unused-info').addEventListener('click', () => {
+    $('unused-note').hidden = !$('unused-note').hidden;
+    $('unused-info').setAttribute('aria-expanded', String(!$('unused-note').hidden));
+  });
+  $('comparison-save').addEventListener('click', () => {
+    if (!current?.result) return;
+    const raw = $('previous-length').value.trim(), value = Number(raw);
+    if (raw && (!Number.isFinite(value) || value <= 0)) { status('Enter a positive previous length, or leave it blank.', true); return; }
+    savePrefs({lengthComparison: raw ? {signature: EZNResults.signature(current), lengthFt: value} : null});
+    showNestSavings(current);
+  });
+  $('feedback-open').addEventListener('click', () => {
+    $('feedback-numbers').checked = false;
+    $('feedback-version').textContent = 'App version: ' + $('app-version').textContent;
+    updateFeedbackPreview(); $('feedback-dialog').showModal();
+  });
+  $('feedback-close').addEventListener('click', () => $('feedback-dialog').close());
+  $('feedback-message').addEventListener('input', updateFeedbackPreview);
+  $('feedback-numbers').addEventListener('change', updateFeedbackPreview);
+  $('feedback-download').addEventListener('click', () => {
+    const url = URL.createObjectURL(new Blob([feedbackText()], {type: 'text/plain;charset=utf-8'}));
+    const link = document.createElement('a'); link.href = url; link.download = 'EZ-Nest-feedback.txt'; link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  $('feedback-send').addEventListener('click', () => {
+    const url = new URL($('report').href);
+    url.searchParams.delete('template'); url.searchParams.set('title', 'Tester feedback'); url.searchParams.set('body', feedbackText());
+    window.open(url.toString(), '_blank', 'noopener,noreferrer');
+  });
   $('nesting-effort').addEventListener('change', () => {
     setNestingEffort($('nesting-effort').value);
     savePrefs({nestingSeconds: Number($('nesting-effort').value)});
@@ -2473,7 +2523,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if ($('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .setting-info, #settings, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
+    if ($('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .setting-info, #settings, #nest-savings, #feedback-open, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

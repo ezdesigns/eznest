@@ -47,6 +47,9 @@ jobs:
           node --check cut-mapping.js
           node --check web.js
           node --check tester/feedback.js
+          node --check tester-results.js
+      - name: Test savings and feedback privacy
+        run: node tests/test_tester_results.cjs
       - name: Test queue and physical units
         run: node tests/test_queue.cjs
       - name: Test shop profiles

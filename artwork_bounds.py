@@ -28,6 +28,20 @@ def enclosing_polygon(points):
     return shape if shape.is_valid else shape.convex_hull
 
 
+def compact_enclosure(envelope):
+    """Keep detailed paint inside a bounded-complexity nesting outline."""
+    if len(envelope.exterior.coords) <= 5001:
+        return envelope
+    # A small outward guard lets near-collinear paint vertices be removed.
+    # Prove coverage: a plain simplify can cut corners off existing bleed.
+    for tolerance_mm in (.02, .05, .1):
+        tolerance = tolerance_mm / MM
+        candidate = envelope.simplify(tolerance, preserve_topology=True).buffer(tolerance * 1.02, quad_segs=2)
+        if candidate.geom_type == 'Polygon' and candidate.is_valid and len(candidate.exterior.coords) <= 5001 and candidate.covers(envelope):
+            return candidate
+    raise ValueError('Artwork outline is too complex to nest safely. Keep this group together in Illustrator.')
+
+
 def path_parts(count, segment_at, tolerance):
     import pypdfium2.raw as api
     from pdf_io import curve_points
@@ -150,13 +164,11 @@ def preserve_artwork(clean, meta):
                     raise ValueError('Artwork ownership is ambiguous. Keep connected pieces together in Illustrator.')
                 for _, group, owners in sorted(owned, key=lambda item: item[0]):
                     # Fill internal voids for nesting; no source pixels change.
-                    envelope = Polygon(group.exterior)
-                    if len(envelope.exterior.coords) > 5001:
-                        raise ValueError('Artwork outline is too complex to nest safely. Keep this group together in Illustrator.')
+                    envelope = compact_enclosure(Polygon(group.exterior))
                     x0, y0, x1, y1 = envelope.bounds
                     piece = dict(source[owners[0]])
                     piece.update(id='pdf-'+str(len(pieces)+1), sourcePieceCount=len(owners),
-                                 name=f'Page {page_index+1} · '+('piece' if len(owners)==1 else f'group of {len(owners)} pieces'),
+                                 name=source[owners[0]]['name'] if len(owners)==1 else f'Page {page_index+1} · group {len(pieces)+1} ({len(owners)} pieces)',
                                  anchor=[x0,y1], bounds=[x0,y0,x1,y1],
                                  points=[[(x-x0)*MM,(y1-y)*MM] for x,y in envelope.exterior.coords[:-1]],
                                  clipCommands=[('m',list(envelope.exterior.coords[0]))]+[('l',list(p)) for p in envelope.exterior.coords[1:]]+[('h',[])],

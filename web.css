@@ -324,3 +324,23 @@ body[data-step="confirm"] .job-panel > .quiet { display: none; }
 .folder-entry { width: 100%; text-align: left; overflow-wrap: anywhere; padding: 10px 12px; border: 1px solid #e2e2dc; background: #fafaf7; color: #171717; }
 #folder-error { color: #971b12; font-size: 13px; }
 #folder-error:empty { display: none; }
+.shop-header { display: flex; align-items: center; gap: 24px; padding-right: 155px; }
+#feedback-open { font-size: 13px; margin-left: auto; }
+.nest-savings { display: grid; gap: 7px; padding: 15px; background: #edf5ee; border: 1px solid #d0e2d3; border-radius: 10px; }
+.nest-savings > strong { font-size: 23px; line-height: 1.2; }
+.nest-savings > span { font-size: 12px; }
+.nest-savings details { color: var(--ink); font-size: 12px; }
+.nest-savings summary { cursor: pointer; }
+.nest-savings label { display: grid; gap: 5px; margin-top: 10px; }
+.nest-savings p { margin-top: 8px; }
+.nest-savings input { width: 100%; }
+.tester-footer { max-width: 1280px; margin: 0 auto; padding: 0 24px 24px; font-size: 12px; color: var(--muted); }
+.tester-footer summary { cursor: pointer; }
+.tester-footer p { max-width: 800px; padding-top: 10px; }
+#feedback-dialog { width: min(620px, calc(100vw - 24px)); max-height: 90vh; padding: 24px; border: 1px solid #ddd; border-radius: 14px; }
+#feedback-dialog::backdrop { background: #0006; }
+#feedback-dialog label:not(.check) { display: grid; gap: 8px; }
+#feedback-dialog textarea { width: 100%; font: inherit; resize: vertical; }
+#feedback-dialog p, #feedback-dialog .check, #feedback-dialog details { margin: 14px 0; font-size: 13px; }
+#feedback-preview { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.piece-card strong { overflow-wrap: anywhere; }

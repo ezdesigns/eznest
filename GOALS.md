@@ -125,3 +125,28 @@ length, or 10% of the full roll when the alert is blank and full length is known
 Zero is Out of stock; unknown remaining stock does not generate an alert.
 Remaining length and alerts are manual and local to this browser. Saving or
 printing elsewhere does not automatically change stock.
+
+## Tester review and feedback
+
+The review card compares roll length against an operator-entered previous print
+length for the same material, width and quantities, or against the first fit of
+an unchanged job during tighter-fit attempts. It does not claim a manual or
+competitor saving without that reference. Full roll cost and full roll length
+provide a USD material-only estimate; ink and labor are excluded. Negative
+comparisons show more material used. Unused space means the printable sheet area
+outside protected artwork envelopes, including gaps and margins; it is not ink
+coverage or money saved. Piece cards retain imported names (including SVG object
+names); PDFs without usable piece names use numbered page/piece/group labels.
+
+First run accepts an empty printer and default folder for local-save testing.
+Send feedback opens a previewable GitHub issue draft or saves a local text report.
+Version and the operator's message are included. Result counts, dimensions,
+unused space and timing require a checkbox that starts unchecked each time.
+Customer files, names, paths and job identifiers are never attached automatically.
+Private-repository feedback requires repository access. OUTPUT remains disabled.
+
+The separate per-user tester installer is defined by installer/tester.iss and
+packages a verified portable trial. It has its own AppId and a build-specific
+installation folder, creates no service/task/firewall rule, and launches with
+--shop-test. This is not proof of a clean-PC install or physical print/cut
+acceptance. Those checks must be reported separately for the exact build.

@@ -72,10 +72,20 @@ DOCUMENT_LOCK = threading.Lock()
 
 def shop_status():
     saved = load_shop(WORK)
+    build_id = ''
+    if getattr(sys, 'frozen', False):
+        try:
+            trial = json.loads((Path(sys.executable).parent.parent / 'BUILD.json').read_text(encoding='utf-8'))
+            value = trial.get('buildId', '')
+            if isinstance(value, str) and len(value) <= 64 and all(c.isalnum() or c in '-._' for c in value):
+                build_id = value
+        except (OSError, ValueError):
+            pass
     running = LAN and HOST == '0.0.0.0'
     name = host_name()
     return {
         'version': VERSION,
+        'buildId': build_id,
         'onyxPc': saved['onyxPc'],
         'lan': saved['lan'],
         'updates': saved['updates'],
@@ -357,6 +367,7 @@ class Handler(BaseHTTPRequestHandler):
         static['/web'] = ('web.html', 'text/html')
         static['/web.css'] = ('web.css', 'text/css')
         static['/web.js'] = ('web.js', 'text/javascript')
+        static['/tester-results.js'] = ('tester-results.js', 'text/javascript')
         static['/fonts/rajdhani-700.woff2'] = ('fonts/rajdhani-700.woff2', 'font/woff2')
         static['/fonts/red-hat-display-400.woff2'] = ('fonts/red-hat-display-400.woff2', 'font/woff2')
         static['/fonts/red-hat-display-700.woff2'] = ('fonts/red-hat-display-700.woff2', 'font/woff2')
@@ -506,8 +517,9 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/api/setup':
                 from shop_deploy import validate_setup
                 setup = validate_setup(data)
-                with FOLDER_LOCK:
-                    OUTPUT.connect(setup['hotFolder'], FOLDER.root)
+                if setup['hotFolder']:
+                    with FOLDER_LOCK:
+                        OUTPUT.connect(setup['hotFolder'], FOLDER.root)
                 current = load_shop(WORK)
                 save_shop(WORK, data.get('onyxPc') is True, current['lan'], setupComplete=True, **setup)
                 return self.send(200, shop_status())

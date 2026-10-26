@@ -26,6 +26,17 @@ def rendered(raw):
 
 
 class ArtworkPreservationTests(unittest.TestCase):
+    def test_complex_outline_reduction_contains_every_original_vertex(self):
+        import math
+        from artwork_bounds import compact_enclosure
+        points=[((100 + .002 * math.sin(i*31))*math.cos(i*math.tau/6000),
+                 (100 + .002 * math.sin(i*31))*math.sin(i*math.tau/6000)) for i in range(6000)]
+        original=Polygon(points)
+        compact=compact_enclosure(original)
+        self.assertLessEqual(len(compact.exterior.coords),5001)
+        self.assertTrue(compact.covers(original))
+        self.assertLess(compact.area/original.area,1.005)
+
     def test_artwork_outside_cuts_survives_unchanged_including_transformed_forms(self):
         for forms, curved_border in ((False, False), (True, False), (False, True)):
             with self.subTest(forms=forms, curved_border=curved_border), tempfile.TemporaryDirectory() as directory:

@@ -588,7 +588,7 @@ def validate_setup(data):
     clean = {}
     for field, limit in (('printer', 120), ('hotFolder', 400), ('thru', 80), ('kiss', 80)):
         value = data.get(field)
-        if not isinstance(value, str) or not value.strip() or len(value) > limit or any(ord(c) < 32 for c in value):
+        if not isinstance(value, str) or (field in ('thru','kiss') and not value.strip()) or len(value) > limit or any(ord(c) < 32 for c in value):
             raise ValueError(f'Enter a valid {field}.')
         clean[field] = value.strip()
     if clean['thru'].casefold() == clean['kiss'].casefold():

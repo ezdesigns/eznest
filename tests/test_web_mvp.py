@@ -30,6 +30,59 @@ def launch_browser(playwright):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_tester_savings_feedback_and_optional_setup(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser=launch_browser(playwright)
+            page=browser.new_page(viewport={'width':1280,'height':900},accept_downloads=True)
+            try:
+                page.goto(self.url()+'/web'); self.wait_ready(page)
+                page.click('#setup-save')
+                expect(page.locator('#setup')).to_be_hidden()
+                self.assertIsNone(server.OUTPUT.root)
+                page.click('#edit-material')
+                page.fill('#roll-length','1200'); page.fill('#roll-cost','300')
+                page.click('#save-material')
+                page.select_option('#nesting-effort','5')
+                page.set_input_files('#file',str(Path(__file__).resolve().parents[1]/'sample-artwork.svg'))
+                try:
+                    page.wait_for_function("() => document.body.dataset.step === 'check'",timeout=90000)
+                except Exception:
+                    detail=page.evaluate("() => ({step:document.body.dataset.step,status:document.querySelector('#status').textContent,checks:document.querySelector('#checks').textContent})")
+                    raise AssertionError('Tester job did not finish: '+json.dumps(detail)+'; '+str(server.STATE.get('error'))) from None
+                state=json.load(urlopen(self.url()+'/api/state'))
+                self.assertEqual(state['job']['webOptions']['rollCost'],300)
+                page.click('#nest-savings summary');page.fill('#previous-length','10');page.click('#comparison-save')
+                used=state['result']['usedLength']/304.8
+                expect(page.locator('#savings-value')).to_have_text(f'{10-used:.2f} ft · ${(10-used)*3:.2f} saved')
+                page.click('#piece-review summary')
+                expect(page.locator('.piece-card')).to_have_count(len(state['job']['parts']))
+                self.assertEqual(page.locator('.piece-card strong').all_text_contents(),[p['name'] for p in state['job']['parts']])
+                page.reload();self.wait_ready(page)
+                self.assertEqual(page.input_value('#roll-cost'),'300')
+                self.assertEqual(page.input_value('#previous-length'),'10')
+                page.screenshot(path=str(SCREENSHOTS/'tester-savings-desktop.png'),full_page=True)
+                page.set_viewport_size({'width':390,'height':844})
+                page.screenshot(path=str(SCREENSHOTS/'tester-savings-mobile.png'),full_page=True)
+                self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+                page.click('#feedback-open')
+                self.assertFalse(page.is_checked('#feedback-numbers'))
+                page.fill('#feedback-message','Make preview larger')
+                self.assertNotIn('lengthFt',page.text_content('#feedback-preview'))
+                page.check('#feedback-numbers')
+                preview=page.text_content('#feedback-preview')
+                self.assertIn('lengthFt:',preview)
+                self.assertNotIn('sample-artwork',preview)
+                self.assertNotIn(state['id'],preview)
+                page.locator('#feedback-download').focus()
+                with page.expect_download() as download:page.keyboard.press('Enter')
+                self.assertEqual(download.value.suggested_filename,'EZ-Nest-feedback.txt')
+                self.assertFalse(json.load(urlopen(self.url()+'/api/state')).get('released'))
+                page.screenshot(path=str(SCREENSHOTS/'tester-feedback-mobile.png'),full_page=True)
+                page.click('#feedback-close');page.click('#feedback-open')
+                self.assertFalse(page.is_checked('#feedback-numbers'))
+            finally:browser.close()
+
     def test_piece_review_and_saved_effort_do_not_replace_layout(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as playwright:
@@ -775,10 +828,10 @@ class WebMvpTests(unittest.TestCase):
                 page.locator('#settings').evaluate('node => { node.open = false }')
                 page.set_input_files('#file', str(bad))
                 page.wait_for_selector('#gate.problem', timeout=20000)
-                self.assertEqual(page.locator('#checks').inner_text().strip(), 'Save as PDF')
+                self.assertEqual(page.locator('#checks').inner_text().strip(), 'Use PDF, or save AI with Create PDF Compatible File enabled.')
                 self.assertNotIn('Reading', page.locator('#status').inner_text())
                 self.assertTrue(page.locator('#export').is_disabled())
-                self.assertEqual(page.locator('#gate').inner_text().strip(), 'Save as PDF')
+                self.assertEqual(page.locator('#gate').inner_text().strip(), 'Use PDF, or save AI with Create PDF Compatible File enabled.')
                 page.screenshot(path=str(shots / 'ai-desktop.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
                 page.screenshot(path=str(shots / 'ai-mobile.png'), full_page=True)

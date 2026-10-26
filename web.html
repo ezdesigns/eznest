@@ -9,13 +9,14 @@
 <body data-step="drop">
 <header class="shop-header">
   <strong>eznest</strong>
+  <button id="feedback-open" type="button" class="link">Send feedback</button>
 </header>
 <section id="setup" hidden>
-  <h2>Set up this shop</h2>
-  <p class="hint">Choose your default print folder and cut line names.</p>
+  <h2>Ready to nest</h2>
+  <p class="hint">Check your cut line names. Printer and default folder are optional; you can choose where to save each finished file.</p>
   <div class="fields">
     <label class="wide">Hot folder
-      <input id="setup-hot" type="text" maxlength="400" placeholder="RIP hot folder or share" autocomplete="off" spellcheck="false">
+      <input id="setup-hot" type="text" maxlength="400" placeholder="Optional — choose where to save later" autocomplete="off" spellcheck="false">
     </label>
     <label class="check wide"><input id="setup-onyx" type="checkbox"> This PC holds the hot folder</label>
     <label class="wide">Printer
@@ -37,7 +38,7 @@
   </div>
   <div class="setup-actions">
     <button id="setup-preset" type="button" class="link">Use EZ Designs preset</button>
-    <button id="setup-save" type="button" class="primary">Save</button>
+    <button id="setup-save" type="button" class="primary">Start nesting</button>
   </div>
   <p id="setup-error" class="lan-note" hidden></p>
 </section>
@@ -188,12 +189,20 @@
   </label>
   <p class="metrics pending" id="readout" hidden>
     <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong></span>
-    <span class="metric"><span class="label">Waste</span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
+    <span class="metric"><span class="label">Unused space <button id="unused-info" type="button" class="setting-info" aria-label="About unused space" aria-expanded="false" aria-controls="unused-note">i</button></span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
     <span class="metric"><span class="label">Sheets</span> <strong id="sheets"><span class="num">–</span></strong></span>
     <span id="used-width" class="used-width">on 51.5" wide</span>
   </p>
+  <p id="unused-note" class="hint" hidden>Share of the printable sheet outside the protected artwork outlines, including gaps and margins. It is not ink coverage or money saved.</p>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
-  <p id="nest-savings" class="nest-savings" hidden></p>
+  <section id="nest-savings" class="nest-savings" aria-live="polite" hidden>
+    <span>Material savings</span><strong id="savings-value"></strong><span id="savings-reference"></span>
+    <details><summary>Compare a previous layout</summary>
+      <label>Previous print length (feet)<input id="previous-length" type="number" min="0" step="any" placeholder="Optional"></label>
+      <p>Use the same material, width and quantities. Leave blank to compare tighter-fit attempts.</p>
+      <button id="comparison-save" type="button" class="link">Save comparison</button>
+    </details>
+  </section>
   <label>Nesting effort
     <select id="nesting-effort">
       <option value="5">Quick · 5 seconds</option>
@@ -260,6 +269,7 @@
       <label>Full roll length
         <span class="measure"><input id="roll-length" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal"><span data-unit>in</span></span>
       </label>
+      <label>Full roll cost ($)<input id="roll-cost" type="number" min="0" step="0.01" placeholder="Optional" inputmode="decimal"></label>
       <label>Available length
         <span class="measure"><input id="available-length" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal"><span data-unit>in</span></span>
         <span class="hint">Update after printing.</span>
@@ -307,6 +317,16 @@
     </section>
   </section>
 </main>
+<footer class="tester-footer"><details><summary>Known limits</summary><p>Use prepared PDF, PDF-compatible AI or SVG. PDF/AI limit: 32 MB. Existing artwork and bleed stay unchanged; connected pieces may stay grouped. Unsupported or ambiguous cuts block import. Best fit is the best layout found, not a proven optimum. Stock is updated manually. Check size, colors, bleed and cuts before printing. No jobs are sent to OUTPUT.</p></details></footer>
+<dialog id="feedback-dialog" aria-labelledby="feedback-title">
+  <h2 id="feedback-title">Send feedback</h2>
+  <p id="feedback-version"></p>
+  <label>What happened, or what would make this easier?<textarea id="feedback-message" maxlength="4000" rows="5"></textarea></label>
+  <label class="check"><input id="feedback-numbers" type="checkbox"> Include result numbers (counts, dimensions, unused space and time)</label>
+  <p class="hint">No artwork, filenames or folder paths are attached. Please leave customer details out of your message. GitHub opens a draft for you to review and submit; repository access is required. You can also save the report to share yourself.</p>
+  <details><summary>Preview report</summary><pre id="feedback-preview"></pre></details>
+  <div class="folder-actions"><button id="feedback-close" class="link" type="button">Cancel</button><button id="feedback-download" type="button">Save report</button><button id="feedback-send" class="primary" type="button">Continue to GitHub</button></div>
+</dialog>
 <dialog id="folder-picker" aria-labelledby="folder-title">
   <h2 id="folder-title">Choose a folder</h2>
   <label>Folder path<input id="folder-path" type="text" autocomplete="off" spellcheck="false"></label>
@@ -319,6 +339,7 @@
 <script src="/queue-core.js"></script>
 <script src="/cut-mapping.js"></script>
 <script src="/shop-profiles.js"></script>
+<script src="/tester-results.js"></script>
 <script src="/web.js"></script>
 </body>
 </html>
