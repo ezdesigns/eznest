@@ -173,6 +173,23 @@ class ServerTests(unittest.TestCase):
             server.finish_search({'ok':True,'result':{'usedLength':90}})
             self.assertEqual(server.STATE['id'],'new')
             self.assertEqual(server.STATE['result']['usedLength'],90)
+            self.assertEqual(server.STATE['nestSavings']['savedLengthMm'],10)
+            improved=copy.deepcopy(server.STATE)
+            for length in (80, 110):
+                server.STATE.clear();server.STATE.update(status='running',id='retry',incumbent=improved)
+                server.finish_search({'ok':True,'result':{'usedLength':length}})
+                self.assertEqual(server.STATE['nestSavings']['baselineLengthMm'],100)
+                self.assertEqual(server.STATE['nestSavings']['savedLengthMm'],20)
+                improved=copy.deepcopy(server.STATE)
+            saved=json.loads((server.WORK/'session.json').read_text())
+            self.assertEqual(saved['nestSavings']['percent'],20)
+            # A new quantity/filler outcome must not reuse an unrelated saving.
+            server.STATE.clear();server.STATE.update(status='running',id='fill',incumbent=improved)
+            server.finish_search({'ok':True,'result':{'usedLength':95,'fillSummary':[{'pieces':1}]}})
+            self.assertNotIn('nestSavings',server.STATE)
+            server.STATE.clear();server.STATE.update(status='running',id='fresh')
+            server.finish_search({'ok':True,'result':{'usedLength':70}})
+            self.assertNotIn('nestSavings',server.STATE)
         finally:
             server.STATE.clear();server.STATE.update(original)
 
@@ -207,6 +224,15 @@ class ServerTests(unittest.TestCase):
                 request('/api/cancel', {}, token)
                 self.assertEqual(request('/api/state')['status'], 'cancelled')
                 self.assertIsNotNone(server.PROCESS.poll())
+                # Effort changes only the search budget, not geometry or quantities.
+                server.STATE.clear();server.STATE.update(status='ready',id='effort',job=copy.deepcopy(sample),result={'usedLength':100})
+                with self.assertRaises(HTTPError):
+                    request('/api/improve', {'id':'effort','seconds':999}, token)
+                self.assertEqual(server.STATE['id'],'effort')
+                request('/api/improve', {'id':'effort','seconds':5}, token)
+                self.assertEqual(server.STATE['job']['settings']['seconds'],5)
+                self.assertEqual(server.STATE['job']['parts'],sample['parts'])
+                request('/api/cancel', {}, token)
                 # A stopped retry can have a valid progress layout that is
                 # longer than the incumbent. Keep the shorter original.
                 best={'status':'ready','id':'best','job':{},'result':{'usedLength':100}}

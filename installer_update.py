@@ -280,7 +280,10 @@ def mark_healthy(data_dir):
 
 
 def command_for(exe, data_dir, confirm):
-    command = [sys.executable, str(exe)] if exe.suffix == '.py' else [str(exe)]
+    # Windows venv executables redirect to a child interpreter. Launch that
+    # interpreter directly so the health marker belongs to the process we track.
+    python = (getattr(sys, '_base_executable', None) or sys.executable) if os.name == 'nt' else sys.executable
+    command = [python, str(exe)] if exe.suffix == '.py' else [str(exe)]
     command += ['--web', '--no-browser', '--data-dir', str(data_dir)]
     if confirm:
         command.append('--update-confirm')
@@ -290,6 +293,9 @@ def command_for(exe, data_dir, confirm):
 def launch(exe, data_dir, confirm):
     env = os.environ.copy()
     env['EZ_NEST_DATA'] = str(data_dir)
+    if os.name == 'nt' and Path(exe).suffix == '.py' and sys.prefix != sys.base_prefix:
+        # Preserve the venv's dependency search path while bypassing its redirector.
+        env['__PYVENV_LAUNCHER__'] = sys.executable
     return subprocess.Popen(command_for(exe, data_dir, confirm), cwd=str(Path(exe).parent), env=env)
 
 

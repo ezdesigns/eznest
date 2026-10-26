@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import sys
 import tempfile
 import textwrap
 import time
@@ -27,6 +28,21 @@ FAIL = 'import sys\nraise SystemExit(1)\n'
 
 
 class InstallerUpdateTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt' and sys.prefix != sys.base_prefix, 'Windows venv launch regression')
+    def test_source_launch_keeps_venv_dependencies_and_process_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)
+            script=directory/'eznest.py'
+            script.write_text('import os, sys, json, shapely\nfrom pathlib import Path\nPath(os.environ["EZ_NEST_DATA"], "identity.json").write_text(json.dumps({"pid":os.getpid(),"prefix":sys.prefix}))\n')
+            process=installer_update.launch(script,directory,False)
+            try:
+                self.assertEqual(process.wait(timeout=10),0)
+                identity=json.loads((directory/'identity.json').read_text())
+                self.assertEqual(identity['pid'],process.pid)
+                self.assertEqual(Path(identity['prefix']),Path(sys.prefix))
+            finally:
+                if process.poll() is None:process.kill();process.wait(timeout=5)
+
     def tearDown(self):
         installer_update.reap_left_running()
 

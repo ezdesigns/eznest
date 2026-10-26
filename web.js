@@ -44,6 +44,7 @@ function savePrefs(patch) {
 // Explain effects beside the controls, without adding instructions to the job flow.
 function installSettingsHelp() {
   const help = {
+    'nesting-effort': ['Nesting effort', 'Quick finds a layout sooner. Best fit spends longer trying arrangements and may use less material. These are search budgets; preparation and checking take extra time. Your artwork, bleed, spacing and allowed turns stay the same. Try tighter fit keeps your best valid result.'],
     'cut-preset': ['Cut line names', 'Choose the names your print software recognizes. This changes exported cut names; it does not create missing cut lines.'],
     'thru-name': ['Cut through backing', 'The name your print software uses for a full cut. It must match your cutter setup. Changing this name does not set the blade depth.'],
     'kiss-name': ['Cut sticker only', 'The name your print software uses to cut the sticker and leave the backing. It must match your cutter setup.'],
@@ -543,6 +544,8 @@ function showScreen(name) {
   $('sheet-frame').hidden = idle;
   $('preview-tools').hidden = idle;
   $('legend').hidden = idle;
+  $('piece-review').hidden = idle || name === 'nest' || !current?.result;
+  $('nest-savings').hidden = idle || name === 'nest' || !current?.nestSavings;
   $('readout').hidden = idle;
   $('export').hidden = idle || confirming;
   $('confirm').hidden = !confirming;
@@ -573,6 +576,7 @@ function syncFiles() {
   $('stop').hidden = document.body.dataset.step !== 'nest';
   $('improve').hidden = document.body.dataset.step !== 'check' || busy || !current || current.released;
   const locked = busy || !!presetEditor || document.body.dataset.step === 'nest';
+  $('nesting-effort').disabled = locked || saving || !!current?.released || ['confirm', 'sent'].includes(document.body.dataset.step);
   for (const node of $('files').querySelectorAll('input, button')) node.disabled = locked;
 }
 
@@ -797,6 +801,59 @@ function documentPreview(state) {
     out.append(group);
   });
   return out;
+}
+
+function renderPieceReview() {
+  const cards = $('piece-cards');
+  cards.replaceChildren();
+  if (!$('piece-review').open || !current?.result) return;
+  const counts = new Map();
+  for (const placement of current.result.placements) counts.set(placement.id, (counts.get(placement.id) || 0) + 1);
+  const sources = new Map((current.job.productionJobs || []).map(source => [source.id, source.name]));
+  current.job.parts.forEach((part, index) => {
+    const card = document.createElement('article'); card.className = 'piece-card';
+    const title = document.createElement('strong'); title.textContent = 'Piece ' + (index + 1);
+    const quantity = document.createElement('span'); quantity.className = 'piece-quantity';
+    quantity.textContent = (counts.get(part.id) || 0) + ' of ' + part.quantity + ' copies';
+    const image = document.createElement('img'); image.loading = 'lazy'; image.alt = 'Artwork for piece ' + (index + 1);
+    try {
+      const points = part.points;
+      const x = Math.min(...points.map(p => p[0])), y = Math.min(...points.map(p => p[1]));
+      const w = Math.max(...points.map(p => p[0])) - x, h = Math.max(...points.map(p => p[1])) - y;
+      const result = {width: w, usedLength: h, placements: [{id: part.id, x: 0, y: 0, rotation: 0}]};
+      const art = current.job.documentSources ? documentPreview({job: current.job, result}) : EZNSVG.buildSVG(current.job, result);
+      if (!current.job.documentSources) emphasizeCuts(art);
+      art.setAttribute('xmlns', NS); art.setAttribute('viewBox', `${x - 1} ${y - 1} ${w + 2} ${h + 2}`);
+      art.setAttribute('width', '180'); art.setAttribute('height', '120');
+      image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(art));
+    } catch { image.alt = 'Preview unavailable — check this piece in the layout'; }
+    const source = document.createElement('span'); source.className = 'piece-source'; source.textContent = sources.get(part.sourceJobId) || '';
+    const cuts = part.cutCounts || namedCuts(part.svg?.markup || '');
+    const detail = document.createElement('span'); detail.className = 'piece-detail';
+    const bits = [];
+    if ((part.sourcePieceCount || 1) > 1) { title.textContent = 'Group ' + (index + 1); bits.push(part.sourcePieceCount + ' pieces kept together'); }
+    if (cuts.thru) bits.push(cuts.thru + ' thru');
+    if (cuts.kiss) bits.push(cuts.kiss + ' kiss');
+    if (cuts.contour) bits.push(cuts.contour + ' cuts need a type');
+    if (!cuts.thru && !cuts.kiss && !cuts.contour) bits.push('Check cut lines');
+    detail.textContent = bits.join(' · ');
+    card.append(image, title, quantity, detail, source); cards.append(card);
+  });
+}
+
+function showNestSavings(state) {
+  const saving = state.nestSavings;
+  const node = $('nest-savings');
+  node.hidden = !saving;
+  node.textContent = !saving ? '' : saving.savedLengthMm > 0.254
+    ? `${(saving.savedLengthMm / 25.4).toFixed(2)} in less material · ${saving.percent.toFixed(1)}% saved since the first fit`
+    : 'Best layout kept · no measurable length saving yet';
+}
+
+function setNestingEffort(seconds) {
+  const value = [5, 30, 90].includes(Number(seconds)) ? Number(seconds) : 30;
+  $('nesting-effort').value = String(value);
+  $('seconds').value = String(value);
 }
 
 function addHatch(frame) {
@@ -1039,6 +1096,9 @@ function showResult(state) {
   showMetrics(state);
   showLock(state);
   showSheetId(state);
+  showNestSavings(state);
+  $('piece-review-title').textContent = 'Check pieces · ' + state.job.parts.length + ' designs';
+  renderPieceReview();
   renderPreview(Math.min(activeSheet, sheetsIndex(state)));
   const missing = pieceIssue(state);
   const cuts = cutProblem();
@@ -1165,7 +1225,7 @@ async function improve() {
     busy = true;
     showScreen('nest');
     status('Trying a better fit…');
-    await api('/api/improve', {id: current.id});
+    await api('/api/improve', {id: current.id, seconds: Number($('nesting-effort').value)});
     setTimeout(poll, 300);
   } catch (error) {
     busy = false;
@@ -2018,7 +2078,7 @@ function restoreJob(state) {
     $(id).value = settings[key] == null ? '' : settings[key] / factor;
   }
   $('margin').value = (settings.edgeMargin ?? (settings.margin - (settings.markMargin || 0))) / factor;
-  $('seconds').value = Math.max(30, settings.seconds || 30);
+  setNestingEffort(prefs().nestingSeconds ?? settings.seconds);
   $('rotations').value = settings.rotations == null ? 'free' : settings.rotations.join(',');
   $('auto-bleed').value = (settings.autoBleedMm || 0) / 25.4;
   $('draw-marks').checked = settings.drawRegmarks === true;
@@ -2042,6 +2102,7 @@ function restoreJob(state) {
 async function boot() {
   await ensureLibraries();
   const stored = prefs();
+  setNestingEffort(stored.nestingSeconds);
   loadMaterialProfiles(stored);
   if (stored.material && [...$('material').options].some(option => option.value === stored.material)) {
     $('material').value = stored.material;
@@ -2390,6 +2451,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('stop').addEventListener('click', stopNest);
   $('improve').addEventListener('click', improve);
+  $('piece-review').addEventListener('toggle', renderPieceReview);
+  $('nesting-effort').addEventListener('change', () => {
+    setNestingEffort($('nesting-effort').value);
+    savePrefs({nestingSeconds: Number($('nesting-effort').value)});
+    // Changing effort affects the next search. It never discards a reviewed fit.
+  });
   $('undo').addEventListener('click', async () => {
     if (!current?.savedPath) return;
     try {

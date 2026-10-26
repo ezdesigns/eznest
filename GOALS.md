@@ -92,13 +92,23 @@ tries all contours together when their total area can fit on one sheet. The
 independent geometry checks still require every piece, allowed rotation, spacing
 and sheet boundaries. This is a best-found layout, not a proven optimum.
 
-The simple page uses a 30-second search budget with up to three different starts,
+The simple page offers Quick (5 seconds), Balanced (30 seconds, default), and
+Best fit (90 seconds). Longer budgets try up to three different starts,
 retaining the shortest independently checked layout. Geometry preparation and
-validation can add time. Try tighter fit searches again without replacing a
-shorter previous result, including when stopped early. Detailed search envelopes
+validation can add time; more search time does not guarantee an improvement.
+Effort is saved in this browser and applies to the next search. Check pieces is
+an optional gallery of detected artwork, copies, cut types and retained groups.
+Try tighter fit searches again without replacing a shorter previous result,
+including when stopped early. It shows measured length savings against the first
+fit for unchanged quantities, not against a manual or competitor layout. A new
+job/settings calculation starts a new comparison. Detailed search envelopes
 may be simplified only when they provably contain the complete guarded artwork;
 the original print objects and cut paths are unchanged. Saved rotation restrictions
 remain in effect; any-angle rotation is an operator choice for suitable material.
+
+Existing bleed remains part of the protected artwork envelope. The simple page
+does not permit printed bleed to overlap another piece. Cut-line spacing alone
+cannot prove that overlaid ink will preserve neighboring artwork or cut tolerance.
 
 The review screen defaults to the saved print folder and keeps the imported
 filename. One-sheet PDF jobs save a named PDF; multi-sheet and SVG jobs save a

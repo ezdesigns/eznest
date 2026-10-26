@@ -163,6 +163,7 @@ def restore_state():
 
 def finish_search(payload):
     incumbent = STATE.pop('incumbent', None)
+    search_seconds = STATE.get('job', {}).get('settings', {}).get('seconds')
     def score(result):
         fillers = sum(s['pieces'] for s in result.get('fillSummary', []))
         return (-fillers, result['usedLength'])
@@ -174,6 +175,20 @@ def finish_search(payload):
         STATE.update(status='ready' if payload['ok'] else 'error', **payload)
         if incumbent:
             STATE['note'] = 'Found a better layout.'
+    if incumbent and STATE.get('status') == 'ready':
+        if search_seconds is not None:
+            STATE['job']['settings']['seconds'] = search_seconds
+            if STATE.get('requestJob'):
+                STATE['requestJob']['settings']['seconds'] = search_seconds
+        # Only compare equal quantities. Filler jobs can trade length for more
+        # pieces, which is not a like-for-like material saving.
+        if score(STATE['result'])[0] == score(incumbent['result'])[0]:
+            baseline = incumbent.get('nestSavings', {}).get('baselineLengthMm', incumbent['result']['usedLength'])
+            saved = max(0, baseline - STATE['result']['usedLength'])
+            STATE['nestSavings'] = {'baselineLengthMm': baseline, 'savedLengthMm': saved,
+                                    'percent': 100 * saved / baseline if baseline > 0 else 0}
+        else:
+            STATE.pop('nestSavings', None)
     if STATE.get('status') == 'ready' and STATE.get('job', {}).get('productionJobs'):
         STATE['manifest'] = manifest(STATE['job'], STATE['result'], STATE['id'])
         check=batch_output_check(STATE['job'])
@@ -552,10 +567,13 @@ class Handler(BaseHTTPRequestHandler):
                             raise ValueError('Calculate a current layout before improving it.')
                         if STATE.get('released'):
                             raise ValueError('This batch is frozen. Start a new layout to make changes.')
+                        seconds = data.get('seconds')
+                        if seconds is not None and (type(seconds) is not int or seconds not in (5, 30, 90)):
+                            raise ValueError('Choose Quick, Balanced or Best fit.')
                         incumbent = copy.deepcopy(STATE)
                         data = copy.deepcopy(STATE.get('requestJob', STATE['job']))
                         data['settings']['seed'] = secrets.randbelow(2147483647)
-                        data['settings']['seconds'] = max(30, data['settings']['seconds'])
+                        data['settings']['seconds'] = seconds if seconds is not None else max(30, data['settings']['seconds'])
                     for part in data.get('parts', []) + [p for fill in data.get('fillJobs', []) for p in fill['parts']]:
                         part.pop('nestingPoints', None)
                     validate_request(data)

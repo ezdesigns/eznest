@@ -158,6 +158,10 @@
     <svg id="live" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nest in progress" hidden></svg>
   </div>
   <p id="legend" class="key" hidden><i class="thru"></i> Thru <i class="kiss"></i> Kiss</p>
+  <details id="piece-review" class="piece-review" hidden>
+    <summary id="piece-review-title">Check pieces</summary>
+    <div id="piece-cards" class="piece-cards"></div>
+  </details>
   </section>
   <aside class="job-panel" aria-label="Job controls">
     <h2>Job</h2>
@@ -189,6 +193,14 @@
     <span id="used-width" class="used-width">on 51.5" wide</span>
   </p>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
+  <p id="nest-savings" class="nest-savings" hidden></p>
+  <label>Nesting effort
+    <select id="nesting-effort">
+      <option value="5">Quick · 5 seconds</option>
+      <option value="30" selected>Balanced · 30 seconds</option>
+      <option value="90">Best fit · 90 seconds</option>
+    </select>
+  </label>
   <div id="choice" class="choice" hidden>
     <button id="choose-thru" type="button" aria-pressed="false">THRU</button>
     <button id="choose-kiss" type="button" aria-pressed="false">KISS</button>

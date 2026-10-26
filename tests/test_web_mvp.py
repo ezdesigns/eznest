@@ -30,6 +30,42 @@ def launch_browser(playwright):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_piece_review_and_saved_effort_do_not_replace_layout(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                page.select_option('#nesting-effort','5')
+                page.set_input_files('#file',str(Path(__file__).resolve().parents[1]/'sample-artwork.svg'))
+                page.wait_for_function("() => document.body.dataset.step === 'check'",timeout=90000)
+                before=json.load(urlopen(self.url()+'/api/state'))
+                self.assertEqual(before['job']['settings']['seconds'],5)
+                page.click('#piece-review summary')
+                expect(page.locator('.piece-card')).to_have_count(len(before['job']['parts']))
+                page.wait_for_function("() => [...document.querySelectorAll('.piece-card img')].every(i => i.complete && i.naturalWidth > 0)")
+                self.assertEqual(page.locator('.piece-quantity').all_text_contents(),[f"{p['quantity']} of {p['quantity']} copies" for p in before['job']['parts']])
+                page.select_option('#nesting-effort','90')
+                self.assertEqual(json.load(urlopen(self.url()+'/api/state'))['id'],before['id'])
+                page.reload();self.wait_ready(page)
+                self.assertEqual(page.input_value('#nesting-effort'),'90')
+                self.assertEqual(json.load(urlopen(self.url()+'/api/state'))['id'],before['id'])
+                page.click('#piece-review summary')
+                page.screenshot(path=str(SCREENSHOTS/'piece-review-desktop.png'),full_page=True)
+                page.set_viewport_size({'width':390,'height':844})
+                page.screenshot(path=str(SCREENSHOTS/'piece-review-mobile.png'),full_page=True)
+                self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+                page.set_viewport_size({'width':1280,'height':900})
+                page.click('#improve')
+                page.wait_for_function("() => document.body.dataset.step === 'nest'")
+                self.assertEqual(json.load(urlopen(self.url()+'/api/state'))['job']['settings']['seconds'],90)
+                page.click('#stop')
+                page.wait_for_function("() => document.body.dataset.step === 'check'",timeout=10000)
+                after=json.load(urlopen(self.url()+'/api/state'))
+                self.assertLessEqual(after['result']['usedLength'],before['result']['usedLength'])
+                self.assertEqual(after['job']['parts'],before['job']['parts'])
+            finally:
+                browser.close()
+
     def test_tighter_fit_keyboard_action_and_stop_preserve_best(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as playwright:
@@ -542,6 +578,11 @@ class WebMvpTests(unittest.TestCase):
                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
                 before = json.load(urlopen(self.url() + '/api/state', timeout=10))
                 self.assertTrue(page.locator('#auto-bleed').is_hidden())
+                page.click('#piece-review summary')
+                page.wait_for_function("() => [...document.querySelectorAll('.piece-card img')].length > 0 && [...document.querySelectorAll('.piece-card img')].every(i => i.complete && i.naturalWidth > 0)")
+                self.assertEqual(page.locator('.piece-card').count(),len(before['job']['parts']))
+                self.assertIn('thru',page.locator('#piece-cards').inner_text())
+                self.assertIn('kiss',page.locator('#piece-cards').inner_text())
                 page.locator('#auto-bleed').evaluate("node => { node.value = '0.125'; node.dispatchEvent(new Event('change', {bubbles:true})); }")
                 page.wait_for_function("old => current && current.id !== old && !busy && current.status === 'ready'", arg=before['id'], timeout=90000)
                 after = json.load(urlopen(self.url() + '/api/state', timeout=10))
