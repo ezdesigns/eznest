@@ -181,6 +181,13 @@ test PC/VM or the explicitly authorized shop-test setup. Never use the live hot
 folder for automated tests. If a dependency or host is unavailable, report exactly
 what was tested and what remains unverified.
 
+`tests/test_installed_tester.ps1` and `tests/installed_tester_smoke.py` separately
+exercise the per-user tester installer on disposable GitHub-hosted runners. Never
+bypass their hosted-runner guards on a local PC. Reusable browser checks may run
+against a separately launched isolated synthetic test server, but that proves
+only the app flow, not installation. Report standard-user, native Save As and
+physical print/cut acceptance separately from runner automation.
+
 ## Completion report
 
 Explain the operator-visible change, relevant test results, remaining limitations,

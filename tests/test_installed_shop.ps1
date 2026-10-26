@@ -33,7 +33,7 @@ try {
   $listeners = Get-NetTCPConnection -LocalPort 8765 -State Listen
   Assert (@($listeners | Where-Object LocalAddress -ne '127.0.0.1').Count -eq 0) 'Server opened a non-loopback listener.'
   $page = Invoke-WebRequest 'http://127.0.0.1:8765/web'
-  Assert ($page.Content -match 'Job progress') 'Employee interface was not packaged.'
+  Assert ($page.Content.Contains('id="files"') -and $page.Content.Contains('id="material"') -and $page.Content.Contains('id="export"')) 'Employee interface was not packaged.'
   [IO.File]::WriteAllText((Join-Path $data 'acceptance-marker.txt'), 'synthetic retained shop data')
   $beforeShop = Get-FileHash -LiteralPath (Join-Path $data 'shop.json')
   $beforeTask = Export-ScheduledTask -TaskName eznest

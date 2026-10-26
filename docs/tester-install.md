@@ -33,6 +33,22 @@ Record build ID, Windows version, install/start/import/save/restart outcomes and
 any exact errors. A result from a developer PC is not a clean-PC result. A PDF
 export is not proof of RIP color management, printed scale or cutter registration.
 
+The Windows installer workflow has a separate **Install and exercise the separate
+Windows tester** job on a fresh GitHub-hosted runner. It builds `tester.iss`, checks
+the default per-user install and shortcut, then uses synthetic PDF artwork through
+the browser to import, nest and save into local TEST Output. It checks feedback
+defaults, browser reload, process restart, same-build reinstall, and uninstall
+with retained job/output data. The `eznest-tester-and-acceptance` artifact contains
+the installer/checksum, build identity, synthetic screenshots and acceptance logs.
+Only passing `app-validation.json` and `installer-validation.json` prove that run
+finished; an installer artifact alone does not prove acceptance.
+
+This job uses the runner account. The normal-user install, automatic opening of
+the default browser, native Windows Save As and physical print/cut checks above
+remain manual. Both acceptance entry points refuse non-hosted environments.
+Never bypass those guards to execute real install/uninstall checks on a design
+or shop PC. A job blocked before its steps is unverified, not a passing install.
+
 ## Manual updates
 
 Finish the current operation and stop the tester with the shortcut belonging to
