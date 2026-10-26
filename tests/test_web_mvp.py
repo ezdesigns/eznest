@@ -30,6 +30,60 @@ def launch_browser(playwright):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_guide_review_cancel_failure_and_confirm_preserve_current_job(self):
+        from playwright.sync_api import sync_playwright, expect
+        from test_guide_review import guide_fixture
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                page.locator('#layout-options').evaluate('n => { n.open = true }')
+                page.select_option('#nesting-effort','5')
+                page.set_input_files('#file',{'name':'prepared.pdf','mimeType':'application/pdf','buffer':mixed_fixture()})
+                page.wait_for_function("() => document.body.dataset.step === 'check'",timeout=90000)
+                before=json.load(urlopen(self.url()+'/api/state'))
+                page.set_input_files('#more',{'name':'broken.pdf','mimeType':'application/pdf','buffer':b'not a PDF'})
+                expect(page.locator('#status')).to_contain_text('broken.pdf:')
+                expect(page.locator('#export')).to_be_enabled()
+                self.assertEqual(json.load(urlopen(self.url()+'/api/state'))['id'],before['id'])
+                incoming={'name':'possible-guides.pdf','mimeType':'application/pdf','buffer':guide_fixture()}
+                page.set_input_files('#more',incoming)
+                expect(page.locator('#guide-review')).to_be_visible(timeout=15000)
+                expect(page.locator('#guide-pages .possible-guide')).to_have_count(2)
+                expect(page.locator('#guide-cancel')).to_be_focused()
+                expect(page.locator('#export')).to_be_disabled()
+                expect(page.locator('#more')).to_be_disabled()
+                page.screenshot(path=str(SCREENSHOTS/'guide-review-desktop.png'),full_page=True)
+                page.set_viewport_size({'width':390,'height':844})
+                self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+                page.screenshot(path=str(SCREENSHOTS/'guide-review-mobile.png'),full_page=True)
+                page.keyboard.press('Escape')
+                expect(page.locator('#guide-review')).to_be_hidden()
+                expect(page.locator('#export')).to_be_enabled()
+                expect(page.locator('#improve')).to_be_enabled()
+                self.assertEqual(json.load(urlopen(self.url()+'/api/state'))['id'],before['id'])
+                expect(page.locator('#files li')).to_have_count(1)
+                page.set_viewport_size({'width':1280,'height':900})
+                # A multi-file selection commits only after every file is accepted.
+                page.set_input_files('#more',[{'name':'extra.pdf','mimeType':'application/pdf','buffer':mixed_fixture()},incoming])
+                expect(page.locator('#guide-review')).to_be_visible(timeout=15000)
+                page.click('#guide-cancel')
+                expect(page.locator('#files li')).to_have_count(1)
+                self.assertEqual(json.load(urlopen(self.url()+'/api/state'))['id'],before['id'])
+                page.set_input_files('#more',incoming)
+                expect(page.locator('#guide-review')).to_be_visible(timeout=15000)
+                page.click('#guide-exclude')
+                page.wait_for_function("() => document.body.dataset.step === 'check' && document.querySelector('#checks').textContent.includes('2 guides excluded')",timeout=90000)
+                after=json.load(urlopen(self.url()+'/api/state'))
+                self.assertNotEqual(after['id'],before['id'])
+                self.assertEqual(len(after['job']['productionJobs']),2)
+                self.assertEqual(len(after['job']['parts']),4)
+                self.assertEqual(sum(sum(p['cutCounts'].values()) for p in after['job']['parts']),12)
+                expect(page.locator('#export')).to_be_enabled()
+                page.reload();self.wait_ready(page)
+                expect(page.locator('#checks')).to_contain_text('2 guides excluded')
+                expect(page.locator('#export')).to_be_enabled()
+            finally:browser.close()
+
     def test_tester_savings_feedback_and_optional_setup(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as playwright:
@@ -843,11 +897,12 @@ class WebMvpTests(unittest.TestCase):
             try:
                 page.locator('#settings').evaluate('node => { node.open = false }')
                 page.set_input_files('#file', str(bad))
-                page.wait_for_selector('#gate.problem', timeout=20000)
-                self.assertEqual(page.locator('#checks').inner_text().strip(), 'Use PDF, or save AI with Create PDF Compatible File enabled.')
+                page.wait_for_selector('#status.error', timeout=20000)
+                self.assertEqual(page.locator('#status').inner_text().strip(), 'poster.ai: Use PDF, or save AI with Create PDF Compatible File enabled.')
                 self.assertNotIn('Reading', page.locator('#status').inner_text())
                 self.assertTrue(page.locator('#export').is_disabled())
-                self.assertEqual(page.locator('#gate').inner_text().strip(), 'Use PDF, or save AI with Create PDF Compatible File enabled.')
+                self.assertEqual(page.locator('body').get_attribute('data-step'),'drop')
+                self.assertEqual(page.locator('#checks').inner_text().strip(),'')
                 page.screenshot(path=str(shots / 'ai-desktop.png'), full_page=True)
                 page.set_viewport_size({'width': 390, 'height': 844})
                 page.screenshot(path=str(shots / 'ai-mobile.png'), full_page=True)

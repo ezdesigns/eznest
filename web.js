@@ -11,6 +11,7 @@ let kits = [];
 let fileSerial = 0;
 let current = null;
 let busy = false;
+let importing = false;
 let saving = false;
 let activeSheet = 0;
 let ignoreFileChange = false;
@@ -213,7 +214,11 @@ async function api(path, data) {
     body: JSON.stringify(data || {})
   });
   const body = await response.json();
-  if (!response.ok) throw Error(body.error || 'Request failed.');
+  if (!response.ok) {
+    const error = Error(body.error || 'Request failed.');
+    if (path === '/api/document/import') error.guideReview = body.guideReview;
+    throw error;
+  }
   return body;
 }
 
@@ -577,7 +582,8 @@ function syncFiles() {
   $('add-files').hidden = !show || !!illustratorHandoff || document.body.dataset.step === 'nest';
   $('stop').hidden = document.body.dataset.step !== 'nest';
   $('improve').hidden = document.body.dataset.step !== 'check' || busy || !current || current.released;
-  const locked = busy || !!presetEditor || document.body.dataset.step === 'nest';
+  $('improve').disabled = importing || saving;
+  const locked = busy || importing || !!presetEditor || document.body.dataset.step === 'nest';
   $('nesting-effort').disabled = locked || saving || !!current?.released || ['confirm', 'sent'].includes(document.body.dataset.step);
   for (const node of $('files').querySelectorAll('input, button')) node.disabled = locked;
 }
@@ -659,6 +665,10 @@ function renderActions() {
   $('file').disabled = !!presetEditor || confirming;
   $('more').disabled = !!presetEditor || confirming;
   $('edit-material').disabled = busy || saving || !!presetEditor || !!illustratorHandoff || confirming;
+  if (importing) {
+    for (const id of ['material', 'confirm-send', 'start-over', 'nest-width', 'sets', 'sets-dec', 'sets-inc', 'file', 'more', 'edit-material', 'improve', 'export']) $(id).disabled = true;
+    return;
+  }
   const badInput = inputIssue();
   const missing = current && current.result ? pieceIssue(current) : '';
   const cuts = current && current.result ? cutProblem() : null;
@@ -726,6 +736,8 @@ function pieceSentence(state) {
   if (sourcePieces > placed) bits.push(placed + ' groups keep artwork together');
   if (summary.thru) bits.push(summary.thru + ' thru');
   if (summary.kiss) bits.push(summary.kiss + ' kiss');
+  const excluded = Object.values(state.job.documentSources || {}).reduce((sum, source) => sum + (source.excludedGuideCount || 0), 0);
+  if (excluded) bits.push(excluded + ' guides excluded');
   return bits.join(' · ') + ' · cuts OK';
 }
 
@@ -1193,13 +1205,13 @@ function requestNest() {
   if (presetEditor) return;
   nestTimer = setTimeout(() => {
     if (leaving || saving || !kits.length) return;
-    if (busy) { pendingRenest = true; return; }
+    if (busy || importing) { pendingRenest = true; return; }
     nest();
   }, 150);
 }
 
 async function nest() {
-  if (busy || saving || !kits.length) return;
+  if (busy || importing || saving || !kits.length) return;
   if (inputIssue()) { showBlocked(inputIssue()); return; }
   try {
     const roll = preset();
@@ -1242,7 +1254,7 @@ async function nest() {
 }
 
 async function improve() {
-  if (busy || saving || !current || current.released) return;
+  if (busy || importing || saving || !current || current.released) return;
   try {
     busy = true;
     showScreen('nest');
@@ -1510,7 +1522,7 @@ async function stopNest() {
 }
 
 async function startOver() {
-  if (saving) return;
+  if (saving || importing) return;
   leaving = true;
   pendingRenest = false;
   if (busy) {
@@ -1926,6 +1938,51 @@ async function saveSettings() {
   } finally { controls.forEach(([node, disabled]) => { node.disabled = disabled; }); }
 }
 
+function reviewGuides(file, review) {
+  const dialog = $('guide-review');
+  $('guide-file').textContent = file.name;
+  const count = review.lines.length;
+  $('guide-summary').textContent = count + ' dashed lines may be guides. Exclude them only if they are not intended cuts or perforations.';
+  const pages = $('guide-pages'); pages.replaceChildren();
+  for (const preview of review.pages) {
+    const section = document.createElement('section');
+    const title = document.createElement('h3'); title.textContent = 'Page ' + preview.page;
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', preview.viewBox.join(' '));
+    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Cut outlines with possible guides highlighted');
+    // Draw highlighted candidates last so crossings stay visible.
+    for (const outline of [...preview.paths].sort((a,b) => Number(a.guide)-Number(b.guide))) {
+      const path = document.createElementNS(NS, 'path'); path.setAttribute('d', outline.d);
+      path.setAttribute('class', outline.guide ? 'possible-guide' : 'review-cut');
+      path.setAttribute('vector-effect', 'non-scaling-stroke'); svg.append(path);
+    }
+    const note = document.createElement('p'); note.className = 'hint';
+    note.textContent = review.lines.filter(line => line.page === preview.page).map(line => (line.lengthMm / 25.4).toFixed(2) + ' in').join(' · ');
+    section.append(title, svg, note); pages.append(section);
+  }
+  $('guide-exclude').textContent = 'Exclude ' + count + ' lines and continue';
+  return new Promise(resolve => {
+    const finish = accepted => {
+      dialog.removeEventListener('cancel', cancel);
+      $('guide-cancel').onclick = null; $('guide-exclude').onclick = null;
+      dialog.close(); pages.replaceChildren();
+      resolve(accepted ? {id: review.id, sourceHash: review.sourceHash, excludedIds: review.lines.map(line => line.id)} : null);
+    };
+    const cancel = event => { event.preventDefault(); finish(false); };
+    dialog.addEventListener('cancel', cancel);
+    $('guide-cancel').onclick = () => finish(false);
+    $('guide-exclude').onclick = () => finish(true);
+    dialog.showModal(); $('guide-cancel').focus();
+  });
+}
+
+function showImportError(error) {
+  // A rejected new file must not invalidate a previously checked layout.
+  if (current?.result) showResult(current);
+  else if (!kits.length) { showScreen('drop'); renderActions(); }
+  status(error.message, !error.importCancelled);
+}
+
 async function importPdf(file, operation) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = '';
@@ -1935,7 +1992,15 @@ async function importPdf(file, operation) {
     {source: 'layer', match: 'exact', name: 'thru-cut', operation: 'thru'},
     {source: 'layer', match: 'exact', name: 'kiss cut', operation: 'kiss'});
   mapping.genericOperation = operation;
-  return api('/api/document/import', {content: btoa(binary), preserveArtwork: true, cutSpot: 'CutContour', cutMapping: EZNCuts.validate(mapping)});
+  const request = {content: btoa(binary), preserveArtwork: true, cutSpot: 'CutContour', cutMapping: EZNCuts.validate(mapping)};
+  try { return await api('/api/document/import', request); }
+  catch (error) {
+    if (!error.guideReview) throw error;
+    const approval = await reviewGuides(file, error.guideReview);
+    if (!approval) { const cancelled = Error('File not added. Guide review cancelled.'); cancelled.importCancelled = true; throw cancelled; }
+    status('Reading file with the reviewed guides excluded…');
+    return api('/api/document/import', {...request, guideApproval: approval});
+  }
 }
 
 async function readEntry(file) {
@@ -1972,7 +2037,7 @@ async function readEntry(file) {
 async function importFiles(fileList, replace) {
   if (presetEditor) throw Error('Save or cancel the preset before adding files.');
   const files = [...fileList].filter(Boolean);
-  if (!files.length || busy || saving) return;
+  if (!files.length || busy || importing || saving) return;
   if (illustratorHandoff && !replace) throw Error('Start over before adding files to another Illustrator attempt.');
   const incomingPdf = files.some(file => /\.(pdf|ai)$/i.test(file.name));
   const incomingSvg = files.some(file => /\.svg$/i.test(file.name));
@@ -1981,9 +2046,23 @@ async function importFiles(fileList, replace) {
   if ((incomingPdf && incomingSvg) || (incomingPdf && haveSvg) || (incomingSvg && havePdf)) {
     throw Error('Nest SVG files in one batch and PDF files in another. That keeps the original artwork.');
   }
+  importing = true;
+  renderActions();
   status('Reading ' + files.length + (files.length === 1 ? ' file…' : ' files…'));
   const entries = [];
-  for (const file of files) entries.push(await readEntry(file));
+  try {
+    for (const file of files) {
+      try { entries.push(await readEntry(file)); }
+      catch (error) {
+        if (!error.importCancelled) error.message = file.name + ': ' + error.message + (files.length > 1 ? ' No files from this selection were added.' : '');
+        throw error;
+      }
+    }
+  } finally {
+    importing = false;
+    renderActions();
+    if (pendingRenest) { pendingRenest = false; requestNest(); }
+  }
   kits = replace ? entries : kits.concat(entries);
   current = null;
   blockReason = '';
@@ -2038,7 +2117,7 @@ async function chooseCut(operation) {
     try {
       await importFiles(files, true);
     } catch (error) {
-      showBlocked(error.message);
+      showImportError(error);
     } finally {
       $('generic-cut').value = '';
     }
@@ -2312,7 +2391,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('file').addEventListener('change', async event => {
     if (ignoreFileChange) { ignoreFileChange = false; event.target.value = ''; return; }
     try { await importFiles(event.target.files); }
-    catch (error) { showBlocked(error.message); }
+    catch (error) { showImportError(error); }
     finally { event.target.value = ''; }
   });
   document.addEventListener('dragover', event => { event.preventDefault(); document.body.classList.add('dragging'); });
@@ -2322,7 +2401,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.remove('dragging');
     ignoreFileChange = true;
     try { await importFiles(event.dataTransfer.files); }
-    catch (error) { showBlocked(error.message); }
+    catch (error) { showImportError(error); }
   });
   $('sets-dec').addEventListener('click', () => {
     $('sets').value = String(Math.max(1, (Number($('sets').value) || 1) - 1));
@@ -2461,7 +2540,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('start-over').addEventListener('click', startOver);
   $('more').addEventListener('change', async event => {
     try { await importFiles(event.target.files); }
-    catch (error) { showBlocked(error.message); }
+    catch (error) { showImportError(error); }
     finally { event.target.value = ''; }
   });
   $('stop').addEventListener('click', stopNest);
@@ -2517,7 +2596,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if ($('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .setting-info, #settings, #nest-savings, #feedback-open, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
+    if (importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .setting-info, #settings, #nest-savings, #feedback-open, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

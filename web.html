@@ -257,6 +257,15 @@
 
 </main>
 <footer class="tester-footer"><details><summary>Known limits</summary><p>Use prepared PDF, PDF-compatible AI or SVG. PDF/AI limit: 32 MB. Existing artwork and bleed stay unchanged; connected pieces may stay grouped. Unsupported or ambiguous cuts block import. Best fit is the best layout found, not a proven optimum. Stock is updated manually. Check size, colors, bleed and cuts before printing. No jobs are sent to OUTPUT.</p></details></footer>
+<dialog id="guide-review" aria-labelledby="guide-title" aria-describedby="guide-summary">
+  <h2 id="guide-title">Review possible guides</h2>
+  <p id="guide-file"></p>
+  <p id="guide-summary"></p>
+  <p class="guide-legend"><span>Blue: cut outlines</span><span>Orange dashed: lines to exclude</span></p>
+  <div id="guide-pages"></div>
+  <p class="hint">Cut outlines only. Excluding these lines keeps the artwork, bleed and other cuts unchanged. Your original file stays untouched.</p>
+  <div class="guide-actions"><button id="guide-cancel" type="button">Cancel</button><button id="guide-exclude" class="primary" type="button">Exclude lines and continue</button></div>
+</dialog>
 <dialog id="material-dialog" aria-labelledby="preset-title">
     <section id="preset-editor" class="preset-editor" aria-labelledby="preset-title" hidden>
       <h2 id="preset-title">New preset</h2>

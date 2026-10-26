@@ -143,6 +143,14 @@ printing elsewhere does not automatically change stock.
 
 ## Tester review and feedback
 
+Open dashed cuts pause PDF import for a possible-guide review. The shop sees the
+highlighted lines against the other cut outlines and may explicitly exclude that
+exact set, or cancel. Approval applies only to that file and cut mapping. Original
+artwork and the remaining cuts stay unchanged; the result records how many guides
+were excluded. Dashed lines are never silently removed or converted to solid cuts.
+Closed, filled or clipped dashed cuts still require correction in the source.
+Failed or cancelled file selections leave the previous checked job usable.
+
 The review card compares roll length against an operator-entered previous print
 length for the same material, width and quantities, or against the first fit of
 an unchanged job during tighter-fit attempts. It does not claim a manual or

@@ -103,7 +103,7 @@ class MixedCutsTests(unittest.TestCase):
 
     def test_device_n_dashed_and_clipped_cuts_reject(self):
         for extra in ['[2 2] 0 d','0 0 60 60 re W n']:
-            with self.subTest(extra=extra),self.assertRaisesRegex(ValueError,'Dashed|clipped'):
+            with self.subTest(extra=extra),self.assertRaisesRegex(ValueError,'Review possible guides|clipped'):
                 read_document(mixed_fixture(extra='q '+extra+' /OC /Inner BDC /Kiss CS 1 SCN 75 45 m 90 50 l S EMC Q'),cut_mapping=defaults())
         writer=PdfWriter(clone_from=io.BytesIO(mixed_fixture(generic=False)));space=writer.pages[0]['/Resources']['/ColorSpace']['/Thru']
         space[0]=NameObject('/DeviceN');space[1]=ArrayObject([NameObject('/CutContour_Thru-cut')]);out=io.BytesIO();writer.write(out)

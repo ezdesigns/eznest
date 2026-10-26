@@ -149,6 +149,45 @@ def spot_name(resources, name):
     return None
 
 
+class GuideReviewRequired(ValueError):
+    """An import cannot continue until the operator reviews these exact lines."""
+    def __init__(self, review):
+        super().__init__('Review possible guides before adding this file.')
+        self.review = review
+
+
+def guide_review(raw, mapping, cut_spot, pages):
+    candidates = [p for paths in pages for p in paths if p.get('possibleGuide')]
+    if not candidates:
+        return None
+    if len(candidates) > 50:
+        raise ValueError('More than 50 dashed cut lines need review. Separate guides from cuts in the source file.')
+    source_hash = hashlib.sha256(raw).hexdigest()
+    identity = [source_hash, mapping, cut_spot, [p['id'] for p in candidates]]
+    review_id = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+    previews = []
+    for page_index, paths in enumerate(pages):
+        if not any(p.get('possibleGuide') for p in paths):
+            continue
+        all_points = [pt for p in paths for pt in p['pdfPoints']]
+        x0 = min(pt[0] for pt in all_points); x1 = max(pt[0] for pt in all_points)
+        y0 = min(-pt[1] for pt in all_points); y1 = max(-pt[1] for pt in all_points)
+        pad = max(x1-x0, y1-y0, 1) * .03
+        outlines = []
+        for p in paths:
+            # Preview only: bound the display detail without changing source cuts.
+            pts = p['pdfPoints']; stride = max(1, math.ceil(len(pts)/160))
+            sample = pts[::stride]
+            if sample[-1] != pts[-1]: sample.append(pts[-1])
+            d = 'M' + ' L'.join(f'{x:.3f} {-y:.3f}' for x,y in sample)
+            if p['closed']: d += ' Z'
+            outlines.append({'id':p['id'], 'd':d, 'guide':bool(p.get('possibleGuide'))})
+        previews.append({'page':page_index+1, 'viewBox':[x0-pad,y0-pad,x1-x0+2*pad,y1-y0+2*pad], 'paths':outlines})
+    from shapely.geometry import LineString
+    return {'id':review_id, 'sourceHash':source_hash, 'pages':previews,
+            'lines':[{'id':p['id'],'page':p['page']+1,'lengthMm':LineString(p['pdfPoints']).length*MM} for p in candidates]}
+
+
 def extract_page(page, writer, cut_spot, page_index, mapping):
     """Extract all mapped operations; flatten static layer visibility in print art."""
     from shapely.geometry import LineString
@@ -254,9 +293,10 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
                 else:
                     if fill_type:raise ValueError('Cut layers/colors must contain vector strokes, not filled shapes.')
                     if stroke_type:
-                        if state['dashed']:raise ValueError('Dashed cut strokes are not supported. Expand them to explicit cut paths first.')
+                        if state['dashed'] and fills:raise ValueError('Dashed cuts combined with filled artwork need review in the source. Separate guides from artwork first.')
                         if pending_clip:raise ValueError('A cut stroke also changes the clipping path. Separate the cut from artwork clipping.')
                         for cmd,pts,closed in paths:
+                            if state['dashed'] and closed:raise ValueError('Dashed closed cuts may be perforations. Review their cutting setup in the source; they cannot be excluded as open guides.')
                             pts=flattened_path(cmd)
                             if len(pts)<2 or len(pts)>5000 or any(not math.isfinite(v) for p in pts for v in p):raise ValueError('Invalid or oversized cut path.')
                             line=LineString(pts+[pts[0]] if closed else pts)
@@ -270,6 +310,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
                             # interior (which can legitimately surround a hole).
                             if any(not c.buffer(.001).covers(line) for c in state['clips']):raise ValueError('A cut path is clipped. Correct its source clipping structure.')
                             paths_found.append({'id':f'p{page_index+1}-cut{len(paths_found)+1}','page':page_index,'commands':cmd,'pdfPoints':pts,'closed':closed,'boundary':boundary,'operation':stroke_type,'sourceSpot':state['stroke'],'sourceLayers':list(layers)})
+                            if state['dashed']:paths_found[-1]['possibleGuide']=True
                             if len(paths_found)>2000:raise ValueError('Use no more than 2000 cut paths per page.')
                         if op in (b'b',b'b*'):output.append(([],b'h'))
                         op=(b'f*' if op.endswith(b'*') else b'f') if fills else b'n'
@@ -348,7 +389,7 @@ def group_paths(paths):
     return [{**paths[i],'cutPaths':owned[i]} for i in outer]
 
 
-def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None):
+def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guide_approval=None):
     from cut_mapping import import_mapping,counts
     if not raw[:1024].lstrip().startswith(b'%PDF-'):raise ValueError('Use PDF, or save AI with Create PDF Compatible File enabled.')
     if not isinstance(cut_spot,str) or not cut_spot or len(cut_spot)>80 or any(ord(c)<32 for c in cut_spot):raise ValueError('Enter a valid generic cut spot name.')
@@ -362,7 +403,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None):
         if str(default.get('/BaseState','/ON'))!='/ON' or default.get('/OFF') or default.get('/AS'):raise ValueError('Export a print-only PDF with all layers visible. Hidden or conditional visibility is unsupported.')
         for group in properties.get('/OCGs',[]):
             validate_layer_usage(group.get_object())
-    writer=PdfWriter();pieces=[];registration_removed=0;path_count=0
+    writer=PdfWriter();pieces=[];registration_removed=0;path_count=0;page_paths=[]
     for i,original in enumerate(reader.pages):
         if original.get('/Annots'):raise ValueError('Flatten annotations/forms in a print-only PDF before nesting.')
         if float(original.get('/UserUnit',1))!=1:raise ValueError('PDF UserUnit scaling is unsupported. Export at actual size with standard PDF units.')
@@ -372,6 +413,20 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None):
         if page.rotation:page.transfer_rotation_to_content()
         paths,removed=extract_page(page,writer,cut_spot,i,mapping);registration_removed+=removed;path_count+=len(paths)
         if path_count>5000:raise ValueError('Use no more than 5000 cut paths per file.')
+        page_paths.append(paths)
+    review=guide_review(raw,mapping,cut_spot,page_paths)
+    excluded=[]
+    if review:
+        expected=[p['id'] for p in review['lines']]
+        if guide_approval is None:raise GuideReviewRequired(review)
+        if (not isinstance(guide_approval,dict) or guide_approval.get('id')!=review['id']
+                or guide_approval.get('sourceHash')!=review['sourceHash'] or guide_approval.get('excludedIds')!=expected):
+            raise ValueError('The guide review does not match this file and cut mapping. Add the file again and review its lines.')
+        excluded=expected
+    elif guide_approval is not None:
+        raise ValueError('This file has no matching guide review. Add the original file again.')
+    for i,(page,paths) in enumerate(zip(writer.pages,page_paths)):
+        paths=[p for p in paths if p['id'] not in excluded]
         page_pieces=group_paths(paths);crop=box(*map(float,page.cropbox));occupied=[]
         for piece_number,piece in enumerate(page_pieces,1):
             poly=Polygon(piece['pdfPoints']);envelope=poly.buffer(bleed_mm/MM,join_style=2) if bleed_mm else poly
@@ -390,8 +445,9 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None):
     buf=io.BytesIO();writer.write(buf)
     warnings=['Review piece ownership, cut types, size and existing bleed. Ink coverage and nested separate pieces are not automatically identified.']
     if registration_removed:warnings.append(f'{registration_removed} registration paint object(s) removed. Let the RIP generate new sheet registration marks.')
+    if excluded:warnings.append(f'{len(excluded)} dashed guide line(s) excluded after operator review. Original artwork and remaining cuts are unchanged.')
     return buf.getvalue(),{'modelVersion':2,'pieces':pieces,'bleedMm':bleed_mm,'cutSpot':cut_spot,'cutMapping':mapping,
-                          'registrationPaintRemoved':registration_removed,'warnings':warnings,'pages':len(reader.pages)}
+                          'registrationPaintRemoved':registration_removed,'excludedGuideIds':excluded,'warnings':warnings,'pages':len(reader.pages)}
 
 
 def cut_bounds(piece):
@@ -610,14 +666,15 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
     out=io.BytesIO();writer.write(out);return out.getvalue()
 
 
-def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, preserve=False):
+def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, preserve=False, guide_approval=None):
     folder=Path(folder); folder.mkdir(parents=True,exist_ok=True)
-    clean,meta=read_document(raw,0 if preserve else bleed_mm,cut_spot,cut_mapping)
+    clean,meta=read_document(raw,0 if preserve else bleed_mm,cut_spot,cut_mapping,guide_approval)
     if preserve:
         from artwork_bounds import preserve_artwork
         meta=preserve_artwork(clean,meta)
     identity=[2,bleed_mm,cut_spot,meta['cutMapping']]
     if preserve:identity=['preserve-artwork-v2',cut_spot,meta['cutMapping']]
+    if meta['excludedGuideIds']:identity.append({'excludedGuideIds':meta['excludedGuideIds']})
     ident=hashlib.sha256(raw+json.dumps(identity,sort_keys=True).encode()).hexdigest()
     meta.update(id=ident,sourceHash=hashlib.sha256(raw).hexdigest())
     # Preview in a separate process through the import worker. PDFium is not thread-safe.
@@ -661,7 +718,7 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
                               'documentId':ident,'pdfPieceId':piece['id'],'sourcePieceCount':piece.get('sourcePieceCount',1),'cutCounts':piece['cutCounts'],'cutRefs':unknown,'previewCuts':preview_cuts,'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h})
     (folder/(ident+'.pdf')).write_bytes(clean)
     (folder/(ident+'.json')).write_text(json.dumps(meta),encoding='utf-8')
-    return {'format':'pdf','documentId':ident,'parts':preview_parts,'warnings':meta['warnings'],'bleedMm':meta['bleedMm'],'artworkPreserved':bool(meta.get('artworkPreserved')),'sourcePieceCount':meta.get('sourcePieceCount',len(meta['pieces'])),'reviewed':False,'modelVersion':2,'registrationPaintRemoved':meta['registrationPaintRemoved'],'cutMapping':meta['cutMapping']}
+    return {'format':'pdf','documentId':ident,'parts':preview_parts,'warnings':meta['warnings'],'excludedGuideCount':len(meta['excludedGuideIds']),'bleedMm':meta['bleedMm'],'artworkPreserved':bool(meta.get('artworkPreserved')),'sourcePieceCount':meta.get('sourcePieceCount',len(meta['pieces'])),'reviewed':False,'modelVersion':2,'registrationPaintRemoved':meta['registrationPaintRemoved'],'cutMapping':meta['cutMapping']}
 
 
 def load_documents(job, folder, require_review=True):
@@ -679,6 +736,7 @@ def load_documents(job, folder, require_review=True):
         except (OSError,ValueError):
             raise ValueError('A source PDF is unavailable. Re-add the original file.')
         if meta.get('modelVersion')!=2: raise ValueError('Re-add this PDF/AI file to review its cut types with the updated importer.')
+        data['excludedGuideCount']=len(meta.get('excludedGuideIds',[]))
         documents[ident]=(raw,meta)
         actual={p['pdfPieceId']:p for p in job['parts'] if p.get('sourceJobId')==source['id']}
         if set(actual)!=set(p['id'] for p in meta['pieces']): raise ValueError('PDF source pieces no longer match this job. Re-import it.')
@@ -715,7 +773,9 @@ def worker(request, output):
         data=json.loads(request.read_text(encoding='utf-8'))
         raw=base64.b64decode(data['content'],validate=True)
         if len(raw)>MAX_PDF_BYTES: raise ValueError('PDF/AI files are limited to 32 MB in this build.')
-        result={'ok':True,'document':import_to_store(raw,output.parent/'documents',data.get('bleedMm',0),data.get('cutSpot','CutContour'),data.get('cutMapping'),preserve=data.get('preserveArtwork') is True)}
+        result={'ok':True,'document':import_to_store(raw,output.parent/'documents',data.get('bleedMm',0),data.get('cutSpot','CutContour'),data.get('cutMapping'),preserve=data.get('preserveArtwork') is True,guide_approval=data.get('guideApproval'))}
+    except GuideReviewRequired as error:
+        result={'ok':False,'error':str(error),'guideReview':error.review}
     except Exception as error:
         result={'ok':False,'error':str(error)}
     output.write_text(json.dumps(result),encoding='utf-8')

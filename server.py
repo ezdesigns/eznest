@@ -449,6 +449,7 @@ class Handler(BaseHTTPRequestHandler):
                     worker=[sys.executable,'--document-worker'] if getattr(sys,'frozen',False) else [sys.executable,str(ROOT/'pdf_io.py')]
                     subprocess.run([*worker,str(request),str(output)],cwd=WORK,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=120,check=True,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
                     payload=json.loads(output.read_text(encoding='utf-8'))
+                    if payload.get('guideReview'): return self.send(409,{'error':payload['error'],'guideReview':payload['guideReview']})
                     if not payload['ok']: raise ValueError(payload['error'])
                     return self.send(200,payload['document'])
                 except subprocess.TimeoutExpired:

@@ -98,6 +98,13 @@ Unowned paint rejects instead of disappearing. Do not reintroduce an
 operator-entered bleed amount or automatic enlargement in this flow. Legacy simple
 page jobs require re-import from the original, not a previously clipped export.
 
+Open dashed cut strokes require an explicit possible-guide review in the simple
+page. Show their positions against the other cut outlines; exclude only the exact
+reviewed IDs after confirmation bound to the file hash and cut mapping. Never
+automatically interpret all dashed lines as guides or export them as solid cuts.
+Closed, filled or clipped dashed cuts remain unsupported. Cancelled/failed imports
+must leave the previous job usable, and a multi-file selection is all-or-nothing.
+
 The separate portable trial is packaged with `build_shop_trial.py` after a
 `build_windows.py --portable-only` build. Its `--shop-test` launch creates marked
 local trial data and TEST Output, disables update checks and refuses other running
