@@ -23,6 +23,8 @@ MM = 25.4 / 72
 IDENTITY = (1, 0, 0, 1, 0, 0)
 MAX_PDF_BYTES = 32_000_000
 MAX_PAGE_OPERATIONS = 1_000_000
+MAX_CLIP_SEGMENTS = 20_000
+MAX_CLIP_FACES = 2_000
 
 
 def validate_layer_usage(group):
@@ -43,6 +45,57 @@ def flattened_path(commands):
         elif op == 'c':
             points.extend(curve_points(points[-1], values[:2], values[2:4], values[4:6]))
     return points
+
+
+def clipping_region(paths, rule):
+    """Interpret PDF fill rules for cut validation; never rewrite the mask.
+
+    Polygonizing the noded edges yields faces on which winding is constant.
+    Testing those faces handles holes, overlapping rings and self-crossings
+    without treating every subpath as either a union or a hole. PDF closes
+    open clipping subpaths implicitly (ISO 32000-1, 8.5.3.3 and 8.5.4).
+    """
+    import numpy as np
+    from shapely.geometry import LineString
+    from shapely.ops import polygonize, unary_union
+
+    rings = []
+    segment_count = 0
+    for commands, _, _ in paths:
+        points = flattened_path(commands)
+        if any(not math.isfinite(v) for p in points for v in p):
+            raise ValueError('Invalid clipping mask coordinates.')
+        if len(points) < 3:
+            continue
+        if points[-1] != points[0]:
+            points = points + [points[0]]
+        segment_count += len(points) - 1
+        if segment_count > MAX_CLIP_SEGMENTS:
+            raise ValueError('Clipping mask is too complex to verify safely.')
+        rings.append(points)
+    if not rings:
+        return Polygon()
+    if len(rings) == 1:
+        simple = Polygon(rings[0])
+        if simple.is_valid:
+            return simple
+    faces = []
+    for face in polygonize(unary_union([LineString(ring) for ring in rings])):
+        faces.append(face)
+        if len(faces) > MAX_CLIP_FACES:
+            raise ValueError('Clipping mask is too complex to verify safely.')
+    coordinates = np.asarray([(a, b) for ring in rings for a, b in zip(ring, ring[1:])])
+    a, b = coordinates[:, 0], coordinates[:, 1]
+    selected = []
+    for face in faces:
+        point = face.representative_point()
+        x, y = point.x, point.y
+        cross = (b[:, 0]-a[:, 0])*(y-a[:, 1]) - (x-a[:, 0])*(b[:, 1]-a[:, 1])
+        winding = (int(np.count_nonzero((a[:, 1] <= y) & (b[:, 1] > y) & (cross > 0)))
+                   - int(np.count_nonzero((b[:, 1] <= y) & (a[:, 1] > y) & (cross < 0))))
+        if (winding % 2 != 0) if rule == b'W*' else winding != 0:
+            selected.append(face)
+    return unary_union(selected) if selected else Polygon()
 
 
 def matrix(a, b):
@@ -195,15 +248,22 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
                         for cmd,pts,closed in paths:
                             pts=flattened_path(cmd)
                             if len(pts)<2 or len(pts)>5000 or any(not math.isfinite(v) for p in pts for v in p):raise ValueError('Invalid or oversized cut path.')
-                            geom=Polygon(pts) if closed and len(pts)>=3 else LineString(pts)
-                            if not geom.is_valid or geom.is_empty or (closed and geom.area*MM*MM<.01) or (not closed and geom.length*MM<.01):raise ValueError('A cut path is self-intersecting or too small.')
-                            if any(not c.buffer(.001).covers(geom) for c in state['clips']):raise ValueError('A cut path is clipped. Correct its source clipping structure.')
-                            paths_found.append({'id':f'p{page_index+1}-cut{len(paths_found)+1}','page':page_index,'commands':cmd,'pdfPoints':pts,'closed':closed,'operation':stroke_type,'sourceSpot':state['stroke'],'sourceLayers':list(layers)})
+                            line=LineString(pts+[pts[0]] if closed else pts)
+                            # A closed, exactly collinear slit has no interior.
+                            # Preserve its source commands as an internal cut;
+                            # group_paths still requires a unique outer owner.
+                            boundary=closed and line.convex_hull.geom_type=='Polygon'
+                            geom=Polygon(pts) if boundary else line
+                            if not geom.is_valid or geom.is_empty or (boundary and geom.area*MM*MM<.01) or (not boundary and geom.length*MM<.01):raise ValueError('A cut path is self-intersecting or too small.')
+                            # Only the stroke must be visible, not the enclosed
+                            # interior (which can legitimately surround a hole).
+                            if any(not c.buffer(.001).covers(line) for c in state['clips']):raise ValueError('A cut path is clipped. Correct its source clipping structure.')
+                            paths_found.append({'id':f'p{page_index+1}-cut{len(paths_found)+1}','page':page_index,'commands':cmd,'pdfPoints':pts,'closed':closed,'boundary':boundary,'operation':stroke_type,'sourceSpot':state['stroke'],'sourceLayers':list(layers)})
                             if len(paths_found)>2000:raise ValueError('Use no more than 2000 cut paths per page.')
                         if op in (b'b',b'b*'):output.append(([],b'h'))
                         op=(b'f*' if op.endswith(b'*') else b'f') if fills else b'n'
                 if pending_clip:
-                    state['clips'].append(Polygon(flattened_path(paths[0][0])) if len(paths)==1 and paths[0][2] else Polygon());pending_clip=None
+                    state['clips'].append(clipping_region(paths,pending_clip));pending_clip=None
                 paths=[]
             elif op==b'Do':
                 ref=xobjects.get(operands[0])
@@ -256,8 +316,9 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
 def group_paths(paths):
     """Outermost closed contours own contained cuts; ambiguous geometry rejects."""
     from shapely.geometry import LineString
-    closed={i:Polygon(p['pdfPoints']) for i,p in enumerate(paths) if p['closed']}
-    open_paths=[LineString(p['pdfPoints']) for p in paths if not p['closed']]
+    if not paths:raise ValueError('No cut lines found. Check the cut spot names or cut layer mapping, then import a file with vector cut strokes.')
+    closed={i:Polygon(p['pdfPoints']) for i,p in enumerate(paths) if p.get('boundary',p['closed'])}
+    open_paths=[LineString(p['pdfPoints']) for p in paths if not p.get('boundary',p['closed'])]
     for i,path in enumerate(open_paths):
         if any(path.equals(other) for other in open_paths[i+1:]):raise ValueError('Duplicate/coincident open cuts need review in the source.')
     for i,a in closed.items():

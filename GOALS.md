@@ -110,6 +110,15 @@ Existing bleed remains part of the protected artwork envelope. The simple page
 does not permit printed bleed to overlap another piece. Cut-line spacing alone
 cannot prove that overlaid ink will preserve neighboring artwork or cut tolerance.
 
+PDF cut validation understands compound clipping masks using their original
+nonzero or even-odd fill rule. It checks whether each cut stroke is visible;
+an enclosed hole does not make an otherwise visible contour invalid. Closed,
+exactly collinear slits retain their original commands as internal cuts and
+still require a unique enclosing piece. Self-intersecting piece boundaries,
+genuinely clipped cuts and unowned cuts remain blocked. Source masks, artwork
+and cut commands are not repaired or redrawn. A file with no detected cuts
+gets a distinct message to check its spot names or layer mapping.
+
 The review screen defaults to the saved print folder and keeps the imported
 filename. One-sheet PDF jobs save a named PDF; multi-sheet and SVG jobs save a
 ZIP pack. My computer opens the normal Windows Save As window on the PC running
