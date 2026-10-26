@@ -112,9 +112,20 @@ def point(m, p):
 
 
 def curve_points(p0, p1, p2, p3, depth=0, tolerance=.02/MM):
-    from shapely.geometry import LineString, Point
-    chord = LineString([p0, p3])
-    if depth >= 14 or max(chord.distance(Point(p1)), chord.distance(Point(p2))) <= tolerance:
+    # Millions of subdivisions can occur in detailed prepared artwork. Scalar
+    # distances avoid constructing a GEOS line and two points at each step.
+    # Clamp to the segment: distance to its infinite line misses curves that
+    # double back past either endpoint, including collinear control points.
+    dx, dy = p3[0]-p0[0], p3[1]-p0[1]
+    length = math.hypot(dx, dy)
+    def distance(p):
+        x, y = p[0]-p0[0], p[1]-p0[1]
+        if not length:
+            return math.hypot(x, y)
+        ux, uy = dx/length, dy/length
+        projection = max(0, min(length, x*ux+y*uy))
+        return math.hypot(x-projection*ux, y-projection*uy)
+    if depth >= 14 or max(distance(p1), distance(p2)) <= tolerance:
         return [p3]
     mid = lambda a, b: [(a[0]+b[0])/2, (a[1]+b[1])/2]
     a, b, c = mid(p0, p1), mid(p1, p2), mid(p2, p3)
