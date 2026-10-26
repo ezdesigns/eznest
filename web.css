@@ -265,7 +265,7 @@ main { min-height: auto; padding: 20px 0 24px; gap: 18px; }
 .job-panel .gate.problem { padding: 12px; background: #fff0eb; border: 0; border-radius: 8px; }
 .job-panel .confirm p, .job-panel #status { font-size: 13px; }
 .job-panel #add-files { text-align: left; min-height: 24px; }
-.job-panel #start-over { font-weight: 400; color: var(--muted); }
+.job-panel #start-over.link { font-weight: 400; color: var(--muted); }
 .piece-review { border-top: 1px solid #deded8; padding-top: 12px; font-size: 13px; }
 .piece-review summary { cursor: pointer; font-weight: 700; }
 .piece-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; max-height: 410px; overflow-y: auto; }
