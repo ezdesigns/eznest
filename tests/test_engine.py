@@ -3,7 +3,7 @@ import json
 import math
 import unittest
 from pathlib import Path
-from engine import solve, validate_job, validate_result, search_envelope
+from engine import solve, validate_job, validate_result, search_envelope, publish_result
 from unittest.mock import patch
 from types import SimpleNamespace
 import tempfile
@@ -12,6 +12,30 @@ from shapely.geometry import Point, Polygon
 SAMPLE=json.loads((Path(__file__).resolve().parents[1]/'sample.json').read_text())
 
 class EngineTests(unittest.TestCase):
+    def test_locked_live_preview_does_not_fail_final_worker_output(self):
+        from nesting import worker
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            request, output, progress = root/'job.json', root/'result.json', root/'progress.json'
+            job = self.job()
+            request.write_text(json.dumps(job), encoding='utf-8')
+            original_replace = Path.replace
+            attempts = []
+            def locked_preview(path, target):
+                if Path(target) == progress:
+                    attempts.append(path)
+                    raise PermissionError(13, 'Live preview is being read')
+                return original_replace(path, target)
+            with patch.object(Path, 'replace', locked_preview):
+                worker(request, output)
+            payload = json.loads(output.read_text())
+            self.assertTrue(attempts)
+            self.assertTrue(payload['ok'], payload.get('error'))
+            validate_result(job, payload['result'])
+            # The next available update publishes normally after the reader exits.
+            publish_result(progress, payload['result'])
+            self.assertEqual(json.loads(progress.read_text())['result'], payload['result'])
+
     def test_search_outline_contains_the_complete_guarded_artwork(self):
         circle = Point(0,0).buffer(50,quad_segs=400)
         detailed = circle.union(Polygon([[0,-4],[70,-4],[70,4],[0,4]]))

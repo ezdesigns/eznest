@@ -138,8 +138,17 @@ def publish_result(path, result):
     from pathlib import Path
     path = Path(path)
     temporary = path.with_suffix('.tmp')
-    temporary.write_text(json.dumps({'ok': True, 'result': result}), encoding='utf-8')
-    temporary.replace(path)
+    payload = json.dumps({'ok': True, 'result': result})
+    try:
+        temporary.write_text(payload, encoding='utf-8')
+        temporary.replace(path)
+    except OSError:
+        # Windows can briefly lock the preview while the server reads it.
+        # Keep the last complete preview and the in-memory best solution; a
+        # later update can retry. Final worker output is written separately and
+        # its failures must still surface instead of claiming a saved result.
+        return False
+    return True
 
 
 def solve(job, progress_path=None):
