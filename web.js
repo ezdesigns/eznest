@@ -89,6 +89,7 @@ function installSettingsHelp() {
   function show(button, message) {
     clearTimeout(timer);
     if (active !== button) close();
+    (button.closest('dialog') || document.body).append(tip);
     active = button; tip.textContent = message; tip.hidden = false;
     button.setAttribute('aria-expanded', 'true'); button.setAttribute('aria-describedby', tip.id);
     const r = button.getBoundingClientRect();
@@ -583,6 +584,7 @@ function syncFiles() {
 
 function renderFiles() {
   const list = $('files');
+  $('copies-label').textContent = kits.length > 1 ? 'Copies of every file' : 'Copies';
   list.replaceChildren();
   for (const entry of kits) {
     const row = document.createElement('li');
@@ -646,7 +648,7 @@ function applySetsToFiles() {
 function renderActions() {
   const confirming = document.body.dataset.step === 'confirm';
   syncFiles();
-  for (const button of $('materials').querySelectorAll('button')) button.disabled = busy || saving || !!presetEditor || confirming;
+  $('material').disabled = busy || saving || !!presetEditor || !!illustratorHandoff || confirming;
   $('confirm-send').disabled = saving || busy || !!presetEditor;
   $('confirm-back').disabled = saving;
   $('start-over').disabled = saving || !!presetEditor;
@@ -871,6 +873,7 @@ function setNestingEffort(seconds) {
   const value = [5, 30, 90].includes(Number(seconds)) ? Number(seconds) : 30;
   $('nesting-effort').value = String(value);
   $('seconds').value = String(value);
+  $('effort-summary').textContent = $('nesting-effort').selectedOptions[0].textContent;
 }
 
 function addHatch(frame) {
@@ -1537,37 +1540,23 @@ function stagingPath() {
 }
 
 function renderMaterialButtons() {
-  const box = $('materials');
-  const currentValue = $('material').value;
-  $('material').disabled = !!illustratorHandoff;
-  box.replaceChildren();
+  const selected = $('material').value;
+  $('material').disabled = !!illustratorHandoff || !!presetEditor || busy || saving || document.body.dataset.step === 'confirm';
   for (const option of $('material').options) {
-    if (illustratorHandoff && option.value !== 'white-gloss') continue;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.dataset.value = option.value;
-    button.textContent = option.dataset.name || option.textContent.split('·')[0].trim();
-    button.setAttribute('aria-pressed', String(option.value === currentValue));
-    button.disabled = !!presetEditor || busy || saving;
-    button.addEventListener('click', () => {
-      chooseMaterial(option.value);
-    });
-    const item = document.createElement('div');
-    item.className = 'material-item';
-    item.append(button);
+    option.hidden = !!illustratorHandoff && option.value !== 'white-gloss';
     const stock = lowStock(materialProfiles[option.value]);
-    if (stock) {
-      const notice = document.createElement('span');
-      notice.className = 'stock-alert';
-      notice.setAttribute('role', 'status');
-      notice.textContent = stock;
-      item.append(notice);
-    }
-    box.append(item);
+    option.textContent = (option.dataset.name || option.textContent.split(' · ')[0]) + (stock ? ' · ' + stock.split(' · ')[0] : '');
+  }
+  const box = $('materials');
+  box.replaceChildren();
+  const stock = lowStock(materialProfiles[selected]);
+  if (stock) {
+    const notice = document.createElement('div');
+    notice.className = 'stock-alert'; notice.setAttribute('role', 'status');
+    notice.textContent = stock; box.append(notice);
   }
   const remaining = $('available-length').value.trim();
-  $('material-summary').textContent = remaining ? `${Number(remaining)} ${$('unit').value} available` : '';
-
+  $('material-summary').textContent = remaining && !stock ? `${Number(remaining)} ${$('unit').value} available` : '';
 }
 
 function lowStock(values) {
@@ -1662,6 +1651,7 @@ function openPreset(id) {
   $('preset-title').textContent = id === 'custom' ? 'Add material' : 'Edit ' + $('preset-name').value;
   $('preset-error').hidden = true;
   $('preset-editor').hidden = false;
+  $('material-dialog').showModal();
   $('material-advanced').open = false;
   renderMaterialButtons();
   renderActions();
@@ -1676,6 +1666,7 @@ function closePreset() {
   $('material').value = previous.selected;
   $('nest-width').value = previous.nestWidth;
   $('preset-editor').hidden = true;
+  $('material-dialog').close();
   renderMaterialButtons();
   renderActions();
 }
@@ -1691,6 +1682,7 @@ function saveMaterial() {
     registerMaterial(id, values);
     presetEditor = null;
     $('preset-editor').hidden = true;
+    $('material-dialog').close();
     $('material').value = id;
     applyMaterial(true);
     status('');
@@ -2353,6 +2345,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('edit-material').addEventListener('click', () => openPreset($('material').value));
   $('save-material').addEventListener('click', saveMaterial);
   $('cancel-material').addEventListener('click', closePreset);
+  $('material-dialog').addEventListener('cancel', event => { event.preventDefault(); closePreset(); });
   $('width').addEventListener('input', () => { watchWidth(); requestNest(); });
   $('nest-width').addEventListener('input', () => { showWidth(); saveShop(); requestNest(); });
   $('nest-width').addEventListener('change', () => { saveShop(); requestNest(); });

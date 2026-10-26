@@ -288,18 +288,27 @@ main { min-height: auto; padding: 20px 0 24px; gap: 18px; }
 .preview-tools select { width: 110px; font-size: 13px; }
 .sheet-frame { max-height: 58vh; min-height: 300px; }
 .key { font-size: 11px; justify-content: flex-start; }
-.material-area { width: 100%; max-width: none; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px 18px; padding: 14px 18px; background: #fff; border: 1px solid #e1e1da; border-radius: 12px; }
-.material-heading { display: contents; font-size: 13px; }
-.material-heading strong { grid-column: 1; grid-row: 1; }
-#materials { grid-column: 2; grid-row: 1; }
-#edit-material { grid-column: 1; grid-row: 2; justify-self: start; font-size: 12px; min-height: 24px; }
-.materials { justify-content: flex-start; }
-.materials button { min-width: 0; min-height: 38px; padding: 0 14px; border-radius: 8px; font-size: 13px; background: #f3f3f0; box-shadow: none; }
-.material-area > .hint { grid-column: 2; text-align: left; }
-#material-summary:empty { display: none; }
-.material-area:has(#material-summary:empty) #edit-material { grid-column: 3; grid-row: 1; }
-.preset-editor { grid-column: 1 / -1; width: 100%; max-width: none; padding: 18px 0 4px; border: 0; border-top: 1px solid #e7e7e1; border-radius: 0; }
-.preset-editor > .fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.material-area { width: 100%; display: grid; gap: 6px; padding: 12px 0 0; border-top: 1px solid #e7e7e1; }
+.material-heading { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; }
+#edit-material { font-size: 12px; min-height: 24px; }
+.material-area > .hint { text-align: left; }
+#material-summary:empty, #materials:empty { display: none; }
+.layout-options { font-size: 13px; border-top: 1px solid #e7e7e1; padding-top: 12px; }
+.layout-options > summary { cursor: pointer; font-weight: 700; }
+#effort-summary { display: block; padding-left: 15px; font-size: 12px; color: var(--muted); font-weight: 400; }
+.layout-options > .setting-field { margin-top: 12px; }
+#material-dialog { width: min(720px, calc(100vw - 32px)); max-height: 90vh; padding: 24px; border: 1px solid #ddd; border-radius: 14px; }
+#material-dialog::backdrop { background: #0006; }
+#material-dialog .preset-editor { width: 100%; padding: 0; border: 0; border-radius: 0; }
+.empty-layout { display: grid; align-content: center; justify-items: center; gap: 8px; min-height: 52vh; background: #efefea; border: 1px dashed #d1d1c8; border-radius: 12px; color: var(--muted); }
+.empty-layout strong { font-size: 20px; font-weight: 400; }
+.empty-layout span { font-size: 13px; }
+body:not([data-step="drop"]) .empty-layout { display: none; }
+.job-panel .drop { min-height: 92px; font-size: 16px; padding: 16px; background: #f7f7f4; }
+.job-panel .import-help { margin-top: 8px; }
+.job-panel .files li:only-child input { display: none; }
+.job-panel .files li:only-child { grid-template-columns: minmax(0, 1fr) auto; }
+.job-panel .files { padding-top: 0; border: 0; }
 #job-details, #settings .quick-guide { margin-top: 16px; font-size: 13px; }
 #job-details summary, #settings .quick-guide summary { cursor: pointer; text-align: left; }
 #job-details .sheet-id { margin-top: 8px; text-align: left; }
@@ -310,16 +319,11 @@ main { min-height: auto; padding: 20px 0 24px; gap: 18px; }
 }
 @media (max-width: 800px) {
   .workspace-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  body[data-step="drop"] .job-panel { grid-row: 1; }
   .job-panel { gap: 12px; padding: 16px; }
   .job-panel .quiet { grid-template-columns: 1fr 1fr; gap: 16px; }
   .job-panel .sets > span { max-width: 70px; }
   .sheet-frame { max-height: 42vh; min-height: 180px; }
-  .material-area { padding: 14px; }
-  .material-heading strong { grid-column: 1; }
-  .material-area #edit-material, .material-area:has(#material-summary:empty) #edit-material { grid-column: 2; grid-row: 1; justify-self: end; }
-  #materials { grid-column: 1 / -1; grid-row: 2; }
-  .material-area > .hint { grid-column: 1 / -1; }
-  .preset-editor > .fields { grid-template-columns: 1fr 1fr; }
   main { padding-top: 16px; }
 }
 @media (max-width: 420px) {
@@ -338,7 +342,8 @@ main { min-height: auto; padding: 20px 0 24px; gap: 18px; }
 .import-help summary { cursor: pointer; }
 body[data-step="confirm"] .job-panel > .quiet { display: none; }
 body[data-step="confirm"] .job-panel > h2,
-body[data-step="confirm"] .job-panel > .setting-field { display: none; }
+body[data-step="confirm"] .job-panel > .setting-field,
+body[data-step="confirm"] #layout-options { display: none; }
 
 #folder-picker { width: min(560px, calc(100vw - 32px)); max-height: 85vh; padding: 24px; border: 1px solid #ddd; border-radius: 14px; color: var(--ink); }
 #folder-picker::backdrop { background: #0006; }
