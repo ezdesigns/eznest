@@ -2386,6 +2386,7 @@ async function boot() {
 function stockFeet(mm) { return mm == null ? 'unknown' : (mm / 304.8).toFixed(2) + ' ft'; }
 
 function acceptInventory(data) {
+  if (JSON.stringify(data) !== JSON.stringify(shopInventory)) $('inventory-status').textContent = '';
   shopInventory = data;
   inventoryReady = true;
   for (const item of data.materials) {
@@ -2449,8 +2450,8 @@ async function inventoryAction(path, payload) {
     acceptInventory(await api(path, payload));
     $('inventory-status').textContent = payload.action === 'use' ? 'Material use recorded. Stock updated.' : payload.action === 'cancel' ? 'Reservation released. Stock is available again.' : 'Material reserved. Physical stock is unchanged until you confirm usage.';
   } catch (error) {
-    $('inventory-status').textContent = error.message;
     await refreshInventory().catch(() => {});
+    $('inventory-status').textContent = error.message;
   } finally { inventoryBusy = false; renderInventory(); }
 }
 

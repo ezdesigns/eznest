@@ -129,6 +129,7 @@ class SharedInventoryBrowserTests(unittest.TestCase):
                 self.assertAlmostEqual(inventory.read(server.WORK)['materials'][0]['onHandMm'],before-state['result']['usedLength'])
                 a.click('#inventory-refresh')
                 expect(a.locator('#inventory-reservations')).to_contain_text('Used')
+                expect(a.locator('#inventory-status')).to_have_text('')
                 a.locator('#inventory-dialog').screenshot(path=str(SCREENSHOTS/'shared-stock-desktop.png'))
                 b.locator('#inventory-dialog').screenshot(path=str(SCREENSHOTS/'shared-stock-mobile.png'))
                 self.assertTrue(b.evaluate('document.documentElement.scrollWidth <= innerWidth'))
