@@ -10,8 +10,9 @@
 - Stream browser PDF/AI uploads directly to disk, up to 2 GB, without base64 expansion. Illustrator/legacy JSON handoffs allow 256 MB; SVG remains 8 MB. Parser and geometry limits still apply.
 
 - The job panel has Upload job, Choose material, and Where will you print?
-  In-house uses the existing effort choices. Max output opens an invitation to
-  visit OUTPUT and learn about its pilot, without sending files or enrolling anyone.
+  In-house stays selected and uses the existing effort choices. Max output
+  shows "What is this?" and opens a short OUTPUT explanation. Visit OUTPUT and
+  Join the waitlist open output.jeezlabs.io. Nothing is sent or saved.
 - Settings opens in a centered dialog. Specialized cut and print-software options
   are collapsed and explained in plain language. Field labels show help on hover,
   focus or tap. Clicking outside the material editor cancels unsaved edits.

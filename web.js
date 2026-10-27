@@ -2511,7 +2511,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $('settings-open').addEventListener('click', () => $('settings').showModal());
   $('settings-close').addEventListener('click', () => $('settings').close());
   dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });
-  $('max-output').addEventListener('click', () => $('max-output-dialog').showModal());
+  $('max-output').addEventListener('click', () => {
+    $('max-output-dialog').showModal();
+    $('max-output-close').focus();
+  });
   $('max-output-close').addEventListener('click', () => $('max-output-dialog').close());
   dismissOnBackdrop($('max-output-dialog'), () => $('max-output-dialog').close());
   $('save-settings').addEventListener('click', saveSettings);
