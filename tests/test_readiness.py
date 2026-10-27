@@ -58,783 +58,114 @@ class ReadinessTests(unittest.TestCase):
                     self.assertTrue(server.STATE['released'])
                     self.assertFalse(server.STATE['deliveryCompleted'])
                     page.reload()
-                    fixture.wait_ready(page…15963 tokens truncated…ual(pending.value.suggested_filename, 'kit.pdf')
-                page.click('#export')
-                page.fill('#save-name', 'Customer kit - Chrome')
-                with page.expect_download(timeout=30000) as pending:
-                    page.click('#confirm-send')
-                downloaded = pending.value
-                self.assertEqual(downloaded.suggested_filename, 'Customer kit - Chrome.pdf')
-                direct = Path(self.tmp.name) / 'direct.pdf'
-                downloaded.save_as(str(direct))
-                self.assertEqual(direct.read_bytes(), pdf)
-                self.assertEqual(page.locator('#delivery-receipt').inner_text(), 'Downloaded Customer kit - Chrome.pdf')
-                self.assertNotIn(b'LNThru-cut', pdf)
-                self.assertNotIn(b'LNKiss-cut', pdf)
-                from pypdf import PdfReader
-                content = PdfReader(io.BytesIO(pdf)).pages[0].get_contents().get_data()
-                self.assertNotIn(b'LNRegmark', content)
-                self.assertNotIn(b'barcode', pdf.lower())
-            finally:
-                browser.close()
+                    fixture.wait_ready(page)
+                    self.assertEqual(page.get_attribute('body', 'data-step'), 'check')
+                    self.assertTrue(page.locator('#delivery-receipt').is_hidden())
+                    self.assertEqual(page.locator('#status').inner_text(), '')
+                    original = server.print_export.save_file
+                    def slow_save(*args):
+                        time.sleep(0.3)
+                        return original(*args)
+                    with patch.object(server.print_export, 'save_file', side_effect=slow_save) as delivered:
+                        page.click('#export')
+                        page.evaluate('Promise.all([exportFile(false), exportFile(false)])')
+                        self.assertEqual(delivered.call_count, 1)
+                    self.assertIn('Saved to', page.locator('#delivery-receipt').inner_text())
+                    self.assertTrue((hot / 'sample-artwork.zip').is_file())
+                    page.reload(); fixture.wait_ready(page)
+                    self.assertEqual(page.get_attribute('body', 'data-step'), 'sent')
+                    self.assertEqual(page.locator('#start-over').inner_text(), 'Next job')
+                    self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'))
+                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'production-delivered-desktop.png'), full_page=True)
+                    page.set_viewport_size({'width': 390, 'height': 844})
+                    self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= window.innerWidth + 1'))
+                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'production-delivered-mobile.png'), full_page=True)
+                    self.assertTrue(page.locator('#undo').is_hidden())
+                    page.evaluate("async () => { await api('/api/release', {id: current.id, map: 'frozen retry'}); }")
+                    server.STATE.pop('exportReceipt', None); server.persist_state()
+                    page.reload(); fixture.wait_ready(page)
+                    page.evaluate("document.querySelector('#allow-undo').checked = true; renderActions()")
+                    page.click('#undo')
+                    page.wait_for_function("() => document.querySelector('#status').textContent.includes('Removed the pack')")
+                    self.assertFalse(server.STATE['deliveryCompleted'])
+                    self.assertFalse(server.STATE['savedPath'])
+                    page.reload()
+                    fixture.wait_ready(page)
+                    self.assertEqual(page.get_attribute('body', 'data-step'), 'check')
+                finally:
+                    browser.close()
+        finally:
+            fixture.tearDown()
 
-    def test_svg_prepared_artwork_stays_unexpanded_through_source_transforms(self):
+    def test_pending_path_cannot_escape_download_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            file = root / 'other.exe'
+            file.write_bytes(b'MZ')
+            installer_update.write_json(root / 'updates/pending.json', {'verified': True, 'file': str(file), 'sha256': hashlib.sha256(b'MZ').hexdigest()})
+            self.assertIsNone(installer_update.pending_state(root))
+
+    def test_protected_update_cannot_stop_working_server(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / 'Program Files' / 'eznest'
+            root.mkdir(parents=True)
+            (root / 'eznest.exe').write_bytes(b'MZ')
+            from types import SimpleNamespace
+            windows = SimpleNamespace(name='nt', environ={'ProgramFiles': str(root.parent)})
+            with patch.object(installer_update, 'os', windows):
+                self.assertFalse(installer_update.apply_supported(root))
+                with patch.object(installer_update, 'spawn_helper') as spawn:
+                    self.assertFalse(installer_update.handoff_if_pending(root, tmp))
+                    spawn.assert_not_called()
+
+    def test_first_run_retries_invalid_folder_and_persists_across_browsers(self):
         from playwright.sync_api import sync_playwright
-        cases = [
-            '<rect width="2" height="2" fill="#ff0000"/>',
-            '<g transform="translate(1 1) scale(2)"><g transform="scale(.5 1.5)"><rect width="2" height="1" fill="#ff0000"/></g></g>',
-            '<g transform="translate(1 1)"><g transform="matrix(2 .25 .5 .75 0 0)"><rect width="1" height="2" fill="#ff0000"/></g></g>',
-        ]
-        with sync_playwright() as playwright:
-            browser, page = self.open_page(playwright)
-            try:
-                page.evaluate("document.querySelector('#auto-bleed').value = '0.125'")
-                self.assertEqual(page.evaluate('autoBleedMm()'), 0)
-                for index, body in enumerate(cases):
-                    with self.subTest(transform=index):
-                        measured = page.evaluate(r"""async ({body, angle}) => {
-                            const source = '<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 10 10">' + body + '</svg>';
-                            const job = EZNSVG.importSVG(source);
-                            const part = job.parts[0];
-                            const result = {width:120, usedLength:120, placements:[{id:part.id, x:50, y:30, rotation:angle}]};
-                            const svg = EZNSVG.buildSVG(job, result);
-                            const original = svg.querySelector('[data-ezn-boundary="true"]');
-                            const before = original.outerHTML;
-                            const artworkBefore = EZNSVG.serialize(svg);
-                            applyAutoBleed(svg, job, result);
-                            const artworkUnchanged = artworkBefore === EZNSVG.serialize(svg);
-                            const radians = angle*Math.PI/180;
-                            const points = part.points.map(([x,y]) => [50+x*Math.cos(radians)-y*Math.sin(radians),30+x*Math.sin(radians)+y*Math.cos(radians)]);
-                            const expected = [Math.min(...points.map(p=>p[0])), Math.min(...points.map(p=>p[1])),
-                                              Math.max(...points.map(p=>p[0])), Math.max(...points.map(p=>p[1]))];
-                            const bounds = [];
-                            for (const density of [5,10]) {
-                                svg.setAttribute('width', String(120*density));
-                                svg.setAttribute('height', String(120*density));
-                                const image = new Image();
-                                const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(EZNSVG.serialize(svg));
-                                try {
-                                    await new Promise((resolve,reject) => {image.onload=resolve; image.onerror=reject; image.src=url;});
-                                    const canvas = document.createElement('canvas'); canvas.width=canvas.height=120*density;
-                                    const context = canvas.getContext('2d'); context.drawImage(image,0,0);
-                                    const pixels = context.getImageData(0,0,canvas.width,canvas.height).data;
-                                    let x0=canvas.width,y0=canvas.height,x1=0,y1=0;
-                                    for(let y=0;y<canvas.height;y++) for(let x=0;x<canvas.width;x++) {
-                                        if(pixels[(y*canvas.width+x)*4+3]>127) {x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x+1);y1=Math.max(y1,y+1);}
-                                    }
-                                    bounds.push([x0/density,y0/density,x1/density,y1/density]);
-                                } finally {URL.revokeObjectURL(url);}
-                            }
-                            return {expected,bounds,artworkUnchanged,originalUnchanged:before===original.outerHTML};
-                        }""", {'body':body, 'angle':31 if index == 2 else 0})
-                        self.assertTrue(measured['originalUnchanged'])
-                        self.assertTrue(measured['artworkUnchanged'])
-                        for density, bounds in zip([5, 10], measured['bounds']):
-                            for actual, expected in zip(bounds, measured['expected']):
-                                self.assertAlmostEqual(actual, expected, delta=2/density + .02)
-            finally:
-                browser.close()
-
-    def test_prepared_artwork_keeps_auto_bleed_disabled(self):
-        from playwright.sync_api import sync_playwright
-        source = Path(self.tmp.name) / 'bleed.pdf'
-        source.write_bytes(mixed_fixture())
-        with sync_playwright() as playwright:
-            browser, page = self.open_page(playwright)
-            try:
-                page.set_input_files('#file', str(source))
-                self.start_nesting(page)
-                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
-                before = json.load(urlopen(self.url() + '/api/state', timeout=10))
-                self.assertTrue(page.locator('#auto-bleed').is_hidden())
-                page.click('#piece-review summary')
-                page.wait_for_function("() => [...document.querySelectorAll('.piece-card img')].length > 0 && [...document.querySelectorAll('.piece-card img')].every(i => i.complete && i.naturalWidth > 0)")
-                self.assertEqual(page.locator('.piece-card').count(),len(before['job']['parts']))
-                self.assertNotIn('thru',page.locator('#piece-cards').inner_text())
-                self.assertNotIn('kiss',page.locator('#piece-cards').inner_text())
-                page.locator('#auto-bleed').evaluate("node => { node.value = '0.125'; node.dispatchEvent(new Event('change', {bubbles:true})); }")
-                self.start_nesting(page)
-                page.wait_for_function("old => current && current.id !== old && !busy && current.status === 'ready'", arg=before['id'], timeout=90000)
-                after = json.load(urlopen(self.url() + '/api/state', timeout=10))
-                self.assertNotEqual(before['id'], after['id'])
-                self.assertEqual(after['job']['settings']['autoBleedMm'], 0)
-                self.assertTrue(all('nestingPoints' not in p for p in after['job']['parts']))
-                from engine import validate_result
-                validate_result(after['job'], after['result'])
-                first = self.download(page)
-                with ZipFile(io.BytesIO(first)) as archive:
-                    self.assertIn('artwork.pdf', archive.namelist())
-            finally:
-                browser.close()
-
-    def test_red_status_disables_send(self):
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as playwright:
-            browser, page = self.open_page(playwright)
-            try:
-                page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '0.6')
-                page.locator('#settings').evaluate('node => node.close()')
-                self.start_nesting(page)
-                page.wait_for_selector('#gate.problem', timeout=90000)
-                self.assertTrue(page.locator('#export').is_disabled())
-                self.assertNotIn('cuts ok', page.locator('#gate').inner_text().casefold())
-                color = page.locator('#gate').evaluate(
-                    "el => JSON.stringify({color: getComputedStyle(el).color,"
-                    " adjust: getComputedStyle(el).forcedColorAdjust,"
-                    " forced: matchMedia('(forced-colors: active)').matches,"
-                    " alarm: getComputedStyle(document.documentElement).getPropertyValue('--alarm').trim()})"
-                )
-                self.assertIn('217, 47, 0', color)
-                self.assertNotEqual(page.locator('#export').evaluate('el => getComputedStyle(el).backgroundColor'), 'rgb(17, 17, 17)')
-                page.locator('#export').focus()
-                page.keyboard.press('Space')
-                self.assertTrue(page.locator('#export').is_disabled())
-                self.assertFalse(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
-                page.screenshot(path=str(SCREENSHOTS / 'eznest-desktop-blocked.png'), full_page=True)
-                page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-blocked.png'), full_page=True)
-            finally:
-                browser.close()
-
-    def test_upload_and_changes_wait_for_start_nesting(self):
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as playwright:
-            browser, page = self.open_page(playwright)
-            try:
-                solves=[]
-                page.on('request', lambda request: solves.append(request.url) if request.url.endswith('/api/solve') else None)
-                self.assertEqual(page.locator('#nest').count(), 0)
-                page.locator('#settings').evaluate('node => node.close()')
-                page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
-                page.wait_for_function("() => document.body.dataset.step === 'configure' && !importing")
-                self.assertEqual(solves, [])
-                self.assertFalse(page.locator('#drop-screen').is_hidden())
-                self.start_nesting(page)
-                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#checks')?.textContent || '')", timeout=90000)
-                self.assertEqual(page.locator('#sheets .num').inner_text().strip(), '1')
-                self.assertIn('4 piece', page.locator('#checks').inner_text().casefold())
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.fill('#sets', '2')
-                self.assertEqual(len(solves), 1)
-                self.assertTrue(page.locator('#export').is_hidden())
-                self.start_nesting(page)
-                page.wait_for_function("() => /8 pieces/i.test(document.querySelector('#checks')?.textContent || '')", timeout=90000)
-                self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
-                self.assertNotIn('problem', page.locator('#gate').get_attribute('class') or '')
-                page.click('#start-over')
-                page.wait_for_function("() => document.body.dataset.step === 'drop'")
-                self.assertEqual(page.input_value('#sets'), '1')
-                self.assertFalse(page.locator('#job-options').evaluate('n => n.open'))
-                page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
-                page.wait_for_function("() => document.body.dataset.step === 'configure' && !importing")
-                page.locator('#start-nesting').focus()
-                page.keyboard.press('Enter')
-                page.wait_for_function("() => document.body.dataset.step === 'check'",timeout=90000)
-                self.assertEqual(len(solves), 3)
-                state=json.load(urlopen(self.url()+'/api/state'))
-                self.assertEqual(state['job']['productionJobs'][0]['sets'],1)
-                self.assertEqual(len(state['result']['placements']),4)
-            finally:
-                browser.close()
-
-
-    def test_chosen_width_nests_and_blocks(self):
-        from playwright.sync_api import sync_playwright
-        sample = str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg')
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            page = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True).new_page()
-            try:
-                page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                self.wait_ready(page)
-                page.locator('#settings').evaluate('node => node.close()')
-                self.assertEqual(page.input_value('#nest-width'), '51.5')
-                page.screenshot(path=str(SCREENSHOTS / 'eznest-desktop-empty.png'), full_page=True)
-                page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-empty.png'), full_page=True)
-                page.set_viewport_size({'width': 1280, 'height': 900})
-                page.set_input_files('#file', sample)
-                self.start_nesting(page)
-                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
-                full = json.load(urlopen(self.url() + '/api/state', timeout=10))['result']['width']
-                self.assertAlmostEqual(full, 51.5 * 25.4, places=1)
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '30')
-                self.start_nesting(page)
-                page.wait_for_function(
-                    """() => {
-                      const gate = document.querySelector('#gate');
-                      const width = Number(document.body.dataset.nestWidth);
-                      return Math.abs(width - 762) < 1 && /cuts ok/i.test(gate?.textContent || '')
-                        && !gate.classList.contains('problem');
-                    }""",
-                    timeout=90000)
-                narrow = json.load(urlopen(self.url() + '/api/state', timeout=10))
-                self.assertAlmostEqual(narrow['result']['width'], 30 * 25.4, places=1)
-                self.assertLess(narrow['result']['width'], full - 100)
-                self.assertAlmostEqual(narrow['job']['settings']['sheetLength'], 60 * 25.4, places=0)
-                self.assertEqual(page.locator('#used-width').inner_text(), 'on 30" wide')
-                self.assertFalse(page.locator('#export').is_disabled())
-                page.locator('#settings').evaluate('node => node.close()')
-                page.screenshot(path=str(SCREENSHOTS / 'eznest-desktop-ready.png'), full_page=True)
-                page.screenshot(path=str(SCREENSHOTS / 'eznest-width-desktop.png'), full_page=True)
-                page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-ready.png'), full_page=True)
-                page.screenshot(path=str(SCREENSHOTS / 'eznest-width-mobile.png'), full_page=True)
-                box = page.locator('#nest-width').bounding_box()
-                self.assertLessEqual(box['x'] + box['width'], 390)
-                page.set_viewport_size({'width': 1280, 'height': 900})
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '60')
-                self.start_nesting(page)
-                page.wait_for_selector('#gate.problem', timeout=15000)
-                self.assertIn('printable', page.locator('#gate').inner_text().casefold())
-                self.assertTrue(page.locator('#export').is_disabled())
-                self.assertNotIn('cuts ok', page.locator('#gate').inner_text().casefold())
-                page.screenshot(path=str(SCREENSHOTS / 'eznest-desktop-blocked.png'), full_page=True)
-                page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-blocked.png'), full_page=True)
-                page.set_viewport_size({'width': 1280, 'height': 900})
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '2')
-                page.wait_for_function("() => /wider than this width/i.test(document.querySelector('#gate')?.textContent || '')", timeout=15000)
-                self.assertTrue(page.locator('#gate').evaluate("el => el.classList.contains('problem')"))
-                self.assertTrue(page.locator('#export').is_disabled())
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '0')
-                page.wait_for_function("() => /greater than 0/i.test(document.querySelector('#gate')?.textContent || '')", timeout=15000)
-                self.assertTrue(page.locator('#export').is_disabled())
-            finally:
-                browser.close()
-
-
-    def test_gang_sheet_keeps_each_files_quantity(self):
-        from playwright.sync_api import sync_playwright
-        sample = (Path(__file__).resolve().parents[1] / 'sample-artwork.svg').read_text(encoding='utf-8')
-        badge = Path(self.tmp.name) / 'badge.svg'
-        label = Path(self.tmp.name) / 'label.svg'
-        badge.write_text(sample, encoding='utf-8')
-        label.write_text(sample, encoding='utf-8')
-        shots = SCREENSHOTS
-        shots.mkdir(parents=True, exist_ok=True)
-
-        def ready(count):
-            return (
-                "() => { const text = document.querySelector('#checks')?.textContent || '';"
-                " const gate = document.querySelector('#gate');"
-                f" return /^\\s*{count} pieces/i.test(text) && gate && !gate.classList.contains('problem'); }}"
-            )
-
-        with sync_playwright() as playwright:
-            browser, page = self.open_page(playwright)
-            try:
-                page.locator('#settings').evaluate('node => node.close()')
-                page.set_input_files('#file', [str(badge), str(label)])
-                self.start_nesting(page)
-                page.wait_for_function(ready(8), timeout=90000)
-                self.assertEqual(page.locator('#files li').count(), 2)
-                self.assertIn('badge.svg', page.locator('#files').inner_text())
-                self.assertIn('label.svg', page.locator('#files').inner_text())
-                self.assertEqual(page.locator('#files input').nth(0).input_value(), '1')
-                self.assertEqual(page.locator('#files input').nth(1).input_value(), '1')
-                self.assertEqual(page.locator('#files button').count(), 2)
-                page.locator('#files input').nth(1).fill('2')
-                self.assertEqual(page.locator('#files input').nth(1).input_value(), '2')
-                self.start_nesting(page)
-                page.wait_for_function(ready(12), timeout=90000)
-                self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
-                page.screenshot(path=str(shots / 'gang-desktop.png'), full_page=True)
-                page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path=str(shots / 'gang-mobile.png'), full_page=True)
-                remove = page.locator('#files button').first.bounding_box()
-                self.assertLessEqual(remove['x'] + remove['width'], 390)
-                page.set_viewport_size({'width': 1280, 'height': 900})
-                page.locator('#files button').first.click()
-                self.start_nesting(page)
-                page.wait_for_function(ready(8), timeout=90000)
-                self.assertEqual(page.locator('#files li').count(), 1)
-                self.assertIn('label.svg', page.locator('#files').inner_text())
-                self.assertNotIn('badge.svg', page.locator('#files').inner_text())
-                page.set_input_files('#more', str(badge))
-                self.start_nesting(page)
-                page.wait_for_function(ready(12), timeout=90000)
-                self.assertEqual(page.locator('#files li').count(), 2)
-                self.assertFalse(page.locator('#add-files').is_hidden())
-                self.assertTrue(page.locator('#stop').is_hidden())
-                self.assertEqual(page.locator('#stop').text_content().strip(), 'Stop · keep best')
-            finally:
-                browser.close()
-
-    def test_pdf_compatible_ai_imports_and_unreadable_ai_says_save_as_pdf(self):
-        from playwright.sync_api import sync_playwright
-        good = Path(self.tmp.name) / 'kit.ai'
-        bad = Path(self.tmp.name) / 'poster.ai'
-        good.write_bytes(mixed_fixture())
-        bad.write_bytes(b'%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 200 100\n')
-        shots = SCREENSHOTS
-        shots.mkdir(parents=True, exist_ok=True)
-        with sync_playwright() as playwright:
-            browser, page = self.open_page(playwright)
-            try:
-                page.locator('#settings').evaluate('node => node.close()')
-                page.set_input_files('#file', str(bad))
-                page.wait_for_selector('#status.error', timeout=20000)
-                self.assertEqual(page.locator('#status').inner_text().strip(), 'poster.ai: Use PDF, or save AI with Create PDF Compatible File enabled.')
-                self.assertNotIn('Reading', page.locator('#status').inner_text())
-                self.assertTrue(page.locator('#export').is_disabled())
-                self.assertEqual(page.locator('body').get_attribute('data-step'),'drop')
-                self.assertEqual(page.locator('#checks').inner_text().strip(),'')
-                page.screenshot(path=str(shots / 'ai-desktop.png'), full_page=True)
-                page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path=str(shots / 'ai-mobile.png'), full_page=True)
-                page.set_viewport_size({'width': 1280, 'height': 900})
-                page.set_input_files('#file', str(good))
-                self.start_nesting(page)
-                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
-                self.assertIn('thru', page.locator('#checks').inner_text().casefold())
-                self.assertIn('kiss', page.locator('#checks').inner_text().casefold())
-                packed = self.download(page)
-                with ZipFile(io.BytesIO(packed)) as archive:
-                    pdf = archive.read('artwork.pdf')
-                self.assertIn(b'CutContour_Thru-cut', pdf)
-                self.assertIn(b'CutContour_Kiss-cut', pdf)
-            finally:
-                browser.close()
-
-    def test_refresh_restores_pdf_and_svg_inputs_and_resumes_running_job(self):
-        from playwright.sync_api import sync_playwright
-        pdf = Path(self.tmp.name) / 'refresh.ai'
-        pdf.write_bytes(mixed_fixture())
-        svg = Path(__file__).resolve().parents[1] / 'sample-artwork.svg'
-        with sync_playwright() as playwright:
-            for file in (pdf, svg):
-                with self.subTest(format=file.suffix):
-                    server.STATE.clear()
-                    server.STATE.update(status='idle')
-                    browser, page = self.open_page(playwright)
+        fixture = test_web_mvp.WebMvpTests()
+        fixture.setUp()
+        try:
+            hot = server.WORK / 'hot'
+            hot.mkdir()
+            with patch.object(server, 'OUTPUT', OutputFolder(server.WORK / 'output-folder.json')):
+                with sync_playwright() as playwright:
+                    browser = test_web_mvp.launch_browser(playwright)
                     try:
-                        page.locator('#job-options').evaluate('n => { n.open = true }')
-                        page.fill('#sets', '2')
-                        page.locator('#seconds').evaluate("node => node.value = '1'")
-                        page.click('#edit-material')
-                        page.click('#material-advanced summary')
-                        self.assertTrue(page.locator('#auto-bleed').is_hidden())
-                        self.assertTrue(page.locator('#bleed').is_hidden())
-                        page.select_option('#rotations', '0,180')
-                        page.click('#save-material')
-                        page.set_input_files('#file', str(file))
-                        self.start_nesting(page)
-                        page.wait_for_function("() => document.body.dataset.step === 'check' && /cuts ok/i.test(document.querySelector('#gate').textContent)", timeout=90000)
-                        before = json.load(urlopen(self.url() + '/api/state', timeout=10))
-                        page.reload()
-                        self.wait_ready(page)
-                        self.assertEqual(page.locator('#files li').count(), 1)
-                        self.assertEqual(page.locator('#files input').input_value(), '2')
-                        self.assertEqual(page.input_value('#sets'), '2')
+                        page = browser.new_page(viewport={'width': 1100, 'height': 900})
+                        page.goto(fixture.url() + '/web')
+                        fixture.wait_ready(page)
+                        self.assertTrue(page.locator('#setup').is_visible())
+                        page.locator('#setup').screenshot(path=str(test_web_mvp.SCREENSHOTS / 'first-run.png'))
+                        page.fill('#setup-printer', 'Customer printer')
+                        page.fill('#setup-hot', str(hot / 'missing'))
+                        page.fill('#setup-thru', 'MyThru')
+                        page.fill('#setup-kiss', 'MyKiss')
+                        page.select_option('#setup-units', 'mm')
+                        page.click('#setup-save')
+                        page.wait_for_function("() => !document.querySelector('#setup-error').hidden")
+                        self.assertFalse(shop_deploy.load_shop(server.WORK)['setupComplete'])
+                        page.fill('#setup-hot', str(hot))
+                        page.click('#setup-save')
+                        page.wait_for_function("() => document.querySelector('#setup').hidden")
+                        page.close()
+                        # A fresh browser context must receive server settings.
+                        page = browser.new_page(viewport={'width': 1100, 'height': 900})
+                        page.goto(fixture.url() + '/web')
+                        fixture.wait_ready(page)
+                        self.assertFalse(page.locator('#setup').is_visible())
                         self.assertEqual(page.input_value('#unit'), 'mm')
-                        self.assertEqual(page.input_value('#auto-bleed'), '0')
-                        self.assertEqual(page.input_value('#rotations'), '0,180')
-                        self.assertAlmostEqual(float(page.input_value('#gap')), 3)
-                        unchanged = json.load(urlopen(self.url() + '/api/state', timeout=10))
-                        self.assertEqual(unchanged['id'], before['id'])
-                        self.assertEqual(unchanged['result'], before['result'])
-                        with page.expect_response(lambda response: response.url.endswith('/api/solve'), timeout=10000) as search:
-                            page.locator('#job-options').evaluate('n => { n.open = true }')
-                            page.locator('#sets').fill('3')
-                            self.start_nesting(page)
-                        self.assertEqual(search.value.status, 200)
-                        running = json.load(urlopen(self.url() + '/api/state', timeout=10))
-                        self.assertEqual(running['status'], 'running')
-                        self.assertEqual(running['job']['productionJobs'][0]['sets'], 3)
-                        page.reload()
-                        self.wait_ready(page)
-                        self.start_nesting(page)
-                        page.wait_for_function("() => document.body.dataset.step === 'check' && /cuts ok/i.test(document.querySelector('#gate').textContent)", timeout=90000)
-                        after = json.load(urlopen(self.url() + '/api/state', timeout=10))
-                        self.assertEqual(after['job']['productionJobs'][0]['sets'], 3)
-                        self.assertEqual(len(after['result']['placements']) * 2, len(before['result']['placements']) * 3)
-                        self.assertEqual(after['job']['settings'], {**before['job']['settings'],'seconds':30})
-                        self.assertEqual(page.locator('#files input').input_value(), '3')
-                        self.assertEqual(page.input_value('#sets'), '3')
-                        self.assertEqual(after['job'].get('documentSources'), before['job'].get('documentSources'))
-                        self.assertEqual(after['job'].get('svgSources'), before['job'].get('svgSources'))
+                        self.assertEqual(page.input_value('#thru-name'), 'MyThru')
+                        self.assertEqual(page.input_value('#printer'), 'Customer printer')
+                        page.click('#settings-open')
+                        page.locator('#settings').wait_for(state='visible')
+                        self.assertFalse(page.locator('#output-network').is_checked())
+                        self.assertTrue(page.locator('#lan').is_disabled())
+                        self.assertEqual(page.input_value('#cut-preset'), 'custom')
+                        # Use an illustrative path in the documentation screenshot,
+                        # after testing persistence against the real temporary folder.
+                        page.fill('#hot-folder', r'C:\Print\Input')
+                        page.locator('#settings .panel').evaluate('node => { node.style.maxHeight = "none"; node.style.overflow = "visible"; }')
+                        page.locator('#settings .panel').screenshot(path=str(test_web_mvp.SCREENSHOTS / 'settings.png'))
                     finally:
                         browser.close()
-
-    def test_shop_settings_persist(self):
-        from playwright.sync_api import sync_playwright
-        folder = Path(self.tmp.name) / 'hot'
-        folder.mkdir()
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
-            try:
-                page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                self.wait_ready(page)
-                page.select_option('#material','custom')
-                page.fill('#preset-name', 'Shop vinyl')
-                page.locator('#material-advanced').evaluate('n => { n.open = true }')
-                page.fill('#gap', '0.2')
-                page.fill('#roll-length', '3600')
-                page.locator('#material-advanced').evaluate('n => { n.open = true }')
-                page.fill('#available-length', '1800')
-                page.click('#save-material')
-                saved_material = page.input_value('#material')
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '30')
-                page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
-                page.fill('#thru-name', 'ShopThru')
-                page.fill('#kiss-name', 'ShopKiss')
-                page.fill('#hot-folder', str(folder))
-                page.locator('#hot-folder').dispatch_event('change')
-                page.wait_for_function("() => /Default print folder saved/i.test(document.querySelector('#status').textContent)", timeout=10000)
-                page.reload()
-                self.wait_ready(page)
-                self.assertEqual(page.input_value('#material'), saved_material)
-                self.assertIn('Shop vinyl', page.locator('#material option:checked').inner_text())
-                self.assertEqual(page.input_value('#preset-name'), 'Shop vinyl')
-                self.assertEqual(page.input_value('#gap'), '0.2')
-                self.assertEqual(page.input_value('#available-length'), '1800')
-                self.assertEqual(page.input_value('#nest-width'), '30')
-                self.assertEqual(page.input_value('#thru-name'), 'ShopThru')
-                self.assertEqual(page.input_value('#kiss-name'), 'ShopKiss')
-                self.assertEqual(Path(page.input_value('#hot-folder')), folder.resolve())
-                self.assertEqual(page.input_value('#cut-preset'), 'custom')
-            finally:
-                try:
-                    page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
-                    page.fill('#hot-folder', '')
-                    page.locator('#hot-folder').dispatch_event('change')
-                    page.wait_for_function("() => /Choose a location when saving/i.test(document.querySelector('#status').textContent)", timeout=10000)
-                except Exception:
-                    pass
-                browser.close()
-
-    def test_material_rolls_save_switch_cancel_and_check_available_stock(self):
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
-            try:
-                page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                self.wait_ready(page)
-                page.select_option('#material','holographic')
-                self.assertEqual(page.input_value('#preset-name'), 'Moto Holographic')
-                page.locator('#material-advanced').evaluate('n => { n.open = true }')
-                page.fill('#gap', '0.25')
-                page.locator('#material-advanced').evaluate('n => { n.open = true }')
-                page.fill('#margin', '0.3')
-                page.fill('#roll-length', '3600')
-                page.locator('#material-advanced').evaluate('n => { n.open = true }')
-                page.fill('#available-length', '1800')
-                page.click('#save-material')
-                self.assertTrue(page.locator('#preset-editor').is_hidden())
-                page.select_option('#material','white-gloss')
-                self.assertEqual(page.input_value('#gap'), '0.12')
-                self.assertEqual(page.input_value('#available-length'), '')
-                page.select_option('#material','holographic')
-                self.assertEqual(page.input_value('#gap'), '0.25')
-                self.assertEqual(page.input_value('#margin'), '0.3')
-                self.assertEqual(page.input_value('#available-length'), '1800')
-                page.select_option('#material','custom')
-                page.fill('#preset-name', 'Moto Holographic')
-                page.click('#save-material')
-                self.assertIn('already exists', page.inner_text('#preset-error'))
-                page.fill('#preset-name', 'Small remnant')
-                page.fill('#width', '55')
-                page.click('#save-material')
-                self.assertIn('wider than the roll', page.inner_text('#preset-error'))
-                page.click('#cancel-material')
-                self.assertEqual(page.input_value('#width'), '51.5')
-                self.assertEqual(page.input_value('#material'), 'holographic')
-                page.click('#edit-material')
-                page.fill('#width', '20')
-                page.locator('#material-dialog').get_by_role('button',name='About Printable width',exact=True).hover()
-                self.assertTrue(page.locator('#setting-help').evaluate('n => { const r=n.getBoundingClientRect(); return n.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)); }'))
-                page.screenshot(path=str(SCREENSHOTS/'material-editor-desktop.png'),full_page=True)
-                page.set_viewport_size({'width':390,'height':844})
-                page.screenshot(path=str(SCREENSHOTS/'material-editor-mobile.png'),full_page=True)
-                self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
-                page.set_viewport_size({'width':1280,'height':900})
-                page.keyboard.press('Escape')
-                self.assertFalse(page.locator('#material-dialog').evaluate('n => n.open'))
-                self.assertEqual(page.input_value('#width'), '51.5')
-                self.assertFalse(page.locator('#material').is_disabled())
-                page.select_option('#material','custom')
-                page.fill('#preset-name', 'Small remnant')
-                page.locator('#material-advanced').evaluate('n => { n.open = true }')
-                page.fill('#available-length', '2')
-                page.click('#save-material')
-                remnant = page.input_value('#material')
-                page.reload()
-                self.wait_ready(page)
-                self.assertEqual(page.input_value('#material'), remnant)
-                self.assertEqual(page.input_value('#available-length'), '2')
-                page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
-                self.start_nesting(page)
-                page.wait_for_selector('#gate.problem', timeout=90000)
-                self.assertTrue(page.locator('#export').is_disabled())
-                self.assertEqual(page.input_value('#available-length'), '2')
-            finally:
-                browser.close()
-
-    def test_shop_server_gear(self):
-        from playwright.sync_api import sync_playwright
-        shots = SCREENSHOTS
-        shots.mkdir(parents=True, exist_ok=True)
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
-            try:
-                page.route('**/api/update', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({
-                    'ok': True, 'current': '1.0.0-rc.1', 'latest': '1.0.0-rc.1', 'updated': False, 'message': 'This is the latest release.'
-                })))
-                page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                self.wait_ready(page)
-                page.locator('#setup').screenshot(path=str(shots / 'first-run-desktop.png'))
-                page.click('#setup-preset')
-                page.locator('#setup').screenshot(path=str(shots / 'first-run-preset-desktop.png'))
-                page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
-                page.click('#settings-updates > summary')
-                self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.5')
-                self.assertEqual(page.locator('#update').inner_text(), 'Check for update')
-                self.assertTrue(page.locator('#updates').is_checked())
-                self.assertFalse(page.locator('#update').is_hidden())
-                self.assertFalse(page.locator('#lan').is_checked())
-                self.assertTrue(page.locator('#lan-note').is_hidden())
-                page.click('#update')
-                page.wait_for_function("() => /latest release/i.test(document.querySelector('#status').textContent)", timeout=10000)
-                page.locator('#updates').uncheck()
-                page.wait_for_function("() => document.querySelector('#update').hidden")
-                self.assertFalse(page.locator('#updates').is_checked())
-                self.assertTrue(page.locator('#lan').is_disabled())
-                page.locator('#settings-delivery').evaluate('node => node.open = true')
-                self.assertIn('Shop network access is configured when the app starts.', page.locator('#settings').inner_text())
-                page.locator('#onyx-pc').check()
-                page.wait_for_function("() => document.querySelector('#hot-default').textContent.includes('C:\\\\ONYX\\\\')")
-                self.assertIn(r'C:\ONYX\EPSON SureColor S80600 ONYX Input', page.locator('#hot-default').inner_text())
-                page.locator('#onyx-pc').uncheck()
-                page.wait_for_function("() => document.querySelector('#hot-default').textContent.includes('\\\\\\\\ONYX\\\\')")
-                self.assertIn(r'\\ONYX\EPSON SureColor S80600 ONYX Input', page.locator('#hot-default').inner_text())
-                self.assertEqual(page.input_value('#hot-folder'), '')
-                page.locator('#settings .panel').evaluate('node => { node.style.maxHeight = "none"; node.style.overflow = "visible"; }')
-                page.locator('#settings .panel').screenshot(path=str(shots / 'settings-desktop.png'))
-                page.locator('#settings .panel').screenshot(path=str(shots / 'lan-desktop.png'))
-                page.set_viewport_size({'width': 390, 'height': 900})
-                page.locator('#settings .panel').screenshot(path=str(shots / 'lan-mobile.png'))
-            finally:
-                browser.close()
-
-    def contour_file(self, name):
-        artwork = '''<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="80mm" viewBox="0 0 200 80">
-          <g id="CutContour" data-name="CutContour" data-ezn-layer="true">
-            <rect id="piece" x="8" y="8" width="160" height="60" fill="#f2c14e"/>
-          </g>
-        </svg>'''
-        source = Path(self.tmp.name) / name
-        source.write_text(artwork, encoding='utf-8')
-        return source
-
-    def drop_plain_contour(self, page, name):
-        page.set_input_files('#file', str(self.contour_file(name)))
-        self.start_nesting(page)
-        page.wait_for_function(
-            "text => (document.querySelector('#checks')?.textContent || '').trim() === text",
-            arg='Plain CutContour found: Kiss or Thru?',
-            timeout=90000)
-
-    def sent_artwork(self, page):
-        page.click('#export')
-        page.wait_for_selector('#confirm:not([hidden])')
-        with page.expect_download(timeout=30000) as pending:
-            page.click('#confirm-send')
-        item = pending.value
-        target = Path(self.tmp.name) / (item.suggested_filename or 'eznest.zip')
-        item.save_as(str(target.resolve()))
-        with ZipFile(target) as archive:
-            return archive.read('artwork.svg').decode('utf-8')
-
-    def test_plain_cutcontour_maps_to_kiss(self):
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            page = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True).new_page()
-            try:
-                page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                self.wait_ready(page)
-                self.drop_plain_contour(page, 'plain-kiss.svg')
-                self.assertEqual(page.locator('#checks').inner_text().strip(), 'Plain CutContour found: Kiss or Thru?')
-                self.assertEqual(page.locator('#choose-kiss').get_attribute('aria-pressed'), 'true')
-                self.assertEqual(page.locator('#choose-thru').get_attribute('aria-pressed'), 'false')
-                self.assertFalse(page.locator('#choose-confirm').is_hidden())
-                self.assertTrue(page.locator('#export').is_disabled())
-                page.click('#choose-confirm')
-                self.start_nesting(page)
-                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
-                artwork = self.sent_artwork(page)
-                self.assertIn('CutContour_Kiss-cut', artwork)
-                self.assertNotIn('CutContour', artwork.replace('CutContour_Kiss-cut', ''))
-            finally:
-                browser.close()
-
-    def test_plain_cutcontour_maps_to_thru(self):
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            page = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True).new_page()
-            try:
-                page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                self.wait_ready(page)
-                page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
-                page.select_option('#cut-preset', 'ln')
-                self.assertEqual(page.input_value('#thru-name'), 'LNThru-cut')
-                self.assertEqual(page.input_value('#kiss-name'), 'LNKiss-cut')
-                self.drop_plain_contour(page, 'plain-thru.svg')
-                self.assertTrue(page.locator('#export').is_disabled())
-                page.locator('#settings').evaluate('node => node.close()')
-                page.click('#choose-thru')
-                self.assertEqual(page.locator('#choose-thru').get_attribute('aria-pressed'), 'true')
-                self.assertEqual(page.locator('#choose-kiss').get_attribute('aria-pressed'), 'false')
-                self.assertTrue(page.locator('#export').is_disabled())
-                page.click('#choose-confirm')
-                self.start_nesting(page)
-                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
-                artwork = self.sent_artwork(page)
-                self.assertIn('LNThru-cut', artwork)
-                self.assertNotIn('LNKiss-cut', artwork)
-                self.assertNotIn('CutContour', artwork)
-            finally:
-                browser.close()
-
-    def test_plain_cutcontour_blocks_send_until_chosen(self):
-        from playwright.sync_api import sync_playwright
-        shots = SCREENSHOTS
-        shots.mkdir(parents=True, exist_ok=True)
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
-            try:
-                page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                self.wait_ready(page)
-                self.drop_plain_contour(page, 'plain-wait.svg')
-                self.assertEqual(page.locator('#checks').inner_text().strip(), 'Plain CutContour found: Kiss or Thru?')
-                self.assertEqual(page.locator('#choose-kiss').get_attribute('aria-pressed'), 'true')
-                self.assertFalse(page.locator('#choose-confirm').is_hidden())
-                self.assertTrue(page.locator('#export').is_disabled())
-                self.assertFalse(page.locator('#choice').is_hidden())
-                page.keyboard.press('Enter')
-                self.assertTrue(page.locator('#export').is_disabled())
-                self.assertTrue(page.locator('#confirm').is_hidden())
-                page.screenshot(path=str(shots / 'rc5-cutcontour-desktop.png'), full_page=True)
-                page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path=str(shots / 'rc5-cutcontour-mobile.png'), full_page=True)
-            finally:
-                browser.close()
-
-    def test_unknown_cut_name_blocks_send_until_thru_or_kiss(self):
-        from playwright.sync_api import sync_playwright
-        artwork = '''<svg xmlns="http://www.w3.org/2000/svg" width="200mm" height="80mm" viewBox="0 0 200 80">
-          <g id="cut-layer" data-name="Cut 2" data-ezn-layer="true">
-            <rect id="piece" x="8" y="8" width="160" height="60" fill="#f2c14e"/>
-          </g>
-        </svg>'''
-        source = Path(self.tmp.name) / 'cut-2.svg'
-        source.write_text(artwork, encoding='utf-8')
-        shots = SCREENSHOTS
-        shots.mkdir(parents=True, exist_ok=True)
-        sentence = 'Unknown cut layer "Cut 2". Rename to thru or kiss.'
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
-            try:
-                page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                self.wait_ready(page)
-                page.screenshot(path=str(shots / 'rc2-materials-desktop.png'), full_page=True)
-                page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path=str(shots / 'rc2-materials-mobile.png'), full_page=True)
-                page.set_viewport_size({'width': 1280, 'height': 900})
-                page.set_input_files('#file', str(source))
-                self.start_nesting(page)
-                page.wait_for_selector('#gate.problem', timeout=90000)
-                self.assertEqual(page.locator('#checks').inner_text().strip(), sentence)
-                self.assertTrue(page.locator('#export').is_disabled())
-                self.assertFalse(page.locator('#choose-thru').is_hidden())
-                self.assertFalse(page.locator('#choose-kiss').is_hidden())
-                self.assertEqual(page.locator('#choose-thru').inner_text(), 'THRU')
-                self.assertEqual(page.locator('#choose-kiss').inner_text(), 'KISS')
-                self.assertTrue(page.locator('#choose-confirm').is_hidden())
-                page.screenshot(path=str(shots / 'rc2-unknown-desktop.png'), full_page=True)
-                page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path=str(shots / 'rc2-unknown-mobile.png'), full_page=True)
-                page.set_viewport_size({'width': 1280, 'height': 900})
-                page.keyboard.press('Enter')
-                self.assertTrue(page.locator('#export').is_disabled())
-                page.click('#choose-thru')
-                self.start_nesting(page)
-                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
-                self.assertFalse(page.locator('#export').is_disabled())
-                self.assertTrue(page.locator('#choice').is_hidden())
-            finally:
-                browser.close()
-
-    def test_send_confirms_sheet_summary_before_the_file_leaves(self):
-        from playwright.sync_api import sync_playwright
-        shots = SCREENSHOTS
-        shots.mkdir(parents=True, exist_ok=True)
-        with sync_playwright() as playwright:
-            browser = launch_browser(playwright)
-            page = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True).new_page()
-            try:
-                page.goto(self.url() + '/web', wait_until='domcontentloaded')
-                self.wait_ready(page)
-                page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
-                self.start_nesting(page)
-                page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
-                state = json.load(urlopen(self.url() + '/api/state', timeout=10))
-                self.assertFalse(page.locator('#readout').is_hidden())
-                self.assertEqual(page.locator('#sheet-id').text_content(), state['id'])
-                page.click('#export')
-                page.wait_for_selector('#confirm:not([hidden])')
-                self.assertTrue(page.locator('#edit-material').is_disabled())
-                self.assertTrue(page.locator('#material').is_disabled())
-                self.assertTrue(page.locator('#nest-width').is_disabled())
-                self.assertEqual(page.locator('#confirm-summary').count(), 0)
-                self.assertEqual(page.locator('#confirm-send').inner_text(), 'Download')
-                self.assertEqual(page.locator('#confirm-back').inner_text(), 'Back')
-                self.assertFalse(page.locator('#readout').is_hidden())
-                self.assertFalse(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
-                page.screenshot(path=str(shots / 'rc2-confirm-desktop.png'), full_page=True)
-                page.set_viewport_size({'width': 390, 'height': 844})
-                page.screenshot(path=str(shots / 'rc2-confirm-mobile.png'), full_page=True)
-                page.set_viewport_size({'width': 1280, 'height': 900})
-                page.click('#confirm-back')
-                self.assertTrue(page.locator('#confirm').is_hidden())
-                self.assertFalse(page.locator('#export').is_hidden())
-                self.assertFalse(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
-                page.click('#export')
-                with page.expect_download(timeout=30000) as pending:
-                    page.click('#confirm-send')
-                item = pending.value
-                target = Path(self.tmp.name) / (item.suggested_filename or 'eznest.zip')
-                item.save_as(str(target.resolve()))
-                with ZipFile(target) as archive:
-                    artwork = archive.read('artwork.svg').decode('utf-8')
-                self.assertIn(state['id'], artwork)
-                self.assertNotIn('barcode', artwork.casefold())
-                self.assertTrue(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
-            finally:
-                browser.close()
-
-
-if __name__ == '__main__':
-    unittest.main()
-
+        finally:
+            fixture.tearDown()
 
