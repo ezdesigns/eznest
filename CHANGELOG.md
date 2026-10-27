@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Backend telemetry draft records nested layouts, frozen packs, planned material,
+  local saves and configured print-folder handoffs. Local APIs accept explicit
+  queue/print confirmations and current roll readings. A banded atom outbox and
+  fake-hub sample prepare the future connector; OUTPUT transmission stays off.
+  The shared hub contract and dashboard connection are not yet integrated.
 - Stream browser PDF/AI uploads directly to disk, up to 2 GB, without base64 expansion. Illustrator/legacy JSON handoffs allow 256 MB; SVG remains 8 MB. Parser and geometry limits still apply.
 
 - The job panel has Upload job, Choose material, and Where will you print?

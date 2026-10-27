@@ -150,6 +150,21 @@ Zero is Out of stock; unknown remaining stock does not generate an alert.
 Remaining length and alerts are manual and local to this browser. Saving or
 printing elsewhere does not automatically change stock.
 
+## Backend telemetry draft
+
+The backend telemetry draft adds local lifecycle observations and a dormant atom
+adapter in `telemetry.py`. It distinguishes accepted nests, frozen packs, planned
+material allocations, local saves and successful configured-hot-folder writes.
+Queue, printed and cancellation states require explicit backend confirmation;
+there is no printer completion detection. Versioned current stock readings and
+linked physical rolls support reservation and remaining-length estimates without
+changing the browser's manually maintained material presets. Exact measurements
+stay local; pending proposal atoms contain job codes, opaque IDs and banded
+measurements, never customer names, filenames or artwork. The shared hub contract
+is not registered, OUTPUT still sends nothing, and no dashboard pairing is wired.
+See [the telemetry contract](docs/telemetry-contract.md) for API, retention and
+integration limits. This is operational tracking, not an accounting ledger.
+
 ## Tester review and feedback
 
 Open dashed cuts pause PDF import for a possible-guide review. The shop sees the
