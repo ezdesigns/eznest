@@ -50,7 +50,7 @@ class EngineTests(unittest.TestCase):
         job['parts']=[{'id':'a','points':[[0,0],[10,0],[10,10],[0,10]]}]
         def solution(y):
             return SimpleNamespace(placed_items=[SimpleNamespace(id='a',rotation=0,translation=(y,0))])
-        with patch('engine.spyrrow.StripPackingInstance') as factory:
+        with patch('engine.spyrrow.StripPackingInstance') as factory, patch('local_search.repack',side_effect=lambda job,result,budget: result):
             factory.return_value.solve.side_effect=[solution(30),solution(10),ValueError('later attempt failed')]
             with tempfile.TemporaryDirectory() as folder:
                 path=Path(folder)/'progress.json'
@@ -90,6 +90,83 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(result['validated'])
         self.assertLess(result['usedLength'],300)
         self.assertGreater(result['utilization'],.3)
+
+
+    def test_guarded_width_rejected_before_native_solver(self):
+        for gap, width in [(0,89.9),(0,90),(0,89.8),(3,89.9)]:
+            with self.subTest(gap=gap,width=width):
+                job=self.job();job['settings'].update(width=100,maxLength=None,gap=gap,margin=5,rotations=[0])
+                job['parts']=[{'id':'edge','points':[[0,0],[width,0],[width,20],[0,20]]}]
+                validate_job(job)  # Raw artwork fits, but the guarded solver contour does not.
+                with patch('engine.spyrrow.StripPackingInstance') as native:
+                    with self.assertRaisesRegex(ValueError,'safety clearance.*wider material'):
+                        solve(job)
+                    native.assert_not_called()
+
+
+    def test_near_width_fit_and_rotation_preserve_geometry(self):
+        for gap, width, rotations in [(0,89.7,[0]),(3,89.7,[0]),(0,89.9,[0,90,180,270])]:
+            with self.subTest(gap=gap,width=width,rotations=rotations):
+                job=self.job();job['settings'].update(width=100,maxLength=None,gap=gap,margin=5,rotations=rotations)
+                job['parts']=[{'id':'edge','quantity':2,'points':[[0,0],[width,0],[width,20],[0,20]]}]
+                result=solve(job);shapes=validate_result(job,result)
+                self.assertEqual(len(shapes),2)
+                self.assertAlmostEqual(sum(s.area for s in shapes),2*width*20)
+                if width==89.9:
+                    self.assertTrue(all(abs(p['rotation'])%180==90 for p in result['placements']))
+
+
+    def test_margin_is_independent_of_gap_without_relaxing_spacing(self):
+        for gap, margin in [(0,5),(3,5),(10,5),(3,0)]:
+            with self.subTest(gap=gap,margin=margin):
+                job=self.job();job['settings'].update(width=100,maxLength=None,gap=gap,margin=margin,rotations=[0])
+                width=100-2*margin-0.3
+                job['parts']=[{'id':'wide','quantity':2,'points':[[0,0],[width,0],[width,20],[0,20]]}]
+                result=solve(job);shapes=validate_result(job,result)
+                for shape in shapes:
+                    self.assertGreaterEqual(shape.bounds[0],margin)
+                    self.assertLessEqual(shape.bounds[2],100-margin)
+                    self.assertLess(shape.bounds[0]-margin,0.3)
+                self.assertGreaterEqual(shapes[0].distance(shapes[1]),gap)
+                self.assertLess(min(s.bounds[1] for s in shapes)-margin,0.3)
+
+
+    def test_free_rotation_guarded_square_rejected(self):
+        job=self.job();job['settings'].update(width=100,maxLength=None,gap=0,margin=5,rotations=None)
+        job['parts']=[{'id':'square','points':[[0,0],[89.9,0],[89.9,89.9],[0,89.9]]}]
+        with self.assertRaisesRegex(ValueError,'safety clearance'):
+            solve(job)
+
+    def test_short_search_shares_budget_and_keeps_preview_after_native_failure(self):
+        job=self.job();job['settings'].update(width=100,margin=3,gap=2,seconds=5)
+        job['parts']=[{'id':'a','points':[[0,0],[10,0],[10,10],[0,10]]}]
+        good=SimpleNamespace(placed_items=[SimpleNamespace(id='a',rotation=0,translation=(10,0))])
+        panic=type('PanicException',(BaseException,),{'__module__':'pyo3_runtime'})
+        import spyrrow
+        with patch('engine.spyrrow.StripPackingConfig', wraps=spyrrow.StripPackingConfig) as configs, patch('engine.spyrrow.StripPackingInstance') as factory:
+            factory.return_value.solve.side_effect=[good,panic('native trial failed')]
+            result=solve(job)
+            # A search under 15 seconds is one native call. The whole allocation
+            # stays there instead of being reserved for local repair.
+            self.assertEqual(result['searchAttempts'],1)
+            self.assertAlmostEqual(result['usedLength'],26)
+            self.assertEqual(sum(c.kwargs['total_computation_time'] for c in configs.call_args_list),5)
+            validate_result(job,result)
+        with patch('engine.spyrrow.StripPackingInstance') as factory:
+            factory.return_value.solve.side_effect=panic('native trial failed')
+            with self.assertRaisesRegex(ValueError,'could not find a safe fit'):
+                solve(job)
+        with patch('engine.spyrrow.StripPackingInstance') as factory:
+            factory.return_value.solve.side_effect=KeyboardInterrupt
+            with self.assertRaises(KeyboardInterrupt):solve(job)
+
+    def test_guard_precheck_uses_protected_artwork_envelope(self):
+        job=self.job();job['settings'].update(width=100,margin=5,gap=3,rotations=[0])
+        job['parts']=[{'id':'paint','points':[[0,0],[10,0],[10,10],[0,10]],
+                       'nestingPoints':[[0,0],[89.9,0],[89.9,20],[0,20]]}]
+        with patch('engine.spyrrow.StripPackingInstance') as native:
+            with self.assertRaisesRegex(ValueError,'safety clearance'):solve(job)
+            native.assert_not_called()
 
     def test_rotation_required_for_width(self):
         job=self.job()
