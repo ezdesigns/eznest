@@ -1031,9 +1031,12 @@ function renderSheet(frame, state, index) {
   const result = state.result;
   const sheets = sheetList(state);
   const sheet = sheets[index] || sheets[0];
-  const art = state.job.documentSources ? documentPreview(state) : EZNSVG.buildSVG(state.job, result);
+  // Keep the selected section's global coordinates, but exclude other sections.
+  // ViewBox padding alone can expose the next section below this one's edge.
+  const sectionResult = {...result, placements: result.placements.filter(item => (item.sheet || 0) === (sheet.index || 0))};
+  const art = state.job.documentSources ? documentPreview({...state, result: sectionResult}) : EZNSVG.buildSVG(state.job, sectionResult);
   if (!state.job.documentSources) {
-    applyAutoBleed(art, state.job, result);
+    applyAutoBleed(art, state.job, sectionResult);
     emphasizeCuts(art);
   }
   frame.replaceChildren();

@@ -30,6 +30,31 @@ def launch_browser(playwright):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_section_preview_excludes_neighboring_artwork(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                # The second section starts inside the first section's viewBox
+                # padding. It must not appear under the first section's ruler.
+                counts = page.evaluate('''() => {
+                    const state = {
+                        job: {documentSources: {}, parts: [{id:'a', preview:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>', previewWidth:10, previewHeight:10}]},
+                        result: {width:100, usedLength:200, placements:[
+                            {id:'a', x:5, y:5, rotation:0, sheet:0},
+                            {id:'a', x:5, y:101, rotation:0, sheet:1}]},
+                        manifest: {sheets:[{index:0,offset:0,usedLength:100},{index:1,offset:100,usedLength:100}]}
+                    };
+                    return [0,1].map(index => {
+                        renderSheet(document.querySelector('#preview'), state, index);
+                        const images = [...document.querySelectorAll('#preview image')];
+                        return images.map(image => image.parentNode.getAttribute('transform'));
+                    });
+                }''')
+                self.assertEqual(counts, [['translate(5 5) rotate(0)'], ['translate(5 101) rotate(0)']])
+            finally:
+                browser.close()
+
     def test_unnamed_cut_review_requires_choice_and_cancel_keeps_job(self):
         from playwright.sync_api import sync_playwright, expect
         from test_sticker_orders import outline_fixture
