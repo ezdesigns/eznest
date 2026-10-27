@@ -50,7 +50,7 @@ class EngineTests(unittest.TestCase):
         job['parts']=[{'id':'a','points':[[0,0],[10,0],[10,10],[0,10]]}]
         def solution(y):
             return SimpleNamespace(placed_items=[SimpleNamespace(id='a',rotation=0,translation=(y+2.02,2.02))])
-        with patch('engine.spyrrow.StripPackingInstance') as factory:
+        with patch('engine.spyrrow.StripPackingInstance') as factory, patch('local_search.repack',side_effect=lambda job,result,budget: result):
             factory.return_value.solve.side_effect=[solution(30),solution(10),ValueError('later attempt failed')]
             with tempfile.TemporaryDirectory() as folder:
                 path=Path(folder)/'progress.json'
@@ -143,12 +143,14 @@ class EngineTests(unittest.TestCase):
         good=SimpleNamespace(placed_items=[SimpleNamespace(id='a',rotation=0,translation=(12.02,2.02))])
         panic=type('PanicException',(BaseException,),{'__module__':'pyo3_runtime'})
         import spyrrow
-        with patch('engine.spyrrow.StripPackingConfig', wraps=spyrrow.StripPackingConfig) as configs, patch('engine.spyrrow.StripPackingInstance') as factory:
+        with patch('engine.spyrrow.StripPackingConfig', wraps=spyrrow.StripPackingConfig) as configs, patch('engine.spyrrow.StripPackingInstance') as factory, patch('local_search.repack',side_effect=lambda job,result,budget: result):
             factory.return_value.solve.side_effect=[good,panic('native trial failed')]
             result=solve(job)
             self.assertEqual(result['searchAttempts'],2)
             self.assertAlmostEqual(result['usedLength'],26)
-            self.assertEqual(sum(c.kwargs['total_computation_time'] for c in configs.call_args_list),5)
+            # Four native seconds plus one reserved for independently checked
+            # local repair share the requested five-second search allocation.
+            self.assertEqual(sum(c.kwargs['total_computation_time'] for c in configs.call_args_list),4)
             validate_result(job,result)
         with patch('engine.spyrrow.StripPackingInstance') as factory:
             factory.return_value.solve.side_effect=KeyboardInterrupt
