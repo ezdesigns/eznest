@@ -2420,6 +2420,7 @@ function renderInventory() {
   }
   const key = current?.job?.inventoryMaterialId;
   const prior = shopInventory.reservations.find(row => row.id === current?.id);
+  $('inventory-job-note').textContent = !current?.result ? 'Nest and review a job before reserving stock.' : !key ? 'Save this material to the shop, then nest again to reserve stock for this layout.' : '';
   $('inventory-reserve').disabled = !inventoryReady || inventoryBusy || busy || saving || !current?.result || !key || !!prior || !!pieceIssue(current) || !!cutProblem();
   $('inventory-reserve').textContent = prior ? (prior.status === 'reserved' ? 'Material reserved for this layout' : prior.status === 'used' ? 'Material use recorded' : 'Reservation released') : 'Reserve material for this layout';
   const rows = $('inventory-reservations'); rows.replaceChildren();
