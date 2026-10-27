@@ -62,7 +62,11 @@
         <span id="hot-error" class="lan-note" hidden></span>
         <button id="browse-output" class="link" type="button">Choose folder…</button>
       </label>
-
+      <label class="check wide"><input id="staging-on" type="checkbox"> Staging folder</label>
+      <label class="wide" id="staging-row" hidden>Staging folder
+        <input id="staging-folder" type="text" placeholder="Off" autocomplete="off">
+        <span class="hint">Optional. Off until you turn it on.</span>
+      </label>
       </div>
     </section>
     <details id="settings-cuts" class="settings-section">
@@ -94,24 +98,21 @@
     </details>
     <details id="settings-delivery" class="settings-section">
       <summary>Printer connection &amp; backup files</summary>
-      <p class="section-note">Only needed for a watched print folder or an extra saved copy. These controls do not change sticker quantities.</p>
+      <p class="section-note">These controls do not change sticker quantities.</p>
       <label class="wide">Printer
         <input id="printer" type="text" maxlength="80" autocomplete="off">
       </label>
-    <label class="check"><input id="staging-on" type="checkbox"> Staging folder</label>
-    <label class="wide" id="staging-row" hidden>Staging folder
-      <input id="staging-folder" type="text" placeholder="Off" autocomplete="off">
-      <span class="hint">Optional. Off until you turn it on.</span>
-    </label>
-    <label class="check"><input id="allow-undo" type="checkbox"> Undo send while the file is still in the folder</label>
-    <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
     <p id="hot-default" class="hint"></p>
     <label class="check"><input id="onyx-pc" type="checkbox"> This PC runs ONYX</label>
+    <label class="check"><input id="allow-undo" type="checkbox"> Undo send</label>
+    <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
+    <div id="lan-access" hidden>
     <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
     <p class="hint">Shop network access is configured when the app starts.</p>
     <p id="lan-note" class="lan-note" hidden>Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.</p>
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
+    </div>
     </details>
     <details id="settings-updates" class="settings-section">
       <summary>App updates</summary>
@@ -126,28 +127,6 @@
       <summary>What's new</summary>
       <div id="notes-body"></div>
     </details>
-    </details>
-    <details id="settings-support" class="settings-section">
-      <summary>Help &amp; troubleshooting</summary>
-      <p class="section-note">Use these details when checking a saved job or reporting a problem.</p>
-    <details id="local-activity">
-      <summary>Local activity · last 24 hours</summary>
-      <p class="hint">Saved only on this PC for 90 days. No artwork or filenames.
-      Sent means delivered to the hot folder, not printed. Re-sending the same pack counts once.</p>
-      <p id="activity-summary" role="status">Open to load activity.</p>
-      <button id="activity-refresh" class="link" type="button">Refresh activity</button>
-    </details>
-    <details id="job-details"><summary>Job details</summary>
-  <p id="job-checks" class="hint"></p>
-  <p id="sheet-id" class="sheet-id" hidden aria-label="Sheet ID"></p>
-    </details>
-    <details class="quick-guide"><summary>Help</summary>
-      <p>Add files, choose material and effort, then Start nesting. Review the layout and save.</p>
-      <p>My computer lets you choose a folder. Default print folder uses the folder saved in Settings. Check the file in your print software before printing.</p>
-    </details>
-
-      <a id="report" class="workspace" target="_blank" rel="noopener noreferrer" href="https://github.com/ezdesigns/eznest/issues/new?template=tester-problem.yml">Report a problem</a>
-      <a class="workspace" href="/">Full workspace</a>
     </details>
     <input id="seconds" type="hidden" value="30">
     <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
@@ -173,8 +152,8 @@
   <div class="result-overview" aria-label="Layout results">
   <div class="result-measures">
   <p class="metrics pending" id="readout" hidden>
-    <span id="result-heading" class="result-heading">Your layout</span>
-    <span class="metric length-metric"><span class="label">Roll length needed</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong><span id="used-width" class="used-width">on 51.5" wide</span></span>
+    <span id="result-heading" class="result-heading" hidden>Your layout</span>
+    <span class="metric length-metric"><span class="label">Roll length needed</span> <span class="length-figures"><strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong><span id="piece-count" class="piece-count"></span></span><span id="used-width" class="used-width">on 51.5" wide</span></span>
     <span class="metric section-metric"><span class="label">Print sections</span> <strong id="sheets"><span class="num">–</span></strong></span>
     <span class="space-meter"><span class="space-labels"><span id="coverage-label"></span><span><strong id="waste"><span class="num">–</span><span class="unit">%</span></strong> <button id="unused-info" type="button" class="help-label" data-help="Space outside the protected artwork outlines, including gaps and margins. This is not ink coverage or money saved.">unused space</button></span></span><span class="space-track" aria-hidden="true"><span id="coverage-bar"></span></span></span>
   </p>
@@ -391,10 +370,8 @@
       <label hidden>Existing bleed
         <span class="measure"><input id="bleed" type="number" min="0" max="25" step="0.1" value="0" inputmode="decimal"><span>mm</span></span>
       </label>
-      <label>Material $ / m²
-        <input id="cost" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal">
-      </label>
       </div>
+      <input id="cost" type="hidden">
       <label class="check"><input id="draw-marks" type="checkbox"> Draw registration marks (ONYX adds them)</label>
       </details>
       <p id="preset-error" class="lan-note" role="alert" hidden></p>
@@ -406,7 +383,33 @@
   <button id="feedback-dismiss" type="button" aria-label="Dismiss welcome">×</button>
   <strong>Thanks for trying EZ Nest.</strong><p>Have an idea or hit a snag? We'd love your feedback.</p>
 </aside>
+<div class="corner-actions">
+<details id="settings-support">
+  <summary>Help</summary>
+  <div class="help-card">
+    <h2>Help &amp; troubleshooting</h2>
+    <p class="section-note">Use these details when checking a saved job or reporting a problem.</p>
+    <details id="local-activity">
+      <summary>Local activity · last 24 hours</summary>
+      <p class="hint">Saved only on this PC for 90 days. No artwork or filenames.
+      Sent means delivered to the hot folder, not printed. Re-sending the same pack counts once.</p>
+      <p id="activity-summary" role="status">Open to load activity.</p>
+      <button id="activity-refresh" class="link" type="button">Refresh activity</button>
+    </details>
+    <details id="job-details"><summary>Job details</summary>
+      <p id="job-checks" class="hint"></p>
+      <p id="sheet-id" class="sheet-id" hidden aria-label="Sheet ID"></p>
+    </details>
+    <details class="quick-guide"><summary>How to nest</summary>
+      <p>Add files, choose material and effort, then Nest. Review the layout and save.</p>
+      <p>My computer lets you choose a folder. Default print folder uses the folder saved in Settings. Check the file in your print software before printing.</p>
+    </details>
+    <a id="report" class="workspace" target="_blank" rel="noopener noreferrer" href="https://github.com/ezdesigns/eznest/issues/new?template=tester-problem.yml">Report a problem</a>
+    <a class="workspace" href="/">Full workspace</a>
+  </div>
+</details>
 <button id="feedback-open" type="button" aria-label="Send feedback"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M7 9h10M7 13h7" stroke="currentColor" stroke-width="1.8"/></svg><span>Feedback</span></button>
+</div>
 <dialog id="feedback-dialog" aria-labelledby="feedback-title">
   <h2 id="feedback-title">Send feedback</h2>
   <p id="feedback-version"></p>

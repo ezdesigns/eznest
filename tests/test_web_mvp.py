@@ -374,6 +374,8 @@ class WebMvpTests(unittest.TestCase):
                     raise AssertionError('Tester job did not finish: '+json.dumps(detail)+'; '+str(server.STATE.get('error'))) from None
                 state=json.load(urlopen(self.url()+'/api/state'))
                 self.assertEqual(state['job']['webOptions']['rollCost'],300)
+                area=(54*25.4/1000)*(1200*25.4/1000)
+                self.assertAlmostEqual(state['job']['settings']['costPerSquareMeter'], 300/area, places=6)
                 self.assertEqual(page.locator('#previous-length').count(),0)
                 expect(page.locator('#nest-savings')).to_be_hidden()
                 server.STATE['nestSavings']={'baselineLengthMm':state['result']['usedLength']+304.8}
@@ -1181,7 +1183,8 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.locator('.file-count').nth(1).inner_text(), '4 pieces × 2 = 8 total')
                 self.start_nesting(page)
                 page.wait_for_function(ready(12), timeout=90000)
-                self.assertEqual(page.locator('#result-heading').inner_text(), '12 pieces laid out')
+                self.assertEqual(page.locator('#piece-count').inner_text(), '12 pieces')
+                self.assertTrue(page.locator('#result-heading').is_hidden())
                 self.assertEqual(page.locator('#piece-review-title').inner_text(), 'Check 12 pieces')
                 self.assertEqual(page.locator('#piece-review-count').inner_text(), '4 pieces × 1 copy + 4 pieces × 2 copies')
                 self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
@@ -1452,7 +1455,8 @@ class WebMvpTests(unittest.TestCase):
                 self.assertFalse(page.locator('#updates').is_checked())
                 self.assertTrue(page.locator('#lan').is_disabled())
                 page.locator('#settings-delivery').evaluate('node => node.open = true')
-                self.assertIn('Shop network access is configured when the app starts.', page.locator('#settings').inner_text())
+                self.assertTrue(page.locator('#lan-access').is_hidden())
+                self.assertIn('Shop network access is configured when the app starts.', page.locator('#lan-access').text_content())
                 page.locator('#onyx-pc').check()
                 page.wait_for_function("() => document.querySelector('#hot-default').textContent.includes('C:\\\\ONYX\\\\')")
                 self.assertIn(r'C:\ONYX\EPSON SureColor S80600 ONYX Input', page.locator('#hot-default').inner_text())
