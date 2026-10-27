@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The job panel starts with Upload job. Settings groups print destination and cut
+  lines, with connections, updates and help tucked into separate sections. Field
+  labels show help on hover, keyboard focus or tap instead of separate info icons.
+- Removed the bottom Known limits and Import help sections. Existing import and
+  export checks remain in place. Max output is a disabled future option for sending
+  jobs to another print shop; it does not change nesting effort or send anything.
+
 First run, checked updates, and a shop that is not hard-wired to one hot folder.
 
 - The first time the page opens, it asks for the hot folder, the printer, the cut spot names, and the units. Use EZ Designs preset fills today's EZ Designs values. Nothing is connected until you save.

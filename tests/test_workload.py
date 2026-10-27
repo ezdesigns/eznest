@@ -49,6 +49,7 @@ class WorkloadTests(unittest.TestCase):
                         self.assertEqual(summary['events']['sent_to_folder']['packs'], 1)
                         self.assertEqual(summary['events']['sent_to_folder']['pieces'], 4)
                         page.locator('#settings').evaluate('node => node.open = true')
+                        page.locator('#settings-support').evaluate('node => node.open = true')
                         page.locator('#local-activity').evaluate('node => node.open = true')
                         page.wait_for_function("() => document.querySelector('#activity-summary').textContent.includes('1 sent')")
                         self.assertGreater(page.locator('#local-activity summary').bounding_box()['width'], 200)

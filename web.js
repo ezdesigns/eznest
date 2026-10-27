@@ -101,23 +101,10 @@ function installSettingsHelp() {
   const later = () => { if (!pinned) timer = setTimeout(close, 180); };
   tip.addEventListener('mouseenter', () => clearTimeout(timer));
   tip.addEventListener('mouseleave', later);
-  for (const [id, [name, message]] of Object.entries(help)) {
-    const input = $(id), original = input.closest('label');
-    const field = document.createElement('div');
-    for (const attr of original.attributes) field.setAttribute(attr.name, attr.value);
-    field.classList.add('setting-field');
-    const heading = document.createElement('span'); heading.className = 'setting-heading';
-    const label = document.createElement('label'); label.htmlFor = id; label.textContent = name;
-    const button = document.createElement('button');
-    button.type = 'button'; button.className = 'setting-info'; button.textContent = 'i';
-    button.setAttribute('aria-label', 'About ' + name); button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-controls', tip.id);
-    heading.append(label);
-    if (!['preset-name', 'unit', 'roll', 'roll-length', 'roll-cost', 'printer', 'nesting-effort'].includes(id)) heading.append(button);
-    for (const child of [...original.childNodes]) {
-      if (child.nodeType === Node.TEXT_NODE && child.textContent.trim()) field.append(heading);
-      else field.append(child);
-    }
-    original.replaceWith(field);
+  function bindHelp(button, message) {
+    button.classList.add('help-label');
+    button.setAttribute('aria-expanded', 'false');
+    button.setAttribute('aria-controls', tip.id);
     button.addEventListener('mouseenter', () => show(button, message));
     button.addEventListener('mouseleave', later);
     button.addEventListener('focus', () => show(button, message));
@@ -127,8 +114,34 @@ function installSettingsHelp() {
       else { show(button, message); pinned = true; }
     });
   }
+  for (const [id, [name, message]] of Object.entries(help)) {
+    const input = $(id), original = input.closest('label');
+    input.setAttribute('aria-label', name);
+    // The effort heading itself explains the select; avoid repeating its title.
+    if (id === 'nesting-effort') {
+      bindHelp($('effort-help'), message);
+      original.classList.add('effort-field');
+      for (const node of [...original.childNodes]) if (node.nodeType === Node.TEXT_NODE) node.textContent = '';
+      continue;
+    }
+    const field = document.createElement('div');
+    for (const attr of original.attributes) field.setAttribute(attr.name, attr.value);
+    field.classList.add('setting-field');
+    const heading = document.createElement('span'); heading.className = 'setting-heading';
+    const button = document.createElement('button');
+    button.type = 'button'; button.textContent = name;
+    button.setAttribute('aria-label', 'About ' + name);
+    heading.append(button);
+    for (const child of [...original.childNodes]) {
+      if (child.nodeType === Node.TEXT_NODE && child.textContent.trim()) field.append(heading);
+      else field.append(child);
+    }
+    original.replaceWith(field);
+    bindHelp(button, message);
+  }
+  document.querySelectorAll('[data-help]').forEach(button => bindHelp(button, button.dataset.help));
   document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
-  document.addEventListener('pointerdown', event => { if (!event.target.closest('.setting-info, .setting-help')) close(); });
+  document.addEventListener('pointerdown', event => { if (!event.target.closest('.help-label, .setting-help')) close(); });
   document.addEventListener('scroll', close, true);
   window.addEventListener('resize', close);
   $('settings').addEventListener('toggle', close);
@@ -2570,10 +2583,6 @@ document.addEventListener('DOMContentLoaded', () => {
   $('stop').addEventListener('click', stopNest);
   $('improve').addEventListener('click', improve);
   $('piece-review').addEventListener('toggle', renderPieceReview);
-  $('unused-info').addEventListener('click', () => {
-    $('unused-note').hidden = !$('unused-note').hidden;
-    $('unused-info').setAttribute('aria-expanded', String(!$('unused-note').hidden));
-  });
   $('comparison-save').addEventListener('click', () => {
     if (!current?.result) return;
     const raw = $('previous-length').value.trim(), value = Number(raw);
@@ -2625,7 +2634,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .setting-info, #settings, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
+    if (importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

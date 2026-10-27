@@ -44,14 +44,32 @@
 <details id="settings">
   <summary aria-label="Settings">
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
-      <path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M9 3h6l.6 3 2.2 1.3 2.9-.9 3 5.2-2.3 2.1v2.6l2.3 2.1-3 5.2-2.9-.9-2.2 1.3-.6 3H9l-.6-3-2.2-1.3-2.9.9-3-5.2 2.3-2.1v-2.6L.3 9.6l3-5.2 2.9.9L8.4 4z" transform="translate(3 0) scale(.75)"/>
+      <g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9.5 3h5l.5 2.5 1.6.9 2.4-.8 2.5 4.3-1.9 1.7v1.8l1.9 1.7-2.5 4.3-2.4-.8-1.6.9-.5 2.5h-5L9 19.5l-1.6-.9-2.4.8-2.5-4.3 1.9-1.7v-1.8L2.5 9.9 5 5.6l2.4.8L9 5.5Z"/>
+        <circle cx="12" cy="12.5" r="3"/>
+      </g>
     </svg>
   </summary>
   <div class="panel">
     <h2 class="settings-title">Settings</h2>
-    <p class="hint settings-intro">Hover or tap <b>i</b> for help.</p>
-    <div class="fields">
+    <p class="hint settings-intro">Hover or tap a label for help.</p>
+    <section class="settings-section" aria-labelledby="destination-title">
+      <h3 id="destination-title">Print destination</h3>
+      <div class="fields">
+      <label class="wide">Hot folder
+        <input id="hot-folder" type="text" placeholder="Hot folder path" autocomplete="off">
+        <span id="hot-default" class="hint"></span>
+        <span id="hot-error" class="lan-note" hidden></span>
+        <button id="browse-output" class="link" type="button">Choose folder…</button>
+      </label>
+      <label class="wide">Printer
+        <input id="printer" type="text" maxlength="80" autocomplete="off">
+      </label>
+      </div>
+    </section>
+    <section class="settings-section" aria-labelledby="cuts-title">
+      <h3 id="cuts-title">Cut lines</h3>
+      <div class="fields">
       <label class="wide">Cut spot names
         <select id="cut-preset">
           <option value="output" selected>CutContour_Thru-cut / CutContour_Kiss-cut</option>
@@ -73,30 +91,28 @@
           <option value="contour">Generic cut</option>
         </select>
       </label>
-      <label class="wide">Hot folder
-        <input id="hot-folder" type="text" placeholder="Hot folder path" autocomplete="off">
-        <span id="hot-default" class="hint"></span>
-        <span id="hot-error" class="lan-note" hidden></span>
-        <button id="browse-output" class="link" type="button">Choose folder…</button>
-      </label>
-      <label class="wide">Printer
-        <input id="printer" type="text" maxlength="80" autocomplete="off">
-      </label>
-    </div>
+      </div>
+    </section>
+    <details id="settings-delivery" class="settings-section">
+      <summary>Copies &amp; connections</summary>
     <label class="check"><input id="staging-on" type="checkbox"> Staging folder</label>
     <label class="wide" id="staging-row" hidden>Staging folder
       <input id="staging-folder" type="text" placeholder="Off" autocomplete="off">
       <span class="hint">Optional. Off until you turn it on.</span>
     </label>
+    <label class="check"><input id="allow-undo" type="checkbox"> Undo send while the file is still in the folder</label>
+    <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
     <label class="check"><input id="onyx-pc" type="checkbox"> This PC runs ONYX</label>
     <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
-    <p class="hint">Start eznest with --lan to allow other shop PCs.</p>
+    <p class="hint">Shop network access is configured when the app starts.</p>
     <p id="lan-note" class="lan-note" hidden>Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.</p>
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
+    </details>
+    <details id="settings-updates" class="settings-section">
+      <summary>App updates</summary>
     <label class="check"><input id="updates" type="checkbox" checked> Check for updates</label>
     <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
-    <p class="hint">Pre-releases show up when this is on.</p>
     <label class="check" hidden><input id="output-network" type="checkbox"> Join OUTPUT network</label>
     <p id="output-note" class="hint" hidden>Not available yet.</p>
     <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
@@ -106,9 +122,9 @@
       <summary>What's new</summary>
       <div id="notes-body"></div>
     </details>
-    <a id="report" class="workspace" target="_blank" rel="noopener noreferrer" href="https://github.com/ezdesigns/eznest/issues/new?template=tester-problem.yml">Report a problem</a>
-    <label class="check"><input id="allow-undo" type="checkbox"> Undo send while the file is still in the folder</label>
-    <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
+    </details>
+    <details id="settings-support" class="settings-section">
+      <summary>Help &amp; activity</summary>
     <details id="local-activity">
       <summary>Local activity · last 24 hours</summary>
       <p class="hint">Saved only on this PC for 90 days. No artwork or filenames.
@@ -124,7 +140,10 @@
       <p>Add files, choose material and effort, then Start nesting. Review the layout and save.</p>
       <p>My computer lets you choose a folder. Default print folder uses the folder saved in Settings. Check the file in your print software before printing.</p>
     </details>
-    <a class="workspace" href="/">Full workspace</a>
+
+      <a id="report" class="workspace" target="_blank" rel="noopener noreferrer" href="https://github.com/ezdesigns/eznest/issues/new?template=tester-problem.yml">Report a problem</a>
+      <a class="workspace" href="/">Full workspace</a>
+    </details>
     <input id="seconds" type="hidden" value="30">
     <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
   </div>
@@ -144,18 +163,16 @@
       <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
     </label>
     <p class="hint import-hint">PDF, SVG or PDF-compatible AI</p>
-    <details class="import-help"><summary>Import help</summary><p>Save AI with “Create PDF Compatible File” on. In Illustrator, use Nest whole document to include the complete visible design.</p></details>
   </div>
 
   <div class="result-overview" aria-label="Layout results">
   <div class="result-measures">
   <p class="metrics pending" id="readout" hidden>
     <span class="metric"><span class="label">Material used</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong></span>
-    <span class="metric"><span class="label">Unused space <button id="unused-info" type="button" class="setting-info" aria-label="About unused space" aria-expanded="false" aria-controls="unused-note">i</button></span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
+    <span class="metric"><span class="label"><button id="unused-info" type="button" class="help-label" data-help="Share of the printable sheet outside the protected artwork outlines, including gaps and margins. It is not ink coverage or money saved.">Unused space</button></span> <strong id="waste"><span class="num">–</span><span class="unit">%</span></strong></span>
     <span class="metric"><span class="label">Sheets</span> <strong id="sheets"><span class="num">–</span></strong></span>
     <span id="used-width" class="used-width">on 51.5" wide</span>
   </p>
-  <p id="unused-note" class="hint" hidden>Share of the printable sheet outside the protected artwork outlines, including gaps and margins. It is not ink coverage or money saved.</p>
   </div>
   <section id="nest-savings" class="nest-savings" aria-live="polite" hidden>
     <span>Savings</span><strong id="savings-value"></strong>
@@ -186,7 +203,7 @@
   </details>
   </section>
   <aside class="job-panel" aria-label="Job controls">
-    <h2><span class="step-number">1</span> Job</h2>
+    <h2><span class="step-number">1</span> Upload job</h2>
     <p id="job-empty" class="hint">Add a print file to get started.</p>
   <ul id="files" class="files" hidden></ul>
 
@@ -218,7 +235,7 @@
 
   </details>
   <section id="layout-options" class="layout-options">
-  <h2><span class="step-number">3</span> Nesting effort</h2><span id="effort-summary" hidden></span>
+  <h2><span class="step-number">3</span> <button id="effort-help" class="help-label" type="button">Nesting effort</button></h2><span id="effort-summary" hidden></span>
   <label>Nesting effort
     <select id="nesting-effort">
       <option value="5">Quick · 5 seconds</option>
@@ -226,6 +243,14 @@
       <option value="90">Best fit · 90 seconds</option>
     </select>
   </label>
+  </section>
+  <section class="output-options" aria-label="Output options">
+    <h2>Output options</h2>
+    <div class="future-output">
+      <button id="max-output" type="button" disabled aria-describedby="max-output-note">Max output</button>
+      <span>Coming later</span>
+    </div>
+    <p id="max-output-note" class="hint">Send a job to another print shop.</p>
   </section>
   <button id="start-nesting" class="primary" type="button" hidden disabled>Start nesting</button>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
@@ -258,7 +283,6 @@
   </div>
 
 </main>
-<footer class="tester-footer"><details><summary>Known limits</summary><p>Use prepared PDF, PDF-compatible AI or SVG. PDF/AI limit: 32 MB. Start new nests from the original file; complex nested PDFs may not re-import. Existing artwork and bleed stay unchanged; connected pieces may stay grouped. Unsupported or ambiguous cuts block import. Best fit is the best layout found, not a proven optimum. Stock is updated manually. Check size, colors, bleed and cuts before printing. No jobs are sent to OUTPUT.</p></details></footer>
 <dialog id="guide-review" aria-labelledby="guide-title" aria-describedby="guide-summary">
   <h2 id="guide-title">Review possible guides</h2>
   <p id="guide-file"></p>
