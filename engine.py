@@ -3,11 +3,13 @@ import math
 
 # Shop v1 cap. Search time still bounds a nest; history and intake stay outside this module.
 PIECE_CAP = 800
+ORDER_PIECE_CAP = 5000  # Automatic sections keep each solver input <= PIECE_CAP.
 import time
 from collections import Counter
 import spyrrow
 from shapely.geometry import Polygon, box
 from shapely.affinity import rotate, translate
+from shapely.strtree import STRtree
 
 
 def number(value, name, low, high):
@@ -18,6 +20,9 @@ def number(value, name, low, high):
 
 def validate_job(job):
     settings = job['settings']
+    if 'continuous' in settings and type(settings['continuous']) is not bool:
+        raise ValueError('Continuous print must be on or off.')
+    cap = ORDER_PIECE_CAP if settings.get('sheetLength') is not None or settings.get('continuous') else PIECE_CAP
     width = number(settings['width'], 'Material width', 10, 5000)
     length = None if settings.get('maxLength') is None else number(settings['maxLength'], 'Available roll length', 10, 1000000)
     gap = number(settings['gap'], 'Gap', 0, 100)
@@ -30,8 +35,8 @@ def validate_job(job):
         raise ValueError('Choose a supported rotation mode.')
     number(settings.get('seed', 42), 'Search seed', 0, 2147483647)
     parts = job.get('parts', [])
-    if not 1 <= len(parts) <= PIECE_CAP:
-        raise ValueError(f'Select between 1 and {PIECE_CAP} closed paths.')
+    if not 1 <= len(parts) <= cap:
+        raise ValueError(f'Select between 1 and {cap} closed paths.')
     seen = set()
     total = 0
     for part in parts:
@@ -40,8 +45,8 @@ def validate_job(job):
             raise ValueError('Each part needs a unique ID.')
         seen.add(ident)
         quantity = part.get('quantity', 1)
-        if type(quantity) is not int or not 1 <= quantity <= PIECE_CAP:
-            raise ValueError(f'Quantity must be an integer from 1 to {PIECE_CAP}.')
+        if type(quantity) is not int or not 1 <= quantity <= cap:
+            raise ValueError(f'Quantity must be an integer from 1 to {cap}.')
         total += quantity
         points = part.get('nestingPoints', part['points'])
         if not 3 <= len(points) <= 5000:
@@ -64,8 +69,8 @@ def validate_job(job):
                 fits = True
         if not fits:
             raise ValueError(f'{ident}: part is too large for this material and rotation mode.')
-    if total > PIECE_CAP:
-        raise ValueError(f'This build supports {PIECE_CAP} pieces.')
+    if total > cap:
+        raise ValueError(f'This build supports {cap} pieces. Use automatic print sections for larger quantities.')
     return width, length, gap, margin, seconds
 
 
@@ -111,10 +116,17 @@ def validate_result(job, result):
         shape = placed_polygon(by_id[placement['id']], placement)
         if not boundary.buffer(0.001).covers(shape):
             raise ValueError('No valid layout fits within the maximum material length.')
-        for previous in shapes:
+        shapes.append(shape)
+    # The tree only narrows candidates. Exact polygon overlap and distance
+    # checks still decide validity, including concave pieces and small gaps.
+    tree = STRtree(shapes)
+    for index, shape in enumerate(shapes):
+        x0, y0, x1, y1 = shape.bounds
+        for other in tree.query(box(x0-gap, y0-gap, x1+gap, y1+gap)):
+            if other >= index: continue
+            previous = shapes[other]
             if shape.intersection(previous).area > 0.0001 or shape.distance(previous) + 0.001 < gap:
                 raise ValueError('Layout failed the independent overlap/spacing check.')
-        shapes.append(shape)
     return shapes
 
 
@@ -153,6 +165,8 @@ def publish_result(path, result):
 
 def solve(job, progress_path=None):
     width, length, gap, margin, seconds = validate_job(job)
+    if sum(p.get('quantity', 1) for p in job['parts']) > PIECE_CAP:
+        raise ValueError('Use bounded allocation for more than 800 pieces.')
     started = time.monotonic()
     # Sparrow's finite axis is Y. Reflect x/y at the boundary of the adapter.
     # 0.10 mm outward guard exceeds the host's 0.05 mm curve flattening target.

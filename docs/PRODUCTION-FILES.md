@@ -45,7 +45,9 @@ hidden/conditional layers, nonstandard UserUnit, missing boundaries, conflicting
 mappings, orphan open cuts, duplicate cuts, intersecting closed boundaries without
 a unique owner, filled/dashed cut shapes, clipped cuts, overlapping explicit bleed regions
 or pieces outside the page. DeviceN cut colors are unsupported.
-Limits: 32 MB, 25 pages, 800 pieces/copies per batch, 2000 cut paths per page,
+Browser uploads go directly to local disk without base64 expansion. PDF/AI browser uploads allow 2 GB; Illustrator and legacy JSON handoffs allow 256 MB. Complex PDFs still need sufficient memory and must finish processing within five minutes.
+
+Limits: 2 GB per browser file, 25 pages, 800 pieces/copies per batch, 2000 cut paths per page,
 5000 per document, 5000 sampled points per path and 1,000,000 traversed drawing
 operators per page.
 This is narrower than arbitrary PDF/AI compatibility.

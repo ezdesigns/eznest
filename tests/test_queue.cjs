@@ -11,6 +11,9 @@ assert.throws(()=>compose([{...entry('a'),materialId:'paper'}],preset),/material
 assert.throws(()=>compose([{...entry('a'),sets:1.5}],preset),/whole/);
 assert.equal(compose([{...entry('run'),sets:200}],preset).parts[0].quantity,200);
 assert.throws(()=>compose([{...entry('over'),sets:801}],preset),/800/);
+const sectionPreset={...preset,settings:{...preset.settings,sheetLength:1524}};
+assert.equal(compose([{...entry('stickers'),sets:1000}],sectionPreset).parts[0].quantity,1000);
+assert.throws(()=>compose([{...entry('over'),sets:5001}],sectionPreset),/5000/);
 assert.throws(()=>compose([{...entry('a'),status:'settling'}],preset),/not ready/);
 assert.equal(codeFor(26),'AA');
 console.log('Job identity, set counts, material compatibility and single-job checks passed.');

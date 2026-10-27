@@ -54,7 +54,7 @@ Keep customer artwork out of chats, screenshots and feedback shared externally.
 
 Compare expected and nested quantities, size, artwork and cuts. Record errors
 and confusing steps faithfully; do not modify the app to make a test pass.
-PDF/AI limit: 32 MB; SVG: 8 MB. Unsupported cuts may need manual correction.
+PDF/AI limit: 2 GB; SVG: 8 MB. Unsupported cuts may need manual correction.
 Do not print, cut, use a live hot folder, or claim physical production approval.
 Those checks need the shop operator's separate approval and observation.
 

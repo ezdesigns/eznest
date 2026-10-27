@@ -9,7 +9,7 @@ from shapely.geometry import Polygon
 from shapely.affinity import rotate, translate
 from shapely.ops import unary_union
 from shapely.prepared import prep
-from engine import part_polygon, PIECE_CAP, solve, validate_job, validate_result, number
+from engine import part_polygon, PIECE_CAP, ORDER_PIECE_CAP, solve, validate_job, validate_result, number
 from production import validate_identity
 
 
@@ -19,6 +19,8 @@ def validate_request(job):
         if job.get('fillJobs') and job.get('fillArea')=='length':
             raise ValueError('For automatic sheets, fill only leftover space. Use a single length for fixed-area sticker fill.')
     fills = job.get('fillJobs', [])
+    if fills and sum(p.get('quantity', 1) for p in job.get('parts', [])) > PIECE_CAP:
+        raise ValueError('For large orders, nest the requested quantities without optional filler jobs.')
     if not isinstance(fills, list) or len(fills) > PIECE_CAP:
         raise ValueError(f'Choose up to {PIECE_CAP} sticker designs.')
     if job.get('fillArea', 'gaps') not in ('gaps', 'length'):
@@ -49,8 +51,9 @@ def validate_request(job):
         if group['id'] in identities or group['code'] in codes or part_ids.intersection(group['partIds']):
             raise ValueError('Repeated job or piece identity in the queue.')
         identities.add(group['id']); codes.add(group['code']); part_ids.update(group['partIds'])
-    if len(part_ids) > PIECE_CAP:
-        raise ValueError(f'This build supports {PIECE_CAP} different piece designs.')
+    cap = ORDER_PIECE_CAP if job['settings'].get('sheetLength') is not None or job['settings'].get('continuous') else PIECE_CAP
+    if len(part_ids) > cap:
+        raise ValueError(f'This build supports {cap} different piece designs.')
 
 
 def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
@@ -153,6 +156,11 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
 def _run(job):
     progress = job.pop('_progress', None)
     validate_request(job)
+    if job['settings'].get('continuous'):
+        if job.get('fillJobs'):
+            raise ValueError('Use requested quantities without optional filler jobs for a continuous print.')
+        from sheets import continuous_nest
+        return {'ok': True, 'result': continuous_nest(job, progress)}
     if job['settings'].get('sheetLength') is not None:
         from sheets import split_nest, subset
         if not job.get('parts'):

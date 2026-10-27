@@ -161,7 +161,7 @@ class UpdateQueueTests(unittest.TestCase):
                     page.fill('#setup-printer', 'Test printer')
                     page.click('#setup-save')
                     page.wait_for_function("() => document.querySelector('#setup').hidden")
-                    page.click('#settings summary')
+                    page.click('#settings-open')
                     render({**info, 'message':'Update ready. Choose Install when finished and approve the Windows prompt.'})
                     panel = page.locator('#settings .panel')
                     panel.evaluate("node => { node.style.maxHeight='none'; node.style.overflow='visible'; }")

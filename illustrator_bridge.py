@@ -1,4 +1,5 @@
 """Loopback-only Illustrator handoff. Files stay in the local app data directory."""
+from import_limits import MAX_JSON_PDF_BYTES as MAX_PDF_BYTES, MAX_PDF_BASE64_CHARS
 import base64
 import hashlib
 import json
@@ -37,14 +38,14 @@ def accept(data_dir, data):
     if not isinstance(source, str) or not 1 <= len(source) <= 4096:
         raise ValueError('A source document reference is required.')
     content = data.get('content')
-    if not isinstance(content, str) or len(content) > 42_666_668:
-        raise ValueError('Use a production PDF no larger than 32 MB.')
+    if not isinstance(content, str) or len(content) > MAX_PDF_BASE64_CHARS:
+        raise ValueError('Use a production PDF no larger than 256 MB.')
     try:
         raw = base64.b64decode(content, validate=True)
     except ValueError:
         raise ValueError('Invalid PDF encoding.') from None
-    if not raw.startswith(b'%PDF-') or len(raw) > 32_000_000:
-        raise ValueError('Use a production PDF no larger than 32 MB.')
+    if not raw.startswith(b'%PDF-') or len(raw) > MAX_PDF_BYTES:
+        raise ValueError('Use a production PDF no larger than 256 MB.')
     meta = {'id': ident, 'sourceId': hashlib.sha256(source.encode()).hexdigest(),
             'revision': hashlib.sha256(raw).hexdigest(), 'material': 'regular', **settings}
     directory = root(data_dir)

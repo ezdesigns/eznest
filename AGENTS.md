@@ -25,6 +25,11 @@ or completed printing. Do not turn this into an order-management system or RIP.
 
 ## Branch and release boundaries
 
+The owner promoted the tested integration head `27f48d2` to `main` on 2026-10-26.
+The interface cleanup is isolated on `feature/clean-job-settings-20261027` for
+a draft PR to that main baseline. This is not permission to merge future PRs or
+deploy the shop PC; the protected PR #1 / rc.4 gate below is unchanged.
+
 - Current readiness work belongs on draft PR #4, branch
   `cursor/shop-open-handoff-9891`, targeting `cursor/eznest-web-mvp-8f6a` (PR #1).
 - External contributors follow `CONTRIBUTOR-CODEX.md`: create a separate branch
@@ -104,6 +109,21 @@ reviewed IDs after confirmation bound to the file hash and cut mapping. Never
 automatically interpret all dashed lines as guides or export them as solid cuts.
 Closed, filled or clipped dashed cuts remain unsupported. Cancelled/failed imports
 must leave the previous job usable, and a multi-file selection is all-or-nothing.
+
+Large direct PDF uploads first make a temporary print copy without Illustrator
+private editing data; original files remain untouched. Unnamed closed strokes
+require a file-bound operator review and an explicit kiss/through choice. Never
+infer cuts from a filename or magenta alone. Transparent image borders may be
+excluded from nesting space only when the original supported soft mask proves
+zero alpha; retain all nonzero alpha, interpolation allowance and export guards.
+The automatic-section and continuous order cap is 5000 pieces; each solver input
+stays at 800 or fewer. Continuous print joins the order on one checked PDF page,
+up to 5000 mm or known available stock, whichever is shorter. Validate all pieces
+together, including spacing across internal search sections. Repeated rectangular
+envelopes compare allowed row orientations without trimming protected artwork.
+Thumbnail detail is bounded for large orders; print and cut export
+must retain original source objects and commands. Optional filler jobs are not
+supported with a required order above 800 pieces.
 
 The separate portable trial is packaged with `build_shop_trial.py` after a
 `build_windows.py --portable-only` build. Its `--shop-test` launch creates marked

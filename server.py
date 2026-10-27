@@ -15,10 +15,11 @@ import sqlite3
 import workload
 import telemetry
 import illustrator_bridge
+from import_limits import request_limit
 import print_export
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 from engine import validate_job
 from production import validate_identity, manifest, make_package
 from folder_queue import FolderQueue
@@ -30,6 +31,18 @@ from shop_deploy import OUTPUT_NOTE, WARNING, default_hot_folder, host_name, iss
 
 ROOT = Path(__file__).resolve().parent
 _STATIC_CACHE = {}
+
+
+def remove_import_temp(path):
+    """Windows may briefly retain a scan/worker handle on a large upload."""
+    for attempt in range(50):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            if attempt == 49:
+                raise
+            time.sleep(0.1)
 
 
 def static_bytes(name):
@@ -413,6 +426,57 @@ class Handler(BaseHTTPRequestHandler):
         name, mime = static[path]
         return self.send(200, static_bytes(name), mime)
 
+    def import_document(self, data, upload_size=None):
+        if not DOCUMENT_LOCK.acquire(blocking=False):
+            raise ValueError('Wait for the current document import to finish.')
+        ident = uuid.uuid4().hex
+        request, output = WORK/(ident+'-import.json'), WORK/(ident+'-import-result.json')
+        upload = WORK/(ident+'-upload.pdf')
+        try:
+            if upload_size is not None:
+                if upload_size == 0:
+                    raise ValueError('The selected file is empty.')
+                # Read bounded chunks straight to disk. No base64 or full-file
+                # allocation in the HTTP server; the isolated worker parses it.
+                remaining = upload_size
+                with upload.open('xb') as target:
+                    while remaining:
+                        chunk = self.rfile.read(min(1_048_576, remaining))
+                        if not chunk:
+                            raise ValueError('Upload was interrupted. Please try the file again.')
+                        target.write(chunk)
+                        remaining -= len(chunk)
+            # Never accept a local path from JSON or upload metadata.
+            options = {key: data[key] for key in ('content', 'bleedMm', 'cutSpot', 'cutMapping', 'preserveArtwork', 'guideApproval', 'cutApproval') if key in data}
+            if upload_size is not None:
+                options.pop('content', None)
+            request.write_text(json.dumps(options), encoding='utf-8')
+            worker = [sys.executable, '--document-worker'] if getattr(sys, 'frozen', False) else [sys.executable, str(ROOT/'pdf_io.py')]
+            args = [*worker, str(request), str(output)]
+            if upload_size is not None:
+                args.append(str(upload))
+            subprocess.run(args, cwd=WORK, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300 if upload_size is not None else 120, check=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+            payload = json.loads(output.read_text(encoding='utf-8'))
+            if payload.get('cutReview'):
+                status, response = 409, {'error':payload['error'], 'cutReview':payload['cutReview']}
+            elif payload.get('guideReview'):
+                status, response = 409, {'error':payload['error'], 'guideReview':payload['guideReview']}
+            elif not payload['ok']:
+                raise ValueError(payload['error'])
+            else:
+                status, response = 200, payload['document']
+        except subprocess.TimeoutExpired:
+            raise ValueError('PDF processing took too long. Try a print-only PDF without Illustrator editing data.') from None
+        finally:
+            try:
+                remove_import_temp(request)
+                remove_import_temp(output)
+                remove_import_temp(upload)
+                remove_import_temp(upload.with_name(upload.stem + '-print.pdf'))
+            finally:
+                DOCUMENT_LOCK.release()
+        return self.send(status, response)
+
     def do_POST(self):
         # Hold admission through import, save and delivery. An update claim cannot
         # slip between a busy check and a new operation starting on another PC.
@@ -430,8 +494,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {'error': 'Invalid origin'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
-            if not 0 <= size <= 48_000_000:
+            if not 0 <= size <= request_limit(self.path):
                 raise ValueError('Job is too large.')
+            if self.path == '/api/document/import-file':
+                header = self.headers.get('X-EZ-Import', '{}')
+                if len(header) > 16_000:
+                    raise ValueError('Import options are too large.')
+                options = json.loads(unquote(header))
+                if not isinstance(options, dict):
+                    raise ValueError('Invalid import options.')
+                return self.import_document(options, upload_size=size)
             data = json.loads(self.rfile.read(size) or '{}')
             if self.path.startswith('/api/telemetry/'):
                 if self.client_address[0] != '127.0.0.1':
@@ -500,23 +572,7 @@ class Handler(BaseHTTPRequestHandler):
                     info = illustrator_bridge.accept(WORK, data)
                 return self.send(200, {'ok': True, 'id': info['id'], 'url': f'http://127.0.0.1:{PORT}/web?illustrator=' + info['id']})
             if self.path == '/api/document/import':
-                if not DOCUMENT_LOCK.acquire(blocking=False):
-                    raise ValueError('Wait for the current document import to finish.')
-                ident=uuid.uuid4().hex
-                request,output=WORK/(ident+'-import.json'),WORK/(ident+'-import-result.json')
-                try:
-                    request.write_text(json.dumps(data),encoding='utf-8')
-                    worker=[sys.executable,'--document-worker'] if getattr(sys,'frozen',False) else [sys.executable,str(ROOT/'pdf_io.py')]
-                    subprocess.run([*worker,str(request),str(output)],cwd=WORK,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=120,check=True,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
-                    payload=json.loads(output.read_text(encoding='utf-8'))
-                    if payload.get('guideReview'): return self.send(409,{'error':payload['error'],'guideReview':payload['guideReview']})
-                    if not payload['ok']: raise ValueError(payload['error'])
-                    return self.send(200,payload['document'])
-                except subprocess.TimeoutExpired:
-                    raise ValueError('PDF import took too long. Use a smaller print-only document.')
-                finally:
-                    request.unlink(missing_ok=True); output.unlink(missing_ok=True)
-                    DOCUMENT_LOCK.release()
+                return self.import_document(data)
             if self.path == '/api/export/pick':
                 if self.client_address[0] != '127.0.0.1':
                     return self.send(403, {'error': 'Use browser download on another computer.'})
