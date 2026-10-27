@@ -2518,6 +2518,14 @@ function dismissOnBackdrop(dialog, dismiss) {
 document.addEventListener('DOMContentLoaded', () => {
   installSettingsHelp();
   $('settings-open').addEventListener('click', () => { showSettingsPage('files'); $('settings').showModal(); });
+  $('settings').addEventListener('keydown', event => {
+    if (event.key !== 'Tab') return;
+    const controls = [...$('settings').querySelectorAll('button, input, select, textarea, a[href], summary, [tabindex]')]
+      .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
+    const first = controls[0], last = controls[controls.length - 1];
+    if (first && event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (last && !event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
   const settingsTabs = [...document.querySelectorAll('.settings-tabs [role=tab]')];
   settingsTabs.forEach((tab, index) => {
     tab.addEventListener('click', () => showSettingsPage(tab.id.replace('settings-tab-', '')));
