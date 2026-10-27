@@ -24,7 +24,7 @@ let illustratorLoading = false;
 let materialProfiles = {};
 let presetEditor = null;
 let activeMaterial = 'white-gloss';
-const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
+const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'print-layout', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
 
 function status(message, failed) {
   const el = $('status');
@@ -70,6 +70,7 @@ function installSettingsHelp() {
     'available-length': ['Material left on roll', 'Limits the batch to this much material. Leave blank if unknown. Update it yourself after printing; the app does not subtract used stock yet.'],
     'low-stock': ['Low-stock alert at', 'Show a red Low stock notice when the saved material left is at or below this length. Leave blank to use 10% of the full roll length, when known. Update material left after printing.'],
     'sheet': ['Longest print section', 'Splits a long layout into sections no longer than this. A lower number can create more sections. Every piece must fit within one section.'],
+    'print-layout': ['Print layout', 'Continuous nests all requested pieces onto one long PDF page. Shorter sections use the section length below. Neither changes artwork size or bleed.'],
     'rotations': ['Allowed turns', 'Lets pieces turn to fit closer together. Keep orientation leaves them facing the original direction. Consider material grain and artwork direction.'],
     'mark-margin': ['Room for cutter marks', 'Reserves extra space at the edges, in addition to edge spacing. This does not draw marks; your print software can add them.'],
     'auto-bleed': ['Enlarge artwork at edges', 'Enlarges the artwork slightly around unchanged cut lines. It can change the design near the edges. Leave off for prepared print files and inspect any changed preview.'],
@@ -375,6 +376,8 @@ function preset() {
   };
   if ($('roll').value.trim()) settings.rollWidth = number('roll');
   if ($('sheet').value.trim()) settings.sheetLength = Number($('sheet').value) * factor;
+  settings.continuous = $('print-layout').value === 'continuous';
+  if (settings.continuous) settings.sheetLength = 5000;
   if ($('cost').value.trim()) {
     settings.costPerSquareMeter = Number($('cost').value);
     settings.currency = 'USD';
@@ -515,6 +518,7 @@ function setNum(id, value, unit) {
 }
 
 function lengthOver(state) {
+  if (state?.job?.settings?.continuous) return state.result?.usedLength > 5000;
   const raw = $('sheet').value.trim();
   if (!raw || !state?.result) return false;
   const limit = Number(raw) * scale();
@@ -576,7 +580,7 @@ function showScreen(name) {
   $('preview-tools').hidden = empty;
   $('legend').hidden = empty;
   $('piece-review').hidden = empty || name === 'nest' || !current?.result;
-  $('nest-savings').hidden = empty || name === 'nest' || !current?.result;
+  $('nest-savings').hidden = empty || name === 'nest' || !(EZNResults.comparison(current)?.savedFt >= .005);
   $('readout').hidden = empty;
   $('export').hidden = empty || confirming || name === 'nest';
   $('start-nesting').hidden = !!current?.result || !['drop', 'configure', 'blocked'].includes(name);
@@ -584,6 +588,7 @@ function showScreen(name) {
   $('confirm').hidden = !confirming;
   $('start-over').hidden = idle || confirming;
   $('delivery-receipt').hidden = name !== 'sent';
+  $('saved-heading').hidden = name !== 'sent';
   $('start-over').textContent = name === 'sent' ? 'Next job' : 'Start over';
   const steps = {drop: 1, nest: 2, blocked: 2, check: 2, confirm: 3, sent: 3};
   for (const node of document.querySelectorAll('[data-workflow-step]')) {
@@ -688,11 +693,16 @@ function applySetsToFiles() {
 }
 
 function renderActions() {
+  document.body.dataset.saving = String(saving);
+  $('confirm').setAttribute('aria-busy', String(saving));
+  if (saving) $('confirm-send').textContent = 'Preparing file…';
+  else updateSaveChoice();
   const confirming = document.body.dataset.step === 'confirm';
   syncFiles();
   $('material').disabled = busy || saving || !!presetEditor || !!illustratorHandoff || confirming;
   $('confirm-send').disabled = saving || busy || !!presetEditor;
   $('confirm-back').disabled = saving;
+  for (const id of ['save-name','save-format','save-destination']) $(id).disabled = saving;
   $('start-over').disabled = saving || !!presetEditor;
   $('nest-width').disabled = busy || saving || !!presetEditor || confirming;
   $('sets').disabled = busy || saving || !!presetEditor || confirming;
@@ -903,26 +913,13 @@ function renderPieceReview() {
 }
 
 function showNestSavings(state) {
-  const stored = prefs().lengthComparison;
-  const previous = stored?.signature === EZNResults.signature(state) ? stored.lengthFt : null;
-  $('previous-length').value = previous ?? '';
-  const saving = EZNResults.comparison(state, previous);
-  $('nest-savings').hidden = !state.result;
-  $('nest-savings').dataset.saving = saving && saving.savedFt >= 0.005 ? 'positive' : 'neutral';
-  $('savings-label').textContent = saving ? 'Material saved' : 'Compare your savings';
-  if (!saving) {
-    $('savings-value').textContent = 'Have a previous layout?';
-    $('savings-context').textContent = 'Add its length below to see the difference.';
-    $('savings-reference').textContent = 'No previous layout measured yet.';
-    return;
-  }
-  const less = saving.savedFt >= 0;
-  const length = Math.abs(saving.savedFt).toFixed(2);
-  const money = saving.savedDollars == null ? '' : ' · $' + Math.abs(saving.savedDollars).toFixed(2);
-  $('savings-context').textContent = `vs. ${saving.reference}`;
-  $('savings-label').textContent = less ? 'Material saved' : 'Material comparison';
-  $('savings-value').textContent = length === '0.00' ? 'No change in length' : `${length} ft${money} ${less ? 'saved' : 'more'}`;
-  $('savings-reference').textContent = `Compared with ${saving.reference}.` + (length === '0.00' ? ' Rounded to 0.01 ft.' : '') + (saving.savedDollars == null ? ' Add full roll cost and length in Material to estimate dollars.' : ' Material cost only.');
+  const comparison = EZNResults.comparison(state);
+  $('nest-savings').hidden = !(comparison?.savedFt >= .005);
+  if ($('nest-savings').hidden) return;
+  $('nest-savings').dataset.saving = 'positive';
+  $('savings-label').textContent = `${comparison.percent.toFixed(1)}% less material`;
+  $('savings-value').textContent = comparison.savedDollars == null ? `${comparison.savedFt.toFixed(2)} ft saved` : `$${comparison.savedDollars.toFixed(2)} saved`;
+  $('savings-context').textContent = `${comparison.savedDollars == null ? '' : comparison.savedFt.toFixed(2) + ' ft · '}vs. ${comparison.reference}${comparison.savedDollars == null ? '' : ' · material only'}`;
 }
 
 function feedbackText() {
@@ -964,7 +961,7 @@ function addHatch(frame) {
 
 function addRuler(frame, sheet, width) {
   const inch = 25.4;
-  const scale = Math.max(width, sheet.usedLength) / 42;
+  const scale = width / 42;
   const ruler = document.createElementNS(NS, 'g');
   ruler.setAttribute('id', 'ez-ruler');
   const top = sheet.offset;
@@ -1281,6 +1278,7 @@ async function nest() {
     const job = EZNQueue.compose(kits, roll, 'combined');
     job.outputProfile = profileFor(kits);
     job.webOptions = {units: $('unit').value, material: $('material').value, sets: sets(), genericCut: $('generic-cut').value,
+      sectionLengthMm: $('sheet').value.trim() ? Number($('sheet').value) * scale() : null,
       rollCost: $('roll-cost').value.trim() ? Number($('roll-cost').value) : null,
       fullRollLengthMm: $('roll-length').value.trim() ? Number($('roll-length').value) * scale() : null};
     if (illustratorHandoff) {
@@ -1442,6 +1440,7 @@ function openConfirm() {
   const onePdf = !!current.job.documentSources && (current.result.sheets || [1]).length === 1;
   $('save-format').querySelector('[value="pdf"]').disabled = !onePdf;
   $('save-format').value = onePdf ? 'pdf' : 'pack';
+  $('save-summary').textContent = `${current.manifest.totalPieces.toLocaleString()} pieces · ${(current.result.usedLength / 304.8).toFixed(2)} ft · ${onePdf ? 'one PDF page' : sheetList(current).length + ' print sections'} · ${current.job.materialName}`;
   updateSaveChoice();
   showScreen('confirm');
   showSheetId(current);
@@ -1519,6 +1518,7 @@ async function exportFile(forceDownload) {
       chosenPath = selection.path;
     }
     current.downloadName = base;
+    status(pdf ? 'Preparing your PDF with the original artwork and cut lines…' : 'Preparing your print pack…');
     if (!current.released) await lock(true);
     if (mode !== 'download') {
       status('Saving…');
@@ -1650,6 +1650,7 @@ function materialValues() {
 }
 
 function setMaterialValues(values) {
+  $('print-layout').value = values['print-layout'] || 'sections';
   for (const id of ['roll-length', 'low-stock']) if (values[id] == null) $(id).value = '';
   for (const id of MATERIAL_FIELDS) if (values[id] != null) $(id).value = values[id];
   $('unit').dataset.current = $('unit').value;
@@ -1666,6 +1667,7 @@ function validateMaterial(values) {
   const settings = {width: n('width'), maxLength: values['available-length']?.trim() && n('available-length') > 0 ? n('available-length') : null, gap: n('gap'), margin: edge + mark, edgeMargin: edge, markMargin: mark, seconds: 5,
     rotations: values.rotations === 'free' ? null : String(values.rotations).split(',').map(Number), rollWidth: n('roll')};
   if (values.sheet !== '') settings.sheetLength = n('sheet');
+  if (!['continuous','sections'].includes(values['print-layout'] || 'sections')) throw Error('Choose a print layout.');
   if (values.cost !== '') settings.costPerSquareMeter = Number(values.cost);
   EZNQueue.validatePreset({name: values['preset-name'], units: values.unit, settings});
   if (settings.width > settings.rollWidth) throw Error('Printable width cannot be wider than the roll.');
@@ -2267,6 +2269,7 @@ function restoreJob(state) {
   });
   fileSerial = Math.max(kits.length, ...kits.map(entry => Number(entry.id.match(/-(\d+)$/)?.[1] || 0) + 1));
   const options = job.webOptions || {};
+  $('print-layout').value = job.settings?.continuous ? 'continuous' : 'sections';
   const settings = job.settings;
   if (['mm', 'in', 'cm'].includes(options.units)) $('unit').value = options.units;
   $('unit').dataset.current = $('unit').value;
@@ -2281,6 +2284,7 @@ function restoreJob(state) {
   for (const [id, key] of [['available-length', 'maxLength'], ['gap', 'gap'], ['roll', 'rollWidth'], ['sheet', 'sheetLength'], ['mark-margin', 'markMargin']]) {
     $(id).value = settings[key] == null ? '' : settings[key] / factor;
   }
+  if (settings.continuous && options.sectionLengthMm != null) $('sheet').value = options.sectionLengthMm / factor;
   $('margin').value = (settings.edgeMargin ?? (settings.margin - (settings.markMargin || 0))) / factor;
   setNestingEffort(prefs().nestingSeconds ?? settings.seconds);
   $('rotations').value = settings.rotations == null ? 'free' : settings.rotations.join(',');
@@ -2677,13 +2681,6 @@ document.addEventListener('DOMContentLoaded', () => {
   $('stop').addEventListener('click', stopNest);
   $('improve').addEventListener('click', improve);
   $('piece-review').addEventListener('toggle', renderPieceReview);
-  $('comparison-save').addEventListener('click', () => {
-    if (!current?.result) return;
-    const raw = $('previous-length').value.trim(), value = Number(raw);
-    if (raw && (!Number.isFinite(value) || value <= 0)) { status('Enter a positive previous length, or leave it blank.', true); return; }
-    savePrefs({lengthComparison: raw ? {signature: EZNResults.signature(current), lengthFt: value} : null});
-    showNestSavings(current);
-  });
   const dismissWelcome = () => { $('feedback-welcome').hidden = true; savePrefs({feedbackWelcomed: true}); };
   $('feedback-welcome').hidden = !!prefs().feedbackWelcomed;
   $('feedback-dismiss').addEventListener('click', dismissWelcome);

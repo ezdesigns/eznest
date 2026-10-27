@@ -20,7 +20,9 @@ def number(value, name, low, high):
 
 def validate_job(job):
     settings = job['settings']
-    cap = ORDER_PIECE_CAP if settings.get('sheetLength') is not None else PIECE_CAP
+    if 'continuous' in settings and type(settings['continuous']) is not bool:
+        raise ValueError('Continuous print must be on or off.')
+    cap = ORDER_PIECE_CAP if settings.get('sheetLength') is not None or settings.get('continuous') else PIECE_CAP
     width = number(settings['width'], 'Material width', 10, 5000)
     length = None if settings.get('maxLength') is None else number(settings['maxLength'], 'Available roll length', 10, 1000000)
     gap = number(settings['gap'], 'Gap', 0, 100)
@@ -163,6 +165,8 @@ def publish_result(path, result):
 
 def solve(job, progress_path=None):
     width, length, gap, margin, seconds = validate_job(job)
+    if sum(p.get('quantity', 1) for p in job['parts']) > PIECE_CAP:
+        raise ValueError('Use bounded allocation for more than 800 pieces.')
     started = time.monotonic()
     # Sparrow's finite axis is Y. Reflect x/y at the boundary of the adapter.
     # 0.10 mm outward guard exceeds the host's 0.05 mm curve flattening target.

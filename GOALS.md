@@ -160,15 +160,25 @@ were excluded. Dashed lines are never silently removed or converted to solid cut
 Closed, filled or clipped dashed cuts still require correction in the source.
 Failed or cancelled file selections leave the previous checked job usable.
 
-The review card compares roll length against an operator-entered previous print
-length for the same material, width and quantities, or against the first fit of
-an unchanged job during tighter-fit attempts. It does not claim a manual or
-competitor saving without that reference. Full roll cost and full roll length
-provide a USD material-only estimate; ink and labor are excluded. Negative
-comparisons show more material used. Unused space means the printable sheet area
+The review card shows a positive measured saving against the first fit of an
+unchanged job during tighter-fit attempts, or the initial row arrangement when
+continuous sticker nesting finds a shorter allowed orientation. The reference
+is named explicitly. It does not claim a manual or competitor saving. Full roll
+cost and full roll length provide a USD material-only estimate; ink and labor
+are excluded. Unused space means the printable sheet area
 outside protected artwork envelopes, including gaps and margins; it is not ink
 coverage or money saved. Piece cards retain imported names (including SVG object
 names); PDFs without usable piece names use numbered page/piece/group labels.
+
+Material settings offer one continuous print or shorter print sections. A continuous
+order shares one PDF page, limited to 5000 mm (196.85 in / 16.4 ft) and known roll
+stock, with up to 5000 pieces. Search inputs remain bounded at 800 pieces, and the
+complete assembled page is independently checked. Repeated rectangular envelopes
+compare allowed row orientations; mixed shapes use bounded shared strips. This is
+a best-found layout, not a proof of optimal packing. Longer orders require shorter
+print sections or fewer copies; artwork is never scaled to fit. Review defaults
+to PDF for a single-page PDF job, replaces the setup steps with a print summary,
+and shows file preparation progress before reporting a successful save.
 
 First run accepts an empty printer and default folder for local-save testing.
 Send feedback opens a previewable GitHub issue draft or saves a local text report.

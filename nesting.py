@@ -51,7 +51,7 @@ def validate_request(job):
         if group['id'] in identities or group['code'] in codes or part_ids.intersection(group['partIds']):
             raise ValueError('Repeated job or piece identity in the queue.')
         identities.add(group['id']); codes.add(group['code']); part_ids.update(group['partIds'])
-    cap = ORDER_PIECE_CAP if job['settings'].get('sheetLength') is not None else PIECE_CAP
+    cap = ORDER_PIECE_CAP if job['settings'].get('sheetLength') is not None or job['settings'].get('continuous') else PIECE_CAP
     if len(part_ids) > cap:
         raise ValueError(f'This build supports {cap} different piece designs.')
 
@@ -156,6 +156,11 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
 def _run(job):
     progress = job.pop('_progress', None)
     validate_request(job)
+    if job['settings'].get('continuous'):
+        if job.get('fillJobs'):
+            raise ValueError('Use requested quantities without optional filler jobs for a continuous print.')
+        from sheets import continuous_nest
+        return {'ok': True, 'result': continuous_nest(job, progress)}
     if job['settings'].get('sheetLength') is not None:
         from sheets import split_nest, subset
         if not job.get('parts'):

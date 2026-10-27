@@ -181,11 +181,6 @@
   </div>
   <section id="nest-savings" class="nest-savings" aria-live="polite" hidden>
     <span id="savings-label">Material saved</span><strong id="savings-value"></strong><span id="savings-context"></span>
-    <details><summary>Compare lengths</summary><p id="savings-reference"></p>
-      <label>Previous print length (feet)<input id="previous-length" type="number" min="0" step="any" placeholder="Optional"></label>
-      <p>Use the same material, width and quantities. Leave blank to compare tighter-fit attempts.</p>
-      <button id="comparison-save" type="button" class="link">Save comparison</button>
-    </details>
   </section>
   </div>
   <div id="sheet-tabs" class="tabs" hidden></div>
@@ -267,7 +262,8 @@
     <button id="choose-confirm" type="button" hidden>Confirm</button>
   </div>
   <div id="confirm" class="confirm" hidden>
-    <strong>Save print file</strong>
+    <h2>Review and save</h2>
+    <p id="save-summary" class="hint"></p>
     <div class="fields">
       <label class="wide">Save to<select id="save-destination"><option value="folder">Default print folder</option><option value="choose">My computer</option><option value="download">Browser download</option></select></label>
       <label class="wide" id="save-name-row">File name<input id="save-name" maxlength="100" autocomplete="off"></label>
@@ -277,6 +273,7 @@
     <button id="confirm-send" class="primary" type="button">Save</button>
     <button id="confirm-back" class="link" type="button">Back</button>
   </div>
+  <div id="saved-heading" hidden><h2>Print file saved</h2><p class="hint">Ready to open in your print software.</p></div>
   <div class="job-actions" aria-label="Layout actions">
   <button id="export" class="primary" type="button" hidden disabled>Send to ONYX</button>
   <button id="stop" class="link" type="button" hidden>Stop · keep best</button>
@@ -344,6 +341,7 @@
       </div>
       <details id="material-advanced"><summary>Spacing, stock &amp; cutter settings</summary>
       <div class="fields">
+      <label class="wide">Print layout<select id="print-layout"><option value="continuous">One continuous print</option><option value="sections" selected>Shorter print sections</option></select><span class="hint">Continuous: one PDF page, up to 196.85 inches (16.4 ft). Artwork stays full size.</span></label>
       <label>Spacing
         <span class="measure"><input id="gap" type="number" min="0" step="any" value="0.12" inputmode="decimal"><span data-unit>in</span></span>
       </label>

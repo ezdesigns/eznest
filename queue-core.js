@@ -74,7 +74,8 @@
     if(s.autoBleedMm!=null&&!finite('autoBleedMm',0,25))throw Error('Auto bleed must be from 0 to 25 mm.');
     if(s.drawRegmarks!=null&&typeof s.drawRegmarks!=='boolean')throw Error('Registration marks are on or off.');
     const settings=Object.fromEntries(['width','maxLength','gap','margin','seconds','rotations'].map(k=>[k,s[k]]));
-    for(const k of ['sheetLength','costPerSquareMeter','currency','markMargin','edgeMargin','rollWidth','autoBleedMm','drawRegmarks'])if(s[k]!==undefined)settings[k]=s[k];
+    if(s.continuous!=null&&typeof s.continuous!=='boolean')throw Error('Choose a print layout.');
+    for(const k of ['continuous','sheetLength','costPerSquareMeter','currency','markMargin','edgeMargin','rollWidth','autoBleedMm','drawRegmarks'])if(s[k]!==undefined)settings[k]=s[k];
     return {name:p.name.trim(),units:p.units,settings};
   }
   function importPresets(document){

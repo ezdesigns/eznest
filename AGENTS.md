@@ -116,8 +116,12 @@ require a file-bound operator review and an explicit kiss/through choice. Never
 infer cuts from a filename or magenta alone. Transparent image borders may be
 excluded from nesting space only when the original supported soft mask proves
 zero alpha; retain all nonzero alpha, interpolation allowance and export guards.
-The automatic-section order cap is 5000 pieces; each solver section stays at
-800 or fewer. Thumbnail detail is bounded for large orders; print and cut export
+The automatic-section and continuous order cap is 5000 pieces; each solver input
+stays at 800 or fewer. Continuous print joins the order on one checked PDF page,
+up to 5000 mm or known available stock, whichever is shorter. Validate all pieces
+together, including spacing across internal search sections. Repeated rectangular
+envelopes compare allowed row orientations without trimming protected artwork.
+Thumbnail detail is bounded for large orders; print and cut export
 must retain original source objects and commands. Optional filler jobs are not
 supported with a required order above 800 pieces.
 

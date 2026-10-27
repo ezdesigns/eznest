@@ -399,6 +399,7 @@ body[data-step="confirm"] #layout-options { display: none; }
 .result-measures { border: 0; background: transparent; padding: 18px 12px; }
 .nest-savings, .nest-savings[data-saving="positive"] { border: 0; border-left: 1px solid #e7e7e1; border-radius: 0; padding: 16px; background: transparent; gap: 4px; }
 .nest-savings > strong { font-size: 22px; }
+.nest-savings[data-saving="positive"] > strong { font-size: 34px; letter-spacing: -.025em; }
 .nest-savings details[open] { margin-top: 6px; }
 .nest-savings summary { font-size: 11px; }
 .piece-card details { font-size: 11px; color: var(--muted); }
@@ -516,3 +517,18 @@ body[data-step="confirm"] #job-options { display: none; }
   .result-measures .metrics { gap: 16px 10px; }
   .result-heading { font-size: 17px; }
 }
+
+/* Review and completion replace setup, instead of repeating its numbered steps. */
+body:is([data-step="confirm"], [data-step="sent"]) .job-panel > h2,
+body:is([data-step="confirm"], [data-step="sent"]) .job-panel > .material-area,
+body:is([data-step="confirm"], [data-step="sent"]) #layout-options,
+body:is([data-step="confirm"], [data-step="sent"]) #files,
+body:is([data-step="confirm"], [data-step="sent"]) #job-empty,
+body:is([data-step="confirm"], [data-step="sent"]) #job-options { display: none; }
+#save-summary { line-height: 1.6; margin: 10px 0 18px; }
+#saved-heading .hint { margin-top: 8px; }
+body[data-step="sent"] #start-over { grid-column: 1 / -1; grid-row: 1; background: #2265d5; color: white; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 700; min-height: 44px; }
+body[data-step="sent"] #export { background: transparent; color: #264665; border: 1px solid #bdc9d5; font-size: 13px; }
+body[data-saving="true"] #confirm-send::before { content: ''; display: inline-block; width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; margin-right: 8px; vertical-align: -2px; animation: saving-spin .8s linear infinite; }
+@keyframes saving-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { body[data-saving="true"] #confirm-send::before { animation: none; } }

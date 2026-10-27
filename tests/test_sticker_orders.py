@@ -36,6 +36,56 @@ def pixels(raw):
 
 
 class StickerOrderTests(unittest.TestCase):
+    def test_continuous_thousand_uses_one_page_and_best_row_orientation(self):
+        job={'settings':{'width':1308.1,'sheetLength':5000,'continuous':True,'maxLength':None,
+                         'margin':16.51,'gap':3.048,'seconds':1,'rotations':[0,90,180,270]},
+             'parts':[{'id':'sticker','points':[[0,0],[51.447,0],[51.447,47.766],[0,47.766]],'quantity':1000}]}
+        result=run(job)['result']
+        self.assertEqual(len(result['sheets']),1)
+        self.assertEqual(result['sheets'][0]['pieces'],1000)
+        self.assertLess(result['usedLength'],2220)
+        self.assertLess(result['usedLength'],result['layoutComparison']['baselineLengthMm'])
+        self.assertEqual(len(validate_result(job,result)),1000)
+        bad=copy.deepcopy(result);bad['placements'][1].update(bad['placements'][0])
+        with self.assertRaisesRegex(ValueError,'overlap'):validate_result(job,bad)
+        job['settings']['rotations']=[0]
+        fixed=run(job)['result']
+        self.assertTrue(all(p['rotation']==0 for p in fixed['placements']))
+        self.assertGreater(fixed['usedLength'],result['usedLength'])
+        job['settings']['maxLength']=100
+        with self.assertRaises(ValueError):run(job)
+
+    def test_continuous_mixed_shapes_join_without_breaks_or_overlap(self):
+        from unittest.mock import patch
+        job={'settings':{'width':100,'sheetLength':5000,'continuous':True,'maxLength':None,
+                         'margin':3,'gap':2,'seconds':1,'rotations':[0]},
+             'parts':[{'id':'triangle','points':[[0,0],[10,0],[0,10]],'quantity':801},
+                      {'id':'square','points':[[0,0],[8,0],[8,8],[0,8]],'quantity':20}]}
+        with patch('sheets.solve',side_effect=ValueError('Use checked fallback')):
+            result=run(job)['result']
+        self.assertEqual(len(result['sheets']),1)
+        self.assertEqual(Counter(p['id'] for p in result['placements']),{'triangle':801,'square':20})
+        self.assertEqual(len(validate_result(job,result)),821)
+
+    def test_continuous_export_has_one_page_and_every_cut(self):
+        from test_mixed_cuts import mixed_fixture
+        from pdf_io import load_documents
+        with tempfile.TemporaryDirectory() as directory:
+            parsed=import_to_store(mixed_fixture(),directory,preserve=True)
+            job={'settings':{'width':500,'sheetLength':5000,'continuous':True,'maxLength':None,
+                             'margin':3,'gap':2,'seconds':1,'rotations':[0,90,180,270]},
+                 'parts':[{**p,'quantity':500} for p in parsed['parts']],
+                 'documentSources':{parsed['documentId']:parsed}}
+            result=run(job)['result']
+            ident=parsed['documentId']
+            documents={ident:((Path(directory)/(ident+'.pdf')).read_bytes(),
+                              json.loads((Path(directory)/(ident+'.json')).read_text()))}
+            raw=export_pdf(job,result,documents,cut_mapping=defaults())
+            reader=PdfReader(io.BytesIO(raw))
+            self.assertEqual(len(reader.pages),1)
+            self.assertAlmostEqual(float(reader.pages[0].mediabox.height)*MM,result['usedLength'],places=4)
+            self.assertEqual(reader.pages[0].get_contents().get_data().count(b'\nS\n'),3000)
+
     def test_compaction_preserves_layer_visibility_checks(self):
         from pypdf.generic import ArrayObject
         from test_mixed_cuts import mixed_fixture

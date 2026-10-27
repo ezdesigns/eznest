@@ -30,6 +30,53 @@ def launch_browser(playwright):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_continuous_pdf_review_and_saved_screens_replace_setup(self):
+        from playwright.sync_api import sync_playwright, expect
+        from pypdf import PdfReader
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                page.click('#edit-material')
+                page.fill('#width','500')
+                page.locator('#material-advanced').evaluate('n => n.open = true')
+                page.select_option('#print-layout','continuous')
+                page.click('#save-material')
+                page.select_option('#nesting-effort','5')
+                page.set_input_files('#file',{'name':'order.pdf','mimeType':'application/pdf','buffer':mixed_fixture()})
+                page.wait_for_function('() => !importing && kits.length === 1')
+                page.locator('#files input').fill('500')
+                self.start_nesting(page)
+                page.wait_for_function("() => ['check','blocked'].includes(document.body.dataset.step)",timeout=90000)
+                self.assertEqual(page.get_attribute('body','data-step'),'check',page.locator('#checks').text_content()+' '+str(server.STATE.get('error')))
+                self.assertEqual(len(server.STATE['result']['sheets']),1)
+                self.assertEqual(len(server.STATE['result']['placements']),1000)
+                page.click('#export')
+                self.assertEqual(page.input_value('#save-format'),'pdf')
+                expect(page.locator('#save-summary')).to_contain_text('1,000 pieces')
+                expect(page.locator('.job-panel > h2')).to_be_hidden()
+                expect(page.locator('.job-panel > .material-area')).to_be_hidden()
+                expect(page.locator('#layout-options')).to_be_hidden()
+                page.screenshot(path=str(SCREENSHOTS/'continuous-review-desktop.png'),full_page=True)
+                page.set_viewport_size({'width':390,'height':844})
+                page.screenshot(path=str(SCREENSHOTS/'continuous-review-mobile.png'),full_page=True)
+                page.select_option('#save-destination','download')
+                with page.expect_download(timeout=90000) as pending:
+                    page.click('#confirm-send')
+                    expect(page.locator('#confirm-send')).to_be_disabled()
+                    expect(page.locator('#status')).to_contain_text('Preparing')
+                target=Path(self.tmp.name)/'continuous.pdf';pending.value.save_as(str(target))
+                reader=PdfReader(target)
+                self.assertEqual(len(reader.pages),1)
+                self.assertEqual(reader.pages[0].get_contents().get_data().count(b'\nS\n'),3000)
+                expect(page.locator('#saved-heading')).to_be_visible()
+                expect(page.locator('.job-panel > h2')).to_be_hidden()
+                expect(page.locator('.job-panel > .material-area')).to_be_hidden()
+                expect(page.locator('#layout-options')).to_be_hidden()
+                page.screenshot(path=str(SCREENSHOTS/'continuous-saved-mobile.png'),full_page=True)
+                page.reload();self.wait_ready(page)
+                self.assertEqual(page.input_value('#print-layout'),'continuous')
+            finally:browser.close()
+
     def test_section_preview_excludes_neighboring_artwork(self):
         from playwright.sync_api import sync_playwright
         with sync_playwright() as playwright:
@@ -295,15 +342,18 @@ class WebMvpTests(unittest.TestCase):
                     raise AssertionError('Tester job did not finish: '+json.dumps(detail)+'; '+str(server.STATE.get('error'))) from None
                 state=json.load(urlopen(self.url()+'/api/state'))
                 self.assertEqual(state['job']['webOptions']['rollCost'],300)
-                page.click('#nest-savings summary');page.fill('#previous-length','10');page.click('#comparison-save')
-                used=state['result']['usedLength']/304.8
-                expect(page.locator('#savings-value')).to_have_text(f'{10-used:.2f} ft · ${(10-used)*3:.2f} saved')
+                self.assertEqual(page.locator('#previous-length').count(),0)
+                expect(page.locator('#nest-savings')).to_be_hidden()
+                server.STATE['nestSavings']={'baselineLengthMm':state['result']['usedLength']+304.8}
+                page.reload();self.wait_ready(page)
+                expect(page.locator('#savings-value')).to_have_text('$3.00 saved')
+                expect(page.locator('#savings-context')).to_contain_text('1.00 ft')
                 page.click('#piece-review summary')
                 expect(page.locator('.piece-card')).to_have_count(len(state['job']['parts']))
                 self.assertEqual(page.locator('.piece-card strong').all_text_contents(),[p['name'] for p in state['job']['parts']])
                 page.reload();self.wait_ready(page)
                 self.assertEqual(page.input_value('#roll-cost'),'300')
-                self.assertEqual(page.input_value('#previous-length'),'10')
+                expect(page.locator('#savings-value')).to_have_text('$3.00 saved')
                 # Core result and Save action fit on a common shop laptop display.
                 page.set_viewport_size({'width':1366,'height':768})
                 page.evaluate('scrollTo(0, 0)')
