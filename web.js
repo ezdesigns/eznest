@@ -639,10 +639,6 @@ function renderFiles() {
     qty.step = '1';
     qty.value = String(entry.sets);
     qty.setAttribute('aria-label', 'Quantity for ' + entry.name);
-    const countNote = document.createElement('span'); countNote.className = 'file-count';
-    const perFile = (entry.data?.parts || []).reduce((sum, part) => sum + (part.quantity || 1) * (part.sourcePieceCount || 1), 0);
-    const showCount = () => { countNote.textContent = `${perFile.toLocaleString()} pieces × ${entry.sets.toLocaleString()} = ${(perFile * entry.sets).toLocaleString()} total`; };
-    showCount();
     const commitQty = () => {
       const count = Number(qty.value);
       if (!Number.isInteger(count) || count < 1 || count > PIECE_CAP) {
@@ -651,7 +647,6 @@ function renderFiles() {
       }
       if (count === entry.sets) return;
       entry.sets = count;
-      showCount();
       if (kits.every(item => item.sets === count)) $('sets').value = String(count);
       requestNest();
     };
@@ -667,7 +662,7 @@ function renderFiles() {
     remove.setAttribute('aria-label', 'Remove ' + entry.name);
     remove.addEventListener('click', () => removeFile(entry.id));
     quantity.append(quantityLabel, qty);
-    row.append(name, remove, quantity, countNote);
+    row.append(name, remove, quantity);
     list.append(row);
   }
   syncFiles();
@@ -883,7 +878,9 @@ function renderPieceReview() {
     const card = document.createElement('article'); card.className = 'piece-card';
     const title = document.createElement('strong'); title.textContent = part.name || 'Piece ' + (index + 1);
     const quantity = document.createElement('span'); quantity.className = 'piece-quantity';
-    quantity.textContent = (counts.get(part.id) || 0) + ' of ' + part.quantity + ' copies';
+    const copies = counts.get(part.id) || 0;
+    quantity.textContent = copies === part.quantity ? `${copies.toLocaleString()} ${copies === 1 ? 'copy' : 'copies'} to print` : `${copies.toLocaleString()} of ${part.quantity.toLocaleString()} copies placed`;
+    quantity.classList.toggle('piece-warning', copies !== part.quantity);
     const image = document.createElement('img'); image.loading = 'lazy'; image.alt = 'Artwork for piece ' + (index + 1);
     try {
       const points = part.points;
@@ -901,14 +898,16 @@ function renderPieceReview() {
     const detail = document.createElement('span'); detail.className = 'piece-detail';
     const bits = [];
     if ((part.sourcePieceCount || 1) > 1) { if (!part.name) title.textContent = 'Piece ' + (index + 1); bits.push(part.sourcePieceCount + ' pieces kept together'); }
-    if (cuts.thru) bits.push(cuts.thru + ' thru');
-    if (cuts.kiss) bits.push(cuts.kiss + ' kiss');
+    if (cuts.thru) bits.push(cuts.thru === 1 ? 'Through cut' : cuts.thru + ' through cuts');
+    if (cuts.kiss) bits.push(cuts.kiss === 1 ? 'Kiss cut' : cuts.kiss + ' kiss cuts');
     if (cuts.contour) bits.push(cuts.contour + ' cuts need a type');
     if (!cuts.thru && !cuts.kiss && !cuts.contour) bits.push('Check cut lines');
     detail.textContent = bits.join(' · ');
-    const more = document.createElement('details'), summary = document.createElement('summary');
-    summary.textContent = 'Details'; more.append(summary, quantity, detail, source);
-    card.append(image, title, more); cards.append(card);
+    detail.classList.toggle('thru-text', !!cuts.thru && !cuts.kiss && !cuts.contour);
+    detail.classList.toggle('kiss-text', !!cuts.kiss && !cuts.thru && !cuts.contour);
+    card.append(image, title, quantity, detail);
+    if (sources.size > 1) card.append(source);
+    cards.append(card);
   });
 }
 
@@ -2475,6 +2474,16 @@ async function refreshUpdate(remote) {
   } catch { /* The gear still has Update. */ }
 }
 
+function showSettingsPage(name) {
+  for (const tab of document.querySelectorAll('.settings-tabs [role=tab]')) {
+    const selected = tab.id === 'settings-tab-' + name;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    $(tab.getAttribute('aria-controls')).hidden = !selected;
+  }
+  if (name === 'support') refreshActivity();
+}
+
 async function refreshActivity() {
   try {
     const response = await fetch('/api/workload');
@@ -2508,7 +2517,18 @@ function dismissOnBackdrop(dialog, dismiss) {
 
 document.addEventListener('DOMContentLoaded', () => {
   installSettingsHelp();
-  $('settings-open').addEventListener('click', () => $('settings').showModal());
+  $('settings-open').addEventListener('click', () => { showSettingsPage('files'); $('settings').showModal(); });
+  const settingsTabs = [...document.querySelectorAll('.settings-tabs [role=tab]')];
+  settingsTabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => showSettingsPage(tab.id.replace('settings-tab-', '')));
+    tab.addEventListener('keydown', event => {
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? settingsTabs.length - 1
+        : event.key === 'ArrowRight' ? (index + 1) % settingsTabs.length
+        : event.key === 'ArrowLeft' ? (index + settingsTabs.length - 1) % settingsTabs.length : null;
+      if (next == null) return;
+      event.preventDefault(); settingsTabs[next].click(); settingsTabs[next].focus();
+    });
+  });
   $('settings-close').addEventListener('click', () => $('settings').close());
   dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });
   $('max-output').addEventListener('click', () => $('max-output-dialog').showModal());
@@ -2521,9 +2541,6 @@ document.addEventListener('DOMContentLoaded', () => {
   $('preview-zoom').addEventListener('change', () => {
     const width = Number($('preview-zoom').value) * 100 + '%';
     for (const id of ['preview', 'live']) $(id).style.width = width;
-  });
-  $('local-activity').addEventListener('toggle', () => {
-    if ($('local-activity').open) refreshActivity();
   });
   $('activity-refresh').addEventListener('click', refreshActivity);
   renderMaterialButtons();

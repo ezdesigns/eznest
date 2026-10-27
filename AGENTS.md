@@ -25,10 +25,11 @@ or completed printing. Do not turn this into an order-management system or RIP.
 
 ## Branch and release boundaries
 
-The owner promoted the tested integration head `27f48d2` to `main` on 2026-10-26.
-The interface cleanup is isolated on `feature/clean-job-settings-20261027` for
-a draft PR to that main baseline. This is not permission to merge future PRs or
-deploy the shop PC; the protected PR #1 / rc.4 gate below is unchanged.
+The owner merged tested product PR #7 into `main` at `624b9b2` on 2026-10-27.
+Further settings and piece-card cleanup is isolated on
+`feature/simple-settings-20261027`, targeting that main baseline. Telemetry PR #5
+remains separate. This is not permission to merge future PRs or deploy the shop
+PC; the protected PR #1 / rc.4 gate below is unchanged.
 
 - Current readiness work belongs on draft PR #4, branch
   `cursor/shop-open-handoff-9891`, targeting `cursor/eznest-web-mvp-8f6a` (PR #1).

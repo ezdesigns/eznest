@@ -103,8 +103,12 @@ The job panel asks where to print: In-house or Max output. In-house nesting
 stays local. Max output opens an invitation to visit output.jeezlabs.io and
 learn about its pilot. It does not send artwork, enroll the operator or change
 the current job. Contextual help appears on label hover, keyboard focus or tap.
-Settings is a centered dialog with specialized cut/software options collapsed;
-material edits cancel on an outside click. Quantities stay beside each imported
+Settings is a centered dialog with Files, Cuts, Printer, App and Help tabs;
+only one category is visible at a time. Material edits cancel on an outside click.
+Piece review shows the total printed quantity and source-copy breakdown; each
+card shows its preview, copies and cut type without a Details dropdown. The
+upload list keeps its editable copy count without repeating that breakdown.
+Quantities stay beside each imported
 file and printable width is edited with the material. Nest is visible but disabled
 until the job is ready. Bottom help sections and the diagram are removed.
 Try tighter fit searches again without replacing a shorter previous result,
