@@ -1755,7 +1755,7 @@ function openPreset(id) {
 }
 
 function closePreset() {
-  if (!presetEditor) return;
+  if (!presetEditor || $('save-material').disabled) return;
   const previous = presetEditor;
   presetEditor = null;
   setMaterialValues(previous.values);
