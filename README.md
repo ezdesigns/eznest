@@ -110,7 +110,7 @@ Only `--lan` opens a non-loopback listener. A saved preference alone cannot open
 
 ## Limits
 
-One material and up to 800 pieces. PDF import is 32 MB and 25 pages. No EPS, no DeviceN cut colors, no inventory, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
+One material and up to 800 pieces. PDF import is 2 GB and 25 pages. No EPS, no DeviceN cut colors, no inventory, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
 
 Not in v1: job history, order intake, and cost tracking as a product.
 

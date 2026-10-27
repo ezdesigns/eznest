@@ -63,9 +63,7 @@ function requestDocumentOptions(){
 }
 
 async function importDocument(file,role,options){
-  const bytes=new Uint8Array(await file.arrayBuffer());let binary='';
-  for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
-  const parsed=await api('/api/document/import',{content:btoa(binary),...options});
+  const parsed=await api('/api/document/import-file',options,file);
   const id='pdf-'+(await hash(file.name+'\n'+parsed.documentId)).slice(0,18),old=queue.find(e=>e.id===id);
   if(old){old.selected=true;EZNQueue.restorePrepared(old);return true;}
   const entry={id,name:file.name,sourceFile:file.name,revision:parsed.documentId,origin:'files',role,category:'',customer:'',order:'',kit:'',materialId:activePreset().id,sets:role==='fill'?100:1,selected:true,status:'ready',data:parsed};

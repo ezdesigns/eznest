@@ -100,7 +100,7 @@ CutContour_Kiss-cut spots. Ambiguous, clipped or unsupported cuts need review.
 NOT INCLUDED YET
 Automatic recoloring, new bleed generation, clipping repair, editable-nest return
 to Illustrator, and persistent remaining-order counts. Finish colors and bleed
-in Illustrator first. PDF imports are limited to 32 MB. Test outputs do not
+in Illustrator first. PDF imports are limited to 2 GB. Test outputs do not
 certify ink, media, bleed or cutter performance.
 
 KEEP THE CURRENT SHOP SETUP

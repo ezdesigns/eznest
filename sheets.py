@@ -5,7 +5,7 @@ import time
 from collections import Counter
 from shapely.geometry import Polygon
 from shapely.affinity import rotate
-from engine import part_polygon, solve, validate_result, number, publish_result
+from engine import part_polygon, solve, validate_job, validate_result, number, publish_result, PIECE_CAP, ORDER_PIECE_CAP
 
 
 def subset(job, placements):
@@ -13,8 +13,75 @@ def subset(job, placements):
     return {**job,'parts':[{**p,'quantity':counts[p['id']]} for p in job['parts'] if counts[p['id']]]}
 
 
+def continuous_nest(job, progress_path=None):
+    """One physical page, with bounded search and full independent validation."""
+    started = time.monotonic()
+    validate_job(job)
+    settings = job['settings']
+    width, margin, gap = settings['width'], settings['margin'], settings['gap']
+    limit = min(5000, settings.get('maxLength') or 5000)
+    count = sum(p.get('quantity', 1) for p in job['parts'])
+    bounded = {**job, 'settings': {**settings, 'maxLength': None, 'sheetLength': limit, 'continuous': False}}
+    candidates = []
+    polygons = [part_polygon(p) for p in job['parts']]
+    area_needed = sum(p.area*part.get('quantity',1) for p,part in zip(polygons,job['parts']))
+    if area_needed > (width-2*margin)*(limit-2*margin):
+        raise ValueError('This order cannot fit the continuous PDF limit (196.85 in / 16.4 ft) or the available roll. Use shorter print sections or fewer copies.')
+    # Repeated almost-rectangular envelopes benefit from comparing whole-order
+    # row orientations. No outline, print pixels, bleed or spacing is reduced.
+    dims = [(p.bounds[2]-p.bounds[0], p.bounds[3]-p.bounds[1]) for p in polygons]
+    repeated = (all(p.area >= w*h*.98 for p, (w,h) in zip(polygons,dims))
+                and max(w for w,h in dims)-min(w for w,h in dims) < .02
+                and max(h for w,h in dims)-min(h for w,h in dims) < .02)
+    if repeated:
+        for angle in settings['rotations'] or range(0, 180, 5):
+            bounds = [rotate(p, angle, origin=(0,0)).bounds for p in polygons]
+            cell_w = max(b[2]-b[0] for b in bounds) + .22
+            cell_h = max(b[3]-b[1] for b in bounds) + .22
+            columns = int((width-2*margin+gap)/(cell_w+gap))
+            if columns < 1: continue
+            length = 2*margin + math.ceil(count/columns)*(cell_h+gap)-gap
+            if length > limit: continue
+            placements = []
+            for part, b in zip(job['parts'], bounds):
+                for _ in range(part.get('quantity',1)):
+                    row, col = divmod(len(placements), columns)
+                    placements.append({'id':part['id'], 'x':margin+.11+col*(cell_w+gap)-b[0],
+                                       'y':margin+.11+row*(cell_h+gap)-b[1], 'rotation':angle})
+            candidates.append({'width':width,'usedLength':length,'placements':placements})
+    # For other shapes, preserve bounded solver inputs and join the checked
+    # strips without repeated top/bottom margins. Mixed jobs share each strip.
+    if not candidates:
+        seed = split_nest(bounded)
+        placements = []; offset = 0
+        for sheet in seed['sheets']:
+            placements.extend({**p, 'y':p['y']-sheet['offset']+offset, 'sheet':0}
+                              for p in seed['placements'] if p['sheet']==sheet['index'])
+            offset += sheet['usedLength'] - 2*margin + gap
+        length = offset + 2*margin-gap
+        if length > limit:
+            raise ValueError('This order exceeds the continuous PDF limit (196.85 in / 16.4 ft) or the available roll. Use shorter print sections or fewer copies.')
+        candidates.append({'width':width,'usedLength':length,'placements':placements})
+    best = min(candidates, key=lambda r:r['usedLength'])
+    # Validation uses the whole order, including spacing across former seams.
+    checked_job = {**job, 'settings':{**settings,'maxLength':limit}}
+    shapes = validate_result(checked_job, best)
+    area = sum(p.area for p in shapes)
+    baseline = candidates[0]['usedLength']
+    best.update(placements=[{**p,'sheet':0} for p in best['placements']], area=area,
+                utilization=area/(width*best['usedLength']), elapsed=time.monotonic()-started,
+                validated=True, engine='Continuous roll with checked row orientations and bounded search',
+                sheets=[{'index':0,'offset':0,'usedLength':best['usedLength'],'pieces':count,'area':area}])
+    if baseline > best['usedLength']+.01:
+        best['layoutComparison'] = {'baselineLengthMm':baseline,'reference':'the initial row arrangement'}
+    validate_result(job,best)
+    publish_result(progress_path,best)
+    return best
+
+
 def split_nest(job, progress_path=None):
     started=time.monotonic()
+    validate_job(job)
     settings=job['settings']
     limit=number(settings.get('sheetLength'),'Sheet length',10,5000)
     width=settings['width']; margin=settings['margin']; gap=settings['gap']
@@ -32,7 +99,9 @@ def split_nest(job, progress_path=None):
         variants=[]
         for angle in angles:
             x0,y0,x1,y1=rotate(poly,angle,origin=(0,0)).bounds
-            w=x1-x0+.22; h=y1-y0+.22
+            # Tiny source-coordinate differences between repeated stickers
+            # should not prevent them sharing a row. Round outward only.
+            w=math.ceil((x1-x0+.22)*10)/10; h=math.ceil((y1-y0+.22)*10)/10
             if w<=usable_w and h<=usable_h: variants.append((w,h,x0,y0,angle))
         if not variants: raise ValueError(f"{part.get('name',part['id'])} cannot fit on one sheet. Increase the dimensions; pieces are never cut into sections.")
         for _ in range(part.get('quantity',1)): copies.append((part,variants))
@@ -40,15 +109,17 @@ def split_nest(job, progress_path=None):
     for part,variants in copies:
         choices=[]
         for bi,bin in enumerate(bins):
+            if len(bin['placements']) >= PIECE_CAP:
+                continue
             for ri,(x,y,w,h) in enumerate(bin['free']):
                 for variant in variants:
                     vw,vh,*_=variant
-                    if vw<=w+1e-8 and vh<=h+1e-8: choices.append((w*h-vw*vh,bi,ri,variant))
+                    if vw<=w+1e-8 and vh<=h+1e-8: choices.append((vw*vh,w*h-vw*vh,bi,ri,variant))
         if choices:
-            _,bi,ri,variant=min(choices,key=lambda v:v[0])
+            _,_,bi,ri,variant=min(choices,key=lambda v:(v[0],v[1]))
         else:
             bins.append({'free':[(margin,margin,usable_w,usable_h)],'placements':[]})
-            bi=len(bins)-1; ri=0; variant=min(variants,key=lambda v:(v[1],v[0]))
+            bi=len(bins)-1; ri=0; variant=min(variants,key=lambda v:(v[0]*v[1],v[1],v[0]))
         bin=bins[bi]; x,y,w,h=bin['free'].pop(ri); vw,vh,x0,y0,angle=variant
         bin['placements'].append({'id':part['id'],'x':x+.11-x0,'y':y+.11-y0,'rotation':angle})
         if w-vw-gap>.01: bin['free'].append((x+vw+gap,y,w-vw-gap,vh))
@@ -57,7 +128,7 @@ def split_nest(job, progress_path=None):
     # Bounding boxes cannot interlock. Before committing several bins, let the
     # contour solver try the complete job on one sheet when its area permits it.
     area=sum(part_polygon(p).area*p.get('quantity',1) for p in job['parts'])
-    if len(bins)>1 and area <= usable_w*usable_h:
+    if len(bins)>1 and len(copies) <= PIECE_CAP and area <= usable_w*usable_h:
         whole={**job,'settings':{**settings,'maxLength':min(limit,settings.get('maxLength') or limit)}}
         whole['settings'].pop('sheetLength',None)
         attempted=time.monotonic()
@@ -104,8 +175,11 @@ def split_nest(job, progress_path=None):
 
 
 def validate_sheets(job,result):
+    validate_job(job)
     sheets=result['sheets']; placements=result['placements']
     if not isinstance(sheets,list) or not 1<=len(sheets)<=100: raise ValueError('Invalid sheet list.')
+    if job['settings'].get('continuous') and len(sheets) != 1:
+        raise ValueError('A continuous print must have exactly one page.')
     if Counter(p['id'] for p in placements)!=Counter({p['id']:p.get('quantity',1) for p in job['parts']}):
         raise ValueError('Engine returned the wrong number of parts across sheets.')
     offset=0; shapes={}
@@ -113,11 +187,14 @@ def validate_sheets(job,result):
     for index,sheet in enumerate(sheets):
         if sheet['index']!=index or abs(sheet['offset']-offset)>.001: raise ValueError('Invalid sheet numbering or offsets.')
         length=number(sheet['usedLength'],'Sheet used length',.01,5000)
-        if length>job['settings'].get('sheetLength',5000)+.001: raise ValueError('A sheet exceeds the selected maximum length.')
+        if length>(5000 if job['settings'].get('continuous') else job['settings'].get('sheetLength',5000))+.001: raise ValueError('A sheet exceeds the selected maximum length.')
         indices=[i for i,p in enumerate(placements) if p.get('sheet')==index]
         local=[{**placements[i],'y':placements[i]['y']-offset} for i in indices]
         if not local: raise ValueError('Empty sheets are not valid.')
+        cap = ORDER_PIECE_CAP if job['settings'].get('continuous') and len(sheets)==1 else PIECE_CAP
+        if len(local) > cap: raise ValueError('A print section exceeds the safe piece limit.')
         local_job=subset(job,local); local_job['settings']={**job['settings'],'maxLength':length}
+        local_job['settings'].pop('sheetLength',None)
         local_result={'width':result['width'],'usedLength':length,'placements':local}
         for i,shape in zip(indices,validate_result(local_job,local_result)): shapes[i]=translate(shape,yoff=offset)
         offset+=length

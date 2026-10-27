@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Stream browser PDF/AI uploads directly to disk, up to 2 GB, without base64 expansion. Illustrator/legacy JSON handoffs allow 256 MB; SVG remains 8 MB. Parser and geometry limits still apply.
+
+- The job panel has Upload job, Choose material, and Where will you print?
+  In-house uses the existing effort choices. Max output opens an invitation to
+  visit OUTPUT and learn about its pilot, without sending files or enrolling anyone.
+- Settings opens in a centered dialog. Specialized cut and print-software options
+  are collapsed and explained in plain language. Field labels show help on hover,
+  focus or tap. Clicking outside the material editor cancels unsaved edits.
+- The upload area has a simple upload icon. Nest stays visible and disabled until
+  a job is ready. Per-file quantities replace the extra Copies dropdown; widths
+  are edited with the material. Bottom help sections and the diagram are removed.
+
 First run, checked updates, and a shop that is not hard-wired to one hot folder.
 
 - The first time the page opens, it asks for the hot folder, the printer, the cut spot names, and the units. Use EZ Designs preset fills today's EZ Designs values. Nothing is connected until you save.

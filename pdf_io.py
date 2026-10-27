@@ -18,11 +18,12 @@ from pypdf.generic import (ArrayObject, ContentStream, DecodedStreamObject,
                            TextStringObject)
 from shapely.geometry import Polygon, box, MultiPoint
 from shapely.affinity import rotate, translate
+from shapely.strtree import STRtree
 
 MM = 25.4 / 72
 IDENTITY = (1, 0, 0, 1, 0, 0)
-MAX_PDF_BYTES = 32_000_000
-MAX_PAGE_OPERATIONS = 1_000_000
+from import_limits import MAX_PDF_BYTES, MAX_JSON_PDF_BYTES, MAX_PDF_BASE64_CHARS
+MAX_PAGE_OPERATIONS = 2_000_000
 MAX_CLIP_SEGMENTS = 20_000
 MAX_CLIP_FACES = 2_000
 
@@ -156,6 +157,46 @@ class GuideReviewRequired(ValueError):
         self.review = review
 
 
+class CutReviewRequired(ValueError):
+    def __init__(self, review):
+        super().__init__('These outlines are not named cut paths. Review them before nesting.')
+        self.review = review
+
+
+def unnamed_cut_review(raw, mapping, candidates, previews=True):
+    source_hash = hashlib.sha256(raw).hexdigest()
+    identity = [source_hash, mapping, [p['id'] for p in candidates]]
+    review = {'id':hashlib.sha256(json.dumps(identity,sort_keys=True).encode()).hexdigest(),
+              'sourceHash':source_hash, 'count':len(candidates), 'pages':[]}
+    if not previews:
+        return review
+    import pypdfium2 as pdfium
+    with pdfium.PdfDocument(raw) as doc:
+        for index in sorted({p['page'] for p in candidates}):
+            page = doc[index]
+            try:
+                if page.get_rotation():
+                    raise ValueError('Name the cut paths in this rotated PDF before importing it.')
+                left,bottom,right,top = page.get_bbox()
+                bitmap = page.render(scale=min(2,900/max(page.get_size())))
+                try:
+                    buffer=io.BytesIO();bitmap.to_pil().save(buffer,format='PNG')
+                finally:
+                    bitmap.close()
+                paths=[]
+                for p in candidates:
+                    if p['page'] != index: continue
+                    pts=p['pdfPoints']; stride=max(1,math.ceil(len(pts)/160))
+                    sample=pts[::stride]
+                    if sample[-1]!=pts[-1]: sample.append(pts[-1])
+                    paths.append({'id':p['id'],'d':'M'+' L'.join(f'{x:.3f} {-y:.3f}' for x,y in sample)+' Z'})
+                review['pages'].append({'page':index+1,'viewBox':[left,-top,right-left,top-bottom],
+                    'image':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode('ascii'),'paths':paths})
+            finally:
+                page.close()
+    return review
+
+
 def guide_review(raw, mapping, cut_spot, pages):
     candidates = [p for paths in pages for p in paths if p.get('possibleGuide')]
     if not candidates:
@@ -188,11 +229,33 @@ def guide_review(raw, mapping, cut_spot, pages):
             'lines':[{'id':p['id'],'page':p['page']+1,'lengthMm':LineString(p['pdfPoints']).length*MM} for p in candidates]}
 
 
-def extract_page(page, writer, cut_spot, page_index, mapping):
+def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, unnamed_operation=None, image_bounds=None):
     """Extract all mapped operations; flatten static layer visibility in print art."""
     from shapely.geometry import LineString
     from cut_mapping import classify
-    paths_found=[]; budget=[0]; removed=[0]
+    paths_found=[]; budget=[0]; removed=[0]; mask_bounds={}
+
+    def image_extent(obj):
+        # Only proven zero-alpha borders may be excluded from nesting space.
+        # Inspect the original 8-bit soft mask, never a thresholded preview.
+        full=(0,0,1,1); mask=obj.get('/SMask')
+        if mask is None or '/Mask' in obj or obj.get('/ImageMask'): return full
+        mask=mask.get_object(); w=int(obj.get('/Width',0));h=int(obj.get('/Height',0))
+        if (not 0<w*h<=16_000_000 or mask.get('/Width')!=w or mask.get('/Height')!=h or
+            mask.get('/BitsPerComponent')!=8 or mask.get('/ColorSpace')!='/DeviceGray' or
+            list(mask.get('/Decode',[0,1]))!=[0,1]): return full
+        key=(id(mask),w,h)
+        if key not in mask_bounds:
+            from PIL import Image
+            data=mask.get_data()
+            if len(data)!=w*h: return full
+            bbox=Image.frombytes('L',(w,h),data).getbbox()
+            if bbox:
+                x0,y0,x1,y1=bbox
+                # One native pixel on each side also encloses interpolation.
+                mask_bounds[key]=(max(0,x0-1)/w, max(0,h-y1-1)/h, min(w,x1+1)/w, min(h,h-y0+1)/h)
+            else: mask_bounds[key]=full  # Keep a conservative empty-image box.
+        return mask_bounds[key]
 
     def layer_names(value, resources):
         if value is None:return []
@@ -214,7 +277,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
         state=copy.deepcopy(inherited or {'stroke':None,'fill':None,'dashed':False,'textMode':0})
         state.update(matrix=initial,clips=list(clips or []))
         layers=list(inherited_layers or []); marks=[]; stack=[]
-        paths=[]; commands=[]; points=[]; pending_clip=None; output=[]
+        paths=[]; commands=[]; points=[]; pending_clip=None; output=[]; path_output_start=0
 
         for value in resources.get('/Properties',DictionaryObject()).get_object().values():
             value=value.get_object()
@@ -286,6 +349,23 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
                 fills=op in (b'f',b'F',b'f*',b'B',b'B*',b'b',b'b*')
                 stroke_type=classify(mapping,state['stroke'],layers,cut_spot) if strokes else None
                 fill_type=classify(mapping,state['fill'],layers,cut_spot) if fills else None
+                from_unlabeled=False
+                if (candidates is not None and strokes and not fills and not stroke_type and
+                        not state['dashed'] and not pending_clip and paths and all(p[2] for p in paths)):
+                    proposed=[]
+                    for cmd,pts,closed in paths:
+                        pts=flattened_path(cmd)
+                        if not 3<=len(pts)<=5000 or any(not math.isfinite(v) for p in pts for v in p): break
+                        geom=Polygon(pts);line=LineString(pts+[pts[0]])
+                        if not geom.is_valid or geom.area*MM*MM<.01: break
+                        if any(not c.buffer(.001).covers(line) for c in state['clips']): break
+                        proposed.append({'id':f'p{page_index+1}-outline{len(candidates)+len(proposed)+1}',
+                                         'page':page_index,'pdfPoints':pts})
+                    if len(proposed)==len(paths):
+                        candidates.extend(proposed)
+                        if len(candidates)>5000: raise ValueError('Review no more than 5000 unnamed cut outlines per file.')
+                        if unnamed_operation in ('kiss','thru'):
+                            stroke_type=unnamed_operation;from_unlabeled=True
                 if 'regmark' in (stroke_type,fill_type):
                     if (stroke_type not in (None,'regmark') or fill_type not in (None,'regmark')) or pending_clip:
                         raise ValueError('Registration paint conflicts with cutting or clipping. Separate it in the source.')
@@ -310,6 +390,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
                             # interior (which can legitimately surround a hole).
                             if any(not c.buffer(.001).covers(line) for c in state['clips']):raise ValueError('A cut path is clipped. Correct its source clipping structure.')
                             paths_found.append({'id':f'p{page_index+1}-cut{len(paths_found)+1}','page':page_index,'commands':cmd,'pdfPoints':pts,'closed':closed,'boundary':boundary,'operation':stroke_type,'sourceSpot':state['stroke'],'sourceLayers':list(layers)})
+                            if from_unlabeled: paths_found[-1]['fromUnlabeled']=True
                             if state['dashed']:paths_found[-1]['possibleGuide']=True
                             if len(paths_found)>2000:raise ValueError('Use no more than 2000 cut paths per page.')
                         if op in (b'b',b'b*'):output.append(([],b'h'))
@@ -317,6 +398,13 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
                 if pending_clip:
                     state['clips'].append(clipping_region(paths,pending_clip));pending_clip=None
                 paths=[]
+                if op==b'n' and (stroke_type or fill_type):
+                    # Removed cut strokes no longer need a million inert path
+                    # commands in the print Form. Keep graphics-state operators
+                    # and every filled/printed path; only nonpainting paths go.
+                    output[path_output_start:]=[item for item in output[path_output_start:]
+                        if item[1] not in (b'm',b'l',b'c',b'v',b'y',b're',b'h')]
+                path_output_start=len(output)+1
             elif op==b'Do':
                 ref=xobjects.get(operands[0])
                 if ref is not None:
@@ -336,6 +424,11 @@ def extract_page(page, writer, cut_spot, page_index, mapping):
                         key=NameObject('/EZNForm'+str(budget[0]));xobjects[key]=writer._add_object(clone);operands=[key]
                     else:
                         if layer_type:raise ValueError('A cut layer contains an image instead of vector paths.')
+                        if image_bounds is not None and obj.get('/Subtype')=='/Image':
+                            def rect(values):
+                                x0,y0,x1,y1=values
+                                return list(Polygon([point(state['matrix'],p) for p in ((x0,y0),(x1,y0),(x1,y1),(x0,y1))]).bounds)
+                            image_bounds.append({'page':page_index,'box':rect((0,0,1,1)),'paint':rect(image_extent(obj))})
                         if '/OC' in obj:
                             clone=copy.copy(obj);clone.pop('/OC',None)
                             if hasattr(clone,'indirect_reference'):del clone.indirect_reference
@@ -373,23 +466,26 @@ def group_paths(paths):
     open_paths=[LineString(p['pdfPoints']) for p in paths if not p.get('boundary',p['closed'])]
     for i,path in enumerate(open_paths):
         if any(path.equals(other) for other in open_paths[i+1:]):raise ValueError('Duplicate/coincident open cuts need review in the source.')
+    keys=list(closed); geometries=list(closed.values()); tree=STRtree(geometries)
     for i,a in closed.items():
-        for j,b in closed.items():
+        for position in tree.query(a):
+            j=keys[position]; b=closed[j]
             if j<=i:continue
             if a.equals(b):raise ValueError('Duplicate/coincident cut boundaries need review in the source.')
             if a.intersection(b).area>.001 and not a.covers(b) and not b.covers(a):raise ValueError('Cut boundaries overlap without a unique piece owner.')
-    outer={i:p for i,p in closed.items() if not any(j!=i and other.covers(p) for j,other in closed.items())}
+    outer={i:p for i,p in closed.items() if not any(keys[k]!=i and geometries[k].covers(p) for k in tree.query(p))}
     if not outer:raise ValueError('No closed piece boundary found. Open cut paths need a containing closed boundary.')
     owned={i:[] for i in outer}
+    outer_keys=list(outer); boundaries=[p.buffer(.001) for p in outer.values()]; owner_tree=STRtree(boundaries)
     for index,path in enumerate(paths):
         geometry=closed[index] if index in closed else LineString(path['pdfPoints'])
-        owners=[i for i,boundary in outer.items() if boundary.buffer(.001).covers(geometry)]
+        owners=[outer_keys[k] for k in owner_tree.query(geometry) if boundaries[k].covers(geometry)]
         if len(owners)!=1:raise ValueError('A cut path has no unique piece owner. Keep every cut inside one closed piece boundary.')
         owned[owners[0]].append(path)
     return [{**paths[i],'cutPaths':owned[i]} for i in outer]
 
 
-def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guide_approval=None):
+def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guide_approval=None, cut_approval=None):
     from cut_mapping import import_mapping,counts
     if not raw[:1024].lstrip().startswith(b'%PDF-'):raise ValueError('Use PDF, or save AI with Create PDF Compatible File enabled.')
     if not isinstance(cut_spot,str) or not cut_spot or len(cut_spot)>80 or any(ord(c)<32 for c in cut_spot):raise ValueError('Enter a valid generic cut spot name.')
@@ -403,7 +499,8 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         if str(default.get('/BaseState','/ON'))!='/ON' or default.get('/OFF') or default.get('/AS'):raise ValueError('Export a print-only PDF with all layers visible. Hidden or conditional visibility is unsupported.')
         for group in properties.get('/OCGs',[]):
             validate_layer_usage(group.get_object())
-    writer=PdfWriter();pieces=[];registration_removed=0;path_count=0;page_paths=[]
+    writer=PdfWriter();pieces=[];registration_removed=0;path_count=0;page_paths=[];candidates=[];image_bounds=[]
+    unnamed_operation=cut_approval.get('operation') if isinstance(cut_approval,dict) else None
     for i,original in enumerate(reader.pages):
         if original.get('/Annots'):raise ValueError('Flatten annotations/forms in a print-only PDF before nesting.')
         if float(original.get('/UserUnit',1))!=1:raise ValueError('PDF UserUnit scaling is unsupported. Export at actual size with standard PDF units.')
@@ -411,9 +508,19 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         # the local print source. Preserve the original uploaded AI separately.
         page=writer.add_page(original, excluded_keys=['/PieceInfo', '/Thumb'])
         if page.rotation:page.transfer_rotation_to_content()
-        paths,removed=extract_page(page,writer,cut_spot,i,mapping);registration_removed+=removed;path_count+=len(paths)
+        paths,removed=extract_page(page,writer,cut_spot,i,mapping,candidates,unnamed_operation,image_bounds);registration_removed+=removed;path_count+=len(paths)
         if path_count>5000:raise ValueError('Use no more than 5000 cut paths per file.')
         page_paths.append(paths)
+    known_cuts=any(not p.get('fromUnlabeled') for paths in page_paths for p in paths)
+    if candidates and not known_cuts:
+        review=unnamed_cut_review(raw,mapping,candidates,previews=cut_approval is None)
+        if cut_approval is None: raise CutReviewRequired(review)
+        if (not isinstance(cut_approval,dict) or set(cut_approval)!={'id','sourceHash','operation'} or
+                cut_approval['id']!=review['id'] or cut_approval['sourceHash']!=review['sourceHash'] or
+                unnamed_operation not in ('kiss','thru')):
+            raise ValueError('The cut review does not match this file. Add it again and review its outlines.')
+    elif cut_approval is not None:
+        raise ValueError('This file has no matching unnamed cut review. Add the original file again.')
     review=guide_review(raw,mapping,cut_spot,page_paths)
     excluded=[]
     if review:
@@ -427,18 +534,20 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         raise ValueError('This file has no matching guide review. Add the original file again.')
     for i,(page,paths) in enumerate(zip(writer.pages,page_paths)):
         paths=[p for p in paths if p['id'] not in excluded]
-        page_pieces=group_paths(paths);crop=box(*map(float,page.cropbox));occupied=[]
+        page_pieces=group_paths(paths);crop=box(*map(float,page.cropbox))
+        envelopes=[Polygon(p['pdfPoints']).buffer(bleed_mm/MM,join_style=2) if bleed_mm else Polygon(p['pdfPoints']) for p in page_pieces]
+        envelope_tree=STRtree(envelopes)
         for piece_number,piece in enumerate(page_pieces,1):
-            poly=Polygon(piece['pdfPoints']);envelope=poly.buffer(bleed_mm/MM,join_style=2) if bleed_mm else poly
+            envelope=envelopes[piece_number-1]
             if not crop.buffer(.001).covers(envelope):raise ValueError('A piece plus bleed extends outside its PDF page. Correct the source or bleed setting.')
-            if any(envelope.intersection(other).area>.001 for other in occupied):raise ValueError('Pieces or their bleed areas overlap. Separate printable pieces in the source.')
-            occupied.append(envelope);x0,y0,x1,y1=envelope.bounds
+            if any(k<piece_number-1 and envelope.intersection(envelopes[k]).area>.001 for k in envelope_tree.query(envelope)):raise ValueError('Pieces or their bleed areas overlap. Separate printable pieces in the source.')
+            x0,y0,x1,y1=envelope.bounds
             piece.update(id='pdf-'+str(len(pieces)+1),name=f'Page {i+1} · piece {piece_number}',anchor=[x0,y1],bounds=[x0,y0,x1,y1],
                          points=[[(x-x0)*MM,(y1-y)*MM] for x,y in envelope.exterior.coords[:-1]],
                          clipCommands=[('m',list(envelope.exterior.coords[0]))]+[('l',list(p)) for p in envelope.exterior.coords[1:]]+[('h',[])])
             if not bleed_mm:piece['clipCommands']=piece['commands']
             piece['cutCounts']=counts(piece);pieces.append(piece)
-        if len(pieces)>800:raise ValueError('Use no more than 800 pieces per file.')
+        if len(pieces)>5000:raise ValueError('Use no more than 5000 pieces per file.')
     if '/OutputIntents' in reader.root_object:writer.root_object[NameObject('/OutputIntents')]=reader.root_object['/OutputIntents'].clone(writer)
     # Source optional-content wrappers were flattened only after visibility checks.
     writer.root_object.pop('/OCProperties',None)
@@ -447,7 +556,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
     if registration_removed:warnings.append(f'{registration_removed} registration paint object(s) removed. Let the RIP generate new sheet registration marks.')
     if excluded:warnings.append(f'{len(excluded)} dashed guide line(s) excluded after operator review. Original artwork and remaining cuts are unchanged.')
     return buf.getvalue(),{'modelVersion':2,'pieces':pieces,'bleedMm':bleed_mm,'cutSpot':cut_spot,'cutMapping':mapping,
-                          'registrationPaintRemoved':registration_removed,'excludedGuideIds':excluded,'warnings':warnings,'pages':len(reader.pages)}
+                          'registrationPaintRemoved':registration_removed,'excludedGuideIds':excluded,'reviewedCutOutlines':cut_approval,'imagePaintBounds':image_bounds,'warnings':warnings,'pages':len(reader.pages)}
 
 
 def cut_bounds(piece):
@@ -666,15 +775,16 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
     out=io.BytesIO();writer.write(out);return out.getvalue()
 
 
-def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, preserve=False, guide_approval=None):
+def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, preserve=False, guide_approval=None, cut_approval=None):
     folder=Path(folder); folder.mkdir(parents=True,exist_ok=True)
-    clean,meta=read_document(raw,0 if preserve else bleed_mm,cut_spot,cut_mapping,guide_approval)
+    clean,meta=read_document(raw,0 if preserve else bleed_mm,cut_spot,cut_mapping,guide_approval,cut_approval)
     if preserve:
         from artwork_bounds import preserve_artwork
         meta=preserve_artwork(clean,meta)
     identity=[2,bleed_mm,cut_spot,meta['cutMapping']]
     if preserve:identity=['preserve-artwork-v2',cut_spot,meta['cutMapping']]
     if meta['excludedGuideIds']:identity.append({'excludedGuideIds':meta['excludedGuideIds']})
+    if cut_approval:identity.append({'reviewedCutOutlines':cut_approval})
     ident=hashlib.sha256(raw+json.dumps(identity,sort_keys=True).encode()).hexdigest()
     meta.update(id=ident,sourceHash=hashlib.sha256(raw).hexdigest())
     # Preview in a separate process through the import worker. PDFium is not thread-safe.
@@ -688,12 +798,15 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
     # One PDF document shares the source Form across all preview pages. Parsing
     # and copying a detailed AI once per piece can take minutes for a full kit.
     preview=export_pdf({'parts':preview_items}, {'width':max(s['previewWidth'] for s in preview_sheets),'usedLength':offset,'placements':placements,'sheets':preview_sheets}, {ident:(clean,meta)},cut_spot,cut_mapping=meta['cutMapping'],preview=True)
+    # Keep a large order's screen thumbnails bounded. The print export below
+    # still uses the original PDF objects at their original resolution.
+    preview_edge=min(600, max(32, int(math.sqrt(6_000_000 / len(meta['pieces'])))))
     with pdfium.PdfDocument(preview) as doc:
       for index,piece in enumerate(meta['pieces']):
         w=preview_sheets[index]['previewWidth']; h=preview_sheets[index]['usedLength']
         page=doc[index]; bitmap=None
         try:
-            bitmap=page.render(scale=min(2,600/max(page.get_size())),fill_color=(255,255,255,0))
+            bitmap=page.render(scale=min(2,preview_edge/max(page.get_size())),fill_color=(255,255,255,0))
             image=bitmap.to_pil(); buffer=io.BytesIO(); image.save(buffer,format='PNG')
         finally:
             if bitmap is not None:bitmap.close()
@@ -710,7 +823,12 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
         x0,y1=piece['anchor']
         for cut in piece['cutPaths']:
             commands=[]
-            for command,values in cut['commands']:
+            display_commands=cut['commands']
+            if len(meta['pieces'])>200:
+                from shapely.geometry import LineString
+                pts=list(LineString(cut['pdfPoints']).simplify(.04/MM,preserve_topology=True).coords)
+                display_commands=[('m',pts[0])]+[('l',p) for p in pts[1:]]+([('h',[])] if cut['closed'] else [])
+            for command,values in display_commands:
                 coords=[((value-x0) if index%2==0 else (y1-value))*MM for index,value in enumerate(values)]
                 commands.append(('Z' if command=='h' else command.upper())+' '+' '.join(f'{v:.6f}' for v in coords))
             preview_cuts.append({'operation':cut['operation'],'d':' '.join(commands)})
@@ -767,20 +885,46 @@ def output_check(job, folder):
     return {'ready':not issues,'actualFormat':'pdf','issues':issues,'bleedVerification':'operator-reviewed; no automatic ink-coverage verification','colorHandling':'source preserved; RIP manages conversion'}
 
 
-def worker(request, output):
+def worker(request, output, source_file=None):
     request=Path(request); output=Path(output)
+    print_copy = None
     try:
         data=json.loads(request.read_text(encoding='utf-8'))
-        raw=base64.b64decode(data['content'],validate=True)
-        if len(raw)>MAX_PDF_BYTES: raise ValueError('PDF/AI files are limited to 32 MB in this build.')
-        result={'ok':True,'document':import_to_store(raw,output.parent/'documents',data.get('bleedMm',0),data.get('cutSpot','CutContour'),data.get('cutMapping'),preserve=data.get('preserveArtwork') is True,guide_approval=data.get('guideApproval'))}
+        if source_file is not None:
+            source = Path(source_file)
+            if source.stat().st_size > MAX_PDF_BYTES:
+                raise ValueError('PDF/AI files are limited to 2 GB.')
+            if source.stat().st_size > 32_000_000:
+                from pdf_compact import compact_pdf
+                print_copy = source.with_name(source.stem + '-print.pdf')
+                compact_pdf(source, print_copy)
+                source = print_copy
+            raw = source.read_bytes()
+            if len(raw) > MAX_PDF_BYTES:
+                raise ValueError('PDF/AI files are limited to 2 GB.')
+        else:
+            content=data['content']
+            if not isinstance(content,str) or len(content)>MAX_PDF_BASE64_CHARS:
+                raise ValueError('JSON PDF imports are limited to 256 MB. Use the browser file upload for larger files.')
+            raw=base64.b64decode(content,validate=True)
+            if len(raw)>MAX_JSON_PDF_BYTES:
+                raise ValueError('JSON PDF imports are limited to 256 MB. Use the browser file upload for larger files.')
+        result={'ok':True,'document':import_to_store(raw,output.parent/'documents',data.get('bleedMm',0),data.get('cutSpot','CutContour'),data.get('cutMapping'),preserve=data.get('preserveArtwork') is True,guide_approval=data.get('guideApproval'),cut_approval=data.get('cutApproval'))}
+    except CutReviewRequired as error:
+        result={'ok':False,'error':str(error),'cutReview':error.review}
     except GuideReviewRequired as error:
         result={'ok':False,'error':str(error),'guideReview':error.review}
     except Exception as error:
         result={'ok':False,'error':str(error)}
+    finally:
+        if print_copy is not None:
+            try:
+                print_copy.unlink(missing_ok=True)
+            except OSError:
+                pass  # The server retries cleanup after this worker exits.
     output.write_text(json.dumps(result),encoding='utf-8')
 
 
 if __name__=='__main__':
     import sys
-    worker(*sys.argv[1:3])
+    worker(*sys.argv[1:])

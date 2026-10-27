@@ -28,7 +28,7 @@ source colors and let the RIP handle printer color management and registration.
 The ONYX profile may need its bleed requirement confirmed before it can be met.
 
 LIMITS
-One material, up to 800 pieces. PDF: 32 MB, 25 pages. AI must have Create PDF
+One material, up to 800 pieces. PDF: 2 GB, 25 pages. AI must have Create PDF
 Compatible File enabled. Hidden/conditional PDF layers, annotations, ambiguous
 contours and some other structures are rejected. DeviceN cut colors are unsupported.
 No EPS, automatic bleed, color conversion, inventory or printer/cutter dispatch.

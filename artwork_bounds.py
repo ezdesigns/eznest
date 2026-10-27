@@ -10,6 +10,7 @@ import math
 from shapely.affinity import affine_transform
 from shapely.geometry import Polygon, LineString, box
 from shapely.ops import unary_union
+from shapely.strtree import STRtree
 
 MM = 25.4 / 72
 PAD = .40 / MM  # Conservative enclosure/antialias guard; never changes PDF paint.
@@ -82,11 +83,13 @@ def path_parts(count, segment_at, tolerance):
     return paths
 
 
-def paint_envelopes(page):
+def paint_envelopes(page, image_bounds=None):
     import pypdfium2.raw as api
     from pdf_io import matrix
     budget = [0]
     crop = box(*page.get_bbox())
+    image_bounds = image_bounds or []
+    image_tree = STRtree([box(*item['box']) for item in image_bounds])
 
     def visit(objects, parent=IDENTITY, inherited=crop, depth=0):
         if depth > 15:
@@ -113,6 +116,13 @@ def paint_envelopes(page):
                 continue
             bounds = transformed(box(*obj.get_bounds()), parent)
             shape = bounds
+            if obj.type == api.FPDF_PAGEOBJ_IMAGE and image_bounds:
+                # Match all source image instances at this position. An opaque
+                # image at the same bounds must still reserve its full canvas.
+                matches = [image_bounds[i] for i in image_tree.query(bounds)
+                           if all(abs(a-b)<.01 for a,b in zip(bounds.bounds,image_bounds[i]['box']))]
+                if matches:
+                    shape = unary_union([box(*item['paint']) for item in matches]).buffer(.02)
             if obj.type == api.FPDF_PAGEOBJ_PATH:
                 fill, stroke = ctypes.c_int(), ctypes.c_int()
                 if not api.FPDFPath_GetDrawMode(obj, fill, stroke):
@@ -149,7 +159,7 @@ def preserve_artwork(clean, meta):
             try:
                 source = [p for p in meta['pieces'] if p['page'] == page_index]
                 cuts = [Polygon(p['pdfPoints']) for p in source]
-                paint = paint_envelopes(page)
+                paint = paint_envelopes(page, [item for item in meta.get('imagePaintBounds',[]) if item['page']==page_index])
                 # Paint already includes its first enclosure guard. Preserve the
                 # extra export guard too: PDF edge antialiasing can reach beyond
                 # a flattened paint boundary. Only blank guard overlap may split.
@@ -172,14 +182,16 @@ def preserve_artwork(clean, meta):
                     if stable:
                         break
                 separated = []
+                core_tree = STRtree(cores)
+                cut_tree = STRtree(cuts)
                 for group in groups:
-                    members = [i for i, core in enumerate(cores) if group.intersects(core)]
+                    members = sorted(core_tree.query(group, predicate='intersects'))
                     # Each candidate retains both guards and must exclude every
                     # other protected paint core, including cores outside this
                     # component. Otherwise retain the conservative whole group.
                     safe = members and all(
-                        any(cores[i].intersects(cut) for cut in cuts) and
-                        all(guarded[i].disjoint(core) for j, core in enumerate(cores) if i != j)
+                        len(cut_tree.query(cores[i], predicate='intersects')) > 0 and
+                        all(i == j for j in core_tree.query(guarded[i], predicate='intersects'))
                         for i in members)
                     if safe:
                         separated.extend(guarded[i] for i in members)
@@ -189,7 +201,7 @@ def preserve_artwork(clean, meta):
                 owned = []
                 missing = 0
                 for group in groups:
-                    owners = [i for i, cut in enumerate(cuts) if group.intersects(cut)]
+                    owners = sorted(int(i) for i in cut_tree.query(group, predicate='intersects'))
                     if not owners:
                         missing += 1
                         continue
