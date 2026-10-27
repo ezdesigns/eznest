@@ -7,7 +7,8 @@ import time
 from pathlib import Path
 from shapely.geometry import Polygon
 from shapely.affinity import rotate, translate
-from shapely.strtree import STRtree
+from shapely.ops import unary_union
+from shapely.prepared import prep
 from engine import part_polygon, PIECE_CAP, ORDER_PIECE_CAP, solve, validate_job, validate_result, number
 from production import validate_identity
 
@@ -77,18 +78,14 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
     counts = [0] * len(fills)
     failed = set()
     orientations = {}
-    buffered = {}
     for fill in fills:
         for part in fill['parts']:
             orientations[part['id']] = [(angle, rotate(part_polygon(part), angle, origin=(0, 0))) for angle in angles]
 
     def find(part, occupied):
-        # The same conservative buffers, indexed without rebuilding their union
-        # for every attempted piece. Exact intersection still decides each fit.
-        for polygon in occupied:
-            if polygon not in buffered:
-                buffered[polygon] = polygon.buffer(gap + guard * 2, join_style=2)
-        forbidden = STRtree([buffered[p] for p in occupied]) if occupied else None
+        # One prepared union per attempt. An index of the same buffers was
+        # slower for these grid scans, so the exact intersection test stays.
+        forbidden = prep(unary_union([p.buffer(gap + guard * 2, join_style=2) for p in occupied])) if occupied else None
         for angle, polygon in orientations[part['id']]:
             x0, y0, x1, y1 = polygon.bounds
             w, h = x1 - x0, y1 - y0
@@ -110,7 +107,7 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
                     if time.monotonic() >= deadline:
                         return None
                     candidate = translate(polygon, x-x0, y-y0)
-                    if forbidden is None or not len(forbidden.query(candidate, predicate='intersects')):
+                    if forbidden is None or not forbidden.intersects(candidate):
                         return candidate, {'id':part['id'], 'x':x-x0, 'y':y-y0, 'rotation':angle}
         return None
 
