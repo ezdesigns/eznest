@@ -2,12 +2,17 @@
 
 ## Unreleased
 
-- The job panel starts with Upload job. Settings groups print destination and cut
-  lines, with connections, updates and help tucked into separate sections. Field
-  labels show help on hover, keyboard focus or tap instead of separate info icons.
-- Removed the bottom Known limits and Import help sections. Existing import and
-  export checks remain in place. Max output is a disabled future option for sending
-  jobs to another print shop; it does not change nesting effort or send anything.
+- Stream browser PDF/AI uploads directly to disk, up to 2 GB, without base64 expansion. Illustrator/legacy JSON handoffs allow 256 MB; SVG remains 8 MB. Parser and geometry limits still apply.
+
+- The job panel has Upload job (with copies), Choose material, and Choose output.
+  Nest here uses the existing effort choices. Max output opens an invitation to
+  visit OUTPUT for its upcoming waitlist, without sending files or enrolling anyone.
+- Settings opens in a centered dialog. Specialized cut and print-software options
+  are collapsed and explained in plain language. Field labels show help on hover,
+  focus or tap. Clicking outside the material editor cancels unsaved edits.
+- A short How it works diagram explains upload, nesting, and review/save on the
+  empty homepage. Bottom Known limits and Import help sections are removed;
+  existing import/export guards remain in place.
 
 First run, checked updates, and a shop that is not hard-wired to one hot folder.
 

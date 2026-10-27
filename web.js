@@ -46,12 +46,12 @@ function savePrefs(patch) {
 function installSettingsHelp() {
   const help = {
     'nesting-effort': ['Nesting effort', 'Quick finds a layout sooner. Best fit spends longer trying arrangements and may use less material. These are search budgets; preparation and checking take extra time. Your artwork, bleed, spacing and allowed turns stay the same. Try tighter fit keeps your best valid result.'],
-    'cut-preset': ['Cut line names', 'Choose the names your print software recognizes. This changes exported cut names; it does not create missing cut lines.'],
-    'thru-name': ['Cut through backing', 'The name your print software uses for a full cut. It must match your cutter setup. Changing this name does not set the blade depth.'],
-    'kiss-name': ['Cut sticker only', 'The name your print software uses to cut the sticker and leave the backing. It must match your cutter setup.'],
-    'generic-cut': ['Unlabelled cut lines', 'Choose how to treat lines named only CutContour in the next file you add. Ask me keeps you in control when the cut type is unclear.'],
+    'cut-preset': ['Cut naming preset', 'Choose the names your print software recognizes. This changes exported cut names; it does not create missing cut lines.'],
+    'thru-name': ['Through-cut name', 'The name your print software uses for a full cut. It must match your cutter setup. Changing this name does not set the blade depth.'],
+    'kiss-name': ['Kiss-cut name', 'The name your print software uses to cut the sticker and leave the backing. It must match your cutter setup.'],
+    'generic-cut': ['If a cut type is missing', 'Choose how to treat lines named only CutContour in the next file you add. Ask me keeps you in control when the cut type is unclear.'],
     'hot-folder': ['Default print folder', 'The folder selected automatically when you save. Choose My computer to save somewhere else. A folder watched by your print software may start processing saved files.'],
-    'printer': ['Printer name', 'A label for your shop setup. Changing it does not connect a printer or change print quality.'],
+    'printer': ['Printer label (optional)', 'A label for your shop setup. Changing it does not connect a printer or change print quality.'],
     'staging-on': ['Keep an extra copy', 'Also save the finished pack in the extra copy folder when you send it.'],
     'staging-folder': ['Extra copy folder', 'Choose where the extra copy is saved. This does not replace the main destination.'],
     'onyx-pc': ['ONYX is on this computer', 'Changes the suggested output folder for this PC. It does not install ONYX or move your files.'],
@@ -140,11 +140,14 @@ function installSettingsHelp() {
     bindHelp(button, message);
   }
   document.querySelectorAll('[data-help]').forEach(button => bindHelp(button, button.dataset.help));
-  document.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !tip.hidden) { event.preventDefault(); close(); }
+  });
   document.addEventListener('pointerdown', event => { if (!event.target.closest('.help-label, .setting-help')) close(); });
   document.addEventListener('scroll', close, true);
   window.addEventListener('resize', close);
-  $('settings').addEventListener('toggle', close);
+  $('settings').addEventListener('close', close);
+  $('material-dialog').addEventListener('close', close);
 }
 
 async function sha256(data) {
@@ -221,16 +224,16 @@ async function ensureStyles() {
   if (!stylesApplied()) throw Error('The shop stylesheet did not load.');
 }
 
-async function api(path, data) {
+async function api(path, data, file) {
   const response = await fetch(path, {
     method: 'POST',
-    headers: {'Content-Type': 'application/json', 'X-EZ-Token': token},
-    body: JSON.stringify(data || {})
+    headers: file ? {'Content-Type': 'application/pdf', 'X-EZ-Token': token, 'X-EZ-Import': encodeURIComponent(JSON.stringify(data || {}))} : {'Content-Type': 'application/json', 'X-EZ-Token': token},
+    body: file || JSON.stringify(data || {})
   });
   const body = await response.json();
   if (!response.ok) {
     const error = Error(body.error || 'Request failed.');
-    if (path === '/api/document/import') error.guideReview = body.guideReview;
+    if (path === '/api/document/import' || path === '/api/document/import-file') error.guideReview = body.guideReview;
     throw error;
   }
   return body;
@@ -2024,29 +2027,26 @@ function showImportError(error) {
 }
 
 async function importPdf(file, operation) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = '';
-  for (let offset = 0; offset < bytes.length; offset += 32768) binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
   const mapping = EZNCuts.defaults();
   mapping.rules.push(
     {source: 'layer', match: 'exact', name: 'thru-cut', operation: 'thru'},
     {source: 'layer', match: 'exact', name: 'kiss cut', operation: 'kiss'});
   mapping.genericOperation = operation;
-  const request = {content: btoa(binary), preserveArtwork: true, cutSpot: 'CutContour', cutMapping: EZNCuts.validate(mapping)};
-  try { return await api('/api/document/import', request); }
+  const request = {preserveArtwork: true, cutSpot: 'CutContour', cutMapping: EZNCuts.validate(mapping)};
+  try { return await api('/api/document/import-file', request, file); }
   catch (error) {
     if (!error.guideReview) throw error;
     const approval = await reviewGuides(file, error.guideReview);
     if (!approval) { const cancelled = Error('File not added. Guide review cancelled.'); cancelled.importCancelled = true; throw cancelled; }
     status('Reading file with the reviewed guides excluded…');
-    return api('/api/document/import', {...request, guideApproval: approval});
+    return api('/api/document/import-file', {...request, guideApproval: approval}, file);
   }
 }
 
 async function readEntry(file) {
   const pdf = /\.(pdf|ai)$/i.test(file.name);
   if (!pdf && !/\.svg$/i.test(file.name)) throw Error(file.name + ' is not SVG, PDF, or PDF-compatible AI.');
-  if (file.size > (pdf ? 32_000_000 : 8_000_000)) throw Error(file.name + ' is over the ' + (pdf ? '32' : '8') + ' MB limit.');
+  if (file.size > (pdf ? 2_000_000_000 : 8_000_000)) throw Error(file.name + ' is over the ' + (pdf ? '2 GB' : '8 MB') + ' limit.');
   let data, revision, unresolvedCut = false;
   if (pdf) {
     const chosen = $('generic-cut').value;
@@ -2360,7 +2360,7 @@ function showUpdate(info) {
   const note = $('update-note');
   $('update').textContent = info?.managedSupported && info?.staged ? 'Install when finished' : info?.applyOnRestart ? 'Install now' : 'Check for update';
   if (info?.updateAvailable && !info.staged) $('update').textContent = 'Download ' + info.latest;
-  $('settings').querySelector('summary').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
+  $('settings-open').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
   if (info?.managedSupported && info?.staged && !info.localPC) {
     note.hidden = false;
     note.textContent = 'The update is ready. Approve installation on the PC running eznest.';
@@ -2410,8 +2410,30 @@ async function refreshActivity() {
   }
 }
 
+// Only dismiss a backdrop click that started and ended outside the dialog.
+// Dragging from an input to the backdrop must not discard material edits.
+function dismissOnBackdrop(dialog, dismiss) {
+  let startedOutside = false;
+  const outside = event => {
+    const r = dialog.getBoundingClientRect();
+    return event.target === dialog && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom);
+  };
+  dialog.addEventListener('pointerdown', event => { startedOutside = outside(event); });
+  dialog.addEventListener('click', event => {
+    if (startedOutside && outside(event)) dismiss();
+    startedOutside = false;
+  });
+  dialog.addEventListener('pointercancel', () => { startedOutside = false; });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   installSettingsHelp();
+  $('settings-open').addEventListener('click', () => $('settings').showModal());
+  $('settings-close').addEventListener('click', () => $('settings').close());
+  dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });
+  $('max-output').addEventListener('click', () => $('max-output-dialog').showModal());
+  $('max-output-close').addEventListener('click', () => $('max-output-dialog').close());
+  dismissOnBackdrop($('max-output-dialog'), () => $('max-output-dialog').close());
   $('save-settings').addEventListener('click', saveSettings);
   $('settings').addEventListener('input', () => { $('settings-saved').textContent = ''; });
   $('generic-cut').addEventListener('change', saveShop);
@@ -2461,6 +2483,8 @@ document.addEventListener('DOMContentLoaded', () => {
   $('edit-material').addEventListener('click', () => openPreset($('material').value));
   $('save-material').addEventListener('click', saveMaterial);
   $('cancel-material').addEventListener('click', closePreset);
+  $('material-close').addEventListener('click', closePreset);
+  dismissOnBackdrop($('material-dialog'), closePreset);
   $('material-dialog').addEventListener('cancel', event => { event.preventDefault(); closePreset(); });
   $('width').addEventListener('input', () => { watchWidth(); requestNest(); });
   $('nest-width').addEventListener('input', () => { showWidth(); saveShop(); requestNest(); });
@@ -2634,7 +2658,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
+    if ($('settings').open || $('max-output-dialog').open || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

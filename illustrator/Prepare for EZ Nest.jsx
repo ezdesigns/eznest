@@ -50,7 +50,7 @@ $.evalFile(new File(File($.fileName).parent.fsName+'/bridge-core.js'));
         options.preserveEditability=false;
         production.saveAs(file,options);
         exported=true;
-        if(file.length>32000000)throw Error('The PDF is over 32 MB. Export a smaller selection.');
+        if(file.length>256000000)throw Error('The PDF is over 256 MB. Export a smaller selection.');
         file.encoding='BINARY';if(!file.open('r'))throw Error('Cannot read the production PDF.');
         var bytes=file.read();file.close();
         var reply=EZPilot.http('POST','/api/illustrator/intake',{requestId:requestId,sourceKey:sourceKey,content:EZPilot.base64(bytes),material:settings.material,widthIn:settings.widthIn,sets:1,bleedMm:settings.bleedMm},session.token);

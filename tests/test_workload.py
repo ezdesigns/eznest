@@ -48,7 +48,7 @@ class WorkloadTests(unittest.TestCase):
                         summary = json.load(urlopen(fixture.url() + '/api/workload'))
                         self.assertEqual(summary['events']['sent_to_folder']['packs'], 1)
                         self.assertEqual(summary['events']['sent_to_folder']['pieces'], 4)
-                        page.locator('#settings').evaluate('node => node.open = true')
+                        page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
                         page.locator('#settings-support').evaluate('node => node.open = true')
                         page.locator('#local-activity').evaluate('node => node.open = true')
                         page.wait_for_function("() => document.querySelector('#activity-summary').textContent.includes('1 sent')")

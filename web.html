@@ -41,39 +41,37 @@
   </div>
   <p id="setup-error" class="lan-note" hidden></p>
 </section>
-<details id="settings">
-  <summary aria-label="Settings">
+<button id="settings-open" type="button" aria-label="Settings" aria-haspopup="dialog">
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
       <g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9.5 3h5l.5 2.5 1.6.9 2.4-.8 2.5 4.3-1.9 1.7v1.8l1.9 1.7-2.5 4.3-2.4-.8-1.6.9-.5 2.5h-5L9 19.5l-1.6-.9-2.4.8-2.5-4.3 1.9-1.7v-1.8L2.5 9.9 5 5.6l2.4.8L9 5.5Z"/>
         <circle cx="12" cy="12.5" r="3"/>
       </g>
     </svg>
-  </summary>
+  <span>Settings</span>
+</button>
+<dialog id="settings" aria-labelledby="settings-title">
   <div class="panel">
-    <h2 class="settings-title">Settings</h2>
-    <p class="hint settings-intro">Hover or tap a label for help.</p>
+    <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title">Settings</h2><p class="hint">Set up once. Your material choices stay with the job.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
     <section class="settings-section" aria-labelledby="destination-title">
       <h3 id="destination-title">Print destination</h3>
       <div class="fields">
       <label class="wide">Hot folder
         <input id="hot-folder" type="text" placeholder="Hot folder path" autocomplete="off">
-        <span id="hot-default" class="hint"></span>
         <span id="hot-error" class="lan-note" hidden></span>
         <button id="browse-output" class="link" type="button">Choose folder…</button>
       </label>
-      <label class="wide">Printer
-        <input id="printer" type="text" maxlength="80" autocomplete="off">
-      </label>
+
       </div>
     </section>
-    <section class="settings-section" aria-labelledby="cuts-title">
-      <h3 id="cuts-title">Cut lines</h3>
+    <details id="settings-cuts" class="settings-section">
+      <summary>Cut line setup</summary>
+      <p class="section-note">Match the cut names your print software expects. Leave these as they are if your cuts already work.</p>
       <div class="fields">
       <label class="wide">Cut spot names
         <select id="cut-preset">
-          <option value="output" selected>CutContour_Thru-cut / CutContour_Kiss-cut</option>
-          <option value="ln">LNThru-cut / LNKiss-cut</option>
+          <option value="output" selected>Standard cut names</option>
+          <option value="ln">LN cut names</option>
           <option value="custom">Custom</option>
         </select>
       </label>
@@ -92,9 +90,13 @@
         </select>
       </label>
       </div>
-    </section>
+    </details>
     <details id="settings-delivery" class="settings-section">
-      <summary>Copies &amp; connections</summary>
+      <summary>Print software &amp; extra copies</summary>
+      <p class="section-note">Optional setup for shops that use a watched folder or want a backup of each exported file.</p>
+      <label class="wide">Printer
+        <input id="printer" type="text" maxlength="80" autocomplete="off">
+      </label>
     <label class="check"><input id="staging-on" type="checkbox"> Staging folder</label>
     <label class="wide" id="staging-row" hidden>Staging folder
       <input id="staging-folder" type="text" placeholder="Off" autocomplete="off">
@@ -102,6 +104,7 @@
     </label>
     <label class="check"><input id="allow-undo" type="checkbox"> Undo send while the file is still in the folder</label>
     <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
+    <p id="hot-default" class="hint"></p>
     <label class="check"><input id="onyx-pc" type="checkbox"> This PC runs ONYX</label>
     <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
     <p class="hint">Shop network access is configured when the app starts.</p>
@@ -124,7 +127,8 @@
     </details>
     </details>
     <details id="settings-support" class="settings-section">
-      <summary>Help &amp; activity</summary>
+      <summary>Help &amp; troubleshooting</summary>
+      <p class="section-note">Use these details when checking a saved job or reporting a problem.</p>
     <details id="local-activity">
       <summary>Local activity · last 24 hours</summary>
       <p class="hint">Saved only on this PC for 90 days. No artwork or filenames.
@@ -147,7 +151,7 @@
     <input id="seconds" type="hidden" value="30">
     <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
   </div>
-</details>
+</dialog>
 <main>
   <div class="workspace-grid">
   <section class="canvas-area" aria-label="Layout">
@@ -206,26 +210,9 @@
     <h2><span class="step-number">1</span> Upload job</h2>
     <p id="job-empty" class="hint">Add a print file to get started.</p>
   <ul id="files" class="files" hidden></ul>
+  <details id="job-options"><summary>Copies <span id="copies-summary"></span></summary><p class="hint">Repeat every piece in this job.</p><div class="quiet">
 
-  <section class="material-area" aria-label="Job material">
-    <div class="material-heading"><label for="material"><span class="step-number">2</span> Material</label><button id="edit-material" class="link" type="button">Edit</button></div>
-    <select id="material" aria-label="Material">
-      <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>Moto Regular</option>
-      <option value="holographic" data-name="Moto Holographic">Moto Holographic</option>
-      <option value="chrome" data-name="Moto Chrome">Moto Chrome</option>
-      <option value="custom">+ Add material</option>
-    </select>
-    <div id="materials" aria-live="polite"></div>
-    <p id="material-summary" class="hint"></p>
-  </section>
-
-  <details id="job-options"><summary>Width &amp; copies <span id="copies-summary"></span></summary><div class="quiet">
-
-    <label class="width">Printable width
-      <input id="nest-width" type="number" min="0" step="any" value="51.5" inputmode="decimal">
-      <span>in</span>
-    </label>
-    <div class="sets"><span id="copies-label">Copies</span>
+    <div class="sets"><span id="copies-label">Full sets</span>
       <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
       <input id="sets" type="number" min="1" max="800" step="1" value="1" inputmode="numeric" aria-label="Sets">
       <button id="sets-inc" type="button" aria-label="More sets">+</button>
@@ -234,23 +221,42 @@
 
 
   </details>
-  <section id="layout-options" class="layout-options">
-  <h2><span class="step-number">3</span> <button id="effort-help" class="help-label" type="button">Nesting effort</button></h2><span id="effort-summary" hidden></span>
-  <label>Nesting effort
-    <select id="nesting-effort">
-      <option value="5">Quick · 5 seconds</option>
-      <option value="30" selected>Balanced · 30 seconds</option>
-      <option value="90">Best fit · 90 seconds</option>
+
+
+  <section class="material-area" aria-label="Job material">
+    <div class="material-heading"><label for="material"><span class="step-number">2</span> Choose material</label><button id="edit-material" class="link" type="button">Edit</button></div>
+    <p class="hint step-hint">Use the roll you plan to print on.</p>
+    <select id="material" aria-label="Material">
+      <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>Moto Regular</option>
+      <option value="holographic" data-name="Moto Holographic">Moto Holographic</option>
+      <option value="chrome" data-name="Moto Chrome">Moto Chrome</option>
+      <option value="custom">+ Add material</option>
     </select>
-  </label>
+    <div id="materials" aria-live="polite"></div>
+    <p id="material-summary" class="hint"></p>
+    <details id="width-override"><summary>Change width for this job</summary>
+    <label class="width">Printable width
+      <input id="nest-width" type="number" min="0" step="any" value="51.5" inputmode="decimal">
+      <span>in</span>
+    </label>
+    </details>
   </section>
-  <section class="output-options" aria-label="Output options">
-    <h2>Output options</h2>
-    <div class="future-output">
-      <button id="max-output" type="button" disabled aria-describedby="max-output-note">Max output</button>
-      <span>Coming later</span>
+
+  <section id="layout-options" class="layout-options">
+    <h2><span class="step-number">3</span> Choose output</h2>
+    <div class="output-modes" aria-label="Output choices">
+      <div class="nest-mode"><strong>Nest here</strong><span>Arrange pieces to save roll space.</span></div>
+      <button id="max-output" type="button" aria-haspopup="dialog"><strong>Max output <span class="soon">Coming later</span></strong><span>Have another shop print it.</span></button>
     </div>
-    <p id="max-output-note" class="hint">Send a job to another print shop.</p>
+    <div class="effort-heading"><button id="effort-help" class="help-label" type="button">Nesting effort</button><span class="hint">More time may find a tighter fit.</span></div>
+    <span id="effort-summary" hidden></span>
+    <label>Nesting effort
+      <select id="nesting-effort">
+        <option value="5">Quick · 5 seconds</option>
+        <option value="30" selected>Balanced · 30 seconds</option>
+        <option value="90">Best fit · 90 seconds</option>
+      </select>
+    </label>
   </section>
   <button id="start-nesting" class="primary" type="button" hidden disabled>Start nesting</button>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
@@ -282,7 +288,22 @@
   </aside>
   </div>
 
+  <section class="how-it-works" aria-labelledby="how-title">
+    <h2 id="how-title">How it works</h2>
+    <ol>
+      <li><span class="how-number">1</span><div><strong>Upload your job</strong><p>Add your prepared artwork with its cut lines.</p></div></li>
+      <li><span class="how-number">2</span><div><strong>Choose your roll &amp; nest</strong><p>EZ Nest fits the pieces together, keeping the artwork and bleed.</p></div></li>
+      <li><span class="how-number">3</span><div><strong>Review &amp; save</strong><p>Check the layout, then save a file for your print software.</p></div></li>
+    </ol>
+  </section>
 </main>
+<dialog id="max-output-dialog" aria-labelledby="max-output-title">
+  <div class="dialog-heading"><h2 id="max-output-title">Let another shop handle the print</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close Max output">×</button></div>
+  <p>Max output will connect your job with another print shop through OUTPUT.</p>
+  <p class="hint">Interested? Visit OUTPUT for the upcoming waitlist. Your current job stays here.</p>
+  <a id="max-output-join" class="primary-link" href="https://output.jeezlabs.io/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Visit OUTPUT</a>
+  <p class="hint waitlist-note">The waitlist form is coming soon. Opening the site does not send your artwork or sign you up.</p>
+</dialog>
 <dialog id="guide-review" aria-labelledby="guide-title" aria-describedby="guide-summary">
   <h2 id="guide-title">Review possible guides</h2>
   <p id="guide-file"></p>
@@ -294,7 +315,7 @@
 </dialog>
 <dialog id="material-dialog" aria-labelledby="preset-title">
     <section id="preset-editor" class="preset-editor" aria-labelledby="preset-title" hidden>
-      <h2 id="preset-title">New preset</h2>
+      <div class="dialog-heading"><h2 id="preset-title">New preset</h2><button id="material-close" class="dialog-close" type="button" aria-label="Close material editor">×</button></div>
       <div class="fields">
       <label>Preset name
         <input id="preset-name" type="text" maxlength="80" value="Moto Regular">

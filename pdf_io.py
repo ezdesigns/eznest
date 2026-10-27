@@ -21,7 +21,7 @@ from shapely.affinity import rotate, translate
 
 MM = 25.4 / 72
 IDENTITY = (1, 0, 0, 1, 0, 0)
-MAX_PDF_BYTES = 32_000_000
+from import_limits import MAX_PDF_BYTES, MAX_JSON_PDF_BYTES, MAX_PDF_BASE64_CHARS
 MAX_PAGE_OPERATIONS = 1_000_000
 MAX_CLIP_SEGMENTS = 20_000
 MAX_CLIP_FACES = 2_000
@@ -767,12 +767,24 @@ def output_check(job, folder):
     return {'ready':not issues,'actualFormat':'pdf','issues':issues,'bleedVerification':'operator-reviewed; no automatic ink-coverage verification','colorHandling':'source preserved; RIP manages conversion'}
 
 
-def worker(request, output):
+def worker(request, output, source_file=None):
     request=Path(request); output=Path(output)
     try:
         data=json.loads(request.read_text(encoding='utf-8'))
-        raw=base64.b64decode(data['content'],validate=True)
-        if len(raw)>MAX_PDF_BYTES: raise ValueError('PDF/AI files are limited to 32 MB in this build.')
+        if source_file is not None:
+            source = Path(source_file)
+            if source.stat().st_size > MAX_PDF_BYTES:
+                raise ValueError('PDF/AI files are limited to 2 GB.')
+            raw = source.read_bytes()
+            if len(raw) > MAX_PDF_BYTES:
+                raise ValueError('PDF/AI files are limited to 2 GB.')
+        else:
+            content=data['content']
+            if not isinstance(content,str) or len(content)>MAX_PDF_BASE64_CHARS:
+                raise ValueError('JSON PDF imports are limited to 256 MB. Use the browser file upload for larger files.')
+            raw=base64.b64decode(content,validate=True)
+            if len(raw)>MAX_JSON_PDF_BYTES:
+                raise ValueError('JSON PDF imports are limited to 256 MB. Use the browser file upload for larger files.')
         result={'ok':True,'document':import_to_store(raw,output.parent/'documents',data.get('bleedMm',0),data.get('cutSpot','CutContour'),data.get('cutMapping'),preserve=data.get('preserveArtwork') is True,guide_approval=data.get('guideApproval'))}
     except GuideReviewRequired as error:
         result={'ok':False,'error':str(error),'guideReview':error.review}
@@ -783,4 +795,4 @@ def worker(request, output):
 
 if __name__=='__main__':
     import sys
-    worker(*sys.argv[1:3])
+    worker(*sys.argv[1:])
