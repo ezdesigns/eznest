@@ -278,26 +278,12 @@ def _run(job):
                 sheet['area']=sum(shape.area for p,shape in zip(result['placements'],shapes) if p['sheet']==sheet['index'])
             return {'ok':True,'job':merged,'result':result,'requestJob':job}
         return {'ok':True,'result':result}
-    budget = int(job['settings']['seconds'])
-    repack_budget = max(1, budget // 3) if job.get('parts') and job.get('fillJobs') and budget >= 3 else 0
-    required = {**job, 'settings':{**job['settings'], 'seconds':budget-repack_budget}}
-    result = solve(required, progress) if job.get('parts') else {'placements':[], 'usedLength':job['settings']['maxLength'], 'elapsed':0, 'engine':'eznest sticker fill'}
+    # Optional stickers are placed after the required search. They do not take
+    # part of the configured search time, and a failed filler trial cannot
+    # shorten the time spent on the required pieces.
+    result = solve(job, progress) if job.get('parts') else {'placements':[], 'usedLength':job['settings']['maxLength'], 'elapsed':0, 'engine':'eznest sticker fill'}
     if job.get('fillJobs'):
-        # Continue a productive required-piece search before filling; when it
-        # has plateaued, spend the reserve on complete-set hole repair instead.
-        # A continuation is an independent start with a validated incumbent,
-        # not a claim that the native engine supports warm starts.
-        strategy = 'fill'
-        if repack_budget and job.get('fillArea','gaps') == 'gaps' and result.get('searchGain',0) >= .01:
-            continuation = {**required, 'settings':{**required['settings'], 'seconds':repack_budget,
-                'seed':(int(job['settings'].get('seed',42))+524287) % 2147483648}}
-            result = solve(continuation, progress, incumbent=result)
-            repack_budget = 0
-            strategy = 'required'
         resolved, result = fill_stickers(job, result)
-        if repack_budget:
-            resolved, result = refine_fill(job, resolved, result, repack_budget)
-        result['reserveStrategy'] = strategy
         return {'ok':True, 'job':resolved, 'result':result, 'requestJob':job}
     return {'ok':True, 'result':result}
 

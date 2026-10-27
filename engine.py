@@ -23,8 +23,9 @@ def solver_part(part, rotations, strip_width):
                       for a, b in zip(corners, corners[1:])]
     else:
         candidates = rotations
-    # strip_width is the physical usable width. Native item/strip separation
-    # is compensated by the expanded container and translated origin in solve.
+    # strip_width is the physical usable width. The buffered envelope has to
+    # fit before the native solver runs. solve() expands the native strip only
+    # when that envelope would not fit after container-edge padding.
     def cross_width(angle):
         bounds = rotate(envelope, angle, origin=(0, 0)).bounds
         return bounds[2] - bounds[0]
@@ -36,6 +37,25 @@ def solver_part(part, rotations, strip_width):
         base = min(fitting, key=cross_width)
         envelope = rotate(envelope, base, origin=(0, 0))
     return envelope, base, None if rotations is None else [-a for a in fitting]
+
+
+def edge_padding_blocks_fit(envelope, orientations, usable, separation):
+    """True when native container-edge padding would reject a handed orientation.
+
+    Sparrow insets every piece from the strip edge by min_items_separation.
+    Ordinary parts still fit the unexpanded strip, and expanding it changes
+    the search. Compensate only for an orientation that fits the physical
+    usable width but not that inset.
+    """
+    limit = usable - 2 * separation
+    if orientations is None:
+        left, _, right, _ = envelope.bounds
+        return right - left > limit + 1e-6
+    for sparrow_angle in orientations:
+        bounds = rotate(envelope, -sparrow_angle, origin=(0, 0)).bounds
+        if bounds[2] - bounds[0] > limit + 1e-6:
+            return True
+    return False
 
 def number(value, name, low, high):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
@@ -205,26 +225,33 @@ def solve(job, progress_path=None, incumbent=None):
     # Sparrow's finite axis is Y. Reflect x/y at the boundary of the adapter.
     # 0.10 mm outward guard exceeds the host's 0.05 mm curve flattening target.
     items, base_rotations, span = [], {}, 0.0
+    separation = gap + 0.02
+    usable = width - 2 * margin
+    compensate = False
     for part in job['parts']:
-        envelope, base, orientations = solver_part(part, job['settings']['rotations'], width - 2 * margin)
+        envelope, base, orientations = solver_part(part, job['settings']['rotations'], usable)
         base_rotations[part['id']] = base
         left, bottom, right, top = envelope.bounds
-        span += (math.hypot(right - left, top - bottom) + gap + 0.02) * part.get('quantity', 1)
+        span += (math.hypot(right - left, top - bottom) + separation) * part.get('quantity', 1)
         items.append(spyrrow.Item(part['id'], [(y, x) for x, y in envelope.exterior.coords], part.get('quantity', 1), orientations))
+        if edge_padding_blocks_fit(envelope, orientations, usable, separation):
+            compensate = True
     # Small extra clearance absorbs native floating-point error; zero gap remains valid.
     # Sparrow initializes strip length from area / width. For a tiny job on a
     # wide roll this can be smaller than its separation offset and panic.
     # No part needs more cross-roll space than its envelope diagonal. The sum
     # plus clearances accommodates every part side by side, at any orientation.
     # Restrict only the search region; retain the customer's full output width.
-    # Native separation also applies to container edges. Cancel only that
-    # padding; preserve pairwise separation, guarded envelopes and output width.
-    separation = gap + 0.02
-    instance = spyrrow.StripPackingInstance('eznest', min(width - 2 * margin, span) + 2 * separation, items)
+    # Native separation also applies to container edges. Expand the strip and
+    # shift the origin back only when a handed envelope would not fit that
+    # inset. Jobs that already fit keep the unexpanded strip, so their search
+    # matches a full-time run without the shift.
+    pad = separation if compensate else 0.0
+    instance = spyrrow.StripPackingInstance('eznest', min(usable, span) + 2 * pad, items)
     progress_path = progress_path or job.get('_progress')
 
     def build(solution):
-        result = {'placements': [{'id': p.id, 'rotation': base_rotations[p.id] - p.rotation, 'x': p.translation[1] + margin - separation, 'y': p.translation[0] + margin - separation} for p in solution.placed_items]}
+        result = {'placements': [{'id': p.id, 'rotation': base_rotations[p.id] - p.rotation, 'x': p.translation[1] + margin - pad, 'y': p.translation[0] + margin - pad} for p in solution.placed_items]}
         shapes = validate_result(job, result)
         used_length = max(p.bounds[3] for p in shapes) + margin
         area = sum(p.area for p in shapes)
@@ -248,7 +275,7 @@ def solve(job, progress_path=None, incumbent=None):
             key = (placement.id, angle)
             if key not in rotated_tops:
                 rotated_tops[key] = rotate(part_polygons[placement.id], angle, origin=(0,0)).bounds[3]
-            tops.append(rotated_tops[key] + placement.translation[0] + 2 * margin - separation)
+            tops.append(rotated_tops[key] + placement.translation[0] + 2 * margin - pad)
         return max(tops, default=math.inf)
 
     def consider(solution):
@@ -262,25 +289,21 @@ def solve(job, progress_path=None, incumbent=None):
             best = candidate
             publish_result(progress_path, best)
 
-    # Give a quick first arrangement, then independently restart to escape a
-    # poor initial packing. All attempts share one budget and one best result.
-    local_budget = min(2, int(seconds) // 5)
-    remaining_budget = int(seconds) - local_budget
-    attempts = min(3, max(1, remaining_budget // 2))
+    # The configured search time stays with the native solver. Reserving part
+    # of a short budget for local repair made 180-piece rolls longer than the
+    # same full-time search, so that reserve is not spent here.
+    attempts = 3 if seconds >= 15 else 1
     deadline = time.monotonic() + seconds
     completed = 0
-    previous_gain = 0
     for attempt in range(attempts):
         remaining = deadline - time.monotonic()
         if attempt and remaining < 1:
             break
-        slots = attempts - attempt
-        # Reward productive starts with a longer next attempt; otherwise retain
-        # more short independent starts. All native calls share the same budget.
-        share = math.ceil(remaining_budget * .7) if previous_gain >= .01 and slots > 1 else math.ceil(remaining_budget / slots)
-        budget = min(share, remaining_budget - slots + 1, max(1, int(remaining)))
-        remaining_budget -= budget
-        before = best['usedLength'] if best else None
+        budget = max(1, int(remaining / (attempts - attempt)))
+        if attempts == 1:
+            budget = int(seconds)
+        if attempts > 1 and attempt == 0:
+            budget = min(5, budget)
         config = spyrrow.StripPackingConfig(total_computation_time=budget,
             min_items_separation=gap + 0.02, num_workers=2,
             seed=(int(job['settings'].get('seed', 42)) + attempt * 104729) % 2147483648,
@@ -325,15 +348,10 @@ def solve(job, progress_path=None, incumbent=None):
                 consider(holder['solution'])
             except (ValueError, ZeroDivisionError) as error:
                 last_error = error
-        reference = before or first_length
-        previous_gain = (reference-best['usedLength'])/reference if reference and best else 0
     if best is None:
         raise last_error or ValueError('No valid layout was found within the search time.')
-    if local_budget and time.monotonic() < deadline:
-        from local_search import repack
-        best = repack(job, best, min(local_budget, deadline-time.monotonic()))
     best.update(elapsed=time.monotonic() - started, searchAttempts=completed,
-                searchGain=max(0, (first_length-best['usedLength'])/first_length))
+                searchGain=max(0, (first_length-best['usedLength'])/first_length) if first_length else 0)
     publish_result(progress_path, best)
     return best
 
