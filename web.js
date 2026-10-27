@@ -568,7 +568,7 @@ function showScreen(name) {
   const confirming = name === 'confirm';
   $('drop-screen').hidden = !empty;
   $('upload-title').textContent = kits.length ? 'Files ready to nest' : 'Upload your print here';
-  $('upload-hint').textContent = kits.length ? 'Choose material and effort, then Start nesting. Click here to add files.' : 'Click to choose files or drop them here';
+  $('upload-hint').textContent = kits.length ? 'Choose material and effort, then Nest. Click here to add files.' : 'Click to choose files or drop them here';
   $('job-empty').hidden = kits.length > 0;
   $('sheet-frame').hidden = empty;
   $('preview-tools').hidden = empty;
@@ -577,7 +577,7 @@ function showScreen(name) {
   $('nest-savings').hidden = empty || name === 'nest' || !current?.result;
   $('readout').hidden = empty;
   $('export').hidden = empty || confirming || name === 'nest';
-  $('start-nesting').hidden = !kits.length || !!current?.result || !['configure', 'blocked'].includes(name);
+  $('start-nesting').hidden = !!current?.result || !['drop', 'configure', 'blocked'].includes(name);
   if (empty) $('sheet-tabs').hidden = true;
   $('confirm').hidden = !confirming;
   $('start-over').hidden = idle || confirming;
@@ -2070,7 +2070,7 @@ async function readEntry(file) {
   return {
     id: 'web-' + revision.slice(0, 12) + '-' + (fileSerial++), name: file.name, sourceFile: file.name, revision,
     origin: 'files', role: 'required', customer: '', order: '', kit: '', materialId: 'web-roll',
-    sets: sets(), selected: true, status: 'ready', data, file, unresolved: unresolvedCut
+    sets: 1, selected: true, status: 'ready', data, file, unresolved: unresolvedCut
   };
 }
 
@@ -2239,10 +2239,7 @@ async function boot() {
     $('material').value = stored.material;
     applyMaterial(true);
   }
-  if (stored.nestWidth) {
-    $('nest-width').value = stored.nestWidth;
-    showWidth();
-  }
+
   if (stored.thru) $('thru-name').value = stored.thru;
   if (stored.kiss) $('kiss-name').value = stored.kiss;
   if (stored.thru || stored.kiss) matchCutPreset();
@@ -2617,6 +2614,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dismissWelcome = () => { $('feedback-welcome').hidden = true; savePrefs({feedbackWelcomed: true}); };
   $('feedback-welcome').hidden = !!prefs().feedbackWelcomed;
   $('feedback-dismiss').addEventListener('click', dismissWelcome);
+  $('in-house').addEventListener('click', () => $('nesting-effort').focus());
   $('start-nesting').addEventListener('click', () => { dismissWelcome(); nest(); });
   $('feedback-open').addEventListener('click', () => {
     dismissWelcome();
@@ -2658,7 +2656,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if ($('settings').open || $('max-output-dialog').open || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
+    if ($('settings').open || $('max-output-dialog').open || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

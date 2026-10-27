@@ -99,13 +99,14 @@ validation can add time; more search time does not guarantee an improvement.
 Effort is saved in this browser and applies to the next search. Check pieces is
 an optional gallery of detected artwork, copies, cut types and retained groups.
 
-Max output opens an invitation to visit output.jeezlabs.io for its upcoming
-waitlist. It does not send artwork, enroll the operator or change the current
-job. The default Nest here flow stays local. Contextual help appears on label
-hover, keyboard focus or tap. Settings is a centered dialog with specialized
-cut/software options collapsed; material edits cancel on an outside click.
-Copies belong to Upload job, and a three-step How it works diagram explains the
-empty homepage. The previous bottom import-help/limits sections remain removed.
+The job panel asks where to print: In-house or Max output. In-house nesting
+stays local. Max output opens an invitation to visit output.jeezlabs.io and
+learn about its pilot. It does not send artwork, enroll the operator or change
+the current job. Contextual help appears on label hover, keyboard focus or tap.
+Settings is a centered dialog with specialized cut/software options collapsed;
+material edits cancel on an outside click. Quantities stay beside each imported
+file and printable width is edited with the material. Nest is visible but disabled
+until the job is ready. Bottom help sections and the diagram are removed.
 Try tighter fit searches again without replacing a shorter previous result,
 including when stopped early. It shows measured length savings against the first
 fit for unchanged quantities, not against a manual or competitor layout. A new

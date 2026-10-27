@@ -69,6 +69,10 @@ class WebMvpTests(unittest.TestCase):
                 self.start_nesting(page)
                 page.wait_for_function("() => document.body.dataset.step === 'check'", timeout=90000)
                 before = json.load(urlopen(self.url() + '/api/state'))
+                page.locator('#in-house').focus()
+                page.keyboard.press('Enter')
+                expect(page.locator('#nesting-effort')).to_be_focused()
+                expect(page.locator('#confirm')).to_be_hidden()
                 saved_width = page.input_value('#width')
                 writes = []
                 page.on('request', lambda r: writes.append(r.url) if r.method == 'POST' else None)
@@ -109,6 +113,40 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(json.load(urlopen(self.url() + '/api/state'))['id'], before['id'])
                 self.assertEqual(page.input_value('#sets'), '1')
                 self.assertEqual(writes, [])
+            finally:
+                browser.close()
+
+    def set_legacy_width(self, page, value):
+        # Restored jobs still carry their original width. The simple page edits
+        # new widths through the material dialog, not this hidden compatibility field.
+        page.locator('#nest-width').evaluate("(node, value) => { node.value = value; node.dispatchEvent(new Event('input', {bubbles:true})); }", value)
+
+    def test_simple_flow_has_one_quantity_and_material_width(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                expect(page.locator('#start-nesting')).to_be_visible()
+                expect(page.locator('#start-nesting')).to_be_disabled()
+                expect(page.locator('.upload-icon')).to_be_visible()
+                expect(page.locator('#job-options')).to_be_hidden()
+                expect(page.locator('#width-override')).to_be_hidden()
+                expect(page.locator('.how-it-works')).to_have_count(0)
+                expect(page.locator('#in-house')).to_contain_text('In-house')
+                page.click('#edit-material')
+                page.fill('#width', '240')
+                page.click('#save-material')
+                self.assertAlmostEqual(float(page.input_value('#nest-width')) * 25.4, 240, places=1)
+                page.select_option('#nesting-effort', '5')
+                page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
+                expect(page.locator('#files input[type=number]')).to_be_visible()
+                expect(page.locator('#start-nesting')).to_be_enabled(timeout=15000)
+                page.locator('#files input[type=number]').fill('2')
+                self.start_nesting(page)
+                page.wait_for_function("() => document.body.dataset.step === 'check'", timeout=90000)
+                result = json.load(urlopen(self.url() + '/api/state'))
+                self.assertEqual(len(result['result']['placements']), 8)
+                self.assertAlmostEqual(result['result']['width'], 240, places=1)
             finally:
                 browser.close()
 
@@ -552,11 +590,6 @@ class WebMvpTests(unittest.TestCase):
         page.fill('#margin', '5')
         page.click('#save-material')
         self.assertTrue(page.locator('#preset-editor').is_hidden())
-        page.locator('#job-options').evaluate('n => { n.open = true }')
-        page.locator('#width-override').evaluate('node => node.open = true')
-        page.fill('#nest-width', f'{220 / 25.4:.8f}')
-        page.locator('#job-options').evaluate('n => { n.open = true }')
-        page.fill('#sets', '1')
         return browser, page
 
     def download(self, page, shortcut=False):
@@ -846,9 +879,7 @@ class WebMvpTests(unittest.TestCase):
             browser, page = self.open_page(playwright)
             try:
                 page.set_input_files('#file', str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg'))
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '0.6')
+                self.set_legacy_width(page, '0.6')
                 page.locator('#settings').evaluate('node => node.close()')
                 self.start_nesting(page)
                 page.wait_for_selector('#gate.problem', timeout=90000)
@@ -889,8 +920,7 @@ class WebMvpTests(unittest.TestCase):
                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#checks')?.textContent || '')", timeout=90000)
                 self.assertEqual(page.locator('#sheets .num').inner_text().strip(), '1')
                 self.assertIn('4 piece', page.locator('#checks').inner_text().casefold())
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.fill('#sets', '2')
+                page.locator('#files input[type=number]').fill('2')
                 self.assertEqual(len(solves), 1)
                 self.assertTrue(page.locator('#export').is_hidden())
                 self.start_nesting(page)
@@ -914,7 +944,7 @@ class WebMvpTests(unittest.TestCase):
                 browser.close()
 
 
-    def test_chosen_width_nests_and_blocks(self):
+    def test_legacy_job_width_nests_and_blocks(self):
         from playwright.sync_api import sync_playwright
         sample = str(Path(__file__).resolve().parents[1] / 'sample-artwork.svg')
         with sync_playwright() as playwright:
@@ -934,9 +964,7 @@ class WebMvpTests(unittest.TestCase):
                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
                 full = json.load(urlopen(self.url() + '/api/state', timeout=10))['result']['width']
                 self.assertAlmostEqual(full, 51.5 * 25.4, places=1)
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '30')
+                self.set_legacy_width(page, '30')
                 self.start_nesting(page)
                 page.wait_for_function(
                     """() => {
@@ -958,12 +986,10 @@ class WebMvpTests(unittest.TestCase):
                 page.set_viewport_size({'width': 390, 'height': 844})
                 page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-ready.png'), full_page=True)
                 page.screenshot(path=str(SCREENSHOTS / 'eznest-width-mobile.png'), full_page=True)
-                box = page.locator('#nest-width').bounding_box()
-                self.assertLessEqual(box['x'] + box['width'], 390)
+                self.assertTrue(page.locator('#nest-width').is_hidden())
+                self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
                 page.set_viewport_size({'width': 1280, 'height': 900})
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '60')
+                self.set_legacy_width(page, '60')
                 self.start_nesting(page)
                 page.wait_for_selector('#gate.problem', timeout=15000)
                 self.assertIn('printable', page.locator('#gate').inner_text().casefold())
@@ -973,15 +999,11 @@ class WebMvpTests(unittest.TestCase):
                 page.set_viewport_size({'width': 390, 'height': 844})
                 page.screenshot(path=str(SCREENSHOTS / 'eznest-mobile-blocked.png'), full_page=True)
                 page.set_viewport_size({'width': 1280, 'height': 900})
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '2')
+                self.set_legacy_width(page, '2')
                 page.wait_for_function("() => /wider than this width/i.test(document.querySelector('#gate')?.textContent || '')", timeout=15000)
                 self.assertTrue(page.locator('#gate').evaluate("el => el.classList.contains('problem')"))
                 self.assertTrue(page.locator('#export').is_disabled())
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '0')
+                self.set_legacy_width(page, '0')
                 page.wait_for_function("() => /greater than 0/i.test(document.querySelector('#gate')?.textContent || '')", timeout=15000)
                 self.assertTrue(page.locator('#export').is_disabled())
             finally:
@@ -1093,8 +1115,6 @@ class WebMvpTests(unittest.TestCase):
                     server.STATE.update(status='idle')
                     browser, page = self.open_page(playwright)
                     try:
-                        page.locator('#job-options').evaluate('n => { n.open = true }')
-                        page.fill('#sets', '2')
                         page.locator('#seconds').evaluate("node => node.value = '1'")
                         page.click('#edit-material')
                         page.click('#material-advanced summary')
@@ -1103,6 +1123,8 @@ class WebMvpTests(unittest.TestCase):
                         page.select_option('#rotations', '0,180')
                         page.click('#save-material')
                         page.set_input_files('#file', str(file))
+                        page.wait_for_function('() => !importing && kits.length === 1')
+                        page.locator('#files input[type=number]').fill('2')
                         self.start_nesting(page)
                         page.wait_for_function("() => document.body.dataset.step === 'check' && /cuts ok/i.test(document.querySelector('#gate').textContent)", timeout=90000)
                         before = json.load(urlopen(self.url() + '/api/state', timeout=10))
@@ -1119,8 +1141,7 @@ class WebMvpTests(unittest.TestCase):
                         self.assertEqual(unchanged['id'], before['id'])
                         self.assertEqual(unchanged['result'], before['result'])
                         with page.expect_response(lambda response: response.url.endswith('/api/solve'), timeout=10000) as search:
-                            page.locator('#job-options').evaluate('n => { n.open = true }')
-                            page.locator('#sets').fill('3')
+                            page.locator('#files input[type=number]').fill('3')
                             self.start_nesting(page)
                         self.assertEqual(search.value.status, 200)
                         running = json.load(urlopen(self.url() + '/api/state', timeout=10))
@@ -1153,6 +1174,7 @@ class WebMvpTests(unittest.TestCase):
                 self.wait_ready(page)
                 page.select_option('#material','custom')
                 page.fill('#preset-name', 'Shop vinyl')
+                page.fill('#width', '30')
                 page.locator('#material-advanced').evaluate('n => { n.open = true }')
                 page.fill('#gap', '0.2')
                 page.fill('#roll-length', '3600')
@@ -1160,9 +1182,9 @@ class WebMvpTests(unittest.TestCase):
                 page.fill('#available-length', '1800')
                 page.click('#save-material')
                 saved_material = page.input_value('#material')
-                page.locator('#job-options').evaluate('n => { n.open = true }')
-                page.locator('#width-override').evaluate('node => node.open = true')
-                page.fill('#nest-width', '30')
+                # A removed job override must not replace the saved material
+                # width when reopening an empty job.
+                self.set_legacy_width(page, '31')
                 page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
                 page.fill('#thru-name', 'ShopThru')
                 page.fill('#kiss-name', 'ShopKiss')

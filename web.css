@@ -298,7 +298,6 @@ main { min-height: auto; padding: 20px 0 24px; gap: 18px; }
 .empty-layout span { font-size: 13px; }
 body:not([data-step="drop"]) .empty-layout { display: none; }
 .job-panel .drop { min-height: 92px; font-size: 16px; padding: 16px; background: #f7f7f4; }
-.job-panel .files li:only-child input { display: none; }
 .job-panel .files li:only-child { grid-template-columns: minmax(0, 1fr) auto; }
 .job-panel .files { padding-top: 0; border: 0; }
 #job-details, #settings .quick-guide { margin-top: 16px; font-size: 13px; }
@@ -456,16 +455,8 @@ body[data-step="confirm"] #job-options { display: none; }
 #max-output-dialog p { margin: 14px 0; font-size: 14px; }
 .primary-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; width: 100%; margin-top: 8px; border-radius: 8px; background: #2265d5; color: white; text-decoration: none; font-weight: 700; font-size: 14px; }
 #max-output-dialog .waitlist-note { font-size: 12px; margin-bottom: 0; }
-.how-it-works { margin-top: 28px; padding: 22px 0 64px; border-top: 1px solid #e1e3df; }
-.how-it-works h2 { margin: 0 0 16px; font-size: 16px; }
-.how-it-works ol { list-style: none; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 32px; margin: 0; padding: 0; }
-.how-it-works li { display: flex; gap: 12px; position: relative; font-size: 13px; }
-.how-it-works li:not(:last-child)::after { content: '→'; position: absolute; right: -23px; top: 5px; color: #929990; }
-.how-number { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border: 1px solid #d5dad1; border-radius: 50%; font-weight: 700; }
-.how-it-works p { color: var(--muted); font-size: 12px; margin-top: 4px; }
-body:not([data-step="drop"]) .how-it-works { display: none; }
 @media(max-width: 640px) {
   #settings { padding: 20px; }
-  .how-it-works ol { grid-template-columns: 1fr; gap: 22px; }
-  .how-it-works li:not(:last-child)::after { content: '↓'; left: 10px; right: auto; top: auto; bottom: -20px; }
 }
+.upload-icon { width: 42px; height: 42px; margin-bottom: 14px; color: #8292a6; }
+#start-nesting:disabled { background: #e0e4e9; border-color: #e0e4e9; color: #929ba7; opacity: 1; cursor: not-allowed; }
