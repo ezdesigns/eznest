@@ -114,6 +114,20 @@ adds automatic recoloring, bleed or a native editable Illustrator return path.
 
 ## Local tracking
 
+The owner explicitly promoted the tested integration head `27f48d2` to `main` on
+2026-10-26. New backend telemetry work is isolated on its own feature branch for
+a draft PR to `main`; this does not authorize merging future PRs or deploying the
+shop PC. The earlier protected PR #1 / rc.4 gate remains unchanged.
+
+`telemetry.py` adds a separate local store and proposal atom adapter. Read
+`docs/telemetry-contract.md` before changing it. Never equate local file save with
+print delivery/completion or planned allocation with measured consumption. Keep
+the hub adapter dormant until the shared contract is registered and connection
+consent exists. The OUTPUT placeholder is not that consent. Keep exact quantities
+local and only banded, allowlisted payloads in the outbox; preserve stable IDs,
+revision guards, explicit confirmations and failure isolation. Do not modify
+another agent's spine, ledger, render or board as part of this adapter.
+
 `workload.py` records prepared packs, successful hot-folder deliveries and explicit
 removals. Store opaque IDs, UTC times, counts and measurements, not customer names,
 filenames, paths or artwork. Preserve deduplication, 90-day pruning on writes,

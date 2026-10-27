@@ -48,6 +48,12 @@ class WorkloadTests(unittest.TestCase):
                         summary = json.load(urlopen(fixture.url() + '/api/workload'))
                         self.assertEqual(summary['events']['sent_to_folder']['packs'], 1)
                         self.assertEqual(summary['events']['sent_to_folder']['pieces'], 4)
+                        import telemetry
+                        events = telemetry.pending(server.WORK)
+                        for kind in ('nest.created', 'nest.waste', 'nest.committed', 'material.allocated', 'nest.sent_to_print'):
+                            self.assertEqual(sum(e['type'] == kind for e in events), 1, kind)
+                        self.assertNotIn('nest.printed', [e['type'] for e in events])
+                        self.assertEqual(telemetry.status(server.WORK)['nests'][0]['status'], 'sent_to_print')
                         page.locator('#settings').evaluate('node => node.open = true')
                         page.locator('#local-activity').evaluate('node => node.open = true')
                         page.wait_for_function("() => document.querySelector('#activity-summary').textContent.includes('1 sent')")

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Backend telemetry draft records nested layouts, frozen packs, planned material,
+  local saves and configured print-folder handoffs. Local APIs accept explicit
+  queue/print confirmations and current roll readings. A banded atom outbox and
+  fake-hub sample prepare the future connector; OUTPUT transmission stays off.
+  The shared hub contract and dashboard connection are not yet integrated.
+
 First run, checked updates, and a shop that is not hard-wired to one hot folder.
 
 - The first time the page opens, it asks for the hot folder, the printer, the cut spot names, and the units. Use EZ Designs preset fills today's EZ Designs values. Nothing is connected until you save.
