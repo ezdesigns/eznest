@@ -442,8 +442,8 @@ class Handler(BaseHTTPRequestHandler):
                     if self.path == '/api/telemetry/link':
                         if set(data) - {'id', 'jobCodes', 'rollId'}:
                             raise ValueError('Only job codes and an opaque roll ID may be linked.')
-                        if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
-                            raise ValueError('Link the current finished layout.')
+                        if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id') or STATE.get('released'):
+                            raise ValueError('Link the current finished layout before freezing it.')
                         record_telemetry('nest.created')
                         telemetry.link(WORK, data.get('id'), data.get('jobCodes'), data.get('rollId'))
                     elif self.path == '/api/telemetry/status':

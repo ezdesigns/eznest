@@ -298,6 +298,12 @@ class TelemetryApiTests(unittest.TestCase):
         self.assertEqual(info['rolls'][0]['revision'], 1)
         self.assertEqual(info['rolls'][0]['remaining_mm'], 10000)
 
+    def test_preexisting_frozen_pack_cannot_be_relinked_after_upgrade(self):
+        server.STATE['released'] = True
+        with self.assertRaises(HTTPError):
+            self.request('/api/telemetry/link', {'id': NEST, 'jobCodes': ['EZ-9999']})
+        self.assertEqual(t.status(server.WORK)['totalNests'], 0)
+
 
 if __name__ == '__main__':
     unittest.main()
