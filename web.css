@@ -453,6 +453,7 @@ body[data-step="confirm"] #job-options { display: none; }
 #settings-support .quick-guide { text-align: left; }
 #settings-support .quick-guide summary { text-align: left; cursor: pointer; }
 #settings-support .workspace { display: block; }
+body:has(#settings-support[open]) #feedback-welcome { display: none; }
 #settings .settings-save { z-index: 1; }
 #settings-open svg { display: block; flex-shrink: 0; }
 .effort-field { display: block; }
