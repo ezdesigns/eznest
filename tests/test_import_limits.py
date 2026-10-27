@@ -14,6 +14,18 @@ from test_illustrator_bridge import handoff
 
 
 class ImportLimitTests(unittest.TestCase):
+    def test_worker_timeout_removes_owned_print_copy_and_releases_lock(self):
+        import subprocess
+        handler=server.Handler.__new__(server.Handler);handler.rfile=io.BytesIO(b'%PDF-test')
+        with tempfile.TemporaryDirectory() as directory,patch.object(server,'WORK',Path(directory)):
+            def fail(args,**kwargs):
+                source=Path(args[-1]);source.with_name(source.stem+'-print.pdf').write_bytes(b'partial')
+                raise subprocess.TimeoutExpired(args,300)
+            with patch.object(server.subprocess,'run',side_effect=fail):
+                with self.assertRaisesRegex(ValueError,'too long'):handler.import_document({},9)
+            self.assertEqual(list(Path(directory).iterdir()),[])
+        self.assertFalse(server.DOCUMENT_LOCK.locked())
+
     def test_temporary_windows_lock_is_retried_before_cleanup_finishes(self):
         with patch.object(Path, 'unlink', side_effect=[PermissionError('busy'), None]) as unlink, patch.object(server.time, 'sleep') as sleep:
             server.remove_import_temp(Path('synthetic-upload.pdf'))

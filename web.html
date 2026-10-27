@@ -296,6 +296,15 @@
   <a id="max-output-join" class="primary-link" href="https://output.jeezlabs.io/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Visit OUTPUT</a>
   <p class="hint waitlist-note">Max output is not available in EZ Nest yet. Opening OUTPUT does not send your artwork or sign you up.</p>
 </dialog>
+<dialog id="cut-review" aria-labelledby="cut-review-title" aria-describedby="cut-review-summary">
+  <h2 id="cut-review-title">Are these the cut lines?</h2>
+  <p id="cut-review-file"></p>
+  <p id="cut-review-summary"></p>
+  <div id="cut-review-pages"></div>
+  <label>Cut type <select id="cut-review-operation"><option value="">Choose cut type</option><option value="kiss">Kiss cut — pink (leave the backing)</option><option value="thru">Through cut — blue (cut through the backing)</option></select></label>
+  <p class="hint">Confirm only if every highlighted outline is an intended cut. These strokes will move from the printed artwork into the cut file. Artwork size and existing bleed stay unchanged.</p>
+  <div class="guide-actions"><button id="cut-review-cancel" type="button">Cancel</button><button id="cut-review-accept" class="primary" type="button" disabled>Use these cut lines</button></div>
+</dialog>
 <dialog id="guide-review" aria-labelledby="guide-title" aria-describedby="guide-summary">
   <h2 id="guide-title">Review possible guides</h2>
   <p id="guide-file"></p>

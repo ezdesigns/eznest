@@ -412,7 +412,7 @@ class Handler(BaseHTTPRequestHandler):
                         target.write(chunk)
                         remaining -= len(chunk)
             # Never accept a local path from JSON or upload metadata.
-            options = {key: data[key] for key in ('content', 'bleedMm', 'cutSpot', 'cutMapping', 'preserveArtwork', 'guideApproval') if key in data}
+            options = {key: data[key] for key in ('content', 'bleedMm', 'cutSpot', 'cutMapping', 'preserveArtwork', 'guideApproval', 'cutApproval') if key in data}
             if upload_size is not None:
                 options.pop('content', None)
             request.write_text(json.dumps(options), encoding='utf-8')
@@ -422,7 +422,9 @@ class Handler(BaseHTTPRequestHandler):
                 args.append(str(upload))
             subprocess.run(args, cwd=WORK, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300 if upload_size is not None else 120, check=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
             payload = json.loads(output.read_text(encoding='utf-8'))
-            if payload.get('guideReview'):
+            if payload.get('cutReview'):
+                status, response = 409, {'error':payload['error'], 'cutReview':payload['cutReview']}
+            elif payload.get('guideReview'):
                 status, response = 409, {'error':payload['error'], 'guideReview':payload['guideReview']}
             elif not payload['ok']:
                 raise ValueError(payload['error'])
@@ -435,6 +437,7 @@ class Handler(BaseHTTPRequestHandler):
                 remove_import_temp(request)
                 remove_import_temp(output)
                 remove_import_temp(upload)
+                remove_import_temp(upload.with_name(upload.stem + '-print.pdf'))
             finally:
                 DOCUMENT_LOCK.release()
         return self.send(status, response)

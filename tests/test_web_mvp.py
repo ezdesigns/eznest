@@ -30,6 +30,35 @@ def launch_browser(playwright):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_unnamed_cut_review_requires_choice_and_cancel_keeps_job(self):
+        from playwright.sync_api import sync_playwright, expect
+        from test_sticker_orders import outline_fixture
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                page.set_input_files('#file',{'name':'prepared.pdf','mimeType':'application/pdf','buffer':mixed_fixture()})
+                page.wait_for_function('() => !importing && kits.length === 1',timeout=15000)
+                previous=page.evaluate('kits[0].data.documentId')
+                incoming={'name':'stickers.pdf','mimeType':'application/pdf','buffer':outline_fixture()}
+                page.set_input_files('#more',incoming)
+                expect(page.locator('#cut-review')).to_be_visible(timeout=15000)
+                expect(page.locator('#cut-review-accept')).to_be_disabled()
+                expect(page.locator('#cut-review-pages path')).to_have_count(2)
+                page.screenshot(path=str(SCREENSHOTS/'cut-review-desktop.png'),full_page=True)
+                page.set_viewport_size({'width':390,'height':844})
+                page.screenshot(path=str(SCREENSHOTS/'cut-review-mobile.png'),full_page=True)
+                page.keyboard.press('Escape')
+                page.wait_for_function('() => !importing')
+                self.assertEqual(page.evaluate('kits.length'),1)
+                self.assertEqual(page.evaluate('kits[0].data.documentId'),previous)
+                page.set_input_files('#more',incoming)
+                expect(page.locator('#cut-review')).to_be_visible(timeout=15000)
+                page.select_option('#cut-review-operation','kiss')
+                page.click('#cut-review-accept')
+                page.wait_for_function('() => !importing && kits.length === 2',timeout=15000)
+                self.assertEqual(page.evaluate('kits[1].data.parts.map(p => p.cutCounts.kiss)'),[1,1])
+            finally:browser.close()
+
     def test_large_pdf_streams_without_base64_and_keeps_cuts(self):
         from playwright.sync_api import sync_playwright, expect
         from pypdf import PdfReader, PdfWriter

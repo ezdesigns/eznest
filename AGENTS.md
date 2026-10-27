@@ -110,6 +110,17 @@ automatically interpret all dashed lines as guides or export them as solid cuts.
 Closed, filled or clipped dashed cuts remain unsupported. Cancelled/failed imports
 must leave the previous job usable, and a multi-file selection is all-or-nothing.
 
+Large direct PDF uploads first make a temporary print copy without Illustrator
+private editing data; original files remain untouched. Unnamed closed strokes
+require a file-bound operator review and an explicit kiss/through choice. Never
+infer cuts from a filename or magenta alone. Transparent image borders may be
+excluded from nesting space only when the original supported soft mask proves
+zero alpha; retain all nonzero alpha, interpolation allowance and export guards.
+The automatic-section order cap is 5000 pieces; each solver section stays at
+800 or fewer. Thumbnail detail is bounded for large orders; print and cut export
+must retain original source objects and commands. Optional filler jobs are not
+supported with a required order above 800 pieces.
+
 The separate portable trial is packaged with `build_shop_trial.py` after a
 `build_windows.py --portable-only` build. Its `--shop-test` launch creates marked
 local trial data and TEST Output, disables update checks and refuses other running

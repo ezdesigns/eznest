@@ -2,7 +2,7 @@
 const NS = 'http://www.w3.org/2000/svg';
 const $ = id => document.getElementById(id);
 const PREF = 'eznest-placeholders';
-const PIECE_CAP = 800;
+const PIECE_CAP = 5000;
 let token = '';
 let localSave = false;
 let folderView = null;
@@ -233,7 +233,9 @@ async function api(path, data, file) {
   const body = await response.json();
   if (!response.ok) {
     const error = Error(body.error || 'Request failed.');
-    if (path === '/api/document/import' || path === '/api/document/import-file') error.guideReview = body.guideReview;
+    if (path === '/api/document/import' || path === '/api/document/import-file') {
+      error.guideReview = body.guideReview; error.cutReview = body.cutReview;
+    }
     throw error;
   }
   return body;
@@ -1981,6 +1983,50 @@ async function saveSettings() {
   } finally { controls.forEach(([node, disabled]) => { node.disabled = disabled; }); }
 }
 
+function reviewCutOutlines(file, review) {
+  const dialog = $('cut-review'), pages = $('cut-review-pages'), choice = $('cut-review-operation');
+  $('cut-review-file').textContent = file.name;
+  $('cut-review-summary').textContent = review.count.toLocaleString() + ' closed outlines have no cut name. Check the highlighted lines, then choose how they should cut.';
+  choice.value = ''; $('cut-review-accept').disabled = true;
+  pages.replaceChildren();
+  for (const preview of review.pages) {
+    const section = document.createElement('section'), svg = document.createElementNS(NS, 'svg');
+    const title = document.createElement('h3'); title.textContent = 'Page ' + preview.page;
+    svg.setAttribute('viewBox', preview.viewBox.join(' '));
+    svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Artwork with proposed cut outlines highlighted');
+    const image = document.createElementNS(NS, 'image');
+    ['x', 'y', 'width', 'height'].forEach((key, index) => image.setAttribute(key, preview.viewBox[index]));
+    image.setAttribute('href', preview.image); svg.append(image);
+    for (const outline of preview.paths) {
+      const path = document.createElementNS(NS, 'path'); path.setAttribute('d', outline.d);
+      path.setAttribute('vector-effect', 'non-scaling-stroke'); svg.append(path);
+    }
+    const viewport = document.createElement('div'); viewport.className = 'cut-review-viewport'; viewport.append(svg);
+    const label = document.createElement('label'); label.textContent = 'Zoom';
+    const zoom = document.createElement('input'); zoom.type = 'range'; zoom.min = 1; zoom.max = 8; zoom.step = .5; zoom.value = 1;
+    zoom.setAttribute('aria-label', 'Zoom page ' + preview.page);
+    zoom.oninput = () => { svg.style.width = (zoom.value * 100) + '%'; svg.style.height = (zoom.value * 320) + 'px'; };
+    label.append(zoom); section.append(title, viewport, label); pages.append(section);
+  }
+  return new Promise(resolve => {
+    const finish = accepted => {
+      const operation = choice.value;
+      if (accepted && !['kiss', 'thru'].includes(operation)) return;
+      dialog.removeEventListener('cancel', cancel); choice.onchange = null;
+      $('cut-review-cancel').onclick = null; $('cut-review-accept').onclick = null;
+      dialog.close(); pages.replaceChildren();
+      resolve(accepted ? {id:review.id, sourceHash:review.sourceHash, operation} : null);
+    };
+    const cancel = event => { event.preventDefault(); finish(false); };
+    choice.onchange = () => { $('cut-review-accept').disabled = !choice.value; pages.dataset.operation = choice.value; };
+    pages.dataset.operation = '';
+    dialog.addEventListener('cancel', cancel);
+    $('cut-review-cancel').onclick = () => finish(false);
+    $('cut-review-accept').onclick = () => finish(true);
+    dialog.showModal(); $('cut-review-cancel').focus();
+  });
+}
+
 function reviewGuides(file, review) {
   const dialog = $('guide-review');
   $('guide-file').textContent = file.name;
@@ -2035,6 +2081,12 @@ async function importPdf(file, operation) {
   const request = {preserveArtwork: true, cutSpot: 'CutContour', cutMapping: EZNCuts.validate(mapping)};
   try { return await api('/api/document/import-file', request, file); }
   catch (error) {
+    if (error.cutReview) {
+      const approval = await reviewCutOutlines(file, error.cutReview);
+      if (!approval) { const cancelled = Error('File not added. Cut review cancelled.'); cancelled.importCancelled = true; throw cancelled; }
+      status('Preparing the reviewed stickers…');
+      return api('/api/document/import-file', {...request, cutApproval: approval}, file);
+    }
     if (!error.guideReview) throw error;
     const approval = await reviewGuides(file, error.guideReview);
     if (!approval) { const cancelled = Error('File not added. Guide review cancelled.'); cancelled.importCancelled = true; throw cancelled; }

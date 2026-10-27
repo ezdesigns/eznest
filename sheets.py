@@ -5,7 +5,7 @@ import time
 from collections import Counter
 from shapely.geometry import Polygon
 from shapely.affinity import rotate
-from engine import part_polygon, solve, validate_result, number, publish_result
+from engine import part_polygon, solve, validate_job, validate_result, number, publish_result, PIECE_CAP
 
 
 def subset(job, placements):
@@ -15,6 +15,7 @@ def subset(job, placements):
 
 def split_nest(job, progress_path=None):
     started=time.monotonic()
+    validate_job(job)
     settings=job['settings']
     limit=number(settings.get('sheetLength'),'Sheet length',10,5000)
     width=settings['width']; margin=settings['margin']; gap=settings['gap']
@@ -32,7 +33,9 @@ def split_nest(job, progress_path=None):
         variants=[]
         for angle in angles:
             x0,y0,x1,y1=rotate(poly,angle,origin=(0,0)).bounds
-            w=x1-x0+.22; h=y1-y0+.22
+            # Tiny source-coordinate differences between repeated stickers
+            # should not prevent them sharing a row. Round outward only.
+            w=math.ceil((x1-x0+.22)*10)/10; h=math.ceil((y1-y0+.22)*10)/10
             if w<=usable_w and h<=usable_h: variants.append((w,h,x0,y0,angle))
         if not variants: raise ValueError(f"{part.get('name',part['id'])} cannot fit on one sheet. Increase the dimensions; pieces are never cut into sections.")
         for _ in range(part.get('quantity',1)): copies.append((part,variants))
@@ -40,15 +43,17 @@ def split_nest(job, progress_path=None):
     for part,variants in copies:
         choices=[]
         for bi,bin in enumerate(bins):
+            if len(bin['placements']) >= PIECE_CAP:
+                continue
             for ri,(x,y,w,h) in enumerate(bin['free']):
                 for variant in variants:
                     vw,vh,*_=variant
-                    if vw<=w+1e-8 and vh<=h+1e-8: choices.append((w*h-vw*vh,bi,ri,variant))
+                    if vw<=w+1e-8 and vh<=h+1e-8: choices.append((vw*vh,w*h-vw*vh,bi,ri,variant))
         if choices:
-            _,bi,ri,variant=min(choices,key=lambda v:v[0])
+            _,_,bi,ri,variant=min(choices,key=lambda v:(v[0],v[1]))
         else:
             bins.append({'free':[(margin,margin,usable_w,usable_h)],'placements':[]})
-            bi=len(bins)-1; ri=0; variant=min(variants,key=lambda v:(v[1],v[0]))
+            bi=len(bins)-1; ri=0; variant=min(variants,key=lambda v:(v[0]*v[1],v[1],v[0]))
         bin=bins[bi]; x,y,w,h=bin['free'].pop(ri); vw,vh,x0,y0,angle=variant
         bin['placements'].append({'id':part['id'],'x':x+.11-x0,'y':y+.11-y0,'rotation':angle})
         if w-vw-gap>.01: bin['free'].append((x+vw+gap,y,w-vw-gap,vh))
@@ -57,7 +62,7 @@ def split_nest(job, progress_path=None):
     # Bounding boxes cannot interlock. Before committing several bins, let the
     # contour solver try the complete job on one sheet when its area permits it.
     area=sum(part_polygon(p).area*p.get('quantity',1) for p in job['parts'])
-    if len(bins)>1 and area <= usable_w*usable_h:
+    if len(bins)>1 and len(copies) <= PIECE_CAP and area <= usable_w*usable_h:
         whole={**job,'settings':{**settings,'maxLength':min(limit,settings.get('maxLength') or limit)}}
         whole['settings'].pop('sheetLength',None)
         attempted=time.monotonic()
@@ -104,6 +109,7 @@ def split_nest(job, progress_path=None):
 
 
 def validate_sheets(job,result):
+    validate_job(job)
     sheets=result['sheets']; placements=result['placements']
     if not isinstance(sheets,list) or not 1<=len(sheets)<=100: raise ValueError('Invalid sheet list.')
     if Counter(p['id'] for p in placements)!=Counter({p['id']:p.get('quantity',1) for p in job['parts']}):
@@ -117,7 +123,9 @@ def validate_sheets(job,result):
         indices=[i for i,p in enumerate(placements) if p.get('sheet')==index]
         local=[{**placements[i],'y':placements[i]['y']-offset} for i in indices]
         if not local: raise ValueError('Empty sheets are not valid.')
+        if len(local) > PIECE_CAP: raise ValueError('A print section exceeds the safe piece limit.')
         local_job=subset(job,local); local_job['settings']={**job['settings'],'maxLength':length}
+        local_job['settings'].pop('sheetLength',None)
         local_result={'width':result['width'],'usedLength':length,'placements':local}
         for i,shape in zip(indices,validate_result(local_job,local_result)): shapes[i]=translate(shape,yoff=offset)
         offset+=length
