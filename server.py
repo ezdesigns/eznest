@@ -13,6 +13,7 @@ import copy
 import socket
 import sqlite3
 import workload
+import telemetry
 import illustrator_bridge
 from import_limits import request_limit
 import print_export
@@ -171,6 +172,27 @@ def record_workload(kind):
         STATE.pop('trackingWarning', None)
     except (OSError, sqlite3.Error, ValueError):
         STATE['trackingWarning'] = 'Local activity could not be saved. Check available disk space and folder permissions.'
+    if kind == 'prepared':
+        record_telemetry('nest.committed')
+    elif kind == 'sent_to_folder':
+        # A default save folder may be ordinary storage, not a RIP queue.
+        try:
+            hot = load_shop(WORK).get('hotFolder')
+            is_hot = bool(hot and OUTPUT.root and Path(hot).resolve() == OUTPUT.root.resolve())
+        except Exception:
+            is_hot = False
+        record_telemetry('nest.sent_to_print' if is_hot else 'nest.exported')
+    elif kind == 'removed_from_folder':
+        record_telemetry('nest.removed_from_folder')
+
+
+def record_telemetry(kind):
+    # Observability cannot break a valid nest, export or print-folder delivery.
+    try:
+        telemetry.observe(WORK, STATE['id'], STATE['job'], STATE['result'], kind)
+        STATE.pop('telemetryWarning', None)
+    except Exception:
+        STATE['telemetryWarning'] = 'Local job tracking could not be saved. The layout and file operation are unaffected.'
 
 
 def restore_state():
@@ -216,6 +238,8 @@ def finish_search(payload):
         STATE['manifest'] = manifest(STATE['job'], STATE['result'], STATE['id'])
         check=batch_output_check(STATE['job'])
         if check: STATE['manifest']['outputCheck']=check
+    if STATE.get('status') == 'ready':
+        record_telemetry('nest.created')
     persist_state()
 
 
@@ -318,6 +342,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, info)
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Local activity is unavailable. Check disk space and folder permissions.'})
+        if path in ('/api/telemetry', '/api/telemetry/events'):
+            if self.client_address[0] != '127.0.0.1' or self.headers.get('X-EZ-Token') != TOKEN:
+                return self.send(403, {'error': 'Local session required for job tracking.'})
+            try:
+                if path.endswith('/events'):
+                    return self.send(200, {'schema': telemetry.SCHEMA, 'events': telemetry.pending(WORK)})
+                info = telemetry.status(WORK)
+                info.update(eventTypes=telemetry.KINDS, warning=STATE.get('telemetryWarning'))
+                return self.send(200, info)
+            except (OSError, sqlite3.Error):
+                return self.send(503, {'error': 'Local job tracking is unavailable.'})
         if path == '/api/output':
             return self.send(200, OUTPUT.status())
         if path == '/api/folder':
@@ -470,6 +505,31 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Invalid import options.')
                 return self.import_document(options, upload_size=size)
             data = json.loads(self.rfile.read(size) or '{}')
+            if self.path.startswith('/api/telemetry/'):
+                if self.client_address[0] != '127.0.0.1':
+                    return self.send(403, {'error': 'Local session required for job tracking.'})
+                if not isinstance(data, dict):
+                    raise ValueError('Supply a tracking request object.')
+                with LOCK:
+                    if self.path == '/api/telemetry/link':
+                        if set(data) - {'id', 'jobCodes', 'rollId'}:
+                            raise ValueError('Only job codes and an opaque roll ID may be linked.')
+                        if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id') or STATE.get('released'):
+                            raise ValueError('Link the current finished layout before freezing it.')
+                        record_telemetry('nest.created')
+                        telemetry.link(WORK, data.get('id'), data.get('jobCodes'), data.get('rollId'))
+                    elif self.path == '/api/telemetry/status':
+                        if set(data) - {'id', 'action', 'confirmed'} or data.get('confirmed') is not True:
+                            raise ValueError('Explicitly confirm the queue, print or cancellation observation.')
+                        telemetry.transition(WORK, data.get('id'), data.get('action'))
+                    elif self.path == '/api/telemetry/stock':
+                        if set(data) != {'rollId', 'materialKey', 'remainingMm', 'requestId', 'expectedRevision'}:
+                            raise ValueError('Supply roll ID, material key, measured remaining mm, request ID and expected revision.')
+                        telemetry.record_stock(WORK, data['rollId'], data['materialKey'], data['remainingMm'],
+                                               data['requestId'], data['expectedRevision'])
+                    else:
+                        raise ValueError('Unknown tracking operation.')
+                return self.send(200, {'ok': True})
             if self.path.startswith('/api/update/'):
                 import installer_update
                 if self.client_address[0] != '127.0.0.1':
@@ -560,6 +620,8 @@ class Handler(BaseHTTPRequestHandler):
                     if mode == 'folder':
                         STATE['deliveryCompleted'] = True
                         record_workload('sent_to_folder')
+                    else:
+                        record_telemetry('nest.exported')
                     persist_state()
                 return self.send(200, dict(saved, ok=True))
             if self.path in ('/api/output/connect', '/api/output/pick'):
