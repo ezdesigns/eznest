@@ -1122,6 +1122,13 @@ function showMetrics(state) {
   const parts = new Map(state.job.parts.map(part => [part.id, part]));
   const count = result.placements.reduce((sum, item) => sum + (parts.get(item.id)?.sourcePieceCount || 1), 0);
   $('result-heading').textContent = `${count.toLocaleString()} ${count === 1 ? 'piece' : 'pieces'} laid out`;
+  $('piece-review-title').textContent = `Check ${count.toLocaleString()} ${count === 1 ? 'piece' : 'pieces'}`;
+  $('piece-review-count').textContent = (state.job.productionJobs || []).map(source => {
+    const copies = source.sets || 1;
+    const perFile = state.job.parts.filter(part => part.sourceJobId === source.id)
+      .reduce((sum, part) => sum + part.quantity * (part.sourcePieceCount || 1), 0) / copies;
+    return `${perFile.toLocaleString()} ${perFile === 1 ? 'piece' : 'pieces'} × ${copies.toLocaleString()} ${copies === 1 ? 'copy' : 'copies'}`;
+  }).join(' + ');
   const coverage = Math.max(0, Math.min(100, result.utilization * 100));
   $('coverage-label').textContent = `${Math.round(coverage)}% occupied by pieces`;
   $('coverage-bar').style.width = coverage + '%';
@@ -1185,7 +1192,6 @@ function showResult(state) {
   showLock(state);
   showSheetId(state);
   showNestSavings(state);
-  $('piece-review-title').textContent = 'Check pieces · ' + state.job.parts.length + ' designs';
   renderPieceReview();
   renderPreview(Math.min(activeSheet, sheetsIndex(state)));
   const missing = pieceIssue(state);

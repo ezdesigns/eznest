@@ -526,6 +526,7 @@ body:is([data-step="confirm"], [data-step="sent"]) #files,
 body:is([data-step="confirm"], [data-step="sent"]) #job-empty,
 body:is([data-step="confirm"], [data-step="sent"]) #job-options { display: none; }
 #save-summary { line-height: 1.6; margin: 10px 0 18px; }
+#piece-review-count { display: block; margin-top: 4px; font-weight: 400; }
 #saved-heading .hint { margin-top: 8px; }
 body[data-step="sent"] #start-over { grid-column: 1 / -1; grid-row: 1; background: #2265d5; color: white; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 700; min-height: 44px; }
 body[data-step="sent"] #export { background: transparent; color: #264665; border: 1px solid #bdc9d5; font-size: 13px; }
