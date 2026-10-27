@@ -51,25 +51,82 @@ cannot be compared as if it were an engine change.
 
 Seeds are part of the case id. The set is not a single lucky seed.
 
-## Baseline
+## Baseline and final
 
-The committed `tools/fixtures/nest_bench_baseline.json` is the measurement on
-`main` before the packing changes in this branch. The table below is filled
-from that file. Mean length treats every case equally, including the long
-continuous orders, so the continuous rows dominate the mean length and the
-shorter jobs dominate a utilization average. Read both.
+`tools/fixtures/nest_bench_baseline.json` is the engine on current `main`
+before the packing changes, same cases and seeds. The final column is one full
+run after the changes that were kept. Every case validated: no overlap, gap
+held to the engine's existing 0.001 mm check, margins held.
 
-Baseline table: pending the first recorded run.
+Mean length treats every case equally. The three 1000-piece rows are most of
+the summed length, so the equal-weight mean moves less than the sticker cases.
+Read the rows.
+
+| | Baseline | Final | Change |
+| --- | ---: | ---: | ---: |
+| Cases valid | 23/23 | 23/23 | |
+| Mean roll length | 796.02 mm | 784.76 mm | −1.42% |
+| Mean utilization | 62.01% | 64.08% | +3.33% relative |
+| Sum of case lengths | 18308.55 mm | 18049.41 mm | −259.13 mm |
+| Sum of wasted area | 1,079,525 mm² | 1,035,643 mm² | |
+
+| Case | Pieces | Seed | Baseline mm | Final mm | Length | Baseline util | Final util |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| sticker_sheet_quarters_seed42 | 16 | 42 | 100.80 | 91.00 | −9.72% | 55.31% | 61.27% |
+| sticker_sheet_quarters_seed7 | 16 | 7 | 100.82 | 91.00 | −9.74% | 55.31% | 61.27% |
+| sticker_sheet_locked_seed42 | 16 | 42 | 116.06 | 91.00 | −21.60% | 48.04% | 61.27% |
+| sticker_pages_quarters_seed42 | 12 | 42 | 92.01 | 91.00 | −1.10% | 54.54% | 55.15% |
+| mixed_demo_quarters_seed42 | 12 | 42 | 213.36 | 209.38 | −1.86% | 66.41% | 67.67% |
+| mixed_demo_quarters_seed99 | 12 | 99 | 214.22 | 210.21 | −1.87% | 66.15% | 67.41% |
+| mixed_demo_locked_seed42 | 12 | 42 | 231.47 | 227.02 | −1.92% | 61.22% | 62.41% |
+| pieces60_quarters_seed42 | 60 | 42 | 418.41 | 411.84 | −1.57% | 67.66% | 68.74% |
+| pieces60_quarters_seed7 | 60 | 7 | 420.44 | 415.06 | −1.28% | 67.34% | 68.21% |
+| pieces60_locked_seed42 | 60 | 42 | 443.42 | 436.75 | −1.50% | 63.85% | 64.82% |
+| pieces180_quarters_seed42 | 180 | 42 | 1259.81 | 1237.75 | −1.75% | 67.42% | 68.62% |
+| pieces180_quarters_seed3 | 180 | 3 | 1253.66 | 1236.14 | −1.40% | 67.75% | 68.71% |
+| pieces180_locked_seed42 | 180 | 42 | 1382.94 | 1368.08 | −1.07% | 61.42% | 62.08% |
+| continuous_1000_quarters_seed42 | 1000 | 42 | 3409.50 | 3381.88 | −0.81% | 70.39% | 70.97% |
+| continuous_1000_locked_seed42 | 1000 | 42 | 3550.74 | 3513.84 | −1.04% | 67.59% | 68.30% |
+| continuous_1000_free_seed42 | 1000 | 42 | 3409.50 | 3381.88 | −0.81% | 70.39% | 70.97% |
+| concave_quarters_seed42 | 27 | 42 | 323.30 | 315.91 | −2.29% | 61.55% | 62.99% |
+| concave_quarters_seed11 | 27 | 11 | 327.43 | 320.49 | −2.12% | 60.77% | 62.09% |
+| concave_free_seed42 | 27 | 42 | 334.74 | 330.48 | −1.27% | 59.44% | 60.21% |
+| concave_locked_seed42 | 27 | 42 | 355.06 | 348.94 | −1.72% | 56.04% | 57.02% |
+| workshop_quarters_seed42 | 6 | 42 | 110.56 | 106.90 | −3.31% | 62.31% | 64.44% |
+| workshop_quarters_seed1 | 6 | 1 | 110.56 | 106.86 | −3.35% | 62.31% | 64.47% |
+| workshop_locked_seed42 | 6 | 42 | 129.74 | 126.00 | −2.89% | 53.10% | 54.67% |
+
+The seed is passed into Sparrow. With two search workers, a repeat of the same
+process matched `pieces60_quarters_seed42` at 411.84 mm and
+`concave_locked_seed42` at 346.58 mm, while `pieces180_quarters_seed42` moved
+from 1229.33 mm to 1231.36 mm (0.16%). Across separate full runs the 180-piece
+seed-42 length was seen at 1229.33, 1231.36 and 1237.75 mm, and the locked
+concave case at 344.23, 346.58 and 348.94 mm. All of those are still shorter
+than the baseline. They are not bit-identical. One worker was more stable and
+was dropped because two cases grew past the baseline (see the log).
+
+Settled layouts report a minimum gap of 2.999 mm against a 3 mm gap. That is
+the same 0.001 mm allowance `validate_result` already uses. The identical
+sticker rows report 3.000 mm.
 
 ## Iteration log
 
-Each idea is one change, then the full benchmark. A change stays only when no
-case regresses past the 0.3% noise band, validation stays clean, and length or
-utilization improves on at least one case.
+A change stays only when the full set has no case more than 0.3% longer, no
+utilization drop past that band, and validation stays clean. Probes that
+already lost on several solver cases were not given a second full run.
 
-| # | Idea | Result | Notes |
+| # | Idea | Result | What happened |
 | --- | --- | --- | --- |
-| 0 | Record the current `main` solver | baseline | No packing change |
+| 0 | Record `main` | baseline | 23/23 valid. Mean length 796.02 mm, mean utilization 62.01%. |
+| 1 | Slide pieces toward the start of the roll after search, real outlines, operator gap, rotation unchanged | kept | Full set: 20 cases shorter, 3 continuous rows unchanged, 0 regressions. Mean length −0.82%, mean utilization +1.98% relative. Largest sticker move about −3.8%. |
+| 2 | Bounding-box shelf rows, used only when shorter than the settled search | kept | Versus step 1: the three 24×18 sticker rolls went to 91.00 mm (−6.2%, and the locked roll −18.7%). Other cases unchanged. 0 regressions. |
+| 3 | Settle the continuous row layout onto the operator gap. The row pitch had carried a 0.22 mm guard | kept | The three 1000-piece rows: 3409.50→3381.88 mm (−0.81%) for quarter turns and free rotation, 3550.74→3513.84 mm (−1.04%) locked. About 2 s of settle time on 1000 pieces. Existing continuous unit test still passed. |
+| 4 | Two restarts when the budget is 4–14 seconds, splitting that budget | dropped | Probe: pieces60 seed 42 411.84→415.99 mm (+1.0%), pieces180 seed 42 about 1231→1262.86 mm (+2.5%), mixed demo flat to slightly worse. The shorter tries lost more than a second seed gained. |
+| 5 | Pass outlines to Sparrow largest-area first | dropped | Probe on mixed, 60, 180, concave and workshop: no move outside the repeat band of the 180-piece case. |
+| 6 | Give compression half of a budget of 4 seconds or more (default is 80/20) | dropped | Concave quarters seed 42 315.91→323.74 mm (+2.5%). pieces60 +0.2%. Mixed demo unchanged. |
+| 7 | One Sparrow worker so a seed repeats more closely | dropped | Full set mean length still −1.13%, but two regressions: `pieces180_quarters_seed3` 1253.66→1262.34 mm (+0.69%) and `concave_free_seed42` 334.74→341.28 mm (+1.95%). Two workers stayed. |
+
+Free rotation on the concave set is not automatically better than quarter turns at this budget. On the baseline it was longer (334.74 mm versus 323.30 mm), and it stayed longer after settling.
 
 ## Limits
 
@@ -85,6 +142,8 @@ utilization improves on at least one case.
   closed-form row layout. They guard that path. They do not exercise the
   800-piece solver cap; the unit tests do.
 - Wall time moves with the machine. Do not compare seconds across computers.
+- Two Sparrow workers are not bit-identical across processes. See the repeat
+  figures above. A later compare within 0.3% on a hard case can be that spread.
 - An improvement here does not mean a printed sheet used less vinyl. Nothing
   in this loop is sent to a hot folder.
 

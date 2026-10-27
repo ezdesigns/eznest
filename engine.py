@@ -143,6 +143,173 @@ def search_envelope(polygon):
     return envelope
 
 
+def _box_gap(a, b):
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    dx = max(0.0, bx0 - ax1, ax0 - bx1)
+    dy = max(0.0, by0 - ay1, ay0 - by1)
+    if dx == 0.0 and dy == 0.0:
+        return 0.0
+    return math.hypot(dx, dy)
+
+
+def shelf_layout(job):
+    """Row layout from bounding boxes. Kept only when it is shorter than search.
+
+    Identical rectangles often fall into a regular grid faster than a short
+    search. Concave parts stay with the search result when the rows are longer.
+    """
+    width = float(job['settings']['width'])
+    gap = float(job['settings']['gap'])
+    margin = float(job['settings']['margin'])
+    angles = job['settings']['rotations'] if job['settings']['rotations'] is not None else (0, 90, 180, 270)
+    usable = width - 2 * margin
+    copies = []
+    for part in job['parts']:
+        polygon = part_polygon(part)
+        variants = []
+        for angle in angles:
+            moved = rotate(polygon, angle, origin=(0, 0))
+            x0, y0, x1, y1 = moved.bounds
+            piece_width, piece_height = x1 - x0, y1 - y0
+            if piece_width <= usable + 1e-6:
+                variants.append((piece_width, piece_height, x0, y0, angle))
+        if not variants:
+            return None
+        for copy in range(part.get('quantity', 1)):
+            copies.append((part['id'], copy, variants))
+    copies.sort(key=lambda item: (max(variant[1] for variant in item[2]), max(variant[0] for variant in item[2]), item[0], item[1]), reverse=True)
+    cursor_x, cursor_y, row_height = margin, margin, 0.0
+    placements = []
+    for ident, _copy, variants in copies:
+        room = width - margin - cursor_x
+        fitting = [variant for variant in variants if variant[0] <= room + 1e-6]
+        if not fitting:
+            cursor_y += row_height + gap
+            cursor_x, row_height = margin, 0.0
+            fitting = variants
+        piece_width, piece_height, x0, y0, angle = min(fitting, key=lambda variant: (variant[1], variant[0], variant[4]))
+        placements.append({'id': ident, 'x': cursor_x - x0, 'y': cursor_y - y0, 'rotation': angle})
+        cursor_x += piece_width + gap
+        row_height = max(row_height, piece_height)
+    used = cursor_y + row_height + margin
+    result = {'placements': placements, 'width': width, 'usedLength': used}
+    try:
+        validate_result(job, result)
+    except (ValueError, ZeroDivisionError):
+        return None
+    return result
+
+
+def compact_result(job, result):
+    """Slide each piece toward the start of the roll. Rotation stays put.
+
+    Sparrow searches a slightly enlarged outline, so a finished layout can sit
+    a fraction of a millimetre further apart than the operator gap. This pass
+    uses the real outlines. It never lengthens the roll, and a layout that
+    fails the independent check is discarded.
+    """
+    from shapely.affinity import translate as move_shape
+    placements = [dict(item) for item in result.get('placements') or []]
+    if not placements or 'usedLength' not in result:
+        return result
+    width = float(job['settings']['width'])
+    gap = float(job['settings']['gap'])
+    margin = float(job['settings']['margin'])
+    by_id = {part['id']: part for part in job['parts']}
+    shapes = [placed_polygon(by_id[item['id']], item) for item in placements]
+    limit = gap - 0.001
+    cell = max(20.0, gap * 4)
+
+    def cell_keys(bounds, pad=0.0):
+        x0 = math.floor((bounds[0] - pad) / cell)
+        x1 = math.floor((bounds[2] + pad) / cell)
+        y0 = math.floor((bounds[1] - pad) / cell)
+        y1 = math.floor((bounds[3] + pad) / cell)
+        return [(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)]
+
+    buckets = {}
+    members = [[] for _ in shapes]
+
+    def add(index):
+        keys = cell_keys(shapes[index].bounds)
+        members[index] = keys
+        for key in keys:
+            buckets.setdefault(key, []).append(index)
+
+    def remove(index):
+        for key in members[index]:
+            buckets[key].remove(index)
+        members[index] = []
+
+    for index in range(len(shapes)):
+        add(index)
+
+    def blocked(index, shape):
+        bounds = shape.bounds
+        if bounds[0] < margin - 1e-6 or bounds[1] < margin - 1e-6 or bounds[2] > width - margin + 1e-6:
+            return True
+        seen = set()
+        for key in cell_keys(bounds, pad=gap):
+            for other_index in buckets.get(key, ()):
+                if other_index == index or other_index in seen:
+                    continue
+                seen.add(other_index)
+                other = shapes[other_index]
+                if _box_gap(bounds, other.bounds) >= limit:
+                    continue
+                if shape.intersection(other).area > 0.0001 or shape.distance(other) + 0.001 < gap:
+                    return True
+        return False
+
+    passes = 0
+    for _pass in range(6):
+        passes += 1
+        order = sorted(range(len(placements)), key=lambda i: (shapes[i].bounds[1], shapes[i].bounds[0], placements[i]['id'], i))
+        moved = False
+        for index in order:
+            drop_room = shapes[index].bounds[1] - margin
+            if drop_room < 0.01:
+                continue
+            origin = shapes[index]
+            low, high = 0.0, drop_room
+            best_drop, best_shape = 0.0, None
+            for _step in range(24):
+                mid = (low + high) / 2
+                shape = move_shape(origin, yoff=-mid)
+                if blocked(index, shape):
+                    high = mid
+                else:
+                    best_drop, best_shape = mid, shape
+                    low = mid
+            # When the whole drop is legal, the last midpoint stops just short of the margin.
+            exact = move_shape(origin, yoff=-high)
+            if not blocked(index, exact):
+                best_drop, best_shape = high, exact
+            if best_shape is not None and best_drop >= 0.01:
+                remove(index)
+                placements[index]['y'] = placements[index]['y'] - best_drop
+                shapes[index] = best_shape
+                add(index)
+                moved = True
+        if not moved:
+            break
+    used = max(shape.bounds[3] for shape in shapes) + margin
+    if used >= result['usedLength'] - 1e-4:
+        return result
+    compacted = {**result, 'placements': placements, 'usedLength': used}
+    try:
+        checked = validate_result(job, compacted)
+    except (ValueError, ZeroDivisionError):
+        return result
+    area = sum(shape.area for shape in checked)
+    compacted['area'] = area
+    compacted['utilization'] = area / (width * used)
+    compacted['lengthBeforeCompaction'] = result['usedLength']
+    compacted['compactionPasses'] = passes
+    return compacted
+
+
 def publish_result(path, result):
     if not path:
         return
@@ -292,6 +459,14 @@ def solve(job, progress_path=None):
                 last_error = error
     if best is None:
         raise last_error or ValueError('No valid layout was found within the search time.')
+    best = compact_result(job, best)
+    rows = shelf_layout(job)
+    if rows is not None and rows['usedLength'] < best['usedLength'] - 1e-4:
+        rows = compact_result(job, rows)
+        if rows['usedLength'] < best['usedLength'] - 1e-4:
+            rows['engine'] = best.get('engine', 'eznest') + '; shorter shelf rows'
+            rows['searchAttempts'] = best.get('searchAttempts')
+            best = rows
     best.update(elapsed=time.monotonic() - started, searchAttempts=completed)
     publish_result(progress_path, best)
     return best
