@@ -24,7 +24,7 @@ Other shops use the same install. They type their own hot folder, printer, cut n
 
 v1 does not replace the RIP. Color, ICC profiles, and the RIP's own registration marks stay in the RIP.
 
-v1 does not take orders, price the job as a product, or drive the printer or cutter directly. The design-PC draft adds a local material list with manually entered available roll length; it does not infer printed stock use or automatically deduct inventory. The readiness draft adds local workload observations as a foundation for OUTPUT; it does not add order management or printer completion tracking.
+v1 does not take orders, price the job as a product, or drive the printer or cutter directly. The shared-material draft stores material profiles and measured roll length on the shop host. Operators reserve a reviewed layout, then explicitly confirm material use to deduct stock, or release a reservation. Nesting and exporting alone do not deduct stock. This does not infer printer completion or add separate designer workspaces. The readiness draft adds local workload observations as a foundation for OUTPUT; it does not add order management.
 
 v1 does not nest on a website. There is no account and no cloud queue.
 

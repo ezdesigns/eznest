@@ -535,6 +535,13 @@ body[data-saving="true"] #confirm-send::before { content: ''; display: inline-bl
 @media (prefers-reduced-motion: reduce) { body[data-saving="true"] #confirm-send::before { animation: none; } }
 
 /* One settings category at a time, with a stable navigation and save action. */
+.inventory-row { padding: 12px 0; border-bottom: 1px solid #e7e7e1; }
+.inventory-row p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.inventory-row button { margin-right: 12px; }
+#inventory-dialog { width: min(660px, calc(100vw - 24px)); }
+#inventory-dialog h3 { margin-top: 24px; }
+#inventory-reserve { margin-top: 18px; }
+#inventory-status { margin: 12px 0; }
 #settings { width: min(620px, calc(100vw - 24px)); padding: 0; overflow: hidden; }
 #settings .panel { display: flex; flex-direction: column; max-height: 88dvh; }
 #settings .dialog-heading { padding: 22px 24px 16px; margin: 0; flex-shrink: 0; }

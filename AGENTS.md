@@ -27,7 +27,9 @@ or completed printing. Do not turn this into an order-management system or RIP.
 
 The owner merged tested product PR #7 into `main` at `624b9b2` on 2026-10-27.
 Further settings and piece-card cleanup is isolated on
-`feature/simple-settings-20261027`, targeting that main baseline. Telemetry PR #5
+`feature/simple-settings-20261027`, targeting that main baseline. Shared material
+inventory is a separate follow-up on `feature/shared-materials-20261027`, based on
+UI PR #8 at `1ce8b4f`; keep its draft separate and do not merge automatically. Telemetry PR #5
 remains separate. This is not permission to merge future PRs or deploy the shop
 PC; the protected PR #1 / rc.4 gate below is unchanged.
 
@@ -134,6 +136,20 @@ servers. Preserve those isolation guards and the original shop installation.
 adds automatic recoloring, bleed or a native editable Illustrator return path.
 
 ## Local tracking
+
+`material_inventory.py` owns shop material profiles, measured roll stock and
+reservations in `materials.sqlite3` in the host data directory. Browser-local
+presets remain available until explicitly saved to the shop; never overwrite
+shared stock from stale browser preferences. Use revision checks for edits and
+SQLite transactions for reservations and usage. Reserve only server-derived
+length for the matching ready layout. Nesting, previewing and exporting do not
+deduct stock. Only explicit confirmation changes reserved stock into used stock;
+duplicate requests must not deduct twice. Released reservations cannot be reused
+for another layout, and used material cannot be returned by cancelling it.
+Keep outstanding reservations across workspace resets. Store opaque layout IDs,
+not customer names or art filenames. One material record represents one tracked
+roll or pool of identical-width stock. No automatic reorder, printer completion,
+remote inventory hub, or separate per-designer job workspaces are implied.
 
 `workload.py` records prepared packs, successful hot-folder deliveries and explicit
 removals. Store opaque IDs, UTC times, counts and measurements, not customer names,
