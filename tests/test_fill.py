@@ -1,10 +1,11 @@
 import copy
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from zipfile import ZipFile
-from nesting import fill_stickers, validate_request, run
+from nesting import fill_stickers, refine_fill, validate_request, run
 from engine import validate_result
 from production import manifest
 from output_folder import OutputFolder, FILES
@@ -23,6 +24,54 @@ def fixture():
 
 
 class FillTests(unittest.TestCase):
+    def repack_fixture(self):
+        job,result=fixture()
+        job['settings'].update(maxLength=None,seconds=5)
+        fill=job['fillJobs'][0]
+        fill['parts'][0]['points']=[[0,0],[30,0],[30,50],[0,50]]
+        fill['maxSets']=1;fill['source']['sets']=1
+        # Neither side has room for a 30 mm sticker until the main piece moves.
+        result.update(usedLength=56.5,placements=[{'id':'body','x':25,'y':3.1,'rotation':0}])
+        return job,result
+
+    def test_mixed_job_publishes_safe_required_preview_for_stop_and_keep(self):
+        job,_=fixture();job['settings']['seconds']=3
+        with tempfile.TemporaryDirectory() as folder:
+            progress=Path(folder)/'progress.json'
+            request=copy.deepcopy(job);request['_progress']=str(progress)
+            payload=run(request)
+            live=json.loads(progress.read_text())['result']
+            validate_result(job,live)
+            self.assertEqual([p['id'] for p in live['placements']],['body'])
+            validate_result(payload['job'],payload['result'])
+
+    def test_joint_fill_moves_required_pieces_without_extending_material(self):
+        job,result=self.repack_fixture();before=copy.deepcopy(job)
+        resolved,initial=fill_stickers(job,result,budget=.2)
+        self.assertEqual(initial['fillSummary'][0]['sets'],0)
+        resolved,improved=refine_fill(job,resolved,initial,budget=2)
+        self.assertEqual(improved['fillSummary'][0]['sets'],1)
+        self.assertEqual(improved['usedLength'],result['usedLength'])
+        self.assertGreater(improved['utilization'],initial['utilization'])
+        self.assertEqual(resolved['settings'],job['settings'])
+        self.assertEqual(job,before)
+        self.assertEqual(resolved['productionJobs'][0],job['productionJobs'][0])
+        shapes=validate_result(resolved,improved)
+        self.assertGreaterEqual(shapes[0].distance(shapes[1]),job['settings']['gap'])
+        self.assertTrue(all(j['complete'] for j in manifest(resolved,improved,'c'*32)['jobs']))
+
+    def test_failed_joint_fill_preserves_incumbent_and_complete_sets(self):
+        job,result=self.repack_fixture();fill=job['fillJobs'][0]
+        fill['parts'].append({**fill['parts'][0],'id':'second'})
+        fill['source']['partIds'].append('second')
+        resolved,initial=fill_stickers(job,result,budget=.2)
+        placements=copy.deepcopy(initial['placements'])
+        resolved,improved=refine_fill(job,resolved,initial,budget=1)
+        self.assertEqual(improved['fillSummary'][0]['sets'],0)
+        self.assertEqual(improved['placements'],placements)
+        self.assertEqual(len(resolved['productionJobs']),1)
+        validate_result(resolved,improved)
+
     def test_required_parts_are_unchanged_and_gaps_stay_in_original_length(self):
         job,result=fixture();before=copy.deepcopy(job);validate_request(job)
         resolved,layout=fill_stickers(job,result,budget=2)

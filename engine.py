@@ -10,6 +10,30 @@ from shapely.geometry import Polygon, box
 from shapely.affinity import rotate, translate
 
 
+def solver_part(part, rotations, strip_width):
+    """Check the guarded contour before handing it to the native solver."""
+    envelope = search_envelope(part_polygon(part))
+    base = 0
+    if rotations is None:
+        corners = list(envelope.minimum_rotated_rectangle.exterior.coords)
+        candidates = [90 - math.degrees(math.atan2(b[1]-a[1], b[0]-a[0]))
+                      for a, b in zip(corners, corners[1:])]
+    else:
+        candidates = rotations
+    # strip_width is the physical usable width. Native item/strip separation
+    # is compensated by the expanded container and translated origin in solve.
+    def cross_width(angle):
+        bounds = rotate(envelope, angle, origin=(0, 0)).bounds
+        return bounds[2] - bounds[0]
+    fitting = [a for a in candidates if cross_width(a) < strip_width - 0.001]
+    if not fitting:
+        raise ValueError(f"{part['id']}: not enough material width for the safety clearance. "
+                         "Use wider material, reduce the edge margin, or allow rotation.")
+    if rotations is None:
+        base = min(fitting, key=cross_width)
+        envelope = rotate(envelope, base, origin=(0, 0))
+    return envelope, base, None if rotations is None else [-a for a in fitting]
+
 def number(value, name, low, high):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
         raise ValueError(f'{name} must be between {low} and {high}.')
@@ -156,25 +180,10 @@ def solve(job, progress_path=None):
     started = time.monotonic()
     # Sparrow's finite axis is Y. Reflect x/y at the boundary of the adapter.
     # 0.10 mm outward guard exceeds the host's 0.05 mm curve flattening target.
-    orientations = None if job['settings']['rotations'] is None else [-a for a in job['settings']['rotations']]
     items, base_rotations, span = [], {}, 0.0
     for part in job['parts']:
-        polygon = part_polygon(part)
-        base = 0
-        if orientations is None:
-            # Native initialization can fail if a freely rotating shape starts
-            # wider than the strip. Start it at its narrow caliper orientation.
-            corners = list(polygon.minimum_rotated_rectangle.exterior.coords)
-            candidates = [90 - math.degrees(math.atan2(b[1]-a[1], b[0]-a[0])) for a, b in zip(corners, corners[1:])]
-            def cross_width(angle):
-                bounds = rotate(polygon, angle, origin=(0, 0)).bounds
-                return bounds[2] - bounds[0]
-            base = min(candidates, key=cross_width)
-            polygon = rotate(polygon, base, origin=(0, 0))
-            if polygon.bounds[2] - polygon.bounds[0] + 0.2 > width - 2 * margin:
-                raise ValueError(f"{part['id']}: part is too wide at every rotation.")
+        envelope, base, orientations = solver_part(part, job['settings']['rotations'], width - 2 * margin)
         base_rotations[part['id']] = base
-        envelope = search_envelope(polygon)
         left, bottom, right, top = envelope.bounds
         span += (math.hypot(right - left, top - bottom) + gap + 0.02) * part.get('quantity', 1)
         items.append(spyrrow.Item(part['id'], [(y, x) for x, y in envelope.exterior.coords], part.get('quantity', 1), orientations))
@@ -184,11 +193,14 @@ def solve(job, progress_path=None):
     # No part needs more cross-roll space than its envelope diagonal. The sum
     # plus clearances accommodates every part side by side, at any orientation.
     # Restrict only the search region; retain the customer's full output width.
-    instance = spyrrow.StripPackingInstance('eznest', min(width - 2 * margin, span), items)
+    # Native separation also applies to container edges. Cancel only that
+    # padding; preserve pairwise separation, guarded envelopes and output width.
+    separation = gap + 0.02
+    instance = spyrrow.StripPackingInstance('eznest', min(width - 2 * margin, span) + 2 * separation, items)
     progress_path = progress_path or job.get('_progress')
 
     def build(solution):
-        result = {'placements': [{'id': p.id, 'rotation': base_rotations[p.id] - p.rotation, 'x': p.translation[1] + margin, 'y': p.translation[0] + margin} for p in solution.placed_items]}
+        result = {'placements': [{'id': p.id, 'rotation': base_rotations[p.id] - p.rotation, 'x': p.translation[1] + margin - separation, 'y': p.translation[0] + margin - separation} for p in solution.placed_items]}
         shapes = validate_result(job, result)
         used_length = max(p.bounds[3] for p in shapes) + margin
         area = sum(p.area for p in shapes)
@@ -209,7 +221,7 @@ def solve(job, progress_path=None):
             key = (placement.id, angle)
             if key not in rotated_tops:
                 rotated_tops[key] = rotate(part_polygons[placement.id], angle, origin=(0,0)).bounds[3]
-            tops.append(rotated_tops[key] + placement.translation[0] + 2 * margin)
+            tops.append(rotated_tops[key] + placement.translation[0] + 2 * margin - separation)
         return max(tops, default=math.inf)
 
     def consider(solution):
@@ -223,18 +235,15 @@ def solve(job, progress_path=None):
 
     # Give a quick first arrangement, then independently restart to escape a
     # poor initial packing. All attempts share one budget and one best result.
-    attempts = 3 if seconds >= 15 else 1
+    attempts = min(3, max(1, int(seconds) // 2))
+    budgets = [int(seconds) // attempts + (i < int(seconds) % attempts) for i in range(attempts)]
     deadline = time.monotonic() + seconds
     completed = 0
     for attempt in range(attempts):
         remaining = deadline - time.monotonic()
         if attempt and remaining < 1:
             break
-        budget = max(1, int(remaining / (attempts - attempt)))
-        if attempts == 1:
-            budget = int(seconds)
-        if attempts > 1 and attempt == 0:
-            budget = min(5, budget)
+        budget = budgets[attempt]
         config = spyrrow.StripPackingConfig(total_computation_time=budget,
             min_items_separation=gap + 0.02, num_workers=2,
             seed=(int(job['settings'].get('seed', 42)) + attempt * 104729) % 2147483648,
@@ -270,7 +279,10 @@ def solve(job, progress_path=None):
         if 'error' in failure:
             if isinstance(failure['error'], (KeyboardInterrupt, SystemExit)):
                 raise failure['error']
-            last_error = failure['error']
+            error = failure['error']
+            if type(error).__module__ == 'pyo3_runtime' and type(error).__name__ == 'PanicException':
+                error = ValueError('The nesting engine could not find a safe fit. Try a wider material or another search.')
+            last_error = error
         if 'solution' in holder:
             try:
                 consider(holder['solution'])
