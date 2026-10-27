@@ -101,13 +101,11 @@ an optional gallery of detected artwork, copies, cut types and retained groups.
 
 The job panel asks where to print: In-house or Max output. In-house stays
 selected and nesting stays local. Max output does not change the job, the
-effort, or the file. It opens a short explanation of OUTPUT: a shop keeps its
-customer, OUTPUT can route overflow or work the shop cannot produce, and a
-shop with idle machines can take routed work. Payment is described as USDC
-escrow on Solana, released on delivery. The note says this is an early pilot,
-EZ Designs TX is the first shop, and escrow runs on Solana devnet. Visit
-OUTPUT and Join the waitlist both open https://output.jeezlabs.io/ in the
-browser. EZ Nest does not send artwork, collect a signup, or call OUTPUT.
+effort, or the file. It opens a short OUTPUT note: keep the customer, route
+the print, with three short reasons and an early-pilot line. Join the waitlist
+and Learn more both open the URL in `OUTPUT_WAITLIST_URL` (currently
+https://output.jeezlabs.io/) in the browser. EZ Nest does not send artwork,
+collect a signup, or call OUTPUT.
 Contextual help appears on label hover, keyboard focus or tap.
 Settings is a centered dialog with specialized cut/software options collapsed;
 material edits cancel on an outside click. Quantities stay beside each imported

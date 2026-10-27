@@ -3,6 +3,8 @@ const NS = 'http://www.w3.org/2000/svg';
 const $ = id => document.getElementById(id);
 const PREF = 'eznest-placeholders';
 const PIECE_CAP = 5000;
+// Both Max output links. Point this at a waitlist page when OUTPUT publishes one.
+const OUTPUT_WAITLIST_URL = 'https://output.jeezlabs.io/';
 let token = '';
 let localSave = false;
 let folderView = null;
@@ -2511,6 +2513,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('settings-open').addEventListener('click', () => $('settings').showModal());
   $('settings-close').addEventListener('click', () => $('settings').close());
   dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });
+  for (const id of ['max-output-waitlist', 'max-output-learn']) $(id).href = OUTPUT_WAITLIST_URL;
   $('max-output').addEventListener('click', () => {
     $('max-output-dialog').showModal();
     $('max-output-close').focus();
