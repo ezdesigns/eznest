@@ -1,5 +1,6 @@
 """Original EZ Nest adapter. No commercial suite code is used."""
 import math
+import copy
 
 # Shop v1 cap. Search time still bounds a nest; history and intake stay outside this module.
 PIECE_CAP = 800
@@ -131,23 +132,32 @@ def validate_result(job, result):
         boundary = box(margin, margin, width - margin, reported - margin)
     if 'width' in result and abs(number(result['width'], 'Reported width', 10, 5000) - width) > 0.001:
         raise ValueError('Result width does not match the material.')
+    covered_boundary = boundary.buffer(0.001)
+    polygons = {ident: part_polygon(part) for ident, part in by_id.items()}
+    orientations = {}
     for placement in result['placements']:
         for key in ['x', 'y', 'rotation']:
             number(placement[key], key, -4_000_000, 4_000_000)
         angle = placement['rotation'] % 360
         if job['settings']['rotations'] is not None and not any(abs((angle - allowed + 180) % 360 - 180) < 0.001 for allowed in job['settings']['rotations']):
             raise ValueError('Engine returned a disallowed rotation.')
-        shape = placed_polygon(by_id[placement['id']], placement)
-        if not boundary.buffer(0.001).covers(shape):
+        key = (placement['id'], placement['rotation'])
+        if key not in orientations:
+            orientations[key] = rotate(polygons[placement['id']], placement['rotation'], origin=(0, 0))
+        shape = translate(orientations[key], placement['x'], placement['y'])
+        if not covered_boundary.covers(shape):
             raise ValueError('No valid layout fits within the maximum material length.')
         shapes.append(shape)
-    # The tree only narrows candidates. Exact polygon overlap and distance
-    # checks still decide validity, including concave pieces and small gaps.
+    # Broad phase only: the tree narrows candidates. Expanded bounding boxes
+    # cannot exclude an overlapping pair or a pair nearer than gap. Exact
+    # polygon overlap and distance checks still decide validity, including
+    # concave pieces and small gaps.
     tree = STRtree(shapes)
     for index, shape in enumerate(shapes):
         x0, y0, x1, y1 = shape.bounds
         for other in tree.query(box(x0-gap, y0-gap, x1+gap, y1+gap)):
-            if other >= index: continue
+            if other >= index:
+                continue
             previous = shapes[other]
             if shape.intersection(previous).area > 0.0001 or shape.distance(previous) + 0.001 < gap:
                 raise ValueError('Layout failed the independent overlap/spacing check.')
@@ -187,7 +197,7 @@ def publish_result(path, result):
     return True
 
 
-def solve(job, progress_path=None):
+def solve(job, progress_path=None, incumbent=None):
     width, length, gap, margin, seconds = validate_job(job)
     if sum(p.get('quantity', 1) for p in job['parts']) > PIECE_CAP:
         raise ValueError('Use bounded allocation for more than 800 pieces.')
@@ -222,7 +232,10 @@ def solve(job, progress_path=None):
         return result
 
     import threading
-    best = None
+    best = copy.deepcopy(incumbent)
+    if best is not None:
+        validate_result(job, best)
+    first_length = best['usedLength'] if best else None
     last_error = None
     part_polygons = {p['id']: part_polygon(p) for p in job['parts']}
     rotated_tops = {}
@@ -239,25 +252,35 @@ def solve(job, progress_path=None):
         return max(tops, default=math.inf)
 
     def consider(solution):
-        nonlocal best
+        nonlocal best, first_length
         if best is not None and extent(solution) >= best['usedLength'] - 1e-7:
             return
         candidate = build(solution)
+        if first_length is None:
+            first_length = candidate['usedLength']
         if best is None or candidate['usedLength'] < best['usedLength'] - 1e-7:
             best = candidate
             publish_result(progress_path, best)
 
     # Give a quick first arrangement, then independently restart to escape a
     # poor initial packing. All attempts share one budget and one best result.
-    attempts = min(3, max(1, int(seconds) // 2))
-    budgets = [int(seconds) // attempts + (i < int(seconds) % attempts) for i in range(attempts)]
+    local_budget = min(2, int(seconds) // 5)
+    remaining_budget = int(seconds) - local_budget
+    attempts = min(3, max(1, remaining_budget // 2))
     deadline = time.monotonic() + seconds
     completed = 0
+    previous_gain = 0
     for attempt in range(attempts):
         remaining = deadline - time.monotonic()
         if attempt and remaining < 1:
             break
-        budget = budgets[attempt]
+        slots = attempts - attempt
+        # Reward productive starts with a longer next attempt; otherwise retain
+        # more short independent starts. All native calls share the same budget.
+        share = math.ceil(remaining_budget * .7) if previous_gain >= .01 and slots > 1 else math.ceil(remaining_budget / slots)
+        budget = min(share, remaining_budget - slots + 1, max(1, int(remaining)))
+        remaining_budget -= budget
+        before = best['usedLength'] if best else None
         config = spyrrow.StripPackingConfig(total_computation_time=budget,
             min_items_separation=gap + 0.02, num_workers=2,
             seed=(int(job['settings'].get('seed', 42)) + attempt * 104729) % 2147483648,
@@ -302,9 +325,15 @@ def solve(job, progress_path=None):
                 consider(holder['solution'])
             except (ValueError, ZeroDivisionError) as error:
                 last_error = error
+        reference = before or first_length
+        previous_gain = (reference-best['usedLength'])/reference if reference and best else 0
     if best is None:
         raise last_error or ValueError('No valid layout was found within the search time.')
-    best.update(elapsed=time.monotonic() - started, searchAttempts=completed)
+    if local_budget and time.monotonic() < deadline:
+        from local_search import repack
+        best = repack(job, best, min(local_budget, deadline-time.monotonic()))
+    best.update(elapsed=time.monotonic() - started, searchAttempts=completed,
+                searchGain=max(0, (first_length-best['usedLength'])/first_length))
     publish_result(progress_path, best)
     return best
 
