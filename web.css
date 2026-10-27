@@ -491,7 +491,7 @@ body:has(#settings-support[open]) #feedback-welcome { display: none; }
   #settings { padding: 20px; }
 }
 .upload-icon { width: 42px; height: 42px; margin-bottom: 14px; color: #8292a6; }
-#start-nesting:disabled { background: #e0e4e9; border-color: #e0e4e9; color: #929ba7; opacity: 1; cursor: not-allowed; }
+#start-nesting:disabled, #export.primary:disabled, #confirm-send:disabled { background: #e0e4e9; border-color: #e0e4e9; color: #929ba7; opacity: 1; cursor: not-allowed; }
 
 /* Lead with the completed layout; supporting figures explain the roll use. */
 .result-overview { align-items: stretch; overflow: hidden; }
