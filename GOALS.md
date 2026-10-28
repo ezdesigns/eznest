@@ -102,11 +102,12 @@ an optional gallery of detected artwork, copies, cut types and retained groups.
 The job panel asks where to print: In-house or Another shop. In-house
 stays selected and nesting stays local. Another shop does not change
 the job, the effort, or the file. It opens a short note on every job. There is
-no stock or capacity check. The headline is "Can't print this one? Send it out.
-Keep the customer." The line under it says to send the job to another shop, and
-that the customer and the price stay with this shop. Three lines name a missing
-material or roll width, a customer too far to ship, and a shop too busy to hit
-the date. It does not state earnings, fees, or customer counts, and there is no
+no stock or capacity check. The headline is "Can't print it? Another shop
+can." The body says OUTPUT passes the nested job to a shop that has the
+material, the machine and the time, and that this shop keeps the customer and
+the sale. Under "When it helps", three lines name a missing material or roll
+width, a customer too far to ship, and a shop too busy to hit the date. It does
+not state earnings, fees, or customer counts, and there is no
 early-pilot line. Join the waitlist
 and Learn more both open the URL in
 `OUTPUT_WAITLIST_URL` (currently https://output.jeezlabs.io/) in the browser.

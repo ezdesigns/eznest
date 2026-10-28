@@ -11,11 +11,11 @@
 
 - The job panel has Upload job, Choose material, and Where will you print?
   In-house stays selected and uses the existing effort choices. Another shop
-  shows "What's this?" and opens a short note on every job: send it out when
-  the shop lacks the material or roll width, the customer is too far to ship,
-  or the shop is too busy to hit the date. There is no stock check, no
-  early-pilot line, and no earnings claim. Join the waitlist and Learn more
-  open the OUTPUT site. Nothing is sent or saved.
+  shows "What's this?" and opens a short note on every job. OUTPUT passes the
+  nested job to a shop that has the material, the machine and the time. The
+  shop keeps the customer and the sale. There is no stock check, no early-pilot
+  line, and no earnings claim. Join the waitlist and Learn more open the OUTPUT
+  site. Nothing is sent or saved.
 - Settings opens in a centered dialog. Specialized cut and print-software options
   are collapsed and explained in plain language. Field labels show help on hover,
   focus or tap. Clicking outside the material editor cancels unsaved edits.
