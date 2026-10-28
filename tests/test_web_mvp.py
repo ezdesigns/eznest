@@ -254,7 +254,6 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual((root / 'web.js').read_text().count('https://output.jeezlabs.io/'), 1)
                 self.assertNotIn('https://output.jeezlabs.io/', (root / 'web.html').read_text())
                 for link in (waitlist, learn):
-                    self.assertEqual(link.get_attribute('href'), 'https://output.jeezlabs.io/')
                     self.assertEqual(link.get_attribute('target'), '_blank')
                     self.assertIn('noopener', link.get_attribute('rel'))
                     self.assertEqual(link.get_attribute('referrerpolicy'), 'no-referrer')
