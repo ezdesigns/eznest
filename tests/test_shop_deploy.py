@@ -65,7 +65,7 @@ class ShopDeployTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'release file'):
             shop_deploy.choose_asset({'assets': [{'name': 'eznest-setup.exe', 'browser_download_url': 'https://evil.example/eznest-setup.exe'}]})
         self.assertFalse(shop_deploy.release_url_allowed('http://github.com/ezdesigns/eznest/releases/download/v1/eznest-setup.exe'))
-        self.assertFalse(shop_deploy.release_url_allowed('https://user:secret@github.com/ezdesigns/eznest/releases/download/v1/eznest-setup.exe'))
+        self.assertFalse(shop_deploy.release_url_allowed('https://user:REDACTED@example.com/ezdesigns/eznest/releases/download/v1/eznest-setup.exe'))
         api = shop_deploy._headers(shop_deploy.RELEASE_API, 'secret')
         cdn = shop_deploy._headers('https://objects.githubusercontent.com/eznest-setup.exe', 'secret')
         self.assertEqual(api['Authorization'], 'Bearer secret')

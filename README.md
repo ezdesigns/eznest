@@ -1,25 +1,26 @@
 # Ez Nest
 
+Ez Nest nests a print job on one shop computer and writes the finished file to a RIP hot folder. Designers use a browser. They do not install Ez Nest.
+
+The shop host is a 64-bit PC running Windows 10 or Windows 11. Each designer PC only needs a browser. ONYX is optional. The EZ Designs printer, cut names, and hot folder are a preset you can replace with your own path and cut names. The host does not need an Adobe account. A designer can drop in a PDF prepared in Illustrator. Width comes from the material. Length comes from the layout.
+
+**Install.** On the host, download `eznest-setup.exe` and run it. It installs to `C:\Program Files\eznest`. An unsigned installer shows Windows SmartScreen: choose **More info**, then **Run anyway**. The steps are under [Install](#install).
+
+**Shop network.** The page stays on the host at `http://127.0.0.1:8765/web` until you turn Shop network on. Other computers then open `http://SHOP-HOST:8765/web`. That mode is plain HTTP on port 8765, with no login. Use a trusted private network. The installer firewall rule is the Private profile only. Keep port 8765 off the internet. See [Security](SECURITY.md).
+
+**Uninstall.** Uninstall removes the program, the startup task, the `eznest-svc` account, and the firewall rule. `%ProgramData%\eznest` stays on the host, including `materials.sqlite3`. The RIP hot folder stays too. Details are under [Uninstall](#uninstall).
+
+**Data stays in the shop.** Artwork, nest files, and stock records stay on the host. OUTPUT sharing is optional and off by default. A send to OUTPUT needs a shop key (from a pairing code on the host, or from launch settings) and **Enable sharing** on that host. See [OUTPUT pairing](docs/output-pairing.md).
+
+Built first for EZ Designs (Austin).
+
+**Trademark.** Ez Nest is a product name of EZ Designs. The software is [MIT](LICENSE). Third-party notices stay in [THIRD_PARTY.md](THIRD_PARTY.md) and `licenses/`.
+
+**1.0.0-rc.5** is the shop release candidate.
+
+[Designer quick start](docs/employee-quick-start.md) · [Host updates and rollout checks](docs/windows-updates.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
+
 [Goals](GOALS.md)
-
-**1.0.0-rc.5 · shop release candidate.** Standalone local nesting for
-complete kits, decals and stickers. Illustrator, a printer model and an account
-are not required. Width comes from the material; length comes from the layout.
-
-**Testing and suggesting improvements with Codex?** Use the
-[contributor setup and PR walkthrough](CONTRIBUTOR-CODEX.md) on the development
-branch `cursor/shop-open-handoff-9891`. This uses isolated source test data and
-does not replace the protected shop installation.
-
-[Employee quick start](docs/employee-quick-start.md) · [Host updates and rollout checks](docs/windows-updates.md)
-
-Ez Nest is a free, open-source, self-updating desktop nesting tool that any print shop can install in minutes. It nests files, adds cut marks, and sends them to the RIP hot folder.
-
-It is built first for EZ Designs (Austin). The EZ Designs printer, cut names, and hot folder are a preset. Any other shop types its own. Later, and only if a shop opts in, Ez Nest is how shops join the OUTPUT print production network. That switch is off, and it sends nothing. See [Goals](GOALS.md).
-
-**1.0.0-rc.4** is the shop release candidate. "Ez Nest" is the name of EZ Designs. The code is [MIT](LICENSE). Third-party notices stay in [THIRD_PARTY.md](THIRD_PARTY.md) and `licenses/`.
-
-The page stays on this computer at `http://127.0.0.1:8765/web`. Shop network is off until you turn it on. Nothing leaves the shop unless you opt in.
 
 ## Install
 
@@ -45,18 +46,26 @@ py -3.12 build_windows.py --out ..\eznest-build
 
 The result is `installer\Output\eznest-setup.exe`. The version number comes from `version.json`.
 
+## Uninstall
+
+Uninstall eznest from Windows Settings, or run the uninstaller in `C:\Program Files\eznest`.
+
+That removes the program, the shortcuts the installer created, the `eznest` startup task, and the firewall rule named `eznest`. It removes the local user `eznest-svc` when Windows allows it. If that account is still signed in, uninstall disables the account instead. It also removes that account's permissions on `%ProgramData%\eznest` and on a local hot-folder path saved in `output-folder.json`.
+
+`%ProgramData%\eznest\materials.sqlite3` stays on the host with the rest of that folder: shop settings, local activity, and a paired OUTPUT credential file if one was saved. `installer/uninstall-shop.ps1` leaves shop files in the data folder. `installer/eznest.iss` runs that script and has no step that deletes `{commonappdata}\eznest`. The RIP hot folder and the files already in it stay.
+
 ## First run
 
 The first time the page opens, it asks for four things:
 
-- Hot folder, the RIP folder Send writes to
+- Hot folder, the RIP folder a save writes to
 - Printer name
 - Cut spot names, thru and kiss
 - Units
 
 **Use EZ Designs preset** fills today's EZ Designs values: the Epson SureColor S80600, CutContour thru and kiss names, and inches. Check **This PC holds the hot folder** when the folder is on this computer, and the preset uses the local path. Leave it off and the preset uses the share. You can type a different path. Nothing is connected until you save.
 
-After that, the page is one screen. Drop the day's files, set the quantity, and Send.
+After that, the page is one screen. Drop the day's files, set the quantity, choose **Review and save**, then **Save**.
 
 | File | What Ez Nest needs |
 | --- | --- |
@@ -66,7 +75,7 @@ After that, the page is one screen. Drop the day's files, set the quantity, and 
 
 PDF and SVG do not share a batch. One batch holds 800 pieces. Width is the material. Length comes from the layout.
 
-If Send cannot see the hot folder or the share, the page says so and does not pretend the job was sent. Check the path, and that this PC can open the share. A hot folder on another PC is a share. This installer cannot change that share's permissions. On the RIP PC, the account that runs Ez Nest needs write access to the folder.
+If the save cannot see the hot folder or the share, the page says so and does not pretend the job was sent. Check the path, and that this PC can open the share. A hot folder on another PC is a share. This installer cannot change that share's permissions. On the RIP PC, the account that runs Ez Nest needs write access to the folder.
 
 Leave colors as they are in the file. Set the printer ICC and registration marks in the RIP.
 
@@ -96,7 +105,7 @@ See [the capacity-first OUTPUT roadmap](docs/customer-rollout.md) for the custom
 
 The default is this computer only: `http://127.0.0.1:8765/web`.
 
-Shop network is off until you turn it on. There is no login. Anyone on the shop LAN can Send. Do not share this network with guest WiFi. Do not forward port 8765 to the internet.
+Shop network is off until you turn it on. There is no login. The page is plain HTTP. `GET /api/session` returns an `X-EZ-Token` to anyone who can open the page. That token is not a password. Anyone on the shop LAN can send a job. Do not share this network with guest WiFi. Do not forward port 8765 to the internet. See [Security](SECURITY.md).
 
 1. Choose Shop network in the installer (which adds `--lan` to the boot task), or start the app with `--lan`. The gear reports the running mode.
 2. Restart Ez Nest. The gear then shows `http://<this-computer>:8765/web`. Other PCs open that address. They do not install Ez Nest.
@@ -106,7 +115,9 @@ Only `--lan` opens a non-loopback listener. A saved preference alone cannot open
 
 ## OUTPUT
 
-**Join OUTPUT network** is off. It sends nothing. If a shop turns it on later, the only things shared would be the machine list and free capacity, and only after that opt-in. Customer files stay in the shop.
+OUTPUT sharing is optional and off by default. On the host, **Share activity with OUTPUT** accepts a pairing code and then requires **Enable sharing**. Nesting and hot-folder delivery stay on the shop PC either way. Customer artwork stays on the host. See [OUTPUT pairing](docs/output-pairing.md).
+
+The separate **Join OUTPUT network** control is not that consent. It stays off, and its status says nothing is sent.
 
 ## Limits
 
@@ -135,6 +146,10 @@ network.
 
 Contributing, tests, and the version source are in [CONTRIBUTING.md](CONTRIBUTING.md).
 AI coding agents should read [AGENTS.md](AGENTS.md) for workflow, safety boundaries, and validation instructions.
+
+**Testing and suggesting improvements with Codex?** Use the
+[contributor setup and PR walkthrough](CONTRIBUTOR-CODEX.md). It uses isolated
+source test data and does not replace a shop installation.
 
 From source, with 64-bit Python 3.12:
 
