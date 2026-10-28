@@ -5,7 +5,7 @@ import time
 from collections import Counter
 from shapely.geometry import Polygon
 from shapely.affinity import rotate
-from engine import part_polygon, solve, validate_job, validate_result, number, publish_result, PIECE_CAP, ORDER_PIECE_CAP
+from engine import part_polygon, solve, validate_job, validate_result, number, publish_result, compact_result, PIECE_CAP, ORDER_PIECE_CAP
 
 
 def subset(job, placements):
@@ -65,6 +65,11 @@ def continuous_nest(job, progress_path=None):
     best = min(candidates, key=lambda r:r['usedLength'])
     # Validation uses the whole order, including spacing across former seams.
     checked_job = {**job, 'settings':{**settings,'maxLength':limit}}
+    # The row pitch includes a small coordinate guard. Settle onto the operator
+    # gap when that is shorter. A failed settle keeps the guarded rows.
+    tightened = compact_result(checked_job, best)
+    if tightened['usedLength'] < best['usedLength'] - 1e-4:
+        best = tightened
     shapes = validate_result(checked_job, best)
     area = sum(p.area for p in shapes)
     baseline = candidates[0]['usedLength']

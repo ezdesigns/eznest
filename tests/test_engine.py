@@ -3,7 +3,7 @@ import json
 import math
 import unittest
 from pathlib import Path
-from engine import solve, validate_job, validate_result, search_envelope, publish_result
+from engine import solve, validate_job, validate_result, search_envelope, publish_result, compact_result, shelf_layout
 from unittest.mock import patch
 from types import SimpleNamespace
 import tempfile
@@ -55,8 +55,11 @@ class EngineTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as folder:
                 path=Path(folder)/'progress.json'
                 result=solve(job,path)
-                self.assertEqual(result['usedLength'],26)
-                self.assertEqual(json.loads(path.read_text())['result']['usedLength'],26)
+                # The shorter search result is y=10 (26 mm before settling).
+                # Compaction then drops the single square onto the margin.
+                self.assertEqual(result['lengthBeforeCompaction'],26)
+                self.assertEqual(result['usedLength'],16)
+                self.assertEqual(json.loads(path.read_text())['result']['usedLength'],16)
             self.assertEqual(result['searchAttempts'],3)
             seeds=[call.args[0].seed for call in factory.return_value.solve.call_args_list]
             self.assertEqual(len(set(seeds)),3)
@@ -73,7 +76,8 @@ class EngineTests(unittest.TestCase):
             factory.return_value.solve.return_value=solution(30)
             queue.return_value.drain.side_effect=itertools.chain([[(spyrrow.ReportType.ExplFeas,solution(10)),(spyrrow.ReportType.Final,SimpleNamespace(placed_items=[]))]],itertools.repeat([]))
             result=solve(job)
-            self.assertEqual(result['usedLength'],26)
+            self.assertEqual(result['lengthBeforeCompaction'],26)
+            self.assertEqual(result['usedLength'],16)
             validate_result(job,result)
 
     def job(self):
@@ -147,9 +151,11 @@ class EngineTests(unittest.TestCase):
             factory.return_value.solve.side_effect=[good,panic('native trial failed')]
             result=solve(job)
             # A search under 15 seconds is one native call. The whole allocation
-            # stays there instead of being reserved for local repair.
+            # stays there instead of being reserved for local repair. Settling
+            # runs after that call and does not spend the search budget.
             self.assertEqual(result['searchAttempts'],1)
-            self.assertAlmostEqual(result['usedLength'],26)
+            self.assertEqual(result['lengthBeforeCompaction'],26)
+            self.assertAlmostEqual(result['usedLength'],16)
             self.assertEqual(sum(c.kwargs['total_computation_time'] for c in configs.call_args_list),5)
             validate_result(job,result)
         with patch('engine.spyrrow.StripPackingInstance') as factory:
@@ -241,6 +247,40 @@ class EngineTests(unittest.TestCase):
         job['parts'][0]['quantity']=801
         with self.assertRaisesRegex(ValueError,'800'):
             validate_job(job)
+
+    def test_compaction_closes_a_gap_without_moving_sideways_or_rotating(self):
+        job=self.job()
+        job['settings'].update(width=80,margin=5,gap=3,rotations=[0])
+        job['parts']=[{'id':'a','points':[[0,0],[10,0],[10,10],[0,10]],'quantity':2}]
+        floating={'width':80,'usedLength':40,'placements':[
+            {'id':'a','x':5,'y':5,'rotation':0},
+            {'id':'a','x':20,'y':22,'rotation':0},
+        ]}
+        settled=compact_result(job,floating)
+        self.assertAlmostEqual(settled['usedLength'],20,places=3)
+        self.assertEqual(settled['placements'][1]['x'],20)
+        self.assertEqual(settled['placements'][1]['rotation'],0)
+        self.assertLess(settled['placements'][1]['y'],22)
+        validate_result(job,settled)
+        blocked={'width':80,'usedLength':28,'placements':[
+            {'id':'a','x':5,'y':5,'rotation':0},
+            {'id':'a','x':5,'y':18,'rotation':0},
+        ]}
+        stayed=compact_result(job,blocked)
+        self.assertEqual(stayed['usedLength'],28)
+        self.assertNotIn('lengthBeforeCompaction',stayed)
+
+    def test_shelf_rows_pack_identical_stickers_tighter_than_one_column(self):
+        job=self.job()
+        job['settings'].update(width=120,margin=5,gap=3,rotations=[0,90,180,270])
+        job['parts']=[{'id':'sticker','points':[[0,0],[24,0],[24,18],[0,18]],'quantity':16}]
+        rows=shelf_layout(job)
+        self.assertIsNotNone(rows)
+        self.assertAlmostEqual(rows['usedLength'],91,places=3)
+        self.assertEqual(len(rows['placements']),16)
+        validate_result(job,rows)
+        # Quarter turns are allowed, but this width fits the original orientation in four columns.
+        self.assertTrue(all(p['rotation']%180==0 for p in rows['placements']))
 
     def test_fixed_rotation_rejects_arbitrary_angle(self):
         job=self.job();job['parts']=[{'id':'a','points':[[0,0],[10,0],[10,10],[0,10]]}]

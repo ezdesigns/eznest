@@ -36,6 +36,20 @@ class SheetCostTests(unittest.TestCase):
         result['placements'][0]['sheet']=99
         with self.assertRaises(ValueError):validate_result(job,result)
 
+    def test_sheet_measured_to_the_piece_extent_still_validates(self):
+        # Settling onto the margin makes used length equal the piece extent.
+        # The fit check has to tolerate the leftover floating-point difference.
+        height, width, margin = 66.99937458038329, 67.99936199188232, 16.509999999999998
+        used = margin + height + margin
+        job={'settings':{'width':1308.1,'maxLength':None,'sheetLength':1524,'gap':3.048,'margin':margin,'seconds':1,'rotations':[0,90,180,270]},
+             'parts':[{'id':'svg-1','points':[[0,0],[width,0],[width,height],[0,height]],'quantity':1}]}
+        result={'width':1308.1,'usedLength':used,'placements':[{'id':'svg-1','x':margin,'y':margin,'rotation':0,'sheet':0}],
+                'sheets':[{'index':0,'offset':0,'usedLength':used,'pieces':1,'area':width*height}]}
+        self.assertEqual(len(validate_result(job,result)),1)
+        job['parts'][0]['points']=[[0,0],[width,0],[width,height+1],[0,height+1]]
+        with self.assertRaisesRegex(ValueError,'too large'):
+            validate_result(job,result)
+
     def test_too_big_piece_and_total_roll_limit(self):
         job=job_fixture();job['parts'][0]['points']=[[0,0],[200,0],[200,200],[0,200]]
         with self.assertRaises(ValueError):run(job)
