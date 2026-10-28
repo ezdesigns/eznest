@@ -41,7 +41,7 @@ INVALID_CODE = 'That pairing code is not valid. Ask the shop owner for a new cod
 EXPIRED = 'That pairing code has expired. Ask the shop owner for a new code.'
 CONSUMED = 'That pairing code was already used. Ask the shop owner for a new code.'
 RATE_LIMITED = 'OUTPUT is busy. Wait a moment and try this code again.'
-LIMIT = 'This shop already has as many Ez Nest connections as OUTPUT allows. Ask the admin.'
+LIMIT = 'This shop already has the maximum connected computers. Ask the shop owner to remove one in OUTPUT.'
 REPLAY = 'OUTPUT already finished this pairing attempt, but this computer did not receive the credential. Ask the shop owner for a new code.'
 UNEXPECTED = 'OUTPUT did not accept the pairing request.'
 STORE_FAILED = 'OUTPUT accepted the code, but this computer could not store the credential. Ask the shop owner for a new code.'
@@ -96,12 +96,19 @@ def host_ref(directory):
 
 
 def _problem_code(payload):
+    """OUTPUT errors are {"error":{"code":"invalid_code",...}}. Older bodies use a string."""
     if not isinstance(payload, dict):
         return ''
-    for key in ('code', 'error'):
-        raw = payload.get(key)
-        if isinstance(raw, str):
+    error = payload.get('error')
+    if isinstance(error, dict):
+        raw = error.get('code')
+        if isinstance(raw, str) and raw.strip():
             return raw.strip().lower()
+    if isinstance(error, str) and error.strip():
+        return error.strip().lower()
+    raw = payload.get('code')
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip().lower()
     return ''
 
 
@@ -137,13 +144,12 @@ def interpret(status, body):
         if outcome == 'replay':
             raise PairingError('replay', REPLAY)
         raise PairingError('unexpected', UNEXPECTED)
-    shop = result.get('shopName', result.get('shop'))
-    if isinstance(shop, dict):
-        shop = shop.get('shopName') or shop.get('name')
+    # Success carries result.outpostId, not a shop name. Do not present that id as a name.
+    shop = result.get('shopName') if isinstance(result.get('shopName'), str) else None
     try:
-        shop_name = output_credential.clean_shop_name(shop) if isinstance(shop, str) else 'OUTPUT'
+        shop_name = output_credential.clean_shop_name(shop) if shop else None
     except ValueError:
-        shop_name = 'OUTPUT'
+        shop_name = None
     return {'credential': token, 'shopName': shop_name}
 
 

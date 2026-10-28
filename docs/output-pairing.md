@@ -7,10 +7,10 @@ or change consent.
 ## Where the contract came from
 
 The pairing contract is `docs/ez-nest-pairing.md` on `main` in
-`ezdesigns/output` (PRs #110 and #113). This workspace's GitHub token received
-HTTP 404 for that repository, so the client follows the merged contract as
-specified with those PRs. The telemetry projection stays
-`eznest-observation/1`.
+`ezdesigns/output` (PRs #110 and #113). This workspace's GitHub token still
+receives HTTP 404 for that repository. The live pair endpoint confirmed the
+error object, and the client follows the contract specified with those PRs.
+The telemetry projection stays `eznest-observation/1`.
 
 The public waitlist page is https://output.jeezlabs.io/waitlist. Learn more
 uses https://output.jeezlabs.io/.
@@ -30,14 +30,18 @@ this computer's name. `hostRef` is the local installation id when it is 32
 lowercase hex characters; it is left out otherwise.
 
 The first success returns `result.token`, an `osa_` credential that OUTPUT
-keeps for 90 days. Ez Nest writes that credential to disk before it updates
-consent, status, or the page. A repeat of the same `requestId` returns
-`outcome` `replay` and no token, so the id is reused only when the connection
-itself fails. A new click is a new attempt.
+keeps for 90 days, and `result.outpostId`. It does not include a shop name.
+Ez Nest writes the credential to disk before it updates consent, status, or
+the page, and the host shows "Connected to OUTPUT". A `shopName` is shown
+only when a response actually includes one. A repeat of the same `requestId`
+returns `outcome` `replay` and no token, so the id is reused only when the
+connection itself fails. A new click is a new attempt.
 
 Redirects are not followed. The code and the credential are not written to
-logs or API responses. A shop name in `result.shopName` is shown when OUTPUT
-sends one. The page says OUTPUT when it does not.
+logs or API responses.
+
+Errors use `{"error":{"version":1,"schema":null,"code":"...","field":"...","message":"..."}}`.
+Ez Nest reads `error.code` and does not show OUTPUT's `message` text.
 
 | Situation | What the host shows |
 | --- | --- |
@@ -47,7 +51,8 @@ sends one. The page says OUTPUT when it does not.
 | HTTP 401 `expired` | That pairing code has expired. Ask the shop owner for a new code. |
 | HTTP 409 `consumed` | That pairing code was already used. Ask the shop owner for a new code. |
 | HTTP 429 `rate_limited` | OUTPUT is busy. Wait a moment and try this code again. |
-| HTTP 409 `limit` | This shop already has as many Ez Nest connections as OUTPUT allows. Ask the admin. |
+| HTTP 409 `limit` | This shop already has the maximum connected computers. Ask the shop owner to remove one in OUTPUT. |
+| HTTP 409 `conflict` or any other 409 | OUTPUT did not accept the pairing request. |
 | HTTP 200 `replay` without a token | OUTPUT already finished this pairing attempt, but this computer did not receive the credential. Ask the shop owner for a new code. |
 
 ## What is stored

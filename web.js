@@ -2392,7 +2392,7 @@ function renderOutputSharing(info) {
   const paired = source === 'paired';
   const launch = source === 'environment' || source === 'environment-invalid';
   $('output-connect-shop').hidden = !paired;
-  $('output-connect-shop').textContent = paired ? 'Connected to ' + (info.shopName || 'OUTPUT') + '.' : '';
+  $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
   $('output-pair-form').hidden = paired || launch || source === 'disabled';
   $('output-disconnect').hidden = !paired;
   $('output-pair').disabled = $('output-pair-form').hidden || info.paused;

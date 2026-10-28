@@ -83,16 +83,26 @@ class ExchangeTests(unittest.TestCase):
         self.assertEqual(telemetry_output.SCHEMA, 'eznest-observation/1')
         result = output_pairing.interpret(*created())
         self.assertEqual(result, {'credential': TOKEN, 'shopName': 'North Shop'})
-        self.assertEqual(output_pairing.interpret(200, json.dumps({'outcome': 'created', 'result': {'token': TOKEN}}).encode())['shopName'], 'OUTPUT')
-        secret = json.dumps({'code': 'expired', 'detail': CODE, 'token': TOKEN}).encode()
+        outpost = output_pairing.interpret(200, json.dumps({'outcome': 'created', 'result': {'token': TOKEN, 'outpostId': 'op_123'}}).encode())
+        self.assertEqual(outpost, {'credential': TOKEN, 'shopName': None})
+        self.assertNotIn('op_123', json.dumps(outpost))
+        secret = json.dumps({'error': {'version': 1, 'schema': None, 'code': 'expired', 'field': 'code', 'message': CODE + TOKEN}}).encode()
+
+        def envelope(code, field='code'):
+            return {'error': {'version': 1, 'schema': None, 'code': code, 'field': field, 'message': 'server says ' + CODE}}
+
         cases = (
-            (503, {'code': 'disabled'}, 'disabled', output_pairing.DISABLED),
-            (404, {'code': 'invalid_code', 'detail': CODE}, 'invalid_code', output_pairing.INVALID_CODE),
-            (401, {'code': 'expired', 'detail': CODE}, 'expired', output_pairing.EXPIRED),
-            (409, {'code': 'consumed', 'token': TOKEN}, 'consumed', output_pairing.CONSUMED),
-            (429, {'code': 'rate_limited'}, 'rate_limited', output_pairing.RATE_LIMITED),
-            (409, {'code': 'limit'}, 'limit', output_pairing.LIMIT),
+            (503, envelope('disabled', 'service'), 'disabled', output_pairing.DISABLED),
+            (404, envelope('invalid_code'), 'invalid_code', output_pairing.INVALID_CODE),
+            (401, envelope('expired'), 'expired', output_pairing.EXPIRED),
+            (409, envelope('consumed'), 'consumed', output_pairing.CONSUMED),
+            (429, envelope('rate_limited'), 'rate_limited', output_pairing.RATE_LIMITED),
+            (409, envelope('limit'), 'limit', output_pairing.LIMIT),
+            (409, envelope('conflict'), 'unexpected', output_pairing.UNEXPECTED),
+            (409, envelope('other'), 'unexpected', output_pairing.UNEXPECTED),
             (404, {'code': 'api_route_not_found', 'detail': CODE}, 'disabled', output_pairing.DISABLED),
+            (401, {'error': 'expired'}, 'expired', output_pairing.EXPIRED),
+            (429, {'code': 'rate_limited'}, 'rate_limited', output_pairing.RATE_LIMITED),
         )
         for status, payload, reason, message in cases:
             with self.assertRaises(output_pairing.PairingError) as caught:
@@ -230,6 +240,18 @@ class ConnectTests(unittest.TestCase):
             self.assertEqual(sender.connection(self.root)['source'], 'disabled')
             self.assertIsNone(sender.configuration(self.root))
 
+    def test_outpost_id_is_not_stored_as_a_shop_name(self):
+        def transport(_raw):
+            return 200, json.dumps({'outcome': 'created', 'result': {'token': TOKEN, 'outpostId': 'outpost-1'}}).encode()
+        info = output_pairing.connect(self.root, CODE, transport=transport, host='HOST')
+        self.assertIsNone(info['shopName'])
+        self.assertEqual(info['connection'], 'paired')
+        self.assertTrue(info['configured'])
+        saved = output_credential.path(self.root).read_bytes()
+        self.assertNotIn(b'outpost-1', saved)
+        self.assertNotIn(b'shopName', saved)
+        self.assertNotIn(TOKEN.encode(), json.dumps(info).encode())
+
     def test_environment_and_shop_test_do_not_spend_a_code(self):
         def explode(_raw):
             raise AssertionError('pairing code was sent')
@@ -353,6 +375,7 @@ class DialogCopyTests(unittest.TestCase):
         self.assertIn('https://output.jeezlabs.io/', script)
         self.assertIn('id="output-pair"', html)
         self.assertIn('id="output-disconnect"', html)
+        self.assertIn("info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT'", script)
 
 
 class OutputScreenTests(unittest.TestCase):

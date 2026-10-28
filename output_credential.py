@@ -148,12 +148,13 @@ def _write(directory, payload, codec):
     return target
 
 
-def save(directory, credential, shop_name, codec=None):
+def save(directory, credential, shop_name=None, codec=None):
     if not valid_token(credential):
         raise ValueError('OUTPUT did not return a shop credential. Ask the owner for a new pairing code.')
-    name = clean_shop_name(shop_name)
-    payload = json.dumps({'v': 1, 'credential': credential, 'shopName': name}, separators=(',', ':')).encode()
-    _write(directory, payload, codec or default_codec())
+    payload = {'v': 1, 'credential': credential}
+    if shop_name is not None:
+        payload['shopName'] = clean_shop_name(shop_name)
+    _write(directory, json.dumps(payload, separators=(',', ':')).encode(), codec or default_codec())
 
 
 def _record(directory, codec):

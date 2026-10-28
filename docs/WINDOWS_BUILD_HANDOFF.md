@@ -177,7 +177,7 @@ On the host only, Settings → **Share activity with OUTPUT**:
    - Code already used: `That pairing code was already used. Ask the shop owner for a new code.`
    - Feature disabled: `OUTPUT isn't turned on yet for this shop. Ask the admin.`
    - Too many tries: `OUTPUT is busy. Wait a moment and try this code again.`
-   - Connection limit: `This shop already has as many Ez Nest connections as OUTPUT allows. Ask the admin.`
+   - Connection limit: `This shop already has the maximum connected computers. Ask the shop owner to remove one in OUTPUT.`
 4. The page must not display the credential. `%ProgramData%\eznest\output-credential.bin` exists after success and is not a text file containing `osa_`.
 5. If `EZ_NEST_OUTPUT_UPLOADS=1` and `EZ_NEST_OUTPUT_TOKEN` are set on the host, the screen says launch settings are in use and does not spend the pairing code. Remove those variables and restart the host before pairing.
 6. **Disconnect** removes the saved credential and stops sharing. Pairing is required again.
