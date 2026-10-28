@@ -2574,6 +2574,15 @@ document.addEventListener('DOMContentLoaded', () => {
   $('settings-close').addEventListener('click', () => $('settings').close());
   dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });
   for (const id of ['max-output-waitlist', 'max-output-learn']) $(id).href = OUTPUT_WAITLIST_URL;
+  const choiceRow = document.querySelector('.output-modes');
+  if (choiceRow && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window) {
+    const watchChoices = new IntersectionObserver(entries => {
+      if (!entries.some(entry => entry.isIntersecting)) return;
+      requestAnimationFrame(() => requestAnimationFrame(() => choiceRow.classList.add('choice-seen')));
+      watchChoices.disconnect();
+    });
+    watchChoices.observe($('layout-options'));
+  }
   $('max-output').addEventListener('click', () => {
     const dialog = $('max-output-dialog');
     if (!dialog.open) dialog.showModal();

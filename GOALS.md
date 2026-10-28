@@ -99,10 +99,11 @@ validation can add time; more search time does not guarantee an improvement.
 Effort is saved in this browser and applies to the next search. Check pieces is
 an optional gallery of detected artwork, copies, cut types and retained groups.
 
-The job panel asks where to print: In-house or Partner printing. In-house
-stays selected and nesting stays local. Partner printing does not change the
-job, the effort, or the file. A quiet "$ You still get paid" pill sits on that
-choice. The choice and the pill both open a short note on every job. There is
+The job panel asks where to print: In-house or Pass it, get paid. In-house
+stays selected, with its blue selected look, and nesting stays local. Pass it,
+get paid is a black choice with the subline "A partner shop prints it." and a
+green "Still paid" badge. The black fill is not the selected state. The choice
+and the badge both open a short note on every job. There is
 no stock or capacity check. The title is "What is OUTPUT?". It says you earn
 on jobs you would otherwise turn away, you take the order, OUTPUT passes the
 job to a partner shop that can make it, and you stay the shop the customer
