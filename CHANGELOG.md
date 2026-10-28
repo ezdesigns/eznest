@@ -10,11 +10,12 @@
 - Stream browser PDF/AI uploads directly to disk, up to 2 GB, without base64 expansion. Illustrator/legacy JSON handoffs allow 256 MB; SVG remains 8 MB. Parser and geometry limits still apply.
 
 - The job panel has Upload job, Choose material, and Where will you print?
-  In-house stays selected and uses the existing effort choices. Max output
-  shows "What's this?" and opens a short note: a job you can't print is still
-  a sale, nesting saves vinyl, and OUTPUT keeps the customer. There is no
-  early-pilot line and no earnings claim. Join the waitlist and Learn more open
-  the OUTPUT site. Nothing is sent or saved.
+  In-house stays selected and uses the existing effort choices. Another shop
+  shows "What's this?" and opens a short note: you already nested it, and
+  you can send that job out when the run, material, machine, or customer means
+  you would not print it yourself. There is no early-pilot line and no earnings
+  claim. Join the waitlist and Learn more open the OUTPUT site. Nothing is sent
+  or saved.
 - Settings opens in a centered dialog. Specialized cut and print-software options
   are collapsed and explained in plain language. Field labels show help on hover,
   focus or tap. Clicking outside the material editor cancels unsaved edits.
