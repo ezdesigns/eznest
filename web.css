@@ -562,3 +562,20 @@ body[data-step="sent"] #export { background: transparent; color: #264665; border
 body[data-saving="true"] #confirm-send::before { content: ''; display: inline-block; width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; margin-right: 8px; vertical-align: -2px; animation: saving-spin .8s linear infinite; }
 @keyframes saving-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { body[data-saving="true"] #confirm-send::before { animation: none; } }
+
+/* Stock belongs to the material being edited. */
+.inventory-row { padding: 12px 0; border-bottom: 1px solid #e7e7e1; }
+.inventory-row p { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.inventory-row button { margin-right: 12px; }
+#inventory-open { display: none; }
+body[data-step="sent"] #inventory-open { display: block; }
+#material-stock { margin: 16px 0; }
+#inventory-materials { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 12px; background: #f3f5f7; border-radius: 10px; }
+#inventory-materials[hidden] { display: none; }
+#inventory-materials span { display: block; font-size: 12px; color: var(--muted); }
+#inventory-materials strong { display: block; font-size: 17px; margin-top: 4px; }
+#inventory-reserve { margin-top: 10px; }
+#inventory-status:empty, #inventory-job-note:empty { display: none; }
+#inventory-status { font-size: 13px; margin: 10px 0; }
+#material-usage { margin-top: 12px; }
+#material-usage summary { cursor: pointer; font-size: 13px; }

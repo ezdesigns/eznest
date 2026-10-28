@@ -24,6 +24,9 @@ let nestTimer = 0;
 let illustratorHandoff = null;
 let illustratorLoading = false;
 let materialProfiles = {};
+let shopInventory = {materials: [], reservations: []};
+let inventoryReady = false;
+let inventoryBusy = false;
 let presetEditor = null;
 let activeMaterial = 'white-gloss';
 const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'print-layout', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
@@ -69,7 +72,7 @@ function installSettingsHelp() {
     'margin': ['Space at roll edges', 'Keeps pieces away from the sides. More space leaves less room for pieces and may make the layout longer.'],
     'roll-length': ['Full roll length', 'The length of a new roll. This is a reference for your material list. Material left on roll is the amount available for this job.'],
     'roll-cost': ['Full roll cost ($)', 'What you paid for a full roll, in US dollars. Enter its full length and roll width too. Savings divide this cost by the full length. The pack estimate uses the same price spread over the roll area. Ink and labor are not included. Save material to remember this.'],
-    'available-length': ['Material left on roll', 'Limits the batch to this much material. Leave blank if unknown. Update it yourself after printing; the app does not subtract used stock yet.'],
+    'available-length': ['Length left on roll', 'Enter the physical length left, including reserved jobs. Confirmed material use subtracts stock; reservations reduce what is available. Leave blank if unknown.'],
     'low-stock': ['Low-stock alert at', 'Show a red Low stock notice when the saved material left is at or below this length. Leave blank to use 10% of the full roll length, when known. Update material left after printing.'],
     'sheet': ['Longest print section', 'Splits a long layout into sections no longer than this. A lower number can create more sections. Every piece must fit within one section.'],
     'print-layout': ['Print layout', 'Continuous nests all requested pieces onto one long PDF page. Shorter sections use the section length below. Neither changes artwork size or bleed.'],
@@ -1321,10 +1324,14 @@ function requestNest() {
 
 async function nest() {
   if (busy || importing || saving || !kits.length) return;
-  if (inputIssue()) { showBlocked(inputIssue()); return; }
   try {
+    await refreshInventory().catch(() => {});
+    const sharedStock = shopInventory.materials.find(item => item.id === $('material').value);
+    if (inventoryReady && sharedStock) $('available-length').value = sharedStock.availableMm == null ? '' : String(sharedStock.availableMm / scale());
+    if (inputIssue()) { showBlocked(inputIssue()); return; }
     const roll = preset();
     const job = EZNQueue.compose(kits, roll, 'combined');
+    if (inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) job.inventoryMaterialId = $('material').value;
     job.outputProfile = profileFor(kits);
     job.webOptions = {units: $('unit').value, material: $('material').value, sets: sets(), genericCut: $('generic-cut').value,
       sectionLengthMm: $('sheet').value.trim() ? Number($('sheet').value) * scale() : null,
@@ -1683,7 +1690,8 @@ function renderMaterialButtons() {
     notice.textContent = stock; box.append(notice);
   }
   const remaining = $('available-length').value.trim();
-  $('material-summary').textContent = remaining && !stock ? `${Number(remaining)} ${$('unit').value} available` : '';
+  const shared = shopInventory.materials.find(item => item.id === selected);
+  $('material-summary').textContent = shared ? `${stockFeet(shared.availableMm)} available · ${stockFeet(shared.reservedMm)} reserved` : remaining && !stock ? `${Number(remaining)} ${$('unit').value} available · this browser only` : '';
 }
 
 function lowStock(values) {
@@ -1769,15 +1777,24 @@ function chooseMaterial(id) {
   requestNest();
 }
 
-function openPreset(id) {
+async function openPreset(id) {
   if (busy || saving || presetEditor || illustratorHandoff || document.body.dataset.step === 'confirm') return;
+  await refreshInventory().catch(() => {});
+  if (presetEditor || busy || saving) return;
   clearTimeout(nestTimer);
   presetEditor = {id, values: materialValues(), selected: $('material').value, nestWidth: $('nest-width').value};
+  presetEditor.revision = shopInventory.materials.find(item => item.id === id)?.revision || 0;
   if (materialProfiles[id]) setMaterialValues(materialProfiles[id]);
   else {
     $('preset-name').value = id === 'custom' ? '' : [...$('material').options].find(option => option.value === id).textContent;
     for (const field of ['roll-length', 'available-length', 'low-stock']) $(field).value = '';
   }
+  const shared = shopInventory.materials.find(item => item.id === id);
+  if (shared) $('available-length').value = shared.onHandMm == null ? '' : stockInput(shared.onHandMm, shared.profile.unit);
+  presetEditor.savedValues = materialValues();
+  $('inventory-status').textContent = inventoryReady ? '' : 'Shop stock is unavailable. Reconnect to update it.';
+  $('material-usage').open = false;
+  renderInventory();
   $('preset-title').textContent = id === 'custom' ? 'Add material' : 'Edit ' + $('preset-name').value;
   $('preset-error').hidden = true;
   $('preset-editor').hidden = false;
@@ -1789,7 +1806,7 @@ function openPreset(id) {
 }
 
 function closePreset() {
-  if (!presetEditor) return;
+  if (!presetEditor || $('save-material').disabled || inventoryBusy) return;
   const previous = presetEditor;
   presetEditor = null;
   setMaterialValues(previous.values);
@@ -1801,15 +1818,21 @@ function closePreset() {
   renderActions();
 }
 
-function saveMaterial() {
-  if (!presetEditor) return;
+async function saveMaterial() {
+  if (!presetEditor || inventoryBusy) return;
+  $('save-material').disabled = true;
   try {
-    const values = validateMaterial(materialValues());
+    const entered = materialValues();
+    const shared = shopInventory.materials.find(item => item.id === presetEditor.id);
+    if (shared && entered.unit === presetEditor.savedValues.unit && entered['available-length'] === presetEditor.savedValues['available-length']) {
+      entered['available-length'] = shared.onHandMm == null ? '' : String(shared.onHandMm / EZNQueue.unitScale(entered.unit));
+    }
+    const values = validateMaterial(entered);
     const id = presetEditor.id === 'custom' ? 'material-' + crypto.randomUUID() : presetEditor.id;
     if (Object.entries(materialProfiles).some(([key, item]) => key !== id && item['preset-name'].toLowerCase() === values['preset-name'].toLowerCase())) throw Error('A preset with that name already exists. Choose another name.');
-    const profiles = {...materialProfiles, [id]: values};
-    localStorage.setItem(PREF, JSON.stringify({...prefs(), materialProfiles: profiles, material: id, nestWidth: String(Number(values.width) * EZNQueue.unitScale(values.unit) / 25.4)}));
-    registerMaterial(id, values);
+    const updated = await api('/api/materials/save', {id, profile: values, revision: presetEditor.revision});
+    acceptInventory(updated);
+    savePrefs({material: id, nestWidth: String(Number(values.width) * EZNQueue.unitScale(values.unit) / 25.4)});
     presetEditor = null;
     $('preset-editor').hidden = true;
     $('material-dialog').close();
@@ -1821,6 +1844,9 @@ function saveMaterial() {
   } catch (error) {
     $('preset-error').textContent = error.message;
     $('preset-error').hidden = false;
+    refreshInventory().catch(() => {});
+  } finally {
+    $('save-material').disabled = false;
   }
 }
 
@@ -2384,6 +2410,9 @@ async function boot() {
   const session = await fetchJsonRetry('/api/session');
   token = session.token;
   localSave = session.localSave === true;
+  await refreshInventory().catch(() => {});
+  if (inventoryReady && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
+  if (inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) applyMaterial(true);
   try {
     const folder = await fetchJson('/api/output', 5000);
     if (folder.path) $('hot-folder').value = folder.path;
@@ -2409,6 +2438,98 @@ async function boot() {
   }
   document.body.dataset.ready = '1';
   await autoLoadIllustrator();
+  setInterval(() => { if (!document.hidden && !inventoryBusy) refreshInventory().catch(() => {}); }, 10000);
+}
+
+function stockInput(mm, unit) { return String(Number((mm / EZNQueue.unitScale(unit)).toFixed(3))); }
+
+function stockFeet(mm) { return mm == null ? 'unknown' : (mm / 304.8).toFixed(2) + ' ft'; }
+
+function acceptInventory(data) {
+  if (JSON.stringify(data) !== JSON.stringify(shopInventory)) $('inventory-status').textContent = '';
+  shopInventory = data;
+  inventoryReady = true;
+  for (const item of data.materials) {
+    const values = {...item.profile, 'available-length': item.availableMm == null ? '' : String(item.availableMm / EZNQueue.unitScale(item.profile.unit))};
+    registerMaterial(item.id, values);
+  }
+  renderMaterialButtons();
+  renderInventory();
+}
+
+async function refreshInventory() {
+  try { acceptInventory(await fetchJson('/api/materials', 5000)); }
+  catch (error) {
+    inventoryReady = false;
+    $('inventory-status').textContent = 'Shop stock is unavailable. Reconnect before reserving or confirming usage.';
+    renderInventory();
+    throw error;
+  }
+}
+
+function materialStockDirty() {
+  return !!presetEditor && JSON.stringify(materialValues()) !== JSON.stringify(presetEditor.savedValues);
+}
+
+function renderInventory() {
+  for (const field of $('preset-editor').querySelectorAll('.fields, #material-advanced')) field.inert = inventoryBusy;
+  const id = presetEditor?.id;
+  const material = shopInventory.materials.find(item => item.id === id);
+  const dirty = materialStockDirty();
+  const box = $('inventory-materials'); box.replaceChildren();
+  if (material) {
+    for (const [label, value] of [['On roll', material.onHandMm], ['Reserved', material.reservedMm], ['Available', material.availableMm]]) {
+      const metric = document.createElement('div');
+      const name = document.createElement('span'); name.textContent = label;
+      const amount = document.createElement('strong'); amount.textContent = stockFeet(value);
+      metric.append(name, amount); box.append(metric);
+    }
+  }
+  box.hidden = !material;
+  const matches = !!material && current?.job?.inventoryMaterialId === id;
+  const prior = shopInventory.reservations.find(row => row.id === current?.id && row.material === id);
+  const reserve = $('inventory-reserve');
+  reserve.hidden = !matches || !current?.result;
+  reserve.disabled = !inventoryReady || inventoryBusy || busy || saving || dirty || !!prior || !!pieceIssue(current) || !!cutProblem();
+  reserve.textContent = prior ? (prior.status === 'reserved' ? 'Reserved for this job' : prior.status === 'used' ? 'Material use recorded' : 'Reservation released') : 'Reserve for this job';
+  $('inventory-job-note').textContent = dirty && material ? 'Save your changes before updating usage.' : current?.result && !matches && id === $('material').value ? 'Save this material, then nest again to reserve stock for this job.' : '';
+  const history = shopInventory.reservations.filter(row => row.material === id);
+  $('material-usage').hidden = !history.length;
+  const rows = $('inventory-reservations'); rows.replaceChildren();
+  for (const row of history) {
+    const card = document.createElement('section'); card.className = 'inventory-row';
+    const text = document.createElement('p');
+    text.textContent = `${stockFeet(row.length)} · ${row.status === 'used' ? 'Used' : row.status === 'cancelled' ? 'Released' : 'Reserved'} · job ${row.id.slice(0, 8)}`;
+    card.append(text);
+    if (row.status === 'reserved') {
+      for (const [action, label] of [['use','Confirm material used'], ['cancel','Release reservation']]) {
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'link'; button.textContent = label;
+        button.disabled = !inventoryReady || inventoryBusy || dirty;
+        button.addEventListener('click', () => inventoryAction('/api/materials/transition', {id: row.id, action})); card.append(button);
+      }
+    }
+    rows.append(card);
+  }
+}
+
+async function inventoryAction(path, payload) {
+  if (inventoryBusy || !presetEditor || materialStockDirty()) return;
+  inventoryBusy = true; $('save-material').disabled = true; renderInventory();
+  try {
+    acceptInventory(await api(path, payload));
+    const updated = shopInventory.materials.find(item => item.id === presetEditor.id);
+    if (updated) {
+      presetEditor.revision = updated.revision;
+      setMaterialValues({...updated.profile, 'available-length': updated.onHandMm == null ? '' : stockInput(updated.onHandMm, updated.profile.unit)});
+      presetEditor.savedValues = materialValues();
+      presetEditor.values['available-length'] = updated.availableMm == null ? '' : String(updated.availableMm / EZNQueue.unitScale(presetEditor.values.unit));
+    }
+    if (path.endsWith('/reserve')) $('material-usage').open = true;
+    $('inventory-status').textContent = payload.action === 'use' ? 'Material use recorded. Stock updated.' : payload.action === 'cancel' ? 'Reservation released. Stock is available again.' : 'Material reserved. Physical stock is unchanged until you confirm usage.';
+  } catch (error) {
+    await refreshInventory().catch(() => {});
+    $('inventory-status').textContent = error.message;
+  } finally { inventoryBusy = false; $('save-material').disabled = false; renderInventory(); }
 }
 
 async function autoLoadIllustrator() {
@@ -2565,6 +2686,10 @@ function syncWelcome() {
 
 document.addEventListener('DOMContentLoaded', () => {
   closeSettingsFolds();
+  $('inventory-open').addEventListener('click', () => openPreset($('material').value));
+  $('preset-editor').addEventListener('input', renderInventory);
+  $('preset-editor').addEventListener('change', renderInventory);
+  $('inventory-reserve').addEventListener('click', () => inventoryAction('/api/materials/reserve', {id: current?.id}));
   installSettingsHelp();
   $('settings-open').addEventListener('click', () => {
     const dialog = $('settings');

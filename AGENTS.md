@@ -25,10 +25,11 @@ or completed printing. Do not turn this into an order-management system or RIP.
 
 ## Branch and release boundaries
 
-The owner promoted the tested integration head `27f48d2` to `main` on 2026-10-26.
-The interface cleanup is isolated on `feature/clean-job-settings-20261027` for
-a draft PR to that main baseline. This is not permission to merge future PRs or
-deploy the shop PC; the protected PR #1 / rc.4 gate below is unchanged.
+Shared material inventory is being integrated onto main at `445fd6e` in a separate
+checkout. Preserve the merged settings, telemetry, nesting and OUTPUT invitation
+changes. PR #8 is closed; do not restore its superseded settings layout. The owner
+authorized merging applicable tested work or submitting a PR. This does not
+change release, network, deployment or protected shop installation boundaries.
 
 - Current readiness work belongs on draft PR #4, branch
   `cursor/shop-open-handoff-9891`, targeting `cursor/eznest-web-mvp-8f6a` (PR #1).
@@ -147,6 +148,20 @@ consent exists. The OUTPUT placeholder is not that consent. Keep exact quantitie
 local and only banded, allowlisted payloads in the outbox; preserve stable IDs,
 revision guards, explicit confirmations and failure isolation. Do not modify
 another agent's spine, ledger, render or board as part of this adapter.
+
+`material_inventory.py` owns shop material profiles, measured roll stock and
+reservations in `materials.sqlite3` in the host data directory. Browser-local
+presets remain available until explicitly saved to the shop; never overwrite
+shared stock from stale browser preferences. Use revision checks for edits and
+SQLite transactions for reservations and usage. Reserve only server-derived
+length for the matching ready layout. Nesting, previewing and exporting do not
+deduct stock. Only explicit confirmation changes reserved stock into used stock;
+duplicate requests must not deduct twice. Released reservations cannot be reused
+for another layout, and used material cannot be returned by cancelling it.
+Keep outstanding reservations across workspace resets. Store opaque layout IDs,
+not customer names or art filenames. One material record represents one tracked
+roll or pool of identical-width stock. No automatic reorder, printer completion,
+remote inventory hub, or separate per-designer job workspaces are implied.
 
 `workload.py` records prepared packs, successful hot-folder deliveries and explicit
 removals. Store opaque IDs, UTC times, counts and measurements, not customer names,
