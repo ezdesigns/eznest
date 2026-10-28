@@ -82,17 +82,26 @@ function Invoke-LocalApi([string]$Path, [object]$Body = $null) {
 function Wait-ShopHealthy([string]$Version, [string]$App, [int]$Seconds = 120) {
   $deadline = [DateTime]::UtcNow.AddSeconds($Seconds)
   $consecutive = 0
+  $stableProcessId = $null; $stableCreated = $null
   while ([DateTime]::UtcNow -lt $deadline) {
     try {
       $session = Invoke-RestMethod -Uri 'http://127.0.0.1:8765/api/session' -TimeoutSec 3 -UseBasicParsing
       $process = Get-CimInstance Win32_Process -Filter ('ProcessId=' + [int]$session.pid)
       $owner = Invoke-CimMethod -InputObject $process -MethodName GetOwner
       if ($session.app -eq 'eznest' -and $session.version -eq $Version -and
+          [long]$session.pid -gt 0 -and $process.ProcessId -eq $session.pid -and $process.CreationDate -and
           $process.ExecutablePath -eq $App -and $owner.User -eq 'eznest-svc' -and $owner.Domain -eq $env:COMPUTERNAME) {
-        $consecutive++
+        # A crash/restart loop is not stable health. CreationDate also prevents
+        # a reused PID from inheriting the previous process's successful polls.
+        if ($stableProcessId -eq $process.ProcessId -and $stableCreated -eq $process.CreationDate) {
+          $consecutive++
+        } else {
+          $stableProcessId = $process.ProcessId; $stableCreated = $process.CreationDate
+          $consecutive = 1
+        }
         if ($consecutive -ge 3) { $script:SessionToken = $session.token; return $true }
-      } else { $consecutive = 0 }
-    } catch { $consecutive = 0 }
+      } else { $consecutive = 0; $stableProcessId = $null; $stableCreated = $null }
+    } catch { $consecutive = 0; $stableProcessId = $null; $stableCreated = $null }
     Start-Sleep -Seconds 2
   }
   return $false
