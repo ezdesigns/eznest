@@ -49,6 +49,9 @@ def find_exe(root):
 
 
 def apply_supported(root):
+    # macOS bundles need a platform-specific, publisher-verified updater.
+    if sys.platform == 'darwin':
+        return False
     if root is None or find_exe(root) is None:
         return False
     if os.name == 'nt':

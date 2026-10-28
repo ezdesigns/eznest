@@ -10,6 +10,7 @@ import json
 import os
 import re
 import socket
+import sys
 import threading
 import time
 from pathlib import Path
@@ -33,6 +34,7 @@ RELEASE_API = f'https://api.github.com/repos/{DEFAULT_REPO}/releases?per_page=20
 WARNING = 'Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.'
 OUTPUT_NOTE = 'Off. Nothing is sent. If you turn this on later, only the machine list and free capacity would be shared, and only after you opt in.'
 MAX_RELEASE_BYTES = 300_000_000
+MAC_UPDATE_NOTE = 'Automatic updates are unavailable on macOS. Install an approved Mac build manually; the current app stays running.'
 _REPO = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 SHOP_UNITS = ('in', 'mm', 'cm')
 REDIRECT_HOSTS = {
@@ -67,6 +69,10 @@ def data_directory(package_root, data_dir=None, frozen=False, program_files=None
     if data_dir:
         return Path(data_dir)
     root = Path(package_root)
+    # App bundles may be read-only (including App Translocation). Keep user data
+    # outside Contents/MacOS so replacing an application never replaces its data.
+    if frozen and sys.platform == 'darwin' and root.name == 'MacOS' and root.parent.name == 'Contents' and root.parent.parent.suffix == '.app':
+        return Path.home() / 'Library' / 'Application Support' / 'eznest'
     if frozen and program_files:
         try:
             if root.resolve().is_relative_to(Path(program_files).resolve()):
@@ -494,6 +500,8 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
     directory = Path(directory)
     if os.environ.get('EZ_NEST_UPDATES', '1') == '0' or not load_shop(directory)['updates']:
         return _idle(current, current, 'Updates are off.')
+    if sys.platform == 'darwin':
+        return {**_idle(current, current, MAC_UPDATE_NOTE), 'applySupported': False}
     if when not in ('now', 'restart'):
         raise ValueError('Choose Update or install on the next start.')
     include_prerelease = load_shop(directory)['channel'] == 'test'
@@ -555,6 +563,9 @@ def peek_latest(directory, current, opener=None):
     directory = Path(directory)
     if os.environ.get('EZ_NEST_UPDATES', '1') == '0' or not load_shop(directory)['updates']:
         return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': current, 'message': 'Update checks are off.', 'error': None}
+    if sys.platform == 'darwin':
+        return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': None,
+                'applySupported': False, 'message': MAC_UPDATE_NOTE, 'error': None}
     include_prerelease = load_shop(directory)['channel'] == 'test'
     token = github_token(directory)
     repo = repo_for_release(directory)
