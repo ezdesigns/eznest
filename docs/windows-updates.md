@@ -69,7 +69,9 @@ Server admission is serialized through imports and hot-folder writes. Once an
 idle update claim succeeds, new operations are rejected until restart. The helper
 temporarily disables the task while replacing files and restarts it without
 changing its identity or network arguments. Health requires repeated successful
-local responses from the expected version/process running as `eznest-svc`.
+local responses from the expected version running as `eznest-svc`. Three
+consecutive responses must belong to the same PID and process creation time;
+a restart, reused PID, failed request or identity mismatch resets that evidence.
 
 Normal startup or install failures restore the protected app backup and restart
 the previous version. The data directory is never replaced or cleared, so local
