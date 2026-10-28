@@ -1,50 +1,71 @@
-# Using eznest in the shop
+# Ez Nest for designers
 
-## Open your shop bookmark
+Ez Nest nests a print job and writes the finished file to the shop hot folder.
+It runs on one host PC. You use a browser.
 
-Your administrator installs eznest on one host PC. On that PC, open the eznest
-shortcut. Other employees use the host's browser address only after the shop
-network is explicitly enabled. Keep the host awake during shop hours.
+## Open the page
 
-## Prepare, review, send
+Nothing to install on a designer PC. Open the address your admin gave you:
 
-1. Prepare colors, artwork and cut paths in Illustrator. Keep your original;
-   save a PDF or PDF-compatible AI production copy. The Illustrator pilot uses
-   `print`, `thru-cut`, and `kiss cut` layers and your shop's Adobe PDF preset.
-2. Drop the production file into eznest. Choose the approved material and sets.
-   Nesting starts automatically. Do not substitute an untested material preset.
-3. Review every piece and cut path in the preview. Check width, piece count,
-   sheet count, material used and waste. Use Zoom for small details.
-4. Choose **Review and send**, then **Confirm send**. A successful send means
-   delivery to the hot folder, not that the job printed. Check it in your RIP.
-5. Choose **Next job**. If no hot folder is configured, the app offers a ZIP
-   download instead; this does not send the job to the printer.
+`http://SHOP-HOST:8765/web`
 
-If a send fails, keep the layout. Ask the administrator to restore hot-folder
-access, then send again. Reopening the page restores the frozen pack and shows
-whether delivery is incomplete. Undo is available only if enabled and the pack
-is still in the folder; it cannot cancel printing already started by the RIP.
+`SHOP-HOST` is the host computer's name. Keep that PC awake during the day.
 
-Settings and local activity stay on the host by default. OUTPUT sharing requires
-operator configuration and explicit consent on the host settings screen. That
-screen lists every shared field and lets you stop automatic sharing of new
-activity. See [OUTPUT sharing](output-telemetry.md). Do not mistake local job
-activity for printer utilization or completion.
+## Each job
+
+1. In Illustrator, build a PDF with layers named `print`, `thru-cut`, and
+   `kiss cut`. The kiss-cut layer name has a space. Keep your original file.
+2. Drop that PDF on the Ez Nest page. Pick the material. Wait for the preview.
+3. Check the pieces, the width, and the length. Choose **Review and save**.
+4. Leave **Save to** on the default print folder and choose **Save**. That
+   writes the file to the hot folder.
+5. Open ONYX and check that the job is there. A save means the file reached
+   the folder. It does not mean the job has printed. If this shop does not use
+   ONYX, check the RIP your admin named.
+
+## If the page will not load
+
+The host PC is probably off or asleep. Do not reserve material for the job.
+Tell the admin, and refresh the page later.
+
+## If a send fails
+
+Leave the layout on the page. Tell the admin. Do not start the job over unless
+they ask you to.
 
 ## Updates
 
-The administrator updates the host once for everyone. During the unsigned pilot,
-use only the checked installer supplied by the administrator. Signed builds can
-offer **Install when finished** after the separate rollout acceptance test passes.
-Finish or explicitly discard the current job before installation. Do not replace
-the protected rc.4 shop test until its ONYX test passes and v1 merges.
+The admin updates the host once. You do not install anything. Refresh the
+browser after they say the host is back.
 
-## From Illustrator
+## Privacy
 
-Finish colors and existing bleed, save, select complete artwork and cuts, and run
-**File > Scripts > Nest in eznest**. First run remembers your approved Adobe PDF
-preset, Regular material, width and existing bleed. Later runs open the production
-copy directly in eznest: choose sets, review, send. Use **EZ Nest Settings** to
-change saved choices. See [Illustrator setup](../illustrator/START%20HERE.txt).
-The bridge needs eznest running on the same PC; it does not connect a browser-only
-LAN workstation to the host. An existing job requires explicit replacement.
+Nothing leaves the shop unless the owner turns on OUTPUT sharing on the host.
+Your artwork stays on that computer.
+
+## For the admin
+
+Designer PCs only open `http://SHOP-HOST:8765/web`. Install Ez Nest on the
+host. Shop network has to be on or other PCs cannot open the page. See
+[Security](../SECURITY.md).
+
+**Unsigned installer.** Windows SmartScreen warns on an unsigned
+`eznest-setup.exe`. Choose **More info**, then **Run anyway**. Leave
+SmartScreen on for the rest of the PC.
+
+**Firewall.** If Windows asks whether to allow eznest through the firewall,
+allow private networks only. When **Shop network** is checked, setup adds an
+inbound rule named `eznest` for TCP port 8765 on the Private profile only.
+Leave the Public profile closed, and leave port 8765 off the internet.
+
+**Uninstall.** Uninstall from Windows Settings, or run the uninstaller in
+`C:\Program Files\eznest`. That removes the program, the `eznest` startup
+task, the firewall rule, and the `eznest-svc` account (if Windows cannot
+remove the account because it is still signed in, the account is disabled).
+It also removes that account's folder permissions.
+
+`%ProgramData%\eznest\materials.sqlite3` stays on the host.
+`installer/uninstall-shop.ps1` leaves shop files in the data folder on disk,
+and `installer/eznest.iss` only runs that script. It has no step that removes
+`{commonappdata}\eznest`. Shop settings and the other files in that folder
+stay with the stock database. The RIP hot folder and the files in it stay too.

@@ -1,19 +1,25 @@
-"""Exchange one OUTPUT pairing code for a shop credential.
+"""Exchange one OUTPUT pairing code for a scoped shop key.
 
-Contract from ezdesigns/output PRs #110 and #113 (`docs/ez-nest-pairing.md` on
-main). That repository returned HTTP 404 to this workspace, so this module
-follows the contract as specified with those PRs:
+POST ENDPOINT. This build uses
+https://output.jeezlabs.io/api/shop/agent/pair. That URL is this module's
+ENDPOINT constant. There is no settings field or environment variable for
+another host. Redirects are not followed.
 
-POST https://output.jeezlabs.io/api/shop/agent/pair
-{"code":"7K4NP-QRX2M","requestId":"<uuid>","hostLabel":"<computer>","hostRef":"<32 lowercase hex, optional>"}
+{"code":"7K4NP-QRX2M","requestId":"<uuid>","hostLabel":"<computer name>","hostRef":"<32 lowercase hex, optional>"}
 
-The first success returns result.token (an osa_ credential, valid 90 days)
-exactly once. Persist it before any other work. A later POST with the same
-requestId returns outcome "replay" and no token. Create requestId once per
-attempt and reuse it only when the network attempt itself fails.
+hostLabel is this computer's name. On Windows that is the computer name.
+hostRef is the installation id. It is sent only when that id is 32 lowercase
+hex characters.
 
-Do not log the code, the credential, or the response body. This module does
-not change the eznest-observation/1 telemetry projection.
+The first success returns result.token (an osa_ shop key; the protocol treats
+it as valid for 90 days) exactly once. Persist it before any other work. A
+later POST with the same requestId returns outcome "replay" and no token.
+Create requestId once per attempt and reuse it only when the network attempt
+itself fails.
+
+Do not log the code, the shop key, or the response body. This module does
+not change the eznest-observation/1 telemetry projection. Events stay off
+until on-screen consent.
 """
 import json
 import os
