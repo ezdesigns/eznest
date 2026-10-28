@@ -14,6 +14,7 @@ import socket
 import sqlite3
 import workload
 import telemetry
+import material_inventory
 import illustrator_bridge
 from import_limits import request_limit
 import print_export
@@ -328,6 +329,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, info)
         if path == '/api/shop':
             return self.send(200, shop_status())
+        if path == '/api/materials':
+            try:
+                return self.send(200, material_inventory.read(WORK))
+            except (OSError, sqlite3.Error):
+                return self.send(503, {'error': 'Shop inventory is unavailable. Check disk space and folder permissions.'})
         if path.startswith('/api/illustrator/'):
             if self.client_address[0] != '127.0.0.1':
                 return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
@@ -653,6 +659,24 @@ class Handler(BaseHTTPRequestHandler):
                 UPDATE_CHECK.clear()
                 UPDATE_WAKE.set()
                 return self.send(200, shop_status())
+            if self.path == '/api/materials/save':
+                return self.send(200, material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision')))
+            if self.path == '/api/materials/reserve':
+                with LOCK:
+                    if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
+                        raise ValueError('The layout changed. Reload and review the current layout before reserving stock.')
+                    key = STATE['job'].get('inventoryMaterialId')
+                    if not key:
+                        raise ValueError('Save the material to shop inventory and nest again before reserving stock.')
+                    if not STATE.get('manifest', {}).get('productionReady'):
+                        check = batch_output_check(STATE['job'])
+                        if check and not check.get('ready'):
+                            raise ValueError('Resolve the print-file checks before reserving material.')
+                    result = STATE['result']
+                    fingerprint = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
+                    return self.send(200, material_inventory.reserve(WORK, key, STATE['id'], result['usedLength'], result['width'], fingerprint))
+            if self.path == '/api/materials/transition':
+                return self.send(200, material_inventory.transition(WORK, data.get('id'), data.get('action')))
             if self.path == '/api/update':
                 if UPDATE_QUEUE.status()['queued']:
                     raise ValueError('Cancel the waiting update before downloading another.')
