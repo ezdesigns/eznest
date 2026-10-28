@@ -28,6 +28,14 @@ FAIL = 'import sys\nraise SystemExit(1)\n'
 
 
 class InstallerUpdateTests(unittest.TestCase):
+    def setUp(self):
+        # These fixtures model the legacy portable helper, not a signed Mac app.
+        # Native macOS refusal is covered by test_build_macos.py.
+        if sys.platform == 'darwin':
+            platform = patch('installer_update.sys.platform', 'linux')
+            platform.start()
+            self.addCleanup(platform.stop)
+
     @unittest.skipUnless(os.name == 'nt' and sys.prefix != sys.base_prefix, 'Windows venv launch regression')
     def test_source_launch_keeps_venv_dependencies_and_process_identity(self):
         with tempfile.TemporaryDirectory() as tmp:

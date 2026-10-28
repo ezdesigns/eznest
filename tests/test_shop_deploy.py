@@ -71,6 +71,7 @@ class ShopDeployTests(unittest.TestCase):
         self.assertEqual(api['Authorization'], 'Bearer secret')
         self.assertNotIn('Authorization', cdn)
 
+    @patch('shop_deploy.sys.platform', 'win32')
     def test_pull_latest_stages_a_checked_installer_and_skips_a_prerelease(self):
         import hashlib
         import installer_update

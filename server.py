@@ -884,7 +884,10 @@ def pick_folder(description):
 
 
 class LocalServer(ThreadingHTTPServer):
-    allow_reuse_address = False
+    # POSIX needs SO_REUSEADDR to restart while accepted sockets are in
+    # TIME_WAIT. This does not enable SO_REUSEPORT or a second live listener.
+    # Windows retains exclusive ownership instead of its weaker reuse flag.
+    allow_reuse_address = os.name != 'nt'
 
     def server_bind(self):
         if os.name == 'nt':
