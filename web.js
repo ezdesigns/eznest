@@ -2642,10 +2642,12 @@ function showUpdate(info) {
   if (info?.serverPid && !updateServerPid) updateServerPid = info.serverPid;
   updateWasQueued = updateWasQueued || !!info?.queued;
   $('update-cancel').hidden = !info?.queued || !info?.localPC;
-  $('update').disabled = !!info?.queued;
+  $('update').disabled = !!info?.queued || !!info?.busy;
   const note = $('update-note');
   $('update').textContent = info?.managedSupported && info?.staged ? 'Install when finished' : info?.applyOnRestart ? 'Install now' : 'Check for update';
   if (info?.updateAvailable && !info.staged) $('update').textContent = 'Download ' + info.latest;
+  if (info?.platform === 'macos' && info?.staged) $('update').textContent = 'Open Mac installer';
+  if (info?.busy) $('update').textContent = 'Checking update…';
   $('settings-open').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
   if (info?.managedSupported && info?.staged && !info.localPC) {
     note.hidden = false;
@@ -2658,7 +2660,7 @@ function showUpdate(info) {
     note.textContent = info.rollback.reason;
     return;
   }
-  if (info && (info.staged || info.applyOnRestart || info.updateAvailable || info.queued || info.managedResult) && info.message) {
+  if (info && (info.staged || info.applyOnRestart || info.updateAvailable || info.queued || info.managedResult || info.busy || info.error) && info.message) {
     note.hidden = false;
     note.textContent = info.message + (info.releaseNotes && !info.queued ? '\n' + info.releaseNotes.slice(0, 500) : '');
     return;
@@ -2872,13 +2874,17 @@ document.addEventListener('DOMContentLoaded', () => {
       updateWasQueued = true;
       window.location.href = 'eznest-update://install';
       $('update-note').hidden = false;
-      $('update-note').textContent = 'Approve the Windows prompt. The helper will wait until work is finished. If no prompt opens, use Update eznest in the Windows Start menu.';
+      $('update-note').textContent = updateInfo.platform === 'macos'
+        ? 'Approve the Mac installer prompt. Finish or discard any unsent job first. If no installer opens, reopen Ez Nest and try again.'
+        : 'Approve the Windows prompt. The helper will wait until work is finished. If no prompt opens, use Update eznest in the Windows Start menu.';
       return;
     }
     const installNow = $('update').textContent === 'Install now';
     try {
       const result = await api('/api/update', {when: installNow ? 'now' : 'restart'});
-      status(result.message);
+      // Mac verification/download continues in the background. Keep its
+      // progress in Settings without replacing the current job's status.
+      if (result.platform !== 'macos') status(result.message);
       showUpdate(result);
       if (!result.restarting) await refreshUpdate();
       if (result.restarting) {

@@ -12,6 +12,31 @@ from unittest.mock import patch
 
 
 class ServerTests(unittest.TestCase):
+    def test_local_server_restarts_after_connection_but_rejects_live_listener(self):
+        from http.server import BaseHTTPRequestHandler
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'ok')
+            def log_message(self, *_args):
+                pass
+        service = server.LocalServer(('127.0.0.1', 0), Handler)
+        address = service.server_address
+        thread = threading.Thread(target=service.serve_forever)
+        thread.start()
+        try:
+            with self.assertRaises(OSError):
+                server.LocalServer(address, Handler)
+            with urlopen(f'http://127.0.0.1:{address[1]}', timeout=5) as response:
+                self.assertEqual(response.read(), b'ok')
+        finally:
+            service.shutdown()
+            service.server_close()
+            thread.join()
+        with server.LocalServer(address, Handler) as restarted:
+            self.assertEqual(restarted.server_address, address)
+
     def test_failed_bind_never_marks_update_healthy(self):
         import installer_update
         with patch.object(server, 'restore_state'), \
