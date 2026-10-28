@@ -13,11 +13,14 @@ import copy
 import socket
 import sqlite3
 import workload
+import telemetry
+import material_inventory
 import illustrator_bridge
+from import_limits import request_limit
 import print_export
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 from engine import validate_job
 from production import validate_identity, manifest, make_package
 from folder_queue import FolderQueue
@@ -29,6 +32,18 @@ from shop_deploy import OUTPUT_NOTE, WARNING, default_hot_folder, host_name, iss
 
 ROOT = Path(__file__).resolve().parent
 _STATIC_CACHE = {}
+
+
+def remove_import_temp(path):
+    """Windows may briefly retain a scan/worker handle on a large upload."""
+    for attempt in range(50):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            if attempt == 49:
+                raise
+            time.sleep(0.1)
 
 
 def static_bytes(name):
@@ -158,6 +173,27 @@ def record_workload(kind):
         STATE.pop('trackingWarning', None)
     except (OSError, sqlite3.Error, ValueError):
         STATE['trackingWarning'] = 'Local activity could not be saved. Check available disk space and folder permissions.'
+    if kind == 'prepared':
+        record_telemetry('nest.committed')
+    elif kind == 'sent_to_folder':
+        # A default save folder may be ordinary storage, not a RIP queue.
+        try:
+            hot = load_shop(WORK).get('hotFolder')
+            is_hot = bool(hot and OUTPUT.root and Path(hot).resolve() == OUTPUT.root.resolve())
+        except Exception:
+            is_hot = False
+        record_telemetry('nest.sent_to_print' if is_hot else 'nest.exported')
+    elif kind == 'removed_from_folder':
+        record_telemetry('nest.removed_from_folder')
+
+
+def record_telemetry(kind):
+    # Observability cannot break a valid nest, export or print-folder delivery.
+    try:
+        telemetry.observe(WORK, STATE['id'], STATE['job'], STATE['result'], kind)
+        STATE.pop('telemetryWarning', None)
+    except Exception:
+        STATE['telemetryWarning'] = 'Local job tracking could not be saved. The layout and file operation are unaffected.'
 
 
 def restore_state():
@@ -203,6 +239,8 @@ def finish_search(payload):
         STATE['manifest'] = manifest(STATE['job'], STATE['result'], STATE['id'])
         check=batch_output_check(STATE['job'])
         if check: STATE['manifest']['outputCheck']=check
+    if STATE.get('status') == 'ready':
+        record_telemetry('nest.created')
     persist_state()
 
 
@@ -291,6 +329,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, info)
         if path == '/api/shop':
             return self.send(200, shop_status())
+        if path == '/api/materials':
+            try:
+                return self.send(200, material_inventory.read(WORK))
+            except (OSError, sqlite3.Error):
+                return self.send(503, {'error': 'Shop inventory is unavailable. Check disk space and folder permissions.'})
         if path.startswith('/api/illustrator/'):
             if self.client_address[0] != '127.0.0.1':
                 return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
@@ -305,6 +348,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, info)
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Local activity is unavailable. Check disk space and folder permissions.'})
+        if path in ('/api/telemetry', '/api/telemetry/events'):
+            if self.client_address[0] != '127.0.0.1' or self.headers.get('X-EZ-Token') != TOKEN:
+                return self.send(403, {'error': 'Local session required for job tracking.'})
+            try:
+                if path.endswith('/events'):
+                    return self.send(200, {'schema': telemetry.SCHEMA, 'events': telemetry.pending(WORK)})
+                info = telemetry.status(WORK)
+                info.update(eventTypes=telemetry.KINDS, warning=STATE.get('telemetryWarning'))
+                return self.send(200, info)
+            except (OSError, sqlite3.Error):
+                return self.send(503, {'error': 'Local job tracking is unavailable.'})
         if path == '/api/output':
             return self.send(200, OUTPUT.status())
         if path == '/api/folder':
@@ -378,6 +432,57 @@ class Handler(BaseHTTPRequestHandler):
         name, mime = static[path]
         return self.send(200, static_bytes(name), mime)
 
+    def import_document(self, data, upload_size=None):
+        if not DOCUMENT_LOCK.acquire(blocking=False):
+            raise ValueError('Wait for the current document import to finish.')
+        ident = uuid.uuid4().hex
+        request, output = WORK/(ident+'-import.json'), WORK/(ident+'-import-result.json')
+        upload = WORK/(ident+'-upload.pdf')
+        try:
+            if upload_size is not None:
+                if upload_size == 0:
+                    raise ValueError('The selected file is empty.')
+                # Read bounded chunks straight to disk. No base64 or full-file
+                # allocation in the HTTP server; the isolated worker parses it.
+                remaining = upload_size
+                with upload.open('xb') as target:
+                    while remaining:
+                        chunk = self.rfile.read(min(1_048_576, remaining))
+                        if not chunk:
+                            raise ValueError('Upload was interrupted. Please try the file again.')
+                        target.write(chunk)
+                        remaining -= len(chunk)
+            # Never accept a local path from JSON or upload metadata.
+            options = {key: data[key] for key in ('content', 'bleedMm', 'cutSpot', 'cutMapping', 'preserveArtwork', 'guideApproval', 'cutApproval') if key in data}
+            if upload_size is not None:
+                options.pop('content', None)
+            request.write_text(json.dumps(options), encoding='utf-8')
+            worker = [sys.executable, '--document-worker'] if getattr(sys, 'frozen', False) else [sys.executable, str(ROOT/'pdf_io.py')]
+            args = [*worker, str(request), str(output)]
+            if upload_size is not None:
+                args.append(str(upload))
+            subprocess.run(args, cwd=WORK, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300 if upload_size is not None else 120, check=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+            payload = json.loads(output.read_text(encoding='utf-8'))
+            if payload.get('cutReview'):
+                status, response = 409, {'error':payload['error'], 'cutReview':payload['cutReview']}
+            elif payload.get('guideReview'):
+                status, response = 409, {'error':payload['error'], 'guideReview':payload['guideReview']}
+            elif not payload['ok']:
+                raise ValueError(payload['error'])
+            else:
+                status, response = 200, payload['document']
+        except subprocess.TimeoutExpired:
+            raise ValueError('PDF processing took too long. Try a print-only PDF without Illustrator editing data.') from None
+        finally:
+            try:
+                remove_import_temp(request)
+                remove_import_temp(output)
+                remove_import_temp(upload)
+                remove_import_temp(upload.with_name(upload.stem + '-print.pdf'))
+            finally:
+                DOCUMENT_LOCK.release()
+        return self.send(status, response)
+
     def do_POST(self):
         # Hold admission through import, save and delivery. An update claim cannot
         # slip between a busy check and a new operation starting on another PC.
@@ -395,9 +500,42 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {'error': 'Invalid origin'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
-            if not 0 <= size <= 48_000_000:
+            if not 0 <= size <= request_limit(self.path):
                 raise ValueError('Job is too large.')
+            if self.path == '/api/document/import-file':
+                header = self.headers.get('X-EZ-Import', '{}')
+                if len(header) > 16_000:
+                    raise ValueError('Import options are too large.')
+                options = json.loads(unquote(header))
+                if not isinstance(options, dict):
+                    raise ValueError('Invalid import options.')
+                return self.import_document(options, upload_size=size)
             data = json.loads(self.rfile.read(size) or '{}')
+            if self.path.startswith('/api/telemetry/'):
+                if self.client_address[0] != '127.0.0.1':
+                    return self.send(403, {'error': 'Local session required for job tracking.'})
+                if not isinstance(data, dict):
+                    raise ValueError('Supply a tracking request object.')
+                with LOCK:
+                    if self.path == '/api/telemetry/link':
+                        if set(data) - {'id', 'jobCodes', 'rollId'}:
+                            raise ValueError('Only job codes and an opaque roll ID may be linked.')
+                        if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id') or STATE.get('released'):
+                            raise ValueError('Link the current finished layout before freezing it.')
+                        record_telemetry('nest.created')
+                        telemetry.link(WORK, data.get('id'), data.get('jobCodes'), data.get('rollId'))
+                    elif self.path == '/api/telemetry/status':
+                        if set(data) - {'id', 'action', 'confirmed'} or data.get('confirmed') is not True:
+                            raise ValueError('Explicitly confirm the queue, print or cancellation observation.')
+                        telemetry.transition(WORK, data.get('id'), data.get('action'))
+                    elif self.path == '/api/telemetry/stock':
+                        if set(data) != {'rollId', 'materialKey', 'remainingMm', 'requestId', 'expectedRevision'}:
+                            raise ValueError('Supply roll ID, material key, measured remaining mm, request ID and expected revision.')
+                        telemetry.record_stock(WORK, data['rollId'], data['materialKey'], data['remainingMm'],
+                                               data['requestId'], data['expectedRevision'])
+                    else:
+                        raise ValueError('Unknown tracking operation.')
+                return self.send(200, {'ok': True})
             if self.path.startswith('/api/update/'):
                 import installer_update
                 if self.client_address[0] != '127.0.0.1':
@@ -440,23 +578,7 @@ class Handler(BaseHTTPRequestHandler):
                     info = illustrator_bridge.accept(WORK, data)
                 return self.send(200, {'ok': True, 'id': info['id'], 'url': f'http://127.0.0.1:{PORT}/web?illustrator=' + info['id']})
             if self.path == '/api/document/import':
-                if not DOCUMENT_LOCK.acquire(blocking=False):
-                    raise ValueError('Wait for the current document import to finish.')
-                ident=uuid.uuid4().hex
-                request,output=WORK/(ident+'-import.json'),WORK/(ident+'-import-result.json')
-                try:
-                    request.write_text(json.dumps(data),encoding='utf-8')
-                    worker=[sys.executable,'--document-worker'] if getattr(sys,'frozen',False) else [sys.executable,str(ROOT/'pdf_io.py')]
-                    subprocess.run([*worker,str(request),str(output)],cwd=WORK,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=120,check=True,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
-                    payload=json.loads(output.read_text(encoding='utf-8'))
-                    if payload.get('guideReview'): return self.send(409,{'error':payload['error'],'guideReview':payload['guideReview']})
-                    if not payload['ok']: raise ValueError(payload['error'])
-                    return self.send(200,payload['document'])
-                except subprocess.TimeoutExpired:
-                    raise ValueError('PDF import took too long. Use a smaller print-only document.')
-                finally:
-                    request.unlink(missing_ok=True); output.unlink(missing_ok=True)
-                    DOCUMENT_LOCK.release()
+                return self.import_document(data)
             if self.path == '/api/export/pick':
                 if self.client_address[0] != '127.0.0.1':
                     return self.send(403, {'error': 'Use browser download on another computer.'})
@@ -504,6 +626,8 @@ class Handler(BaseHTTPRequestHandler):
                     if mode == 'folder':
                         STATE['deliveryCompleted'] = True
                         record_workload('sent_to_folder')
+                    else:
+                        record_telemetry('nest.exported')
                     persist_state()
                 return self.send(200, dict(saved, ok=True))
             if self.path in ('/api/output/connect', '/api/output/pick'):
@@ -535,6 +659,24 @@ class Handler(BaseHTTPRequestHandler):
                 UPDATE_CHECK.clear()
                 UPDATE_WAKE.set()
                 return self.send(200, shop_status())
+            if self.path == '/api/materials/save':
+                return self.send(200, material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision')))
+            if self.path == '/api/materials/reserve':
+                with LOCK:
+                    if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
+                        raise ValueError('The layout changed. Reload and review the current layout before reserving stock.')
+                    key = STATE['job'].get('inventoryMaterialId')
+                    if not key:
+                        raise ValueError('Save the material to shop inventory and nest again before reserving stock.')
+                    if not STATE.get('manifest', {}).get('productionReady'):
+                        check = batch_output_check(STATE['job'])
+                        if check and not check.get('ready'):
+                            raise ValueError('Resolve the print-file checks before reserving material.')
+                    result = STATE['result']
+                    fingerprint = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
+                    return self.send(200, material_inventory.reserve(WORK, key, STATE['id'], result['usedLength'], result['width'], fingerprint))
+            if self.path == '/api/materials/transition':
+                return self.send(200, material_inventory.transition(WORK, data.get('id'), data.get('action')))
             if self.path == '/api/update':
                 if UPDATE_QUEUE.status()['queued']:
                     raise ValueError('Cancel the waiting update before downloading another.')

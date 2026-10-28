@@ -6,14 +6,14 @@
     const used = state?.result?.usedLength;
     if (!finite(used) || used <= 0) return null;
     const manual = finite(previousLengthFt) && previousLengthFt > 0;
-    const baseline = manual ? previousLengthFt * 304.8 : state.nestSavings?.baselineLengthMm;
+    const baseline = manual ? previousLengthFt * 304.8 : state.nestSavings?.baselineLengthMm ?? state.result?.layoutComparison?.baselineLengthMm;
     if (!finite(baseline) || baseline <= 0) return null;
     const saved = baseline - used;
     const price = state.job?.webOptions?.rollCost;
     const roll = state.job?.webOptions?.fullRollLengthMm;
     return {savedFt: saved / 304.8, percent: saved / baseline * 100,
       savedDollars: finite(price) && price >= 0 && finite(roll) && roll > 0 ? saved / roll * price : null,
-      reference: manual ? 'your previous print length' : 'the first fit in this job'};
+      reference: manual ? 'your previous print length' : state.nestSavings ? 'the first fit in this job' : state.result.layoutComparison.reference};
   }
   function signature(state) {
     const job = state?.job;

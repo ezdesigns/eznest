@@ -34,7 +34,7 @@ const dimension=mm=>(mm/scale(displayUnit())).toFixed(preferences.precision??2)+
 
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);$('batch-status').dataset.state=error?'error':busy?'running':current?'ready':'idle';if(error&&!current){$('batch-status').hidden=false;$('batch-status').textContent='Check input';}}
 
-async function api(path,data){const response=await fetch(path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-EZ-Token':token},body:JSON.stringify(data)});const result=await response.json();if(!response.ok)throw Error(result.error||'Request failed.');return result;}
+async function api(path,data,file){const response=await fetch(path,data===undefined?{}:{method:'POST',headers:file?{'Content-Type':'application/pdf','X-EZ-Token':token,'X-EZ-Import':encodeURIComponent(JSON.stringify(data))}:{'Content-Type':'application/json','X-EZ-Token':token},body:file||JSON.stringify(data)});const result=await response.json();if(!response.ok)throw Error(result.error||'Request failed.');return result;}
 
 function remember(){localStorage.setItem('eznest.production.settings',JSON.stringify(preferences));clearTimeout(saveTimer);saveTimer=setTimeout(()=>{if(!db)return;try{const transaction=db.transaction('state','readwrite');transaction.objectStore('state').put(queue,'queue');transaction.objectStore('state').put(preparedBatches,'prepared');transaction.onerror=()=>status('The queue could not be saved on this browser. Export your batch before closing.',true);}catch(e){status('The queue could not be saved: '+e.message,true);}},180);}
 
@@ -204,7 +204,7 @@ async function importFiles(files,role='required'){
   try{for(const file of files){
     if(!/\.(svg|pdf|ai)$/i.test(file.name)){unsupported++;continue;}
     const pdf=/\.(pdf|ai)$/i.test(file.name);
-    if(file.size>(pdf?32_000_000:8_000_000)){failures.push(file.name+' exceeds the '+(pdf?'32':'8')+' MB limit.');continue;}
+    if(file.size>(pdf?2_000_000_000:8_000_000)){failures.push(file.name+' exceeds the '+(pdf?'2 GB':'8 MB')+' limit.');continue;}
     status('Importing '+file.name+'…');
     try{if(pdf?await importDocument(file,role,documentOptions):await importText(await file.text(),file.name,{role}))added++;}catch(e){failures.push(file.name+': '+e.message);}
   }}finally{busy=false;importing=false;renderQueue();}

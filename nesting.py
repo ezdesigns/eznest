@@ -7,8 +7,9 @@ import time
 from pathlib import Path
 from shapely.geometry import Polygon
 from shapely.affinity import rotate, translate
-from shapely.strtree import STRtree
-from engine import part_polygon, PIECE_CAP, solve, validate_job, validate_result, number
+from shapely.ops import unary_union
+from shapely.prepared import prep
+from engine import part_polygon, PIECE_CAP, ORDER_PIECE_CAP, solve, validate_job, validate_result, number
 from production import validate_identity
 
 
@@ -18,6 +19,8 @@ def validate_request(job):
         if job.get('fillJobs') and job.get('fillArea')=='length':
             raise ValueError('For automatic sheets, fill only leftover space. Use a single length for fixed-area sticker fill.')
     fills = job.get('fillJobs', [])
+    if fills and sum(p.get('quantity', 1) for p in job.get('parts', [])) > PIECE_CAP:
+        raise ValueError('For large orders, nest the requested quantities without optional filler jobs.')
     if not isinstance(fills, list) or len(fills) > PIECE_CAP:
         raise ValueError(f'Choose up to {PIECE_CAP} sticker designs.')
     if job.get('fillArea', 'gaps') not in ('gaps', 'length'):
@@ -48,8 +51,9 @@ def validate_request(job):
         if group['id'] in identities or group['code'] in codes or part_ids.intersection(group['partIds']):
             raise ValueError('Repeated job or piece identity in the queue.')
         identities.add(group['id']); codes.add(group['code']); part_ids.update(group['partIds'])
-    if len(part_ids) > PIECE_CAP:
-        raise ValueError(f'This build supports {PIECE_CAP} different piece designs.')
+    cap = ORDER_PIECE_CAP if job['settings'].get('sheetLength') is not None or job['settings'].get('continuous') else PIECE_CAP
+    if len(part_ids) > cap:
+        raise ValueError(f'This build supports {cap} different piece designs.')
 
 
 def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
@@ -74,18 +78,14 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
     counts = [0] * len(fills)
     failed = set()
     orientations = {}
-    buffered = {}
     for fill in fills:
         for part in fill['parts']:
             orientations[part['id']] = [(angle, rotate(part_polygon(part), angle, origin=(0, 0))) for angle in angles]
 
     def find(part, occupied):
-        # The same conservative buffers, indexed without rebuilding their union
-        # for every attempted piece. Exact intersection still decides each fit.
-        for polygon in occupied:
-            if polygon not in buffered:
-                buffered[polygon] = polygon.buffer(gap + guard * 2, join_style=2)
-        forbidden = STRtree([buffered[p] for p in occupied]) if occupied else None
+        # One prepared union per attempt. An index of the same buffers was
+        # slower for these grid scans, so the exact intersection test stays.
+        forbidden = prep(unary_union([p.buffer(gap + guard * 2, join_style=2) for p in occupied])) if occupied else None
         for angle, polygon in orientations[part['id']]:
             x0, y0, x1, y1 = polygon.bounds
             w, h = x1 - x0, y1 - y0
@@ -107,7 +107,7 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
                     if time.monotonic() >= deadline:
                         return None
                     candidate = translate(polygon, x-x0, y-y0)
-                    if forbidden is None or not len(forbidden.query(candidate, predicate='intersects')):
+                    if forbidden is None or not forbidden.intersects(candidate):
                         return candidate, {'id':part['id'], 'x':x-x0, 'y':y-y0, 'rotation':angle}
         return None
 
@@ -230,6 +230,11 @@ def refine_fill(job, resolved, result, budget):
 def _run(job):
     progress = job.pop('_progress', None)
     validate_request(job)
+    if job['settings'].get('continuous'):
+        if job.get('fillJobs'):
+            raise ValueError('Use requested quantities without optional filler jobs for a continuous print.')
+        from sheets import continuous_nest
+        return {'ok': True, 'result': continuous_nest(job, progress)}
     if job['settings'].get('sheetLength') is not None:
         from sheets import split_nest, subset
         if not job.get('parts'):
@@ -270,26 +275,12 @@ def _run(job):
                 sheet['area']=sum(shape.area for p,shape in zip(result['placements'],shapes) if p['sheet']==sheet['index'])
             return {'ok':True,'job':merged,'result':result,'requestJob':job}
         return {'ok':True,'result':result}
-    budget = int(job['settings']['seconds'])
-    repack_budget = max(1, budget // 3) if job.get('parts') and job.get('fillJobs') and budget >= 3 else 0
-    required = {**job, 'settings':{**job['settings'], 'seconds':budget-repack_budget}}
-    result = solve(required, progress) if job.get('parts') else {'placements':[], 'usedLength':job['settings']['maxLength'], 'elapsed':0, 'engine':'eznest sticker fill'}
+    # Optional stickers are placed after the required search. They do not take
+    # part of the configured search time, and a failed filler trial cannot
+    # shorten the time spent on the required pieces.
+    result = solve(job, progress) if job.get('parts') else {'placements':[], 'usedLength':job['settings']['maxLength'], 'elapsed':0, 'engine':'eznest sticker fill'}
     if job.get('fillJobs'):
-        # Continue a productive required-piece search before filling; when it
-        # has plateaued, spend the reserve on complete-set hole repair instead.
-        # A continuation is an independent start with a validated incumbent,
-        # not a claim that the native engine supports warm starts.
-        strategy = 'fill'
-        if repack_budget and job.get('fillArea','gaps') == 'gaps' and result.get('searchGain',0) >= .01:
-            continuation = {**required, 'settings':{**required['settings'], 'seconds':repack_budget,
-                'seed':(int(job['settings'].get('seed',42))+524287) % 2147483648}}
-            result = solve(continuation, progress, incumbent=result)
-            repack_budget = 0
-            strategy = 'required'
         resolved, result = fill_stickers(job, result)
-        if repack_budget:
-            resolved, result = refine_fill(job, resolved, result, repack_budget)
-        result['reserveStrategy'] = strategy
         return {'ok':True, 'job':resolved, 'result':result, 'requestJob':job}
     return {'ok':True, 'result':result}
 

@@ -4,6 +4,7 @@ import copy
 
 # Shop v1 cap. Search time still bounds a nest; history and intake stay outside this module.
 PIECE_CAP = 800
+ORDER_PIECE_CAP = 5000  # Automatic sections keep each solver input <= PIECE_CAP.
 import time
 from collections import Counter
 import spyrrow
@@ -22,8 +23,9 @@ def solver_part(part, rotations, strip_width):
                       for a, b in zip(corners, corners[1:])]
     else:
         candidates = rotations
-    # strip_width is the physical usable width. Native item/strip separation
-    # is compensated by the expanded container and translated origin in solve.
+    # strip_width is the physical usable width. The buffered envelope has to
+    # fit before the native solver runs. solve() expands the native strip only
+    # when that envelope would not fit after container-edge padding.
     def cross_width(angle):
         bounds = rotate(envelope, angle, origin=(0, 0)).bounds
         return bounds[2] - bounds[0]
@@ -36,6 +38,25 @@ def solver_part(part, rotations, strip_width):
         envelope = rotate(envelope, base, origin=(0, 0))
     return envelope, base, None if rotations is None else [-a for a in fitting]
 
+
+def edge_padding_blocks_fit(envelope, orientations, usable, separation):
+    """True when native container-edge padding would reject a handed orientation.
+
+    Sparrow insets every piece from the strip edge by min_items_separation.
+    Ordinary parts still fit the unexpanded strip, and expanding it changes
+    the search. Compensate only for an orientation that fits the physical
+    usable width but not that inset.
+    """
+    limit = usable - 2 * separation
+    if orientations is None:
+        left, _, right, _ = envelope.bounds
+        return right - left > limit + 1e-6
+    for sparrow_angle in orientations:
+        bounds = rotate(envelope, -sparrow_angle, origin=(0, 0)).bounds
+        if bounds[2] - bounds[0] > limit + 1e-6:
+            return True
+    return False
+
 def number(value, name, low, high):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
         raise ValueError(f'{name} must be between {low} and {high}.')
@@ -44,6 +65,9 @@ def number(value, name, low, high):
 
 def validate_job(job):
     settings = job['settings']
+    if 'continuous' in settings and type(settings['continuous']) is not bool:
+        raise ValueError('Continuous print must be on or off.')
+    cap = ORDER_PIECE_CAP if settings.get('sheetLength') is not None or settings.get('continuous') else PIECE_CAP
     width = number(settings['width'], 'Material width', 10, 5000)
     length = None if settings.get('maxLength') is None else number(settings['maxLength'], 'Available roll length', 10, 1000000)
     gap = number(settings['gap'], 'Gap', 0, 100)
@@ -56,8 +80,8 @@ def validate_job(job):
         raise ValueError('Choose a supported rotation mode.')
     number(settings.get('seed', 42), 'Search seed', 0, 2147483647)
     parts = job.get('parts', [])
-    if not 1 <= len(parts) <= PIECE_CAP:
-        raise ValueError(f'Select between 1 and {PIECE_CAP} closed paths.')
+    if not 1 <= len(parts) <= cap:
+        raise ValueError(f'Select between 1 and {cap} closed paths.')
     seen = set()
     total = 0
     for part in parts:
@@ -66,8 +90,8 @@ def validate_job(job):
             raise ValueError('Each part needs a unique ID.')
         seen.add(ident)
         quantity = part.get('quantity', 1)
-        if type(quantity) is not int or not 1 <= quantity <= PIECE_CAP:
-            raise ValueError(f'Quantity must be an integer from 1 to {PIECE_CAP}.')
+        if type(quantity) is not int or not 1 <= quantity <= cap:
+            raise ValueError(f'Quantity must be an integer from 1 to {cap}.')
         total += quantity
         points = part.get('nestingPoints', part['points'])
         if not 3 <= len(points) <= 5000:
@@ -84,14 +108,17 @@ def validate_job(job):
         # Continuous rotation has no finite list of angles. Do not falsely reject
         # a shape that fits only at an angle between sampled orientations.
         fits = rotations is None
+        # Sheet checks reuse the measured used length as maxLength. A piece that
+        # sits on the margin makes that length equal to its own extent, and the
+        # subtraction can miss by a fraction of a nanometre.
         for angle in rotations or []:
             bounds = rotate(polygon, angle, origin=(0, 0)).bounds
-            if bounds[2] - bounds[0] <= width - 2 * margin and (length is None or bounds[3] - bounds[1] <= length - 2 * margin):
+            if bounds[2] - bounds[0] <= width - 2 * margin + 0.001 and (length is None or bounds[3] - bounds[1] <= length - 2 * margin + 0.001):
                 fits = True
         if not fits:
             raise ValueError(f'{ident}: part is too large for this material and rotation mode.')
-    if total > PIECE_CAP:
-        raise ValueError(f'This build supports {PIECE_CAP} pieces.')
+    if total > cap:
+        raise ValueError(f'This build supports {cap} pieces. Use automatic print sections for larger quantities.')
     return width, length, gap, margin, seconds
 
 
@@ -144,8 +171,10 @@ def validate_result(job, result):
         if not covered_boundary.covers(shape):
             raise ValueError('No valid layout fits within the maximum material length.')
         shapes.append(shape)
-    # Broad phase only: expanded bounding boxes cannot exclude an overlapping
-    # pair or a pair nearer than gap. Keep the exact original narrow-phase tests.
+    # Broad phase only: the tree narrows candidates. Expanded bounding boxes
+    # cannot exclude an overlapping pair or a pair nearer than gap. Exact
+    # polygon overlap and distance checks still decide validity, including
+    # concave pieces and small gaps.
     tree = STRtree(shapes)
     for index, shape in enumerate(shapes):
         x0, y0, x1, y1 = shape.bounds
@@ -171,6 +200,178 @@ def search_envelope(polygon):
     return envelope
 
 
+def _box_gap(a, b):
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    dx = max(0.0, bx0 - ax1, ax0 - bx1)
+    dy = max(0.0, by0 - ay1, ay0 - by1)
+    if dx == 0.0 and dy == 0.0:
+        return 0.0
+    return math.hypot(dx, dy)
+
+
+def shelf_layout(job):
+    """Row layout from bounding boxes. Kept only when it is shorter than search.
+
+    Identical rectangles often fall into a regular grid faster than a short
+    search. Concave parts stay with the search result when the rows are longer.
+    """
+    width = float(job['settings']['width'])
+    gap = float(job['settings']['gap'])
+    margin = float(job['settings']['margin'])
+    angles = job['settings']['rotations'] if job['settings']['rotations'] is not None else (0, 90, 180, 270)
+    usable = width - 2 * margin
+    copies = []
+    for part in job['parts']:
+        polygon = part_polygon(part)
+        envelope = search_envelope(polygon)
+        variants = []
+        for angle in angles:
+            # Same fit rule as the native solver: a buffered outline that does
+            # not fit this way is not a legal shelf orientation.
+            guard = rotate(envelope, angle, origin=(0, 0)).bounds
+            if guard[2] - guard[0] >= usable - 0.001:
+                continue
+            moved = rotate(polygon, angle, origin=(0, 0))
+            x0, y0, x1, y1 = moved.bounds
+            piece_width, piece_height = x1 - x0, y1 - y0
+            if piece_width <= usable + 1e-6:
+                variants.append((piece_width, piece_height, x0, y0, angle))
+        if not variants:
+            return None
+        for copy in range(part.get('quantity', 1)):
+            copies.append((part['id'], copy, variants))
+    copies.sort(key=lambda item: (max(variant[1] for variant in item[2]), max(variant[0] for variant in item[2]), item[0], item[1]), reverse=True)
+    cursor_x, cursor_y, row_height = margin, margin, 0.0
+    placements = []
+    for ident, _copy, variants in copies:
+        room = width - margin - cursor_x
+        fitting = [variant for variant in variants if variant[0] <= room + 1e-6]
+        if not fitting:
+            cursor_y += row_height + gap
+            cursor_x, row_height = margin, 0.0
+            fitting = variants
+        piece_width, piece_height, x0, y0, angle = min(fitting, key=lambda variant: (variant[1], variant[0], variant[4]))
+        placements.append({'id': ident, 'x': cursor_x - x0, 'y': cursor_y - y0, 'rotation': angle})
+        cursor_x += piece_width + gap
+        row_height = max(row_height, piece_height)
+    used = cursor_y + row_height + margin
+    result = {'placements': placements, 'width': width, 'usedLength': used}
+    try:
+        validate_result(job, result)
+    except (ValueError, ZeroDivisionError):
+        return None
+    return result
+
+
+def compact_result(job, result):
+    """Slide each piece toward the start of the roll. Rotation stays put.
+
+    Sparrow searches a slightly enlarged outline, so a finished layout can sit
+    a fraction of a millimetre further apart than the operator gap. This pass
+    uses the real outlines. It never lengthens the roll, and a layout that
+    fails the independent check is discarded.
+    """
+    from shapely.affinity import translate as move_shape
+    placements = [dict(item) for item in result.get('placements') or []]
+    if not placements or 'usedLength' not in result:
+        return result
+    width = float(job['settings']['width'])
+    gap = float(job['settings']['gap'])
+    margin = float(job['settings']['margin'])
+    by_id = {part['id']: part for part in job['parts']}
+    shapes = [placed_polygon(by_id[item['id']], item) for item in placements]
+    cell = max(20.0, gap * 4)
+
+    def cell_keys(bounds, pad=0.0):
+        x0 = math.floor((bounds[0] - pad) / cell)
+        x1 = math.floor((bounds[2] + pad) / cell)
+        y0 = math.floor((bounds[1] - pad) / cell)
+        y1 = math.floor((bounds[3] + pad) / cell)
+        return [(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)]
+
+    buckets = {}
+    members = [[] for _ in shapes]
+
+    def add(index):
+        keys = cell_keys(shapes[index].bounds)
+        members[index] = keys
+        for key in keys:
+            buckets.setdefault(key, []).append(index)
+
+    def remove(index):
+        for key in members[index]:
+            buckets[key].remove(index)
+        members[index] = []
+
+    for index in range(len(shapes)):
+        add(index)
+
+    def blocked(index, shape):
+        bounds = shape.bounds
+        if bounds[0] < margin - 1e-6 or bounds[1] < margin - 1e-6 or bounds[2] > width - margin + 1e-6:
+            return True
+        seen = set()
+        for key in cell_keys(bounds, pad=gap):
+            for other_index in buckets.get(key, ()):
+                if other_index == index or other_index in seen:
+                    continue
+                seen.add(other_index)
+                other = shapes[other_index]
+                if _box_gap(bounds, other.bounds) >= gap:
+                    continue
+                if shape.intersection(other).area > 0.0001 or shape.distance(other) < gap:
+                    return True
+        return False
+
+    passes = 0
+    for _pass in range(6):
+        passes += 1
+        order = sorted(range(len(placements)), key=lambda i: (shapes[i].bounds[1], shapes[i].bounds[0], placements[i]['id'], i))
+        moved = False
+        for index in order:
+            drop_room = shapes[index].bounds[1] - margin
+            if drop_room < 0.01:
+                continue
+            origin = shapes[index]
+            low, high = 0.0, drop_room
+            best_drop, best_shape = 0.0, None
+            for _step in range(24):
+                mid = (low + high) / 2
+                shape = move_shape(origin, yoff=-mid)
+                if blocked(index, shape):
+                    high = mid
+                else:
+                    best_drop, best_shape = mid, shape
+                    low = mid
+            # When the whole drop is legal, the last midpoint stops just short of the margin.
+            exact = move_shape(origin, yoff=-high)
+            if not blocked(index, exact):
+                best_drop, best_shape = high, exact
+            if best_shape is not None and best_drop >= 0.01:
+                remove(index)
+                placements[index]['y'] = placements[index]['y'] - best_drop
+                shapes[index] = best_shape
+                add(index)
+                moved = True
+        if not moved:
+            break
+    used = max(shape.bounds[3] for shape in shapes) + margin
+    if used >= result['usedLength'] - 1e-4:
+        return result
+    compacted = {**result, 'placements': placements, 'usedLength': used}
+    try:
+        checked = validate_result(job, compacted)
+    except (ValueError, ZeroDivisionError):
+        return result
+    area = sum(shape.area for shape in checked)
+    compacted['area'] = area
+    compacted['utilization'] = area / (width * used)
+    compacted['lengthBeforeCompaction'] = result['usedLength']
+    compacted['compactionPasses'] = passes
+    return compacted
+
+
 def publish_result(path, result):
     if not path:
         return
@@ -193,30 +394,39 @@ def publish_result(path, result):
 
 def solve(job, progress_path=None, incumbent=None):
     width, length, gap, margin, seconds = validate_job(job)
+    if sum(p.get('quantity', 1) for p in job['parts']) > PIECE_CAP:
+        raise ValueError('Use bounded allocation for more than 800 pieces.')
     started = time.monotonic()
     # Sparrow's finite axis is Y. Reflect x/y at the boundary of the adapter.
     # 0.10 mm outward guard exceeds the host's 0.05 mm curve flattening target.
     items, base_rotations, span = [], {}, 0.0
+    separation = gap + 0.02
+    usable = width - 2 * margin
+    compensate = False
     for part in job['parts']:
-        envelope, base, orientations = solver_part(part, job['settings']['rotations'], width - 2 * margin)
+        envelope, base, orientations = solver_part(part, job['settings']['rotations'], usable)
         base_rotations[part['id']] = base
         left, bottom, right, top = envelope.bounds
-        span += (math.hypot(right - left, top - bottom) + gap + 0.02) * part.get('quantity', 1)
+        span += (math.hypot(right - left, top - bottom) + separation) * part.get('quantity', 1)
         items.append(spyrrow.Item(part['id'], [(y, x) for x, y in envelope.exterior.coords], part.get('quantity', 1), orientations))
+        if edge_padding_blocks_fit(envelope, orientations, usable, separation):
+            compensate = True
     # Small extra clearance absorbs native floating-point error; zero gap remains valid.
     # Sparrow initializes strip length from area / width. For a tiny job on a
     # wide roll this can be smaller than its separation offset and panic.
     # No part needs more cross-roll space than its envelope diagonal. The sum
     # plus clearances accommodates every part side by side, at any orientation.
     # Restrict only the search region; retain the customer's full output width.
-    # Native separation also applies to container edges. Cancel only that
-    # padding; preserve pairwise separation, guarded envelopes and output width.
-    separation = gap + 0.02
-    instance = spyrrow.StripPackingInstance('eznest', min(width - 2 * margin, span) + 2 * separation, items)
+    # Native separation also applies to container edges. Expand the strip and
+    # shift the origin back only when a handed envelope would not fit that
+    # inset. Jobs that already fit keep the unexpanded strip, so their search
+    # matches a full-time run without the shift.
+    pad = separation if compensate else 0.0
+    instance = spyrrow.StripPackingInstance('eznest', min(usable, span) + 2 * pad, items)
     progress_path = progress_path or job.get('_progress')
 
     def build(solution):
-        result = {'placements': [{'id': p.id, 'rotation': base_rotations[p.id] - p.rotation, 'x': p.translation[1] + margin - separation, 'y': p.translation[0] + margin - separation} for p in solution.placed_items]}
+        result = {'placements': [{'id': p.id, 'rotation': base_rotations[p.id] - p.rotation, 'x': p.translation[1] + margin - pad, 'y': p.translation[0] + margin - pad} for p in solution.placed_items]}
         shapes = validate_result(job, result)
         used_length = max(p.bounds[3] for p in shapes) + margin
         area = sum(p.area for p in shapes)
@@ -240,7 +450,7 @@ def solve(job, progress_path=None, incumbent=None):
             key = (placement.id, angle)
             if key not in rotated_tops:
                 rotated_tops[key] = rotate(part_polygons[placement.id], angle, origin=(0,0)).bounds[3]
-            tops.append(rotated_tops[key] + placement.translation[0] + 2 * margin - separation)
+            tops.append(rotated_tops[key] + placement.translation[0] + 2 * margin - pad)
         return max(tops, default=math.inf)
 
     def consider(solution):
@@ -254,25 +464,21 @@ def solve(job, progress_path=None, incumbent=None):
             best = candidate
             publish_result(progress_path, best)
 
-    # Give a quick first arrangement, then independently restart to escape a
-    # poor initial packing. All attempts share one budget and one best result.
-    local_budget = min(2, int(seconds) // 5)
-    remaining_budget = int(seconds) - local_budget
-    attempts = min(3, max(1, remaining_budget // 2))
+    # The configured search time stays with the native solver. Reserving part
+    # of a short budget for local repair made 180-piece rolls longer than the
+    # same full-time search, so that reserve is not spent here.
+    attempts = 3 if seconds >= 15 else 1
     deadline = time.monotonic() + seconds
     completed = 0
-    previous_gain = 0
     for attempt in range(attempts):
         remaining = deadline - time.monotonic()
         if attempt and remaining < 1:
             break
-        slots = attempts - attempt
-        # Reward productive starts with a longer next attempt; otherwise retain
-        # more short independent starts. All native calls share the same budget.
-        share = math.ceil(remaining_budget * .7) if previous_gain >= .01 and slots > 1 else math.ceil(remaining_budget / slots)
-        budget = min(share, remaining_budget - slots + 1, max(1, int(remaining)))
-        remaining_budget -= budget
-        before = best['usedLength'] if best else None
+        budget = max(1, int(remaining / (attempts - attempt)))
+        if attempts == 1:
+            budget = int(seconds)
+        if attempts > 1 and attempt == 0:
+            budget = min(5, budget)
         config = spyrrow.StripPackingConfig(total_computation_time=budget,
             min_items_separation=gap + 0.02, num_workers=2,
             seed=(int(job['settings'].get('seed', 42)) + attempt * 104729) % 2147483648,
@@ -317,15 +523,20 @@ def solve(job, progress_path=None, incumbent=None):
                 consider(holder['solution'])
             except (ValueError, ZeroDivisionError) as error:
                 last_error = error
-        reference = before or first_length
-        previous_gain = (reference-best['usedLength'])/reference if reference and best else 0
     if best is None:
         raise last_error or ValueError('No valid layout was found within the search time.')
-    if local_budget and time.monotonic() < deadline:
-        from local_search import repack
-        best = repack(job, best, min(local_budget, deadline-time.monotonic()))
-    best.update(elapsed=time.monotonic() - started, searchAttempts=completed,
-                searchGain=max(0, (first_length-best['usedLength'])/first_length))
+    # searchGain is the native search only. Settling onto the operator gap
+    # happens after the budget is spent and does not change that figure.
+    search_gain = max(0, (first_length - best['usedLength']) / first_length) if first_length else 0
+    best = compact_result(job, best)
+    rows = shelf_layout(job)
+    if rows is not None and rows['usedLength'] < best['usedLength'] - 1e-4:
+        rows = compact_result(job, rows)
+        if rows['usedLength'] < best['usedLength'] - 1e-4:
+            rows['engine'] = best.get('engine', 'eznest') + '; shorter shelf rows'
+            rows['searchAttempts'] = completed
+            best = rows
+    best.update(elapsed=time.monotonic() - started, searchAttempts=completed, searchGain=search_gain)
     publish_result(progress_path, best)
     return best
 

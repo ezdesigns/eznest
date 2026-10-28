@@ -17,9 +17,9 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == '--apply-update':
         import installer_update
         return installer_update.apply_cli(sys.argv[2:])
-    if len(sys.argv) == 4 and sys.argv[1] == '--document-worker':
+    if len(sys.argv) in (4, 5) and sys.argv[1] == '--document-worker':
         from pdf_io import worker
-        worker(sys.argv[2],sys.argv[3])
+        worker(*sys.argv[2:])
         return 0
     if len(sys.argv) == 4 and sys.argv[1] == '--nest-worker':
         from nesting import worker

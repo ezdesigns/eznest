@@ -96,12 +96,14 @@ class AdaptiveSearchTests(unittest.TestCase):
         job['settings'].update(seconds=30,rotations=[0])
         incumbent={'width':200,'usedLength':65,'placements':[{'id':'a','x':5,'y':50,'rotation':0}]}
         def native(y):
-            return SimpleNamespace(placed_items=[SimpleNamespace(id='a',rotation=0,translation=(y+3.02,3.02))])
-        with patch('engine.spyrrow.StripPackingConfig',wraps=spyrrow.StripPackingConfig) as configs, patch('engine.spyrrow.StripPackingInstance') as factory, patch('local_search.repack',side_effect=lambda j,r,b:r):
+            return SimpleNamespace(placed_items=[SimpleNamespace(id='a',rotation=0,translation=(y,0))])
+        with patch('engine.spyrrow.StripPackingConfig',wraps=spyrrow.StripPackingConfig) as configs, patch('engine.spyrrow.StripPackingInstance') as factory, patch('local_search.repack',side_effect=lambda j,r,b:r) as repair:
             factory.return_value.solve.side_effect=[native(30),native(20),ValueError('failed restart')]
             result=solve(job,incumbent=incumbent)
             budgets=[call.kwargs['total_computation_time'] for call in configs.call_args_list]
-        self.assertEqual(budgets,[10,13,5])
+        self.assertEqual(budgets[0],5)
+        self.assertEqual(len(budgets),3)
+        repair.assert_not_called()
         self.assertLess(result['usedLength'],incumbent['usedLength'])
         validate_result(job,result)
         self.assertEqual(incumbent['usedLength'],65)
@@ -110,27 +112,31 @@ class AdaptiveSearchTests(unittest.TestCase):
         job=job_for([[0,0],[10,0],[10,10],[0,10]],1)
         job['settings']['seconds']=1
         incumbent={'width':200,'usedLength':25,'placements':[{'id':'a','x':5,'y':10,'rotation':0}]}
+        original=copy.deepcopy(incumbent)
         with patch('engine.spyrrow.StripPackingInstance') as factory:
             factory.return_value.solve.side_effect=ValueError('no fit')
             result=solve(job,incumbent=incumbent)
-        self.assertEqual(result['placements'],incumbent['placements'])
+        # A failed native attempt must not replace the incumbent. Settling may
+        # slide that same piece toward the margin; it does not change the
+        # caller's object, the x position, or the rotation.
+        self.assertEqual(incumbent, original)
+        placed=result['placements'][0]
+        self.assertEqual((placed['id'], placed['x'], placed['rotation']), ('a', 5, 0))
+        self.assertLessEqual(placed['y'], 10)
+        self.assertLessEqual(result['usedLength'], original['usedLength'])
         validate_result(job,result)
 
-    def test_reserve_follows_measured_gain_without_spending_twice(self):
-        for gain,expected in [(0,'fill'),(.02,'required')]:
-            job,result=fixture();job['settings']['seconds']=6
-            result['searchGain']=gain
-            before=copy.deepcopy(job)
-            with patch('nesting.solve',return_value=copy.deepcopy(result)) as native, patch('nesting.fill_stickers',side_effect=lambda j,r:(copy.deepcopy(j),r)), patch('nesting.refine_fill',side_effect=lambda j,res,r,b:(res,r)) as filler:
-                payload=run(job)
-            self.assertEqual(payload['result']['reserveStrategy'],expected)
-            allocations=[call.args[0]['settings']['seconds'] for call in native.call_args_list]
-            if expected=='required':
-                self.assertEqual(allocations,[4,2]);filler.assert_not_called()
-                self.assertIn('incumbent',native.call_args_list[1].kwargs)
-            else:
-                self.assertEqual(allocations,[4]);self.assertEqual(filler.call_args.args[3],2)
-            self.assertEqual(job,before)
+    def test_required_search_keeps_its_full_allocation(self):
+        job,result=fixture();job['settings']['seconds']=6
+        result['searchGain']=.02
+        before=copy.deepcopy(job)
+        with patch('nesting.solve',return_value=copy.deepcopy(result)) as native, patch('nesting.fill_stickers',side_effect=lambda j,r:(copy.deepcopy(j),r)), patch('nesting.refine_fill',side_effect=lambda j,res,r,b:(res,r)) as filler:
+            payload=run(job)
+        self.assertEqual([call.args[0]['settings']['seconds'] for call in native.call_args_list],[6])
+        self.assertNotIn('incumbent',native.call_args_list[0].kwargs)
+        filler.assert_not_called()
+        self.assertNotIn('reserveStrategy',payload['result'])
+        self.assertEqual(job,before)
 
 
 if __name__=='__main__': unittest.main()

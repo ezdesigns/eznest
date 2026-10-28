@@ -25,6 +25,12 @@ or completed printing. Do not turn this into an order-management system or RIP.
 
 ## Branch and release boundaries
 
+Shared material inventory is being integrated onto main at `445fd6e` in a separate
+checkout. Preserve the merged settings, telemetry, nesting and OUTPUT invitation
+changes. PR #8 is closed; do not restore its superseded settings layout. The owner
+authorized merging applicable tested work or submitting a PR. This does not
+change release, network, deployment or protected shop installation boundaries.
+
 - Current readiness work belongs on draft PR #4, branch
   `cursor/shop-open-handoff-9891`, targeting `cursor/eznest-web-mvp-8f6a` (PR #1).
 - External contributors follow `CONTRIBUTOR-CODEX.md`: create a separate branch
@@ -105,6 +111,21 @@ automatically interpret all dashed lines as guides or export them as solid cuts.
 Closed, filled or clipped dashed cuts remain unsupported. Cancelled/failed imports
 must leave the previous job usable, and a multi-file selection is all-or-nothing.
 
+Large direct PDF uploads first make a temporary print copy without Illustrator
+private editing data; original files remain untouched. Unnamed closed strokes
+require a file-bound operator review and an explicit kiss/through choice. Never
+infer cuts from a filename or magenta alone. Transparent image borders may be
+excluded from nesting space only when the original supported soft mask proves
+zero alpha; retain all nonzero alpha, interpolation allowance and export guards.
+The automatic-section and continuous order cap is 5000 pieces; each solver input
+stays at 800 or fewer. Continuous print joins the order on one checked PDF page,
+up to 5000 mm or known available stock, whichever is shorter. Validate all pieces
+together, including spacing across internal search sections. Repeated rectangular
+envelopes compare allowed row orientations without trimming protected artwork.
+Thumbnail detail is bounded for large orders; print and cut export
+must retain original source objects and commands. Optional filler jobs are not
+supported with a required order above 800 pieces.
+
 The separate portable trial is packaged with `build_shop_trial.py` after a
 `build_windows.py --portable-only` build. Its `--shop-test` launch creates marked
 local trial data and TEST Output, disables update checks and refuses other running
@@ -113,6 +134,34 @@ servers. Preserve those isolation guards and the original shop installation.
 adds automatic recoloring, bleed or a native editable Illustrator return path.
 
 ## Local tracking
+
+The owner explicitly promoted the tested integration head `27f48d2` to `main` on
+2026-10-26. New backend telemetry work is isolated on its own feature branch for
+a draft PR to `main`; this does not authorize merging future PRs or deploying the
+shop PC. The earlier protected PR #1 / rc.4 gate remains unchanged.
+
+`telemetry.py` adds a separate local store and proposal atom adapter. Read
+`docs/telemetry-contract.md` before changing it. Never equate local file save with
+print delivery/completion or planned allocation with measured consumption. Keep
+the hub adapter dormant until the shared contract is registered and connection
+consent exists. The OUTPUT placeholder is not that consent. Keep exact quantities
+local and only banded, allowlisted payloads in the outbox; preserve stable IDs,
+revision guards, explicit confirmations and failure isolation. Do not modify
+another agent's spine, ledger, render or board as part of this adapter.
+
+`material_inventory.py` owns shop material profiles, measured roll stock and
+reservations in `materials.sqlite3` in the host data directory. Browser-local
+presets remain available until explicitly saved to the shop; never overwrite
+shared stock from stale browser preferences. Use revision checks for edits and
+SQLite transactions for reservations and usage. Reserve only server-derived
+length for the matching ready layout. Nesting, previewing and exporting do not
+deduct stock. Only explicit confirmation changes reserved stock into used stock;
+duplicate requests must not deduct twice. Released reservations cannot be reused
+for another layout, and used material cannot be returned by cancelling it.
+Keep outstanding reservations across workspace resets. Store opaque layout IDs,
+not customer names or art filenames. One material record represents one tracked
+roll or pool of identical-width stock. No automatic reorder, printer completion,
+remote inventory hub, or separate per-designer job workspaces are implied.
 
 `workload.py` records prepared packs, successful hot-folder deliveries and explicit
 removals. Store opaque IDs, UTC times, counts and measurements, not customer names,

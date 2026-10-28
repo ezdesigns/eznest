@@ -110,9 +110,26 @@ Only `--lan` opens a non-loopback listener. A saved preference alone cannot open
 
 ## Limits
 
-One material and up to 800 pieces. PDF import is 32 MB and 25 pages. No EPS, no DeviceN cut colors, no inventory, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
+One material and up to 800 pieces. PDF import is 2 GB and 25 pages. No EPS, no DeviceN cut colors, no inventory, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
 
 Not in v1: job history, order intake, and cost tracking as a product.
+
+## Nesting benchmark
+
+`tools/nest_bench.py` runs a fixed set of jobs through the shop nesting entry
+point and records roll length, utilization, wasted area, wall time, seed, and
+an exact all-pairs gap check. The outlines live in
+`tools/fixtures/nest_outlines.json`. Results and the iteration log are in
+[the nesting benchmark notes](docs/nesting-benchmark.md).
+
+```bash
+python tools/nest_bench.py --out tools/fixtures/nest_bench_baseline.json
+python tools/nest_bench.py --compare tools/fixtures/nest_bench_baseline.json new.json
+```
+
+Compare exits with an error when any case uses more than 0.3% extra length,
+loses more than 0.3% utilization, or fails validation. It does not call the
+network.
 
 ## Develop
 

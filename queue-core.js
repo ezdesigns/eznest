@@ -2,6 +2,7 @@
 (function(root){
   function codeFor(index){let s='';for(let n=index+1;n>0;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s;}
   function compose(entries,preset,mode='combined',options={}){
+    const cap=preset.settings.sheetLength!=null?5000:800;
     const selected=entries.filter(e=>e.selected&&!isPrepared(e));
     if(!selected.length)throw Error('Select at least one ready job.');
     if(mode==='single'&&selected.length!==1)throw Error('Choose one job for this print.');
@@ -14,7 +15,7 @@
       if(entry.status!=='ready'||(!pdf&&!entry.data?.svgSource))throw Error(entry.name+' is not ready.');
       if(pdf&&!entry.data.reviewed)throw Error('Review detected pieces and bleed in Job options for '+entry.name+'.');
       if(entry.materialId!==preset.id)throw Error('Use one material preset per batch. Change the selected jobs or their assigned material.');
-      if(!Number.isInteger(entry.sets)||entry.sets<1||entry.sets>800)throw Error('Sets must be a whole number from 1 to 800.');
+      if(!Number.isInteger(entry.sets)||entry.sets<1||entry.sets>cap)throw Error('Sets must be a whole number from 1 to '+cap+'.');
       const source={id:entry.id,code:codeFor(index),name:entry.name,sourceFile:entry.sourceFile||entry.name,revision:entry.revision,sets:entry.sets,materialId:entry.materialId,partIds:[],role:entry.role==='fill'?'fill':'required',customer:entry.customer||'',order:entry.order||'',kit:entry.kit||''};
       const parts=[];
       if(pdf){job.documentSources=job.documentSources||{};job.documentSources[entry.id]={documentId:entry.data.documentId,reviewed:entry.data.reviewed,bleedMm:entry.data.bleedMm,artworkPreserved:entry.data.artworkPreserved===true,excludedGuideCount:entry.data.excludedGuideCount||0};}
@@ -26,7 +27,7 @@
       if(source.role==='fill')job.fillJobs.push({source,parts,maxSets:entry.sets});
       else {job.productionJobs.push(source);job.parts.push(...parts);}
     }
-    if(job.parts.reduce((sum,p)=>sum+p.quantity,0)>800)throw Error('This build supports 800 pieces per batch. Select fewer jobs or sets.');
+    if(job.parts.reduce((sum,p)=>sum+p.quantity,0)>cap)throw Error('This job supports '+cap+' pieces. Use automatic print sections for larger quantities.');
     if(job.fillJobs.length&&(!job.parts.length||job.fillArea==='length')&&job.settings.maxLength==null)throw Error('Enter a roll length to fill with stickers, or add required jobs and fill only their leftover space.');
     return job;
   }
@@ -73,7 +74,8 @@
     if(s.autoBleedMm!=null&&!finite('autoBleedMm',0,25))throw Error('Auto bleed must be from 0 to 25 mm.');
     if(s.drawRegmarks!=null&&typeof s.drawRegmarks!=='boolean')throw Error('Registration marks are on or off.');
     const settings=Object.fromEntries(['width','maxLength','gap','margin','seconds','rotations'].map(k=>[k,s[k]]));
-    for(const k of ['sheetLength','costPerSquareMeter','currency','markMargin','edgeMargin','rollWidth','autoBleedMm','drawRegmarks'])if(s[k]!==undefined)settings[k]=s[k];
+    if(s.continuous!=null&&typeof s.continuous!=='boolean')throw Error('Choose a print layout.');
+    for(const k of ['continuous','sheetLength','costPerSquareMeter','currency','markMargin','edgeMargin','rollWidth','autoBleedMm','drawRegmarks'])if(s[k]!==undefined)settings[k]=s[k];
     return {name:p.name.trim(),units:p.units,settings};
   }
   function importPresets(document){

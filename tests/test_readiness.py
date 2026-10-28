@@ -154,9 +154,16 @@ class ReadinessTests(unittest.TestCase):
                         self.assertEqual(page.input_value('#unit'), 'mm')
                         self.assertEqual(page.input_value('#thru-name'), 'MyThru')
                         self.assertEqual(page.input_value('#printer'), 'Customer printer')
-                        page.click('#settings summary')
+                        page.click('#settings-open')
+                        page.locator('#settings').wait_for(state='visible')
+                        for fold in ('#settings-cuts', '#settings-delivery', '#settings-updates'):
+                            self.assertFalse(page.locator(fold).evaluate('node => node.open'), fold)
                         self.assertFalse(page.locator('#output-network').is_checked())
                         self.assertTrue(page.locator('#lan').is_disabled())
+                        page.locator('#settings-delivery').evaluate('node => node.open = true')
+                        self.assertTrue(page.locator('#lan-access').is_hidden())
+                        self.assertIn('Shop network access is configured when the app starts.', page.locator('#lan-access').text_content())
+                        page.locator('#settings-delivery').evaluate('node => node.open = false')
                         self.assertEqual(page.input_value('#cut-preset'), 'custom')
                         # Use an illustrative path in the documentation screenshot,
                         # after testing persistence against the real temporary folder.
