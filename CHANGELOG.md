@@ -12,8 +12,7 @@
 - The job panel has Upload job, Choose material, and Where will you print?
   In-house stays selected and uses the existing effort choices. Don't print is
   the other choice, a light green button with a green Still get paid badge. The
-  choice and the badge open a short OUTPUT note on every job. There is no stock
-  check and no
+  note explains the route and lists why to use it. There is no stock check and no
   early-pilot line. Join the waitlist and Learn more open the OUTPUT site.
   Nothing is sent or saved.
 - Settings opens in a centered dialog. Specialized cut and print-software options

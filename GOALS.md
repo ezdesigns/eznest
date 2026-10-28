@@ -104,10 +104,10 @@ selected, with its blue selected look and a check, and nesting stays local.
 Don't print is a light green choice, not a selected state, with a green "Still
 get paid" badge on its lower corner. The choice and the badge both open a
 short note on every job. There is
-no stock or capacity check. The title is "Don't print". OUTPUT routes the job
-to a shop that can make it near you. The next line is "You still get paid."
-Under "Use it when", three lines name a missing material or roll width,
-a customer who is too far away, and a shop too busy to finish on time. It does
+no stock or capacity check. The title is "Don't print!". It says AI routes
+the job to a nearby shop that can make it, then "You still get paid." Under
+"Why use it?", four lines name not enough material, a customer who is too far
+away, a shop too busy to hit the date, and needing to focus on another job. It does
 not state fees or customer counts, and there is no
 early-pilot line. Join the waitlist
 and Learn more both open the URL in
