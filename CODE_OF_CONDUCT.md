@@ -61,10 +61,7 @@ representative at an online or offline event.
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at:
 
-**[CODE-OF-CONDUCT-CONTACT-PLACEHOLDER]**
-
-Replace `[CODE-OF-CONDUCT-CONTACT-PLACEHOLDER]` with the enforcement contact
-before publication. This placeholder is not a working address.
+**ezdesignstx@gmail.com**
 
 All complaints will be reviewed and investigated promptly and fairly.
 
