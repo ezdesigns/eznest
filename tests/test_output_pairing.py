@@ -38,7 +38,15 @@ class CredentialTests(unittest.TestCase):
     def test_private_file_round_trip_and_corrupt_file_is_not_connected(self):
         output_credential.save(self.root, TOKEN, 'North Shop')
         target = output_credential.path(self.root)
-        self.assertEqual(target.stat().st_mode & 0o077, 0)
+        if os.name == 'nt':
+            # Windows has no POSIX mode bits. The file is restricted with an ACL,
+            # so assert no broad principal was granted access.
+            import subprocess
+            acl = subprocess.run(['icacls', str(target)], capture_output=True, text=True).stdout
+            for broad in ('Everyone', 'BUILTIN\\Users', 'Authenticated Users'):
+                self.assertNotIn(broad, acl)
+        else:
+            self.assertEqual(target.stat().st_mode & 0o077, 0)
         self.assertEqual(output_credential.load(self.root), TOKEN)
         self.assertEqual(output_credential.describe(self.root)['shopName'], 'North Shop')
         target.write_bytes(b'not-a-credential')
