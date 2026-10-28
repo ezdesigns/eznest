@@ -74,9 +74,11 @@ Read the rows. Length change is final versus the recorded baseline.
 | Sum of case lengths | 18308.55 mm | 18269.57 mm | 18029.44 mm | −279.11 mm |
 | Sum of wasted area | 1,079,525 mm² | 1,072,508 mm² | 1,032,046 mm² | |
 
-Versus current `main` alone, the same final run is −1.31% mean length and
-+3.21% relative mean utilization. 22 cases are shorter, one is inside the
-0.3% band (`concave_quarters_seed11`, +0.02%), and none regress.
+Versus `main` at `445fd6e`, that run was −1.31% mean length. After pull
+request #13 merged (`1be77ad`), the same cases were run again: mean length
+784.17 mm versus that `main` at 794.72 mm (−1.33%). 22 cases were shorter.
+`concave_locked_seed42` was 350.71 mm on `main` and 351.65 mm here (+0.27%,
+inside the 0.3% band). None regressed. Minimum gap was 3.000 mm on every case.
 
 | Case | Pieces | Seed | Baseline mm | Main now mm | Final mm | Versus baseline | Final util |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
