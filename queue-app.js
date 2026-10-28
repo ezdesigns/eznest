@@ -45,6 +45,7 @@ function signature(){return JSON.stringify({jobs:activeEntries().filter(e=>e.sel
 function svgText(text,tag){const el=document.createElement(tag);el.textContent=text;return el;}
 
 function clearPreview(){
+  EZNLocalEvidence.clear();
 
   $('preview').setAttribute('hidden','');$('empty').hidden=false;
   const hasJobs=activeEntries().length>0,actions=document.createElement('div');actions.className='empty-actions';
@@ -53,7 +54,7 @@ function clearPreview(){
   const formats=svgText('PDF / compatible AI with cut contours, or SVG. Original print artwork stays local.','p');formats.className='empty-format';
   $('empty').replaceChildren(svgText(hasJobs?'Your layout will appear here.':'Drop PDF, AI or SVG artwork to begin.','strong'),svgText(hasJobs?'Check the width and quantities, then select Nest.':'Choose your roll width, then nest the selected jobs.','p'),actions,formats);
 
-  for(const id of ['metrics','review-tools','completeness','job-key','export-bar','batch-status','output-check'])$(id).hidden=true;
+  for(const id of ['metrics','review-tools','completeness','job-key','export-bar','batch-status','output-check','download-confirmation'])$(id).hidden=true;
 
   $('result-title').textContent='Preview';highlightJob='';$('review-tools').open=false;showDestination();
 
@@ -274,6 +275,10 @@ function showResult(state){
   $('completeness').replaceChildren();for(const [index,job] of m.jobs.entries()){const el=document.createElement('button');el.className='complete-job color-'+(index%colors.length);el.dataset.jobId=job.id;el.setAttribute('aria-label','Highlight '+job.name);el.onclick=()=>{highlightJob=highlightJob===job.id?'':job.id;renderLayout();};const code=document.createElement('span');code.textContent=job.code;el.append(code,document.createTextNode(`${job.name.replace(/\.svg$/i,'')} · ${job.placed}`));$('completeness').append(el);}for(const fill of state.result.fillSummary||[])if(!fill.pieces){const el=document.createElement('span');el.className='muted';el.textContent=fill.code+' · '+fill.name+': no complete set fitted';$('completeness').append(el);}$('completeness').hidden=false;
 
   $('export').disabled=busy||saving;$('improve').disabled=busy||!!state.released;
+  const pendingDownload=state.released&&state.deliveryCompleted!==true&&!state.savedPath;
+  $('download-confirmation').hidden=!pendingDownload;
+  $('confirm-download').disabled=busy||saving;
+  $('download-filename').textContent='EZ-Nest-Batch-'+state.id.slice(0,8)+'.zip';
 
   $('export-note').textContent=outputIncomplete(state)?'Does not meet '+state.manifest.outputProfile.rip+' requirements. Jobs stay in queue.':wasPrepared(state)?'Saved in Exports. Choose jobs for your next nest.':'Includes artwork, a piece map and a checklist.';
   $('output-check').hidden=!outputIncomplete(state);$('output-issues').replaceChildren();if(outputIncomplete(state)){$('output-check-title').textContent='Still needed for '+state.manifest.outputProfile.name;for(const issue of state.manifest.outputCheck.issues)$('output-issues').append(svgText(issue,'li'));}
@@ -283,6 +288,7 @@ function showResult(state){
   updateProductionResult(state);
   const format=state.job.documentSources?'PDF':'SVG';$('export').textContent=(outputIncomplete(state)?'Export working ':'Export ')+format+(state.released?' again':'');
   renderLayout();
+  EZNLocalEvidence.render(state);
 
 }
 
@@ -459,15 +465,28 @@ $('export').onclick=async()=>{
       const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');
       link.href=url;link.download='EZ-Nest-Batch-'+released.id.slice(0,8)+'.zip';link.click();
       setTimeout(()=>URL.revokeObjectURL(url),1000);
-      await api('/api/delivery/complete',{id:current.id});current.deliveryCompleted=true;
     }
     recordPrepared(current);EZNQueue.markPrepared(queue,current);remember();renderQueue();showResult(current);
-    status(outputIncomplete(current)?'Working package saved. Jobs remain in the queue.':released.savedPath?'Files saved. Jobs moved to Exports.':'Download started. The frozen batch is also available in Exports.');
+    status(!current.deliveryCompleted?'Download requested. Check that the ZIP is saved, then confirm below. Jobs stay in the queue until confirmation.':outputIncomplete(current)?'Working package saved. Jobs remain in the queue.':released.savedPath?'Files saved. Jobs moved to Exports.':'Download requested again. Your confirmed batch is available in Exports.');
     if(released.savedPath){$('output-status').textContent='Saved to '+pathName($('output-path').value);$('output-status').title=released.savedPath;}
   }catch(e){
     try{const saved=await api('/api/state');if(saved.id===current?.id&&saved.released){if(saved.deliveryCompleted===true){recordPrepared(saved);EZNQueue.markPrepared(queue,saved);remember();}showResult(saved);}}catch{}
     $('export').disabled=false;status(e.message,true);
   }finally{saving=false;renderQueue();if(current)showResult(current);}
+};
+
+// Browsers cannot report whether the operator kept or cancelled a download.
+// Only an explicit acknowledgement (or a verified server folder save) retires jobs.
+$('confirm-download').onclick=async()=>{
+  if(!current?.released||current.deliveryCompleted||busy||saving)return;
+  const batch=current;
+  saving=true;renderQueue();showResult(batch);
+  try{
+    await api('/api/delivery/complete',{id:batch.id});batch.deliveryCompleted=true;
+    recordPrepared(batch);EZNQueue.markPrepared(queue,batch);remember();
+    status(outputIncomplete(batch)?'Working download confirmed. Jobs remain in the queue.':'Download confirmed. Jobs moved to Exports.');
+  }catch(e){status('Could not confirm the download: '+e.message+' Retry confirmation; your jobs remain in the queue.',true);}
+  finally{saving=false;renderQueue();showResult(batch);}
 };
 
 
