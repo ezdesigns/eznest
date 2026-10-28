@@ -161,12 +161,18 @@ class MacUpdateTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name=='posix','Child PID liveness check')
     def test_whole_operation_deadline_kills_and_reaps_worker(self):
-        pidfile=self.root/'pid'
-        script='import os,time;from pathlib import Path;Path('+repr(str(pidfile))+').write_text(str(os.getpid()));time.sleep(60)'
-        with patch.object(update,'CHECK_TIMEOUT',.3),patch.object(update,'worker_command',return_value=[sys.executable,'-c',script]):
-            with self.assertRaises(subprocess.TimeoutExpired):update.run_worker(self.request('check'))
-        pid=int(pidfile.read_text())
-        with self.assertRaises(ProcessLookupError):os.kill(pid,0)
+        # Observe the real child directly. A deadline can expire before a slow
+        # interpreter writes a PID file; that still must kill and reap the child.
+        processes=[]; real_popen=subprocess.Popen
+        def launch(*args,**kwargs):
+            child=real_popen(*args,**kwargs); processes.append(child); return child
+        with patch.object(update,'CHECK_TIMEOUT',.3), \
+             patch.object(update,'worker_command',return_value=[sys.executable,'-c','import time; time.sleep(60)']), \
+             patch.object(update.subprocess,'Popen',side_effect=launch):
+            with self.assertRaises(subprocess.TimeoutExpired): update.run_worker(self.request('check'))
+        self.assertEqual(len(processes),1)
+        self.assertIsNotNone(processes[0].returncode)
+        with self.assertRaises(ProcessLookupError): os.kill(processes[0].pid,0)
 
     def test_worker_error_response_does_not_echo_input(self):
         result=subprocess.run(update.worker_command(),input='{"operation":"not allowed","token":"PRIVATE_SENTINEL"}',capture_output=True,text=True,timeout=3)
