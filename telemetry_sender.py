@@ -19,6 +19,8 @@ from telemetry_output import SCHEMA, BANDS, project
 ENDPOINT = 'https://output.jeezlabs.io/api/shop/telemetry'
 CONSENT_VERSION = 'eznest-output-consent/1'
 LOCK = threading.RLock()
+CONTROL_LOCK = threading.Lock()
+REVOKING = set()
 KEY = 'output_consent'
 ERROR = 'OUTPUT did not confirm receipt. Nothing was acknowledged; delivery will retry.'
 
@@ -99,12 +101,16 @@ def consent(directory, *, revision, version, configurationId, confirmed):
         cutoff = db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
         write(db, {'enabled': True, 'revision': revision+1, 'version': version,
                    'credential': fingerprint(token), 'cutoff': cutoff, 'at': telemetry.now()})
+        with CONTROL_LOCK:
+            REVOKING.discard(str(Path(directory).resolve()))
     return status(directory)
 
 
 def revoke(directory):
     # Wait for an already-started bounded request; after this returns no new
     # request can start until a new explicit consent. Do not claim remote deletion.
+    with CONTROL_LOCK:
+        REVOKING.add(str(Path(directory).resolve()))
     with LOCK, telemetry.database(directory) as db:
         old = read(db)
         old.update(enabled=False, revision=old['revision']+1)
@@ -178,6 +184,9 @@ def tick(directory, stop=None, *, limit=10):
     count = 0
     for _ in range(limit):
         with LOCK:
+            with CONTROL_LOCK:
+                if str(Path(directory).resolve()) in REVOKING:
+                    break
             if stop is not None and stop.is_set():
                 break
             token = configuration()

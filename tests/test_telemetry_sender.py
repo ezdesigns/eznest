@@ -89,10 +89,12 @@ class SenderTests(unittest.TestCase):
         entered=threading.Event();release=threading.Event();revoked=threading.Event()
         def send(*_):entered.set();self.assertTrue(release.wait(5));return True
         with patch.object(sender,'emit',side_effect=send) as emit:
-            worker=threading.Thread(target=lambda:sender.tick(self.root,limit=1));worker.start()
+            worker=threading.Thread(target=lambda:sender.tick(self.root,limit=10));worker.start()
             self.assertTrue(entered.wait(5))
             stopper=threading.Thread(target=lambda:(sender.revoke(self.root),revoked.set()));stopper.start()
-            self.assertFalse(revoked.wait(.05));release.set();worker.join(5);stopper.join(5)
+            self.assertFalse(revoked.wait(.05))
+            with sender.CONTROL_LOCK:self.assertIn(str(self.root.resolve()),sender.REVOKING)
+            release.set();worker.join(5);stopper.join(5)
             self.assertFalse(worker.is_alive());self.assertFalse(stopper.is_alive());self.assertTrue(revoked.is_set())
             self.assertEqual(sender.tick(self.root),0);self.assertEqual(emit.call_count,1)
 
