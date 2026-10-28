@@ -488,7 +488,6 @@ body:has(#settings-support[open]) #feedback-welcome { display: none; }
 #max-output-dialog p { margin: 0 0 14px; font-size: 14px; }
 #max-output-dialog .output-points { margin: 0 0 18px; padding: 0; list-style: none; font-size: 14px; }
 #max-output-dialog .output-points li { margin: 4px 0; }
-#max-output-dialog .waitlist-note { margin: 12px 0 0; font-size: 12px; text-align: center; }
 .output-actions { display: grid; gap: 10px; justify-items: center; }
 .primary-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; width: 100%; border: 1px solid #111; border-radius: 10px; background: #111; color: #fff; text-decoration: none; font-weight: 700; font-size: 14px; }
 .primary-link:hover { background: #000; }

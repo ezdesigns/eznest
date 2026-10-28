@@ -101,11 +101,13 @@ an optional gallery of detected artwork, copies, cut types and retained groups.
 
 The job panel asks where to print: In-house or Max output. In-house stays
 selected and nesting stays local. Max output does not change the job, the
-effort, or the file. It opens a short OUTPUT note: keep the customer, route
-the print, with three short reasons and an early-pilot line. Join the waitlist
-and Learn more both open the URL in `OUTPUT_WAITLIST_URL` (currently
-https://output.jeezlabs.io/) in the browser. EZ Nest does not send artwork,
-collect a signup, or call OUTPUT.
+effort, or the file. It opens a short OUTPUT note. The headline is "Never
+turn a customer away." The line under it says OUTPUT makes the job behind the
+shop and the customer stays yours. Three lines follow: wrong machine, too busy,
+or out of town; no new equipment; paid on delivery. There is no early-pilot
+line. Join the waitlist and Learn more both open the URL in
+`OUTPUT_WAITLIST_URL` (currently https://output.jeezlabs.io/) in the browser.
+EZ Nest does not send artwork, collect a signup, or call OUTPUT.
 Contextual help appears on label hover, keyboard focus or tap.
 Settings is a centered dialog with specialized cut/software options collapsed;
 material edits cancel on an outside click. Quantities stay beside each imported
