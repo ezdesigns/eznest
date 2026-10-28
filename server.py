@@ -298,6 +298,14 @@ class Handler(BaseHTTPRequestHandler):
             import installer_update
             return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
         if path == '/api/update':
+            if macos_service_runtime.active():
+                import macos_update
+                try:
+                    info = macos_update.start(WORK) if parse_qs(urlparse(self.path).query).get('refresh') == ['1'] else macos_update.status(WORK)
+                except (OSError, ValueError, subprocess.SubprocessError):
+                    info = macos_update.status(WORK)
+                info.update(localPC=self.client_address[0] == '127.0.0.1', serverPid=os.getpid())
+                return self.send(200, info)
             import installer_update
             refresh = parse_qs(urlparse(self.path).query).get('refresh', ['0'])[0] == '1'
             if refresh:
@@ -330,6 +338,20 @@ class Handler(BaseHTTPRequestHandler):
             elif info.get('managedResult') and not info.get('staged'):
                 info['message'] = info['managedResult'].get('message', '')
             return self.send(200, info)
+        if path == '/api/macos-update/package':
+            if self.client_address[0] != '127.0.0.1' or self.headers.get('X-EZ-Token') != TOKEN:
+                return self.send(403, {'error':'Open the update on the shop Mac.'})
+            import macos_update
+            try:
+                with macos_update.LOCK:
+                    package, info = macos_update.package_path(WORK)
+                    with os.fdopen(os.open(package, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as handle:
+                        content = handle.read(macos_update.MAX_BYTES + 1)
+                    if len(content) != info['size'] or hashlib.sha256(content).hexdigest() != info['sha256']:
+                        raise ValueError('The checked package changed.')
+                return self.send(200, content, 'application/octet-stream', 'eznest-update.pkg')
+            except (OSError, ValueError):
+                return self.send(409, {'error':'The checked Mac update is unavailable. Download it again.'})
         if path == '/api/shop':
             return self.send(200, shop_status())
         if path == '/api/materials':
@@ -701,6 +723,11 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/api/materials/transition':
                 return self.send(200, material_inventory.transition(WORK, data.get('id'), data.get('action')))
             if self.path == '/api/update':
+                if macos_service_runtime.active():
+                    if self.client_address[0] != '127.0.0.1':
+                        return self.send(403, {'error':'Download and approve updates on the shop Mac.'})
+                    import macos_update
+                    return self.send(200, macos_update.start(WORK, 'download'))
                 if UPDATE_QUEUE.status()['queued']:
                     raise ValueError('Cancel the waiting update before downloading another.')
                 with LOCK:
@@ -926,7 +953,11 @@ def check_updates(stop):
         UPDATE_WAKE.clear()
         try:
             channel = load_shop(WORK)['channel']
-            info = peek_latest(WORK, VERSION)
+            if macos_service_runtime.active():
+                import macos_update
+                info = macos_update.start(WORK)
+            else:
+                info = peek_latest(WORK, VERSION)
             if load_shop(WORK)['channel'] == channel:
                 UPDATE_CHECK = info
         except Exception:

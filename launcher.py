@@ -11,6 +11,12 @@ from shop_deploy import data_directory, load_shop
 
 
 def main():
+    if sys.argv[1:] == ['--macos-update-worker']:
+        from macos_update import worker_main
+        return worker_main()
+    if sys.argv[1:] in (['--request-macos-update'], ['eznest-update://install']):
+        from macos_update import request_install
+        return request_install()
     if sys.argv[1:2] == ['--macos-service-helper']:
         from macos_service_system import main as service_helper
         return service_helper(sys.argv[2:])

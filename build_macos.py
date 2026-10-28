@@ -22,10 +22,12 @@ import sys
 
 # The Windows release selector/helper is not a macOS updater. Even saved update
 # preferences must not cause this pilot to fetch or apply Windows packages.
-os.environ['EZ_NEST_UPDATES'] = '0'
+from macos_service_runtime import service_edition
+if not service_edition():
+    os.environ['EZ_NEST_UPDATES'] = '0'
 if any(flag in sys.argv for flag in ('--apply-update', '--request-shop-update', '--update-confirm')):
     raise SystemExit('This macOS pilot uses manual application replacement; automatic updates are unavailable.')
-if sys.argv[1:2] not in (['--document-worker'], ['--nest-worker'], ['--telemetry-worker'], ['--macos-service-helper']) and '--web' not in sys.argv:
+if sys.argv[1:2] not in (['--document-worker'], ['--nest-worker'], ['--telemetry-worker'], ['--macos-service-helper'], ['--macos-update-worker'], ['--request-macos-update'], ['eznest-update://install']) and '--web' not in sys.argv:
     sys.argv.append('--web')
 from launcher import main
 raise SystemExit(main())
@@ -120,6 +122,7 @@ a = Analysis([{str(out / 'macos_entry.py')!r}], pathex=[{str(root)!r}],
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='eznest',
           console=False, strip=False, upx=False, target_arch={arch!r},
+          argv_emulation={service_edition!r},
           codesign_identity=None, entitlements_file=None)
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='eznest')
 app = BUNDLE(coll, name='eznest.app', bundle_identifier='io.jeezlabs.eznest',
@@ -128,6 +131,7 @@ app = BUNDLE(coll, name='eznest.app', bundle_identifier='io.jeezlabs.eznest',
                          'CFBundleVersion': {short_version!r},
                          'EzNestVersion': {version!r},
                          'EzNestShopService': {service_edition!r},
+                         **{({'CFBundleURLTypes':[{'CFBundleURLName':'io.jeezlabs.eznest.update','CFBundleURLSchemes':['eznest-update']}]} if service_edition else {})!r},
                          'NSHighResolutionCapable': True, 'LSUIElement': True}})
 '''
 

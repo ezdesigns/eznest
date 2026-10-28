@@ -103,6 +103,41 @@ The unsigned package must not be distributed as an employee installer.
 
 ## Evidence and remaining gates
 
+### Update checks and desktop approval
+
+The installed, signed service edition uses the existing update preference and
+stable/test channel. It checks releases at startup and every six hours. Downloads
+run in a separate bounded process, so other operators can continue working. The
+catalog is limited to 1 MiB, checksums to 64 KiB, and packages to 300 MB; whole
+check/download deadlines are 30/180 seconds. Failed transfers do not change the
+running app. Source and ad-hoc pilots remain unable to activate this path.
+
+Only the exact `eznest-shop-{architecture}-{version}.pkg` asset is selected.
+Checksum, trusted Developer ID Installer Team ID matching the installed app,
+notarized Gatekeeper assessment, and package identifier/base version must pass
+before staging. A changed update preference or channel prevents promotion of an
+in-flight download. A prerelease tag never enters the stable channel merely
+because a release's prerelease checkbox was omitted.
+
+On the host Mac, **Open Mac installer** invokes the installed app through the
+fixed `eznest-update://install` action. No path, command or URL parameters are
+accepted. The logged-in desktop user retrieves a private copy through the local
+session-protected endpoint and verifies its checksum, publisher, notarization
+and package identity again before opening Apple's Installer. The background
+service never invokes Installer or elevates itself. The user approves the
+administrator prompt; the existing idle/recovery transaction handles replacement.
+Cancelling or closing Installer is not reported as a successful upgrade.
+
+The package's short version is checked before opening Installer; its bundled
+helper rechecks the full app version and architecture before stopping the host.
+Final release packages must be signed/notarized, named as above, and accompanied
+by a SHA-256 sidecar generated **after** signing/stapling. The unsigned preparation
+artifact and its checksum are not release assets.
+
+Native protocol registration, the desktop Installer handoff and signed release
+delivery still require clean-Mac acceptance. Local tests mock those OS approval
+boundaries; they do not open a real installer or submit anything for notarization.
+
 Local tests exercise real temporary app/data snapshots, upgrade refusal,
 busy-job cancellation, injected stop/configuration/start/health failures,
 abrupt process death after configuration on both first install and upgrade,
@@ -118,9 +153,9 @@ submission or system installation was changed during implementation. Still open:
 - Real Developer ID app and installer signatures, notarization and Gatekeeper.
 - Clean arm64 and Intel Mac install, reboot, logout, multi-PC stock operations,
   signed upgrade, failed-start rollback, interruption recovery and uninstall.
-- The user-facing automatic update discovery/download/approval flow. The current
-  Mac pilot disables the Windows updater; this transaction alone is not automatic
-  update delivery, and no unattended update activation is implemented.
+- Actual signed update discovery/download, native protocol registration and
+  administrator approval through Installer. The source flow is implemented;
+  no unattended installation or real release activation is claimed.
 - Windows signed upgrade/rollback and the real ONYX white-gloss production test.
 
 References: [Apple launchd system jobs](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html),
