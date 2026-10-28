@@ -12,9 +12,7 @@ Private vulnerability reporting has to be enabled in the repository security set
 
 ### Contact email
 
-**[SECURITY-CONTACT-EMAIL-PLACEHOLDER]**
-
-This is a placeholder. Replace `[SECURITY-CONTACT-EMAIL-PLACEHOLDER]` with the address that should receive vulnerability reports before anyone relies on email. Until then, use GitHub private vulnerability reporting.
+**ezdesignstx@gmail.com**
 
 ## Shop network mode
 
