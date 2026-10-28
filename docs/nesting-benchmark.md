@@ -25,8 +25,9 @@ A regression is any of:
 - a missing case, or a different piece area
 
 Wall time is printed and is not part of the gate. Moves smaller than 0.3% are
-noise. The solver budget is the `seconds` field on each case. The same seed
-repeats the same layout.
+noise. The solver budget is the `seconds` field on each case. The seed is
+passed through. Two Sparrow workers are not bit-identical across processes;
+see the repeat notes below.
 
 Regenerate outlines only when a demo shape itself changes:
 
@@ -53,61 +54,67 @@ Seeds are part of the case id. The set is not a single lucky seed.
 
 ## Baseline and final
 
-`tools/fixtures/nest_bench_baseline.json` is the engine on current `main`
-before the packing changes, same cases and seeds. The final column is one full
-run after the changes that were kept. Every case validated: no overlap, gap
-held to the engine's existing 0.001 mm check, margins held.
+`tools/fixtures/nest_bench_baseline.json` is the engine on `main` at
+`8a35416`, before these packing changes and before pull requests #11 and #12
+merged. The "main now" column is one later run of `main` at `445fd6e` (after
+#11's guarded solver) with the same cases, measured so the settle pass can be
+compared with the solver that is already on `main`. It is not a second
+committed baseline. The final column is one full run of this branch after the
+merge. Every case validated: no overlap, the operator gap held, margins held.
 
 Mean length treats every case equally. The three 1000-piece rows are most of
 the summed length, so the equal-weight mean moves less than the sticker cases.
-Read the rows.
+Read the rows. Length change is final versus the recorded baseline.
 
-| | Baseline | Final | Change |
-| --- | ---: | ---: | ---: |
-| Cases valid | 23/23 | 23/23 | |
-| Mean roll length | 796.02 mm | 784.76 mm | −1.42% |
-| Mean utilization | 62.01% | 64.08% | +3.33% relative |
-| Sum of case lengths | 18308.55 mm | 18049.41 mm | −259.13 mm |
-| Sum of wasted area | 1,079,525 mm² | 1,035,643 mm² | |
+| | Baseline | Main now | Final | Versus baseline |
+| --- | ---: | ---: | ---: | ---: |
+| Cases valid | 23/23 | 23/23 | 23/23 | |
+| Mean roll length | 796.02 mm | 794.33 mm | 783.89 mm | −1.52% |
+| Mean utilization | 62.01% | 62.23% | 64.23% | +3.58% relative |
+| Sum of case lengths | 18308.55 mm | 18269.57 mm | 18029.44 mm | −279.11 mm |
+| Sum of wasted area | 1,079,525 mm² | 1,072,508 mm² | 1,032,046 mm² | |
 
-| Case | Pieces | Seed | Baseline mm | Final mm | Length | Baseline util | Final util |
+Versus current `main` alone, the same final run is −1.31% mean length and
++3.21% relative mean utilization. 22 cases are shorter, one is inside the
+0.3% band (`concave_quarters_seed11`, +0.02%), and none regress.
+
+| Case | Pieces | Seed | Baseline mm | Main now mm | Final mm | Versus baseline | Final util |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| sticker_sheet_quarters_seed42 | 16 | 42 | 100.80 | 91.00 | −9.72% | 55.31% | 61.27% |
-| sticker_sheet_quarters_seed7 | 16 | 7 | 100.82 | 91.00 | −9.74% | 55.31% | 61.27% |
-| sticker_sheet_locked_seed42 | 16 | 42 | 116.06 | 91.00 | −21.60% | 48.04% | 61.27% |
-| sticker_pages_quarters_seed42 | 12 | 42 | 92.01 | 91.00 | −1.10% | 54.54% | 55.15% |
-| mixed_demo_quarters_seed42 | 12 | 42 | 213.36 | 209.38 | −1.86% | 66.41% | 67.67% |
-| mixed_demo_quarters_seed99 | 12 | 99 | 214.22 | 210.21 | −1.87% | 66.15% | 67.41% |
-| mixed_demo_locked_seed42 | 12 | 42 | 231.47 | 227.02 | −1.92% | 61.22% | 62.41% |
-| pieces60_quarters_seed42 | 60 | 42 | 418.41 | 411.84 | −1.57% | 67.66% | 68.74% |
-| pieces60_quarters_seed7 | 60 | 7 | 420.44 | 415.06 | −1.28% | 67.34% | 68.21% |
-| pieces60_locked_seed42 | 60 | 42 | 443.42 | 436.75 | −1.50% | 63.85% | 64.82% |
-| pieces180_quarters_seed42 | 180 | 42 | 1259.81 | 1237.75 | −1.75% | 67.42% | 68.62% |
-| pieces180_quarters_seed3 | 180 | 3 | 1253.66 | 1236.14 | −1.40% | 67.75% | 68.71% |
-| pieces180_locked_seed42 | 180 | 42 | 1382.94 | 1368.08 | −1.07% | 61.42% | 62.08% |
-| continuous_1000_quarters_seed42 | 1000 | 42 | 3409.50 | 3381.88 | −0.81% | 70.39% | 70.97% |
-| continuous_1000_locked_seed42 | 1000 | 42 | 3550.74 | 3513.84 | −1.04% | 67.59% | 68.30% |
-| continuous_1000_free_seed42 | 1000 | 42 | 3409.50 | 3381.88 | −0.81% | 70.39% | 70.97% |
-| concave_quarters_seed42 | 27 | 42 | 323.30 | 315.91 | −2.29% | 61.55% | 62.99% |
-| concave_quarters_seed11 | 27 | 11 | 327.43 | 320.49 | −2.12% | 60.77% | 62.09% |
-| concave_free_seed42 | 27 | 42 | 334.74 | 330.48 | −1.27% | 59.44% | 60.21% |
-| concave_locked_seed42 | 27 | 42 | 355.06 | 348.94 | −1.72% | 56.04% | 57.02% |
-| workshop_quarters_seed42 | 6 | 42 | 110.56 | 106.90 | −3.31% | 62.31% | 64.44% |
-| workshop_quarters_seed1 | 6 | 1 | 110.56 | 106.86 | −3.35% | 62.31% | 64.47% |
-| workshop_locked_seed42 | 6 | 42 | 129.74 | 126.00 | −2.89% | 53.10% | 54.67% |
+| sticker_sheet_quarters_seed42 | 16 | 42 | 100.80 | 100.80 | 91.00 | −9.72% | 61.27% |
+| sticker_sheet_quarters_seed7 | 16 | 7 | 100.82 | 100.82 | 91.00 | −9.74% | 61.27% |
+| sticker_sheet_locked_seed42 | 16 | 42 | 116.06 | 116.06 | 91.00 | −21.60% | 61.27% |
+| sticker_pages_quarters_seed42 | 12 | 42 | 92.01 | 92.01 | 91.00 | −1.10% | 55.15% |
+| mixed_demo_quarters_seed42 | 12 | 42 | 213.36 | 213.36 | 209.39 | −1.86% | 67.67% |
+| mixed_demo_quarters_seed99 | 12 | 99 | 214.22 | 214.22 | 210.22 | −1.87% | 67.40% |
+| mixed_demo_locked_seed42 | 12 | 42 | 231.47 | 231.47 | 227.03 | −1.92% | 62.41% |
+| pieces60_quarters_seed42 | 60 | 42 | 418.41 | 418.62 | 411.86 | −1.57% | 68.74% |
+| pieces60_quarters_seed7 | 60 | 7 | 420.44 | 421.48 | 418.00 | −0.58% | 67.73% |
+| pieces60_locked_seed42 | 60 | 42 | 443.42 | 442.98 | 436.75 | −1.50% | 64.82% |
+| pieces180_quarters_seed42 | 180 | 42 | 1259.81 | 1244.24 | 1235.63 | −1.92% | 68.74% |
+| pieces180_quarters_seed3 | 180 | 3 | 1253.66 | 1253.03 | 1236.18 | −1.39% | 68.71% |
+| pieces180_locked_seed42 | 180 | 42 | 1382.94 | 1382.25 | 1368.11 | −1.07% | 62.08% |
+| continuous_1000_quarters_seed42 | 1000 | 42 | 3409.50 | 3409.50 | 3382.01 | −0.81% | 70.96% |
+| continuous_1000_locked_seed42 | 1000 | 42 | 3550.74 | 3550.74 | 3514.01 | −1.03% | 68.30% |
+| continuous_1000_free_seed42 | 1000 | 42 | 3409.50 | 3409.50 | 3382.01 | −0.81% | 70.96% |
+| concave_quarters_seed42 | 27 | 42 | 323.30 | 322.99 | 315.91 | −2.29% | 62.99% |
+| concave_quarters_seed11 | 27 | 11 | 327.43 | 318.03 | 318.09 | −2.85% | 62.56% |
+| concave_free_seed42 | 27 | 42 | 334.74 | 321.89 | 316.27 | −5.52% | 62.92% |
+| concave_locked_seed42 | 27 | 42 | 355.06 | 354.73 | 344.23 | −3.05% | 57.80% |
+| workshop_quarters_seed42 | 6 | 42 | 110.56 | 110.56 | 106.90 | −3.31% | 64.44% |
+| workshop_quarters_seed1 | 6 | 1 | 110.56 | 110.56 | 106.86 | −3.35% | 64.46% |
+| workshop_locked_seed42 | 6 | 42 | 129.74 | 129.74 | 126.00 | −2.89% | 54.67% |
 
-The seed is passed into Sparrow. With two search workers, a repeat of the same
-process matched `pieces60_quarters_seed42` at 411.84 mm and
-`concave_locked_seed42` at 346.58 mm, while `pieces180_quarters_seed42` moved
-from 1229.33 mm to 1231.36 mm (0.16%). Across separate full runs the 180-piece
-seed-42 length was seen at 1229.33, 1231.36 and 1237.75 mm, and the locked
-concave case at 344.23, 346.58 and 348.94 mm. All of those are still shorter
-than the baseline. They are not bit-identical. One worker was more stable and
-was dropped because two cases grew past the baseline (see the log).
+The seed is passed into Sparrow. Two search workers are not bit-identical
+across processes. Before #11 merged, repeats of the kept engine put
+`pieces180_quarters_seed42` at 1229.33, 1231.36 and 1237.75 mm, and
+`concave_locked_seed42` at 344.23, 346.58 and 348.94 mm. All of those were
+still shorter than the baseline. The final column above is one later run on
+the merged solver, not a seed picked after the fact. One worker was more
+stable and was dropped because two cases grew past the baseline (see the log).
 
-Settled layouts report a minimum gap of 2.999 mm against a 3 mm gap. That is
-the same 0.001 mm allowance `validate_result` already uses. The identical
-sticker rows report 3.000 mm.
+The settle pass stops when two real outlines would be closer than the operator
+gap. This run reports a minimum gap of 3.000 mm on every case. `validate_result`
+still allows 0.001 mm of slack; the settle pass does not spend it.
 
 ## Iteration log
 
@@ -125,8 +132,9 @@ already lost on several solver cases were not given a second full run.
 | 5 | Pass outlines to Sparrow largest-area first | dropped | Probe on mixed, 60, 180, concave and workshop: no move outside the repeat band of the 180-piece case. |
 | 6 | Give compression half of a budget of 4 seconds or more (default is 80/20) | dropped | Concave quarters seed 42 315.91→323.74 mm (+2.5%). pieces60 +0.2%. Mixed demo unchanged. |
 | 7 | One Sparrow worker so a seed repeats more closely | dropped | Full set mean length still −1.13%, but two regressions: `pieces180_quarters_seed3` 1253.66→1262.34 mm (+0.69%) and `concave_free_seed42` 334.74→341.28 mm (+1.95%). Two workers stayed. |
+| 8 | Re-measure steps 1–3 on `main` after #11 | kept | #11's guarded solver, measured alone, moved the mean from 796.02 mm to 794.33 mm (−0.21%). The same settle and shelf pass on that solver then reached 783.89 mm. Versus that `main` run: 22 shorter, `concave_quarters_seed11` +0.02% (inside the noise band), 0 regressions. Shelf rows now refuse an orientation whose buffered outline does not fit the usable width, matching the solver guard. Compaction stops at the full operator gap. |
 
-Free rotation on the concave set is not automatically better than quarter turns at this budget. On the baseline it was longer (334.74 mm versus 323.30 mm), and it stayed longer after settling.
+Free rotation on the concave set is not automatically better than quarter turns at this budget. On the original baseline it was longer (334.74 mm versus 323.30 mm). After #11 and the settle pass it is 316.27 mm versus 315.91 mm for quarter turns, still not shorter.
 
 ## Limits
 
@@ -144,6 +152,10 @@ Free rotation on the concave set is not automatically better than quarter turns 
 - Wall time moves with the machine. Do not compare seconds across computers.
 - Two Sparrow workers are not bit-identical across processes. See the repeat
   figures above. A later compare within 0.3% on a hard case can be that spread.
+- Pull request #11 merged onto `main` while this loop was running. The
+  recorded baseline file is still the pre-#11 engine. The "main now" column
+  is one run of `445fd6e` and was not committed, because replacing the
+  baseline would hide the original measurement.
 - An improvement here does not mean a printed sheet used less vinyl. Nothing
   in this loop is sent to a hot folder.
 

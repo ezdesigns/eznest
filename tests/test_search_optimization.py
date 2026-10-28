@@ -112,10 +112,18 @@ class AdaptiveSearchTests(unittest.TestCase):
         job=job_for([[0,0],[10,0],[10,10],[0,10]],1)
         job['settings']['seconds']=1
         incumbent={'width':200,'usedLength':25,'placements':[{'id':'a','x':5,'y':10,'rotation':0}]}
+        original=copy.deepcopy(incumbent)
         with patch('engine.spyrrow.StripPackingInstance') as factory:
             factory.return_value.solve.side_effect=ValueError('no fit')
             result=solve(job,incumbent=incumbent)
-        self.assertEqual(result['placements'],incumbent['placements'])
+        # A failed native attempt must not replace the incumbent. Settling may
+        # slide that same piece toward the margin; it does not change the
+        # caller's object, the x position, or the rotation.
+        self.assertEqual(incumbent, original)
+        placed=result['placements'][0]
+        self.assertEqual((placed['id'], placed['x'], placed['rotation']), ('a', 5, 0))
+        self.assertLessEqual(placed['y'], 10)
+        self.assertLessEqual(result['usedLength'], original['usedLength'])
         validate_result(job,result)
 
     def test_required_search_keeps_its_full_allocation(self):
