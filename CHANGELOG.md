@@ -10,9 +10,10 @@
 - Stream browser PDF/AI uploads directly to disk, up to 2 GB, without base64 expansion. Illustrator/legacy JSON handoffs allow 256 MB; SVG remains 8 MB. Parser and geometry limits still apply.
 
 - The job panel has Upload job, Choose material, and Where will you print?
-  In-house stays selected and uses the existing effort choices. Pass it, get paid
-  is the other choice, with a green Still paid badge. The choice and the badge
-  open a short OUTPUT note on every job. There is no stock check and no
+  In-house stays selected and uses the existing effort choices. Don't print is
+  the other choice, a light green button with a green Still get paid badge. The
+  choice and the badge open a short OUTPUT note on every job. There is no stock
+  check and no
   early-pilot line. Join the waitlist and Learn more open the OUTPUT site.
   Nothing is sent or saved.
 - Settings opens in a centered dialog. Specialized cut and print-software options

@@ -221,10 +221,9 @@
     <h2><span class="step-number">3</span> Where will you print?</h2>
     <div class="output-modes" aria-label="Where to print">
       <button id="in-house" class="nest-mode" type="button" aria-pressed="true">In-house</button>
-      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog">
-        <strong>Pass it, get paid</strong>
-        <span class="pass-note">A partner shop prints it.</span>
-        <span class="paid-badge">💵 Still paid</span>
+      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Still get paid. Learn about OUTPUT">
+        <strong>Don't print</strong>
+        <span class="paid-badge">Still get paid <span class="paid-emoji">🤑</span></span>
       </button>
     </div>
     <div class="effort-heading"><button id="effort-help" class="help-label" type="button">Nesting effort</button><span class="hint">More time may find a tighter fit.</span></div>
@@ -273,9 +272,9 @@
 
 </main>
 <dialog id="max-output-dialog" aria-labelledby="max-output-title">
-  <div class="dialog-heading"><h2 id="max-output-title">What is OUTPUT?</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
-  <p>Earn on jobs you'd otherwise turn away.</p>
-  <p>You take the order. OUTPUT passes the job to a partner shop that can make it. You stay the shop your customer knows.</p>
+  <div class="dialog-heading"><h2 id="max-output-title">Don't print</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <p>OUTPUT routes the job to the best-fit print shop near you, based on what each shop can make.</p>
+  <p>You still get paid.</p>
   <p class="output-when">Use it when</p>
   <ul class="output-points">
     <li>You don't have the material or roll width</li>

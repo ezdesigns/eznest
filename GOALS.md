@@ -99,15 +99,14 @@ validation can add time; more search time does not guarantee an improvement.
 Effort is saved in this browser and applies to the next search. Check pieces is
 an optional gallery of detected artwork, copies, cut types and retained groups.
 
-The job panel asks where to print: In-house or Pass it, get paid. In-house
-stays selected, with its blue selected look, and nesting stays local. Pass it,
-get paid is a black choice with the subline "A partner shop prints it." and a
-green "Still paid" badge. The black fill is not the selected state. The choice
-and the badge both open a short note on every job. There is
-no stock or capacity check. The title is "What is OUTPUT?". It says you earn
-on jobs you would otherwise turn away, you take the order, OUTPUT passes the
-job to a partner shop that can make it, and you stay the shop the customer
-knows. Under "Use it when", three lines name a missing material or roll width,
+The job panel asks where to print: In-house or Don't print. In-house stays
+selected, with its blue selected look and a check, and nesting stays local.
+Don't print is a light green choice, not a selected state, with a green "Still
+get paid" badge on its lower corner. The choice and the badge both open a
+short note on every job. There is
+no stock or capacity check. The title is "Don't print". OUTPUT routes the job
+to a shop that can make it near you. The next line is "You still get paid."
+Under "Use it when", three lines name a missing material or roll width,
 a customer who is too far away, and a shop too busy to finish on time. It does
 not state fees or customer counts, and there is no
 early-pilot line. Join the waitlist
