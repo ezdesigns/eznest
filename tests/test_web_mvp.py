@@ -246,6 +246,8 @@ class WebMvpTests(unittest.TestCase):
                 learn = page.locator('#max-output-learn')
                 self.assertEqual(waitlist.inner_text(), 'Join the waitlist')
                 self.assertEqual(learn.inner_text(), 'Learn more')
+                self.assertEqual(waitlist.get_attribute('href'), 'https://output.jeezlabs.io/waitlist')
+                self.assertEqual(learn.get_attribute('href'), 'https://output.jeezlabs.io/')
                 self.assertEqual(page.locator('.output-points li').count(), 4)
                 self.assertEqual(page.locator('#max-output-dialog .paid-line').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(21, 128, 61)')
                 root = Path(__file__).resolve().parents[1]

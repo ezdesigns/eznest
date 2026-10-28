@@ -4,7 +4,8 @@ const $ = id => document.getElementById(id);
 const PREF = 'eznest-placeholders';
 const PIECE_CAP = 5000;
 // Both partner-printing links. Point this at a waitlist page when OUTPUT publishes one.
-const OUTPUT_WAITLIST_URL = 'https://output.jeezlabs.io/';
+const OUTPUT_WEBSITE_URL = 'https://output.jeezlabs.io/';
+const OUTPUT_WAITLIST_URL = new URL('waitlist', OUTPUT_WEBSITE_URL).href;
 let token = '';
 let localSave = false;
 let folderView = null;
@@ -2698,7 +2699,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('settings-close').addEventListener('click', () => $('settings').close());
   dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });
-  for (const id of ['max-output-waitlist', 'max-output-learn']) $(id).href = OUTPUT_WAITLIST_URL;
+  $('max-output-waitlist').href = OUTPUT_WAITLIST_URL;
+  $('max-output-learn').href = OUTPUT_WEBSITE_URL;
   const choiceRow = document.querySelector('.output-modes');
   if (choiceRow && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window) {
     const watchChoices = new IntersectionObserver(entries => {
