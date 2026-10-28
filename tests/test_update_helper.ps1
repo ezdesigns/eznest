@@ -23,10 +23,14 @@ Reject { Assert-Publisher 'synthetic.exe' 'trusted' }
 function Get-LocalUser { param($Name, $ErrorAction) return @{SID='service-sid'} }
 function Get-LocalGroup { param($SID) return @{Name='Administrators'} }
 function Get-LocalGroupMember { param($Group) return @() }
-$task = @{ Principal=@{UserId='eznest-svc';RunLevel='Limited'}; Settings=@{Enabled=$true}; Actions=@(@{Execute='C:\Program Files\eznest\eznest.exe'; Arguments='--web --no-browser --data-dir "C:\ProgramData\eznest" --lan'}) }
-Assert-ShopTask $task 'C:\Program Files\eznest\eznest.exe' 'C:\ProgramData\eznest'
+# These are comparison-only paths, never installation destinations. Use the
+# host path syntax so the mocked coordinator tests also run outside Windows.
+$testApp = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) 'eznest-fixture/eznest.exe'))
+$testData = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) 'eznest-fixture/data'))
+$task = @{ Principal=@{UserId='eznest-svc';RunLevel='Limited'}; Settings=@{Enabled=$true}; Actions=@(@{Execute=$testApp; Arguments=('--web --no-browser --data-dir "' + $testData + '" --lan')}) }
+Assert-ShopTask $task $testApp $testData
 $task.Principal.UserId = 'SYSTEM'
-Reject { Assert-ShopTask $task 'C:\Program Files\eznest\eznest.exe' 'C:\ProgramData\eznest' }
+Reject { Assert-ShopTask $task $testApp $testData }
 
 $script:taskCalls = New-Object 'System.Collections.Generic.List[string]'
 function Get-ScheduledTask { param($TaskName, $TaskPath) return @{State=$script:taskState} }
@@ -39,7 +43,7 @@ foreach ($state in @('Running', 'Queued', 'Ready')) {
   Assert (($script:taskCalls -join ',') -eq $expected) 'Rollback must disable triggers and drain queued/running instances.'
 }
 $task.Principal.UserId = 'eznest-svc'; $task.Principal.RunLevel = 'Highest'
-Reject { Assert-ShopTask $task 'C:\Program Files\eznest\eznest.exe' 'C:\ProgramData\eznest' }
+Reject { Assert-ShopTask $task $testApp $testData }
 
 # Exercise the actual transaction coordinator with synthetic files. No real
 # installer, account, scheduled task, UAC prompt, firewall or hot folder is used.
@@ -72,4 +76,5 @@ try {
   if (-not $resolved.StartsWith([IO.Path]::GetTempPath(), [StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid test cleanup path.' }
   Remove-Item -LiteralPath $resolved -Recurse -Force
 }
+& (Join-Path $PSScriptRoot 'test_update_health.ps1')
 Write-Host 'Update helper tests passed: publisher, versions, limited task, install and rollback (system changes mocked).'

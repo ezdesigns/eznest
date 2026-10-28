@@ -99,13 +99,20 @@ validation can add time; more search time does not guarantee an improvement.
 Effort is saved in this browser and applies to the next search. Check pieces is
 an optional gallery of detected artwork, copies, cut types and retained groups.
 
-The job panel asks where to print: In-house or Max output. In-house stays
-selected and nesting stays local. Max output does not change the job, the
-effort, or the file. It opens a short OUTPUT note: keep the customer, route
-the print, with three short reasons and an early-pilot line. Join the waitlist
-and Learn more both open the URL in `OUTPUT_WAITLIST_URL` (currently
-https://output.jeezlabs.io/) in the browser. EZ Nest does not send artwork,
-collect a signup, or call OUTPUT.
+The job panel asks where to print: In-house or Don't print. In-house stays
+selected, with its blue selected look and a check, and nesting stays local.
+Don't print is a light green choice, not a selected state, with a green "Still
+get paid" badge on its lower corner. The choice and the badge both open a
+short note on every job. There is
+no stock or capacity check. The title is "Don't print!". It says AI routes
+the job to a nearby shop that can make it, then "You still get paid." Under
+"Why use it?", four lines name not enough material, a customer who is too far
+away, a shop too busy to hit the date, and needing to focus on another job. It does
+not state fees or customer counts, and there is no
+early-pilot line. Join the waitlist
+and Learn more both open the URL in
+`OUTPUT_WAITLIST_URL` (currently https://output.jeezlabs.io/) in the browser.
+EZ Nest does not send artwork, collect a signup, or call OUTPUT.
 Contextual help appears on label hover, keyboard focus or tap.
 Settings is a centered dialog with specialized cut/software options collapsed;
 material edits cancel on an outside click. Quantities stay beside each imported

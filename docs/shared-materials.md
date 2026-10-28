@@ -6,6 +6,27 @@ Independent installations have independent inventory. This does not enable LAN
 access or create separate job workspaces: the current host still has one active
 nesting workspace. Take turns operating jobs during this pilot.
 
+## One host for all workstations
+
+Choose one always-on shop computer and one data directory as the inventory
+owner. Enable its existing **Shop network** installer option (or the explicit
+`--lan` source-launch flag) only on the trusted shop network. Every employee
+opens that host's browser address, for example `http://SHOP-HOST:8765/web`.
+`localhost` on a different PC points to a different installation and inventory.
+Do not launch a second server or copy `materials.sqlite3` onto employee PCs.
+
+Reserve and consume require a successful request to the host. There is no
+offline write queue or local-stock fallback: if the host is asleep, stopped or
+unreachable, restore the connection before reserving or confirming usage. On
+reconnection, refresh the material view before making a new decision. Retry of
+the same confirmed reservation cannot deduct the stock twice.
+
+Keep the database on the host's local disk, not a shared-drive SQLite file.
+Back up the complete host data directory while the app is stopped. Existing
+independent PC databases are not merged automatically; reconcile physical stock
+before selecting the authoritative host. Guest WiFi/public internet access and
+employee-specific authorization are outside this pilot.
+
 ## Operator flow
 
 1. Edit a material, enter measured stock on the roll, then **Save material**.
@@ -51,3 +72,12 @@ This is manual operator-confirmed usage, not printer completion detection or
 automatic purchasing. There are no employee roles or cross-host sync. Do not
 present this as safe simultaneous job editing; independent workspaces require
 separate work before a multi-designer rollout.
+
+## Verification boundary
+
+`tests/test_shared_host_inventory.py` exercises two independent concurrent HTTP
+clients against the real host routes: server-derived reservation length,
+insufficient-stock refusal, duplicate consume, stale revisions, a failed write
+while stopped, and reconnect/retry without a second deduction. The existing
+`tests/test_material_inventory.py` also covers two browser contexts. These are
+local protocol tests, not two physical PCs or Windows installation acceptance.

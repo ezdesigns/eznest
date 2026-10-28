@@ -25,8 +25,11 @@ access, then send again. Reopening the page restores the frozen pack and shows
 whether delivery is incomplete. Undo is available only if enabled and the pack
 is still in the folder; it cannot cancel printing already started by the RIP.
 
-Settings and local activity stay on the host. OUTPUT sharing is off and sends
-nothing. Do not mistake local job activity for printer utilization or completion.
+Settings and local activity stay on the host by default. OUTPUT sharing requires
+operator configuration and explicit consent on the host settings screen. That
+screen lists every shared field and lets you stop automatic sharing of new
+activity. See [OUTPUT sharing](output-telemetry.md). Do not mistake local job
+activity for printer utilization or completion.
 
 ## Updates
 
