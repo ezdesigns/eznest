@@ -116,7 +116,19 @@
     </details>
     <details id="settings-telemetry" class="settings-section">
       <summary>Share activity with OUTPUT</summary>
-      <p>Off by default. After you agree, new local activity is sent automatically to OUTPUT, linked to the shop assigned to this host's credential. Earlier activity is excluded. A failed delivery is retried with the same event ID.</p>
+      <div id="output-connect">
+        <h3>Connect to OUTPUT</h3>
+        <p id="output-connect-shop" hidden></p>
+        <div id="output-pair-form">
+          <label>Pairing code
+            <input id="output-pair-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="text" aria-describedby="output-connect-status">
+          </label>
+          <button id="output-pair" type="button" disabled>Connect</button>
+        </div>
+        <button id="output-disconnect" type="button" hidden>Disconnect</button>
+        <p id="output-connect-status" role="status" aria-live="polite"></p>
+      </div>
+      <p>Off by default. Connect this computer with a pairing code, or leave launch settings in place if they are already there. After you agree, new local activity is sent automatically to OUTPUT, linked to the shop assigned to this host's credential. Earlier activity is excluded. A failed delivery is retried with the same event ID. Measured stock readings already recorded on this host are included. The shop stock ledger stays here.</p>
       <p>Shared: a stable installation ID, opaque layout and request IDs, exact event time, app version, event type, standard material category, and the measurement ranges below. IDs allow OUTPUT to link events from the same installation and layout. OUTPUT also receives this host's IP address and shop credential over HTTPS.</p>
       <p>Never shared: artwork, files or filenames, customer names or contacts, job codes, roll IDs, custom material names, or exact dimensions, quantities, stock and search time. These are local observations; “printed” means an explicit operator confirmation, not independent proof of physical printing.</p>
       <p>Material categories: <code>moto_regular, moto_holographic, moto_chrome, custom, unknown</code> or null. Stock-only observations have no layout ID.</p>
@@ -290,19 +302,18 @@
 
 </main>
 <dialog id="max-output-dialog" aria-labelledby="max-output-title">
-  <div class="dialog-heading"><h2 id="max-output-title">Don't print!</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
-  <p class="output-lead">Have AI route the job to the best print shop near you, based on what each shop can make.</p>
-  <p class="paid-line">You still get paid.</p>
-  <h3 class="output-when">Why use it?</h3>
+  <div class="dialog-heading"><h2 id="max-output-title">Don't print it. Let another shop do it.</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <p class="output-lead">OUTPUT routes the job to the best-fit nearby shop. You still get paid.</p>
+  <p class="paid-line">Still get paid <span class="paid-emoji">🤑</span></p>
+  <h3 class="output-when">Use it when</h3>
   <ul class="output-points">
-    <li>You don't have enough material</li>
-    <li>Your customer is too far away</li>
-    <li>You're too busy to hit the date</li>
-    <li>You need to focus on another job</li>
+    <li>The queue is backed up and this job would miss its date</li>
+    <li>The material is not in stock</li>
+    <li>The job is outside what your machines can run</li>
   </ul>
   <div class="output-actions">
-    <a id="max-output-waitlist" class="primary-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Join the waitlist</a>
-    <a id="max-output-learn" class="output-learn" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Learn more</a>
+    <a id="max-output-waitlist" class="primary-link" href="https://output.jeezlabs.io/waitlist" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Join the waitlist</a>
+    <a id="max-output-learn" class="primary-link" href="https://output.jeezlabs.io/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Learn more</a>
   </div>
 </dialog>
 <dialog id="cut-review" aria-labelledby="cut-review-title" aria-describedby="cut-review-summary">

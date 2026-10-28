@@ -50,23 +50,33 @@ function Ensure-ServiceAccount([string]$Name) {
   }
   $accountSid = (Get-LocalUser -Name $Name).SID
   $admins = Get-LocalGroup -SID 'S-1-5-32-544'
+  # Domain-joined PCs often have an unresolvable SID in Administrators.
+  # Listing that group then fails a retry after the account already exists.
+  # Remove by name, and fail only when the account is still a member.
   try {
-    $adminMembers = @(Get-LocalGroupMember -Group $admins.Name -ErrorAction Stop)
+    Remove-LocalGroupMember -Group $admins.Name -Member $Name -ErrorAction Stop
   } catch {
-    if ($null -ne $user) { throw }
-    $adminMembers = @()
-  }
-  foreach ($member in $adminMembers) {
-    if ($member.SID -eq $accountSid) {
-      Remove-LocalGroupMember -Group $admins.Name -Member $Name
+    $notMember = $_.Exception.Message -match 'is not a member|No mapping between account names|cannot find|cannot be resolved'
+    if (-not $notMember) {
+      $stillAdmin = $false
+      try {
+        foreach ($member in @(Get-LocalGroupMember -Group $admins.Name -ErrorAction Stop)) {
+          if ($member.SID -eq $accountSid) { $stillAdmin = $true }
+        }
+      } catch {
+        throw "Could not confirm that $Name is outside Administrators. Shop setup stopped so the service account is not left as an administrator. $($_.Exception.Message)"
+      }
+      if ($stillAdmin) { throw "Could not remove $Name from Administrators." }
     }
   }
   $users = Get-LocalGroup -SID 'S-1-5-32-545'
-  $inUsers = $false
-  foreach ($member in @(Get-LocalGroupMember -Group $users.Name -ErrorAction SilentlyContinue)) {
-    if ($member.SID -eq $accountSid) { $inUsers = $true }
+  try {
+    Add-LocalGroupMember -Group $users.Name -Member $Name -ErrorAction Stop
+  } catch {
+    if ($_.Exception.Message -notmatch 'already a member|already exists') {
+      throw "Could not add $Name to Users. The shop service must be a normal local user. $($_.Exception.Message)"
+    }
   }
-  if (-not $inUsers) { Add-LocalGroupMember -Group $users.Name -Member $Name -ErrorAction SilentlyContinue }
   return $password
 }
 
@@ -80,7 +90,9 @@ function Grant-BatchLogon([string]$Account) {
   $cfg = Join-Path $env:TEMP ('eznest-rights-' + [guid]::NewGuid().ToString('n') + '.inf')
   $db = Join-Path $env:TEMP ('eznest-rights-' + [guid]::NewGuid().ToString('n') + '.sdb')
   & secedit.exe /export /cfg $cfg /areas USER_RIGHTS /quiet | Out-Null
-  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $cfg)) { return }
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $cfg)) {
+    throw 'Windows could not export the user-rights policy, so eznest-svc cannot be granted batch logon. Shop setup stopped before creating the startup task.'
+  }
   $lines = New-Object System.Collections.Generic.List[string]
   foreach ($line in [System.IO.File]::ReadAllLines($cfg)) { [void]$lines.Add($line) }
   $marker = '*' + $sid
@@ -93,12 +105,15 @@ function Grant-BatchLogon([string]$Account) {
   }
   if (-not $found) {
     $at = $lines.IndexOf('[Privilege Rights]')
-    if ($at -lt 0) { return }
+    if ($at -lt 0) { throw 'Windows user-rights policy has no Privilege Rights section, so batch logon cannot be granted.' }
     $lines.Insert($at + 1, ('SeBatchLogonRight = ' + $marker))
   }
   $utf16 = New-Object System.Text.UnicodeEncoding $false, $true
   [System.IO.File]::WriteAllText($cfg, (($lines -join "`r`n") + "`r`n"), $utf16)
   & secedit.exe /configure /db $db /cfg $cfg /areas USER_RIGHTS /quiet | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "secedit could not apply batch logon (exit $LASTEXITCODE). Startup registration will still be attempted."
+  }
   Remove-Item -LiteralPath $cfg, $db, ($db + '.jfm') -Force -ErrorAction SilentlyContinue
 }
 
@@ -168,7 +183,21 @@ if ($lanEnabled) {
   if ($LASTEXITCODE -ne 0) { throw 'Could not open the shop-network port.' }
 }
 if ($boot) {
-  Start-ScheduledTask -TaskName $task -TaskPath '\'
+  $started = $false
+  $startError = 'The startup task did not start.'
+  foreach ($attempt in 1..5) {
+    try {
+      Start-ScheduledTask -TaskName $task -TaskPath '\'
+      $started = $true
+      break
+    } catch {
+      $startError = $_.Exception.Message
+      if ($attempt -lt 5) { Start-Sleep -Seconds 2 }
+    }
+  }
+  if (-not $started) {
+    throw "The eznest startup task is registered but did not start ($startError). The limited account needs 'Log on as a batch job'. Sign out and back in, or restart this PC, then run the installer again."
+  }
 }
 
 

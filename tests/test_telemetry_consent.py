@@ -24,6 +24,8 @@ class ConsentScreenTests(unittest.TestCase):
                     page.click('#settings-open')
                     page.locator('#settings-telemetry').evaluate('n=>n.open=true')
                     page.wait_for_function("() => !document.querySelector('#telemetry-agree').disabled")
+                    self.assertTrue(page.locator('#output-pair-form').is_hidden())
+                    self.assertIn('launch settings', page.locator('#output-connect-status').inner_text())
                     self.assertTrue(page.locator('#telemetry-enable').is_disabled())
                     self.assertIn('exact event time',page.locator('#settings-telemetry').inner_text())
                     self.assertIn('lengthMmBand',page.locator('#telemetry-preview').text_content())
