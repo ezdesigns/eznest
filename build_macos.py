@@ -25,7 +25,7 @@ import sys
 os.environ['EZ_NEST_UPDATES'] = '0'
 if any(flag in sys.argv for flag in ('--apply-update', '--request-shop-update', '--update-confirm')):
     raise SystemExit('This macOS pilot uses manual application replacement; automatic updates are unavailable.')
-if sys.argv[1:2] not in (['--document-worker'], ['--nest-worker'], ['--telemetry-worker']) and '--web' not in sys.argv:
+if sys.argv[1:2] not in (['--document-worker'], ['--nest-worker'], ['--telemetry-worker'], ['--macos-service-helper']) and '--web' not in sys.argv:
     sys.argv.append('--web')
 from launcher import main
 raise SystemExit(main())
@@ -94,7 +94,7 @@ def collect_licenses(destination):
     shutil.copy2(license_file, destination / 'Python-LICENSE.txt')
 
 
-def bundle_spec(root, out, arch, version):
+def bundle_spec(root, out, arch, version, *, service_edition=False):
     """An explicit spec includes notices and version metadata before ad-hoc signing."""
     short_version = version.split('-', 1)[0]
     if not re.fullmatch(r'\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?', version):
@@ -127,6 +127,7 @@ app = BUNDLE(coll, name='eznest.app', bundle_identifier='io.jeezlabs.eznest',
              info_plist={{'CFBundleShortVersionString': {short_version!r},
                          'CFBundleVersion': {short_version!r},
                          'EzNestVersion': {version!r},
+                         'EzNestShopService': {service_edition!r},
                          'NSHighResolutionCapable': True, 'LSUIElement': True}})
 '''
 
@@ -145,10 +146,10 @@ def source_fingerprint(root=ROOT):
     return digest.hexdigest()
 
 
-def build(out):
+def build(out, *, service_edition=False):
     out, arch = preflight(out)
     info = json.loads((ROOT / 'version.json').read_text(encoding='utf-8'))
-    spec = bundle_spec(ROOT, out, arch, info['version'])
+    spec = bundle_spec(ROOT, out, arch, info['version'], service_edition=service_edition)
     # Exclusive creation owns all subsequent writes and preserves previous builds.
     out.mkdir(parents=True, exist_ok=False)
     collect_licenses(out / 'licenses')
@@ -159,6 +160,7 @@ def build(out):
                 'sourceDirty': bool(subprocess.check_output(['git', 'status', '--porcelain'], cwd=ROOT, text=True).strip()),
                 'signing': 'ad-hoc pilot only', 'notarized': False,
                 'automaticUpdates': False,
+                'shopServiceEdition': service_edition,
                 'dependencies': {name: metadata.version(name) for name in PACKAGES}}
     (out / 'BUILD.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     (out / 'macos_entry.py').write_text(ENTRY, encoding='utf-8')
@@ -183,7 +185,9 @@ def build(out):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, required=True, help='New dedicated directory outside the source tree')
-    build(parser.parse_args().out)
+    parser.add_argument('--service-edition', action='store_true', help='Build the system shop-host edition; installation still requires Developer ID signing and notarization')
+    args = parser.parse_args()
+    build(args.out, service_edition=args.service_edition)
 
 
 if __name__ == '__main__':

@@ -11,6 +11,9 @@ from shop_deploy import data_directory, load_shop
 
 
 def main():
+    if sys.argv[1:2] == ['--macos-service-helper']:
+        from macos_service_system import main as service_helper
+        return service_helper(sys.argv[2:])
     if len(sys.argv) > 1 and sys.argv[1] == '--request-shop-update':
         import managed_update
         return managed_update.request()
@@ -35,7 +38,17 @@ def main():
     parser.add_argument('--isolated', action='store_true', help='Require a separate data folder and refuse an existing server')
     parser.add_argument('--shop-test', action='store_true', help='Start a separate local trial with TEST output and updates off')
     parser.add_argument('--update-confirm', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--shop-service', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    import macos_service_runtime
+    # The ordinary app opens the one installed host. It must never create a
+    # second per-user stock database when the system service is offline.
+    service_client = macos_service_runtime.service_edition() and not args.shop_test
+    os.environ.pop('EZ_NEST_MACOS_SERVICE', None)
+    if args.shop_service:
+        macos_service_runtime.validate_start(args)
+    elif service_client and (args.data_dir is not None or args.port != 8765 or args.lan or args.isolated):
+        raise ValueError('Open the installed shop host without custom server settings.')
     if args.shop_test:
         from shop_test import default_data_directory
         args.isolated = True
@@ -55,14 +68,20 @@ def main():
     except (URLError, TimeoutError, OSError):
         existing = None
     if existing is not None:
+        if args.shop_service:
+            raise RuntimeError('The shop service port is already in use; no second host was started.')
         if args.isolated:
             raise RuntimeError(f'Port {args.port} is already in use. This isolated test will not open or change the running application.')
         if existing.get('app') != 'eznest' or existing.get('version') != VERSION:
             raise RuntimeError(f'Another application or eznest version is using port {args.port}. Close it before starting this build.')
+        if service_client and existing.get('shopService') is not True:
+            raise RuntimeError('The listener is not the installed shop service.')
         if not args.no_browser:
             import webbrowser
             webbrowser.open(address + page)
         return 0
+    if service_client and not args.shop_service:
+        raise RuntimeError('The shop service is offline. Ask the administrator to restore it; no separate stock database was created.')
     package_root = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
     frozen = getattr(sys, 'frozen', False)
     data = data_directory(package_root, args.data_dir, frozen=frozen, program_files=os.environ.get('ProgramFiles'), program_data=os.environ.get('ProgramData'))

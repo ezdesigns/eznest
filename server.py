@@ -15,6 +15,7 @@ import sqlite3
 import workload
 import telemetry
 import material_inventory
+import macos_service_runtime
 import illustrator_bridge
 from import_limits import request_limit
 import print_export
@@ -290,6 +291,8 @@ class Handler(BaseHTTPRequestHandler):
             path = '/web'
         if path == '/api/session':
             return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION, 'pid': os.getpid(),
+                                   'shopService': macos_service_runtime.active(),
+                                   'maintenance': macos_service_runtime.maintenance(),
                                    'localSave': self.client_address[0] == '127.0.0.1' and print_export.native_save_available()})
         if path == '/api/changelog':
             import installer_update
@@ -487,7 +490,7 @@ class Handler(BaseHTTPRequestHandler):
         # Hold admission through import, save and delivery. An update claim cannot
         # slip between a busy check and a new operation starting on another PC.
         with OPERATIONS:
-            if UPDATE_QUEUE.stopping:
+            if (UPDATE_QUEUE.stopping or macos_service_runtime.maintenance()) and self.path != '/api/macos-service/cancel':
                 return self.send(503, {'error': 'Installing an update. Wait for eznest to restart.'})
             return self.handle_post()
 
@@ -511,6 +514,26 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Invalid import options.')
                 return self.import_document(options, upload_size=size)
             data = json.loads(self.rfile.read(size) or '{}')
+            if self.path in ('/api/macos-service/claim', '/api/macos-service/cancel'):
+                if self.client_address[0] != '127.0.0.1':
+                    return self.send(403, {'error': 'Approve updates on the server Mac.'})
+                if not isinstance(data, dict) or set(data) != {'ticket'}:
+                    raise ValueError('Supply the administrator update ticket.')
+                macos_service_runtime.authorize_claim(data['ticket'])
+                if self.path.endswith('/cancel'):
+                    if UPDATE_QUEUE.ticket not in (None, data['ticket']):
+                        raise ValueError('Another update owns admission.')
+                    UPDATE_QUEUE.stopping = False
+                    UPDATE_QUEUE.cancel()
+                    return self.send(200, {'ok': True})
+                UPDATE_QUEUE.queue(data['ticket'])
+                with LOCK:
+                    ready = UPDATE_QUEUE.claim(data['ticket'], STATE)
+                    if ready:
+                        persist_state()
+                # launchd owns the process lifetime. The privileged installer
+                # stops it only after this admission lock has closed new work.
+                return self.send(200, {'ok': True, 'ready': ready, 'pid': os.getpid()})
             if self.path.startswith('/api/telemetry/'):
                 if self.client_address[0] != '127.0.0.1':
                     return self.send(403, {'error': 'Local session required for job tracking.'})
@@ -805,6 +828,8 @@ class Handler(BaseHTTPRequestHandler):
                     persist_state()
                     return self.send(200, {'ok': True})
                 elif self.path == '/api/shutdown':
+                    if macos_service_runtime.active():
+                        raise ValueError('The shop host stays available when a browser closes. The administrator controls its system service.')
                     if STATE.get('status') == 'running':
                         raise ValueError('Stop the current search before closing eznest.')
                     persist_state()
