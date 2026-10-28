@@ -14,6 +14,7 @@ import socket
 import sqlite3
 import workload
 import telemetry
+import telemetry_sender
 import material_inventory
 import macos_service_runtime
 import illustrator_bridge
@@ -186,6 +187,20 @@ def record_workload(kind):
         record_telemetry('nest.sent_to_print' if is_hot else 'nest.exported')
     elif kind == 'removed_from_folder':
         record_telemetry('nest.removed_from_folder')
+
+
+def telemetry_paused():
+    if UPDATE_QUEUE.stopping:
+        return True
+    # The optional Mac shop-service companion closes admission durably across
+    # restart/recovery. Its absence in a claimed service environment fails closed.
+    if os.environ.get('EZ_NEST_MACOS_SERVICE') == '1':
+        try:
+            from macos_service_runtime import maintenance
+        except ImportError:
+            return True
+        return maintenance()
+    return False
 
 
 def record_telemetry(kind):
@@ -373,13 +388,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, info)
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Local activity is unavailable. Check disk space and folder permissions.'})
-        if path in ('/api/telemetry', '/api/telemetry/events'):
+        if path in ('/api/telemetry', '/api/telemetry/events', '/api/telemetry/output'):
             if self.client_address[0] != '127.0.0.1' or self.headers.get('X-EZ-Token') != TOKEN:
                 return self.send(403, {'error': 'Local session required for job tracking.'})
             try:
+                if path.endswith('/output'):
+                    return self.send(200, telemetry_sender.status(WORK, paused=telemetry_paused))
                 if path.endswith('/events'):
                     return self.send(200, {'schema': telemetry.SCHEMA, 'events': telemetry.pending(WORK)})
                 info = telemetry.status(WORK)
+                delivery = telemetry_sender.status(WORK, paused=telemetry_paused)
+                info.update(localOnly=not delivery['enabled'], hubConnected=None if delivery['enabled'] else False, outputDelivery=delivery)
                 info.update(eventTypes=telemetry.KINDS, warning=STATE.get('telemetryWarning'))
                 return self.send(200, info)
             except (OSError, sqlite3.Error):
@@ -561,6 +580,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Local session required for job tracking.'})
                 if not isinstance(data, dict):
                     raise ValueError('Supply a tracking request object.')
+                if self.path == '/api/telemetry/output/consent':
+                    if set(data) != {'revision', 'version', 'configurationId', 'confirmed'}:
+                        raise ValueError('Review and explicitly approve the sharing disclosure.')
+                    return self.send(200, telemetry_sender.consent(WORK, **data))
+                if self.path == '/api/telemetry/output/revoke':
+                    if data:
+                        raise ValueError('Stopping sharing takes no additional data.')
+                    return self.send(200, telemetry_sender.revoke(WORK))
                 with LOCK:
                     if self.path == '/api/telemetry/link':
                         if set(data) - {'id', 'jobCodes', 'rollId'}:
@@ -971,6 +998,8 @@ def serve(open_browser=False, page='/'):
     import installer_update
     service = LocalServer((HOST, PORT), Handler)
     update_stop = threading.Event()
+    sender_thread = threading.Thread(target=telemetry_sender.run, args=(WORK, update_stop, telemetry_paused), daemon=True)
+    sender_thread.start()
     threading.Thread(target=check_updates, args=(update_stop,), daemon=True).start()
     if open_browser:
         import webbrowser
@@ -987,6 +1016,7 @@ def serve(open_browser=False, page='/'):
         update_stop.set()
         UPDATE_WAKE.set()
         service.server_close()
+        sender_thread.join(timeout=12)
 
 
 if __name__ == '__main__':

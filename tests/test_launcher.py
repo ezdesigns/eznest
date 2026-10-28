@@ -42,6 +42,12 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(launcher.main(),0)
             worker.assert_called_once_with('request path.json','result path.json')
 
+    def test_telemetry_worker_dispatches_without_starting_server(self):
+        with patch.object(sys,'argv',['eznest','--telemetry-worker']),patch('telemetry_sender.worker') as worker,patch('server.serve') as serve:
+            self.assertEqual(launcher.main(),0)
+            worker.assert_called_once_with()
+            serve.assert_not_called()
+
     def test_public_host_rejected_before_network(self):
         with patch.object(sys,'argv',['eznest','--host','8.8.8.8','--no-browser']),patch.object(launcher,'urlopen') as lookup:
             with self.assertRaisesRegex(ValueError,'127.0.0.1'):launcher.main()
@@ -72,6 +78,11 @@ class LauncherTests(unittest.TestCase):
                 else:
                     os.environ[key] = value
             server.HOST, server.LAN, server.PORT = saved
+
+    def test_shop_test_disables_inherited_output_upload_gate(self):
+        with patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS': '1'}), patch('shop_test.prepare'):
+            self._launch(['--shop-test', '--no-browser'])
+            self.assertEqual(os.environ['EZ_NEST_OUTPUT_UPLOADS'], '0')
 
     def test_lan_flag_opens_the_shop_network(self):
         host, lan = self._launch(['--lan', '--no-browser'])

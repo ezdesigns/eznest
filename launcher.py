@@ -20,6 +20,10 @@ def main():
     if sys.argv[1:2] == ['--macos-service-helper']:
         from macos_service_system import main as service_helper
         return service_helper(sys.argv[2:])
+    if sys.argv[1:] == ['--telemetry-worker']:
+        import telemetry_sender
+        telemetry_sender.worker()
+        return 0
     if len(sys.argv) > 1 and sys.argv[1] == '--request-shop-update':
         import managed_update
         return managed_update.request()
@@ -95,6 +99,7 @@ def main():
         from shop_test import prepare
         prepare(data)
         os.environ['EZ_NEST_UPDATES'] = '0'
+        os.environ['EZ_NEST_OUTPUT_UPLOADS'] = '0'
     saved = load_shop(data)
     if args.lan:
         host, lan = '0.0.0.0', True

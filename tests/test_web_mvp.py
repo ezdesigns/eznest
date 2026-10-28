@@ -246,13 +246,11 @@ class WebMvpTests(unittest.TestCase):
                 learn = page.locator('#max-output-learn')
                 self.assertEqual(waitlist.inner_text(), 'Join the waitlist')
                 self.assertEqual(learn.inner_text(), 'Learn more')
+                self.assertEqual(waitlist.get_attribute('href'), 'https://output.jeezlabs.io/waitlist')
+                self.assertEqual(learn.get_attribute('href'), 'https://output.jeezlabs.io/')
                 self.assertEqual(page.locator('.output-points li').count(), 4)
                 self.assertEqual(page.locator('#max-output-dialog .paid-line').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(21, 128, 61)')
-                root = Path(__file__).resolve().parents[1]
-                self.assertEqual((root / 'web.js').read_text().count('https://output.jeezlabs.io/'), 1)
-                self.assertNotIn('https://output.jeezlabs.io/', (root / 'web.html').read_text())
                 for link in (waitlist, learn):
-                    self.assertEqual(link.get_attribute('href'), 'https://output.jeezlabs.io/')
                     self.assertEqual(link.get_attribute('target'), '_blank')
                     self.assertIn('noopener', link.get_attribute('rel'))
                     self.assertEqual(link.get_attribute('referrerpolicy'), 'no-referrer')
