@@ -81,7 +81,8 @@ def band(value, step):
     if value == 0:
         return '0'
     lo = math.floor(value / step) * step
-    return f'[{lo:g},{lo + step:g})'
+    decimal = lambda value: f'{value:.2f}'.rstrip('0').rstrip('.')
+    return f'[{decimal(lo)},{decimal(lo + step)})'
 
 
 def next_sequence(db):
