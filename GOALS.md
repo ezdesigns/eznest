@@ -101,12 +101,13 @@ an optional gallery of detected artwork, copies, cut types and retained groups.
 
 The job panel asks where to print: In-house or Another shop. In-house
 stays selected and nesting stays local. Another shop does not change
-the job, the effort, or the file. It opens a short note. The headline is
-"Nested it? You don't have to print it." The line under it says to send the
-job to another shop and that the customer stays yours. Three lines name too
-many pieces or too big a run, a material or roll width the shop does not have,
-and a busy machine, deadline, or customer who is out of town. It does not state
-earnings, fees, or customer counts, and there is no early-pilot line. Join the waitlist
+the job, the effort, or the file. It opens a short note on every job. There is
+no stock or capacity check. The headline is "Can't print this one? Send it out.
+Keep the customer." The line under it says to send the job to another shop, and
+that the customer and the price stay with this shop. Three lines name a missing
+material or roll width, a customer too far to ship, and a shop too busy to hit
+the date. It does not state earnings, fees, or customer counts, and there is no
+early-pilot line. Join the waitlist
 and Learn more both open the URL in
 `OUTPUT_WAITLIST_URL` (currently https://output.jeezlabs.io/) in the browser.
 EZ Nest does not send artwork, collect a signup, or call OUTPUT.
