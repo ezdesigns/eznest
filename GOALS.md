@@ -99,15 +99,16 @@ validation can add time; more search time does not guarantee an improvement.
 Effort is saved in this browser and applies to the next search. Check pieces is
 an optional gallery of detected artwork, copies, cut types and retained groups.
 
-The job panel asks where to print: In-house or Another shop. In-house
-stays selected and nesting stays local. Another shop does not change
-the job, the effort, or the file. It opens a short note on every job. There is
-no stock or capacity check. The headline is "Can't print it? Another shop
-can." The body says OUTPUT passes the nested job to a shop that has the
-material, the machine and the time, and that this shop keeps the customer and
-the sale. Under "When it helps", three lines name a missing material or roll
-width, a customer too far to ship, and a shop too busy to hit the date. It does
-not state earnings, fees, or customer counts, and there is no
+The job panel asks where to print: In-house or Partner printing. In-house
+stays selected and nesting stays local. Partner printing does not change the
+job, the effort, or the file. A quiet "$ You still get paid" pill sits on that
+choice. The choice and the pill both open a short note on every job. There is
+no stock or capacity check. The title is "What is OUTPUT?". It says you earn
+on jobs you would otherwise turn away, you take the order, OUTPUT passes the
+job to a partner shop that can make it, and you stay the shop the customer
+knows. Under "Use it when", three lines name a missing material or roll width,
+a customer who is too far away, and a shop too busy to finish on time. It does
+not state fees or customer counts, and there is no
 early-pilot line. Join the waitlist
 and Learn more both open the URL in
 `OUTPUT_WAITLIST_URL` (currently https://output.jeezlabs.io/) in the browser.

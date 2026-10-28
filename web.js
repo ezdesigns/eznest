@@ -3,7 +3,7 @@ const NS = 'http://www.w3.org/2000/svg';
 const $ = id => document.getElementById(id);
 const PREF = 'eznest-placeholders';
 const PIECE_CAP = 5000;
-// Both "another shop" links. Point this at a waitlist page when OUTPUT publishes one.
+// Both partner-printing links. Point this at a waitlist page when OUTPUT publishes one.
 const OUTPUT_WAITLIST_URL = 'https://output.jeezlabs.io/';
 let token = '';
 let localSave = false;
