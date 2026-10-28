@@ -1380,6 +1380,7 @@ class WebMvpTests(unittest.TestCase):
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
                 self.wait_ready(page)
                 page.select_option('#material','holographic')
+                page.locator('#material-dialog').wait_for(state='visible')
                 self.assertEqual(page.input_value('#preset-name'), 'Moto Holographic')
                 page.locator('#material-advanced').evaluate('n => { n.open = true }')
                 page.fill('#gap', '0.25')

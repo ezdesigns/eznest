@@ -8,15 +8,15 @@ nesting workspace. Take turns operating jobs during this pilot.
 
 ## Operator flow
 
-1. Edit a material, enter measured stock on the roll, then **Save material to shop**.
+1. Edit a material, enter measured stock on the roll, then **Save material**.
    The stock field includes stock already reserved for pending jobs. Leave it
    blank if unknown; an unknown stock level cannot be reserved. Existing browser
    presets are not silently imported or overwritten; explicitly save each one.
-2. Nest and review the pieces. **Shop material stock → Reserve material for this
-   layout** holds its roll length. Nesting and saving a file alone do not reserve
+2. Nest and review the pieces. **Edit material → Reserve for this job** holds its roll length. Nesting and saving a file alone do not reserve
    or deduct stock. A layout created before saving its shared material needs to
    be nested again to bind it to that material record.
-3. After using the material, choose **Confirm material used** on its reservation.
+3. In the same material editor, expand **Reserved jobs & usage**. After using the
+   material, choose **Confirm material used** on its reservation.
    Stock is deducted once. Alternatively, **Release reservation** frees unused
    stock. Used stock cannot be returned by releasing a reservation.
 4. Measure and correct stock in Edit material after replenishing a roll or

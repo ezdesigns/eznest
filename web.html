@@ -258,7 +258,7 @@
   </div>
   <button id="undo" class="link" type="button" hidden>Undo send</button>
   <p id="delivery-receipt" class="delivery-receipt" role="status" hidden></p>
-  <button id="inventory-open" class="link" type="button">Shop material stock</button>
+  <button id="inventory-open" class="link" type="button">Material &amp; stock</button>
   <p id="status" role="status" aria-live="polite"></p>
   <input id="layout-id" hidden readonly tabindex="-1" aria-label="Layout ID">
   <input id="layout-hash" hidden readonly tabindex="-1" aria-label="SHA-256">
@@ -266,18 +266,6 @@
   </div>
 
 </main>
-<dialog id="inventory-dialog" aria-labelledby="inventory-title">
-  <div class="dialog-heading"><h2 id="inventory-title">Shop material stock</h2><button id="inventory-close" class="dialog-close" type="button" aria-label="Close material stock">×</button></div>
-  <p class="hint">Shared by browsers connected to this EZ Nest host. Nesting and saving alone do not use stock.</p>
-  <p id="inventory-status" role="status"></p>
-  <div id="inventory-materials"></div>
-  <button id="inventory-reserve" class="primary" type="button" disabled>Reserve material for this layout</button>
-  <p id="inventory-job-note" class="hint"></p>
-  <p class="hint">Reserve after reviewing the layout. Confirm usage only after the material has actually been used. Include extra feed or setup waste by correcting measured stock in Edit material.</p>
-  <h3>Reservations and recent usage</h3>
-  <div id="inventory-reservations"></div>
-  <button id="inventory-refresh" class="link" type="button">Refresh stock</button>
-</dialog>
 <dialog id="max-output-dialog" aria-labelledby="max-output-title">
   <div class="dialog-heading"><h2 id="max-output-title">Let another shop handle the print</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close Max output">×</button></div>
   <p>Keep your customer and use another shop’s printing capacity through OUTPUT.</p>
@@ -307,7 +295,7 @@
     <section id="preset-editor" class="preset-editor" aria-labelledby="preset-title" hidden>
       <div class="dialog-heading"><h2 id="preset-title">New preset</h2><button id="material-close" class="dialog-close" type="button" aria-label="Close material editor">×</button></div>
       <div class="fields">
-      <label>Preset name
+      <label>Material name
         <input id="preset-name" type="text" maxlength="80" value="Moto Regular">
       </label>
       <label>Units
@@ -327,14 +315,24 @@
         <span class="measure"><input id="roll-length" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal"><span data-unit>in</span></span>
       </label>
       <label>Full roll cost ($)<input id="roll-cost" type="number" min="0" step="0.01" placeholder="Optional" inputmode="decimal"></label>
-      <label>Stock measured on roll
+      <label>Length left on roll
         <span class="measure"><input id="available-length" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal"><span data-unit>in</span></span>
-        <span class="hint">Includes reserved stock. Usage is deducted when confirmed.</span>
+        <span class="hint">Enter the measured length. Leave blank if unknown.</span>
       </label>
       <label>Low-stock alert at
         <span class="measure"><input id="low-stock" type="number" min="0" step="any" placeholder="10% of full roll" inputmode="decimal"><span data-unit>in</span></span>
       </label>
       </div>
+      <section id="material-stock" aria-label="Material stock">
+        <div id="inventory-materials"></div>
+        <p id="inventory-status" role="status"></p>
+        <button id="inventory-reserve" class="link" type="button" disabled>Reserve for this job</button>
+        <p id="inventory-job-note" class="hint"></p>
+        <details id="material-usage"><summary>Reserved jobs &amp; usage</summary>
+          <p class="hint">Confirm after printing to subtract stock. Release jobs you won’t print.</p>
+          <div id="inventory-reservations"></div>
+        </details>
+      </section>
       <details id="material-advanced"><summary>Spacing &amp; cutter settings</summary>
       <div class="fields">
       <label class="wide">Print layout<select id="print-layout"><option value="continuous">One continuous print</option><option value="sections" selected>Shorter print sections</option></select><span class="hint">Continuous: one PDF page, up to 196.85 inches (16.4 ft). Artwork stays full size.</span></label>
@@ -377,8 +375,8 @@
       <label class="check"><input id="draw-marks" type="checkbox"> Draw registration marks (ONYX adds them)</label>
       </details>
       <p id="preset-error" class="lan-note" role="alert" hidden></p>
-      <div class="preset-actions"><button id="save-material" class="primary" type="button">Save material to shop</button><button id="cancel-material" class="link" type="button">Cancel</button></div>
-      <p class="hint">Saved to this shop host. Other connected browsers see the same material and stock.</p>
+      <div class="preset-actions"><button id="save-material" class="primary" type="button">Save material</button><button id="cancel-material" class="link" type="button">Cancel</button></div>
+      <p class="hint">Saved for everyone connected to this shop. Nesting and saving files do not subtract stock.</p>
     </section>
 </dialog>
 <aside id="feedback-welcome" hidden aria-label="Welcome">
