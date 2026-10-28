@@ -125,7 +125,7 @@ class MacPackagingTests(unittest.TestCase):
         self.assertNotIn(str(root / '.local'), spec)
 
     def test_entry_keeps_workers_exact_and_disables_windows_updater(self):
-        for args in [[], ['--no-browser'], ['--nest-worker', 'in', 'out'], ['--document-worker', 'input', 'out']]:
+        for args in [[], ['--no-browser'], ['--nest-worker', 'in', 'out'], ['--document-worker', 'input', 'out'], ['--telemetry-worker']]:
             with self.subTest(args=args), patch.object(sys, 'argv', ['eznest', *args]), \
                  patch.dict('os.environ', {'EZ_NEST_UPDATES': '1'}):
                 called = []
@@ -135,7 +135,7 @@ class MacPackagingTests(unittest.TestCase):
                     exec(compile(build_macos.ENTRY, '<mac entry>', 'exec'), {})
                 self.assertEqual(result.exception.code, 0)
                 expected = ['eznest', *args]
-                if not args or args[0] not in ('--nest-worker', '--document-worker'):
+                if not args or args[0] not in ('--nest-worker', '--document-worker', '--telemetry-worker'):
                     expected.append('--web')
                 self.assertEqual(called, [(expected, '0')])
         for flag in ('--apply-update', '--request-shop-update', '--update-confirm'):

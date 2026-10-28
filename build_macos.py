@@ -25,7 +25,7 @@ import sys
 os.environ['EZ_NEST_UPDATES'] = '0'
 if any(flag in sys.argv for flag in ('--apply-update', '--request-shop-update', '--update-confirm')):
     raise SystemExit('This macOS pilot uses manual application replacement; automatic updates are unavailable.')
-if sys.argv[1:2] not in (['--document-worker'], ['--nest-worker']) and '--web' not in sys.argv:
+if sys.argv[1:2] not in (['--document-worker'], ['--nest-worker'], ['--telemetry-worker']) and '--web' not in sys.argv:
     sys.argv.append('--web')
 from launcher import main
 raise SystemExit(main())
