@@ -108,9 +108,12 @@ def validate_job(job):
         # Continuous rotation has no finite list of angles. Do not falsely reject
         # a shape that fits only at an angle between sampled orientations.
         fits = rotations is None
+        # Sheet checks reuse the measured used length as maxLength. A piece that
+        # sits on the margin makes that length equal to its own extent, and the
+        # subtraction can miss by a fraction of a nanometre.
         for angle in rotations or []:
             bounds = rotate(polygon, angle, origin=(0, 0)).bounds
-            if bounds[2] - bounds[0] <= width - 2 * margin and (length is None or bounds[3] - bounds[1] <= length - 2 * margin):
+            if bounds[2] - bounds[0] <= width - 2 * margin + 0.001 and (length is None or bounds[3] - bounds[1] <= length - 2 * margin + 0.001):
                 fits = True
         if not fits:
             raise ValueError(f'{ident}: part is too large for this material and rotation mode.')
