@@ -128,6 +128,10 @@ def _write(directory, payload, codec):
         flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
         if hasattr(os, 'O_NOFOLLOW'):
             flags |= os.O_NOFOLLOW
+        # Windows opens in text mode by default, which expands 0x0A bytes in the
+        # encrypted DPAPI blob to 0x0D0A and corrupts it. Force binary.
+        if hasattr(os, 'O_BINARY'):
+            flags |= os.O_BINARY
         fd = os.open(temporary, flags, 0o600)
         try:
             os.write(fd, blob)
