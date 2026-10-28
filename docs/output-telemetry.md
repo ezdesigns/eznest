@@ -38,3 +38,11 @@ stock remains on the shop host; these observations do not replace its ledger.
 `--shop-test` disables outbound sharing even if upload settings are inherited.
 Tests use synthetic tokens and injected transport. They do not verify a live
 credential, activate a receiver, or establish public end-to-end delivery.
+
+During installation or recovery, sharing is temporarily paused. Settings shows
+the pause and requires a refresh after the host restarts before changing consent.
+A candidate service cannot send events or invalidate consent while its data can
+still be rolled back. After update commit, a changed consent contract requires
+new agreement; rolling back a never-active candidate preserves the prior consent.
+An already-started request may finish before the old service stops. Stable request
+IDs allow a retry to be deduplicated by OUTPUT.

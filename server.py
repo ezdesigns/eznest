@@ -188,6 +188,20 @@ def record_workload(kind):
         record_telemetry('nest.removed_from_folder')
 
 
+def telemetry_paused():
+    if UPDATE_QUEUE.stopping:
+        return True
+    # The optional Mac shop-service companion closes admission durably across
+    # restart/recovery. Its absence in a claimed service environment fails closed.
+    if os.environ.get('EZ_NEST_MACOS_SERVICE') == '1':
+        try:
+            from macos_service_runtime import maintenance
+        except ImportError:
+            return True
+        return maintenance()
+    return False
+
+
 def record_telemetry(kind):
     # Observability cannot break a valid nest, export or print-folder delivery.
     try:
@@ -354,11 +368,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(403, {'error': 'Local session required for job tracking.'})
             try:
                 if path.endswith('/output'):
-                    return self.send(200, telemetry_sender.status(WORK))
+                    return self.send(200, telemetry_sender.status(WORK, paused=telemetry_paused))
                 if path.endswith('/events'):
                     return self.send(200, {'schema': telemetry.SCHEMA, 'events': telemetry.pending(WORK)})
                 info = telemetry.status(WORK)
-                delivery = telemetry_sender.status(WORK)
+                delivery = telemetry_sender.status(WORK, paused=telemetry_paused)
                 info.update(localOnly=not delivery['enabled'], hubConnected=None if delivery['enabled'] else False, outputDelivery=delivery)
                 info.update(eventTypes=telemetry.KINDS, warning=STATE.get('telemetryWarning'))
                 return self.send(200, info)
@@ -925,7 +939,7 @@ def serve(open_browser=False, page='/'):
     import installer_update
     service = LocalServer((HOST, PORT), Handler)
     update_stop = threading.Event()
-    sender_thread = threading.Thread(target=telemetry_sender.run, args=(WORK, update_stop), daemon=True)
+    sender_thread = threading.Thread(target=telemetry_sender.run, args=(WORK, update_stop, telemetry_paused), daemon=True)
     sender_thread.start()
     threading.Thread(target=check_updates, args=(update_stop,), daemon=True).start()
     if open_browser:

@@ -5,8 +5,10 @@ import os
 from pathlib import Path
 import tempfile
 import threading
+import sys
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import telemetry
 import telemetry_sender as sender
 
@@ -97,6 +99,55 @@ class SenderTests(unittest.TestCase):
             release.set();worker.join(5);stopper.join(5)
             self.assertFalse(worker.is_alive());self.assertFalse(stopper.is_alive());self.assertTrue(revoked.is_set())
             self.assertEqual(sender.tick(self.root),0);self.assertEqual(emit.call_count,1)
+
+    def test_candidate_maintenance_neither_uploads_nor_invalidates_rollback_consent(self):
+        self.agree(); self.event('a')
+        with telemetry.database(self.root) as db: before=sender.read(db)
+        for version in (sender.CONSENT_VERSION, 'candidate-contract'):
+            with patch.object(sender,'CONSENT_VERSION',version), patch.object(sender,'emit') as emit:
+                self.assertTrue(sender.status(self.root,paused=lambda:True)['paused'])
+                self.assertEqual(sender.tick(self.root,paused=lambda:True),0)
+                stop=Mock(); stop.wait.side_effect=[False,True]
+                sender.run(self.root,stop,paused=lambda:True)
+                emit.assert_not_called()
+                with telemetry.database(self.root) as db: self.assertEqual(sender.read(db),before)
+        # Either rollback or successful commit opens admission again. Only a
+        # committed changed contract invalidates consent and requires agreement.
+        with patch.object(sender,'emit',return_value=True): self.assertEqual(sender.tick(self.root),2)
+        with patch.object(sender,'CONSENT_VERSION','committed-contract'):
+            self.assertFalse(sender.status(self.root)['enabled'])
+        self.assertFalse(sender.status(self.root)['enabled'])
+
+    def test_pause_between_events_stops_the_batch_without_revoking_consent(self):
+        self.agree(); self.event('a')
+        paused=Mock(side_effect=[False,False,True])
+        with patch.object(sender,'emit',return_value=True) as emit:
+            self.assertEqual(sender.tick(self.root,paused=paused),1)
+            self.assertEqual(emit.call_count,1)
+        self.assertTrue(sender.status(self.root)['enabled'])
+
+    def test_both_http_status_routes_preserve_consent_during_service_maintenance(self):
+        import server
+        from test_telemetry import TelemetryApiTests
+        helper=TelemetryApiTests(methodName='runTest'); helper.setUp()
+        try:
+            info=sender.status(server.WORK)
+            sender.consent(server.WORK,revision=info['revision'],version=info['consentVersion'],
+                           configurationId=info['configurationId'],confirmed=True)
+            with telemetry.database(server.WORK) as db: before=sender.read(db)
+            with patch.dict(os.environ,{'EZ_NEST_MACOS_SERVICE':'1'}), \
+                 patch.dict(sys.modules,{'macos_service_runtime':SimpleNamespace(maintenance=lambda:True)}), \
+                 patch.object(sender,'CONSENT_VERSION','candidate-contract'):
+                for route in ('/api/telemetry/output','/api/telemetry'):
+                    info=helper.request(route)
+                    self.assertTrue((info.get('outputDelivery') or info)['paused'])
+                with telemetry.database(server.WORK) as db: self.assertEqual(sender.read(db),before)
+            with patch.dict(os.environ,{'EZ_NEST_MACOS_SERVICE':'1'}), \
+                 patch.dict(sys.modules,{'macos_service_runtime':None}):
+                self.assertTrue(server.telemetry_paused())
+            with patch.object(server.UPDATE_QUEUE,'stopping',True):
+                self.assertTrue(server.telemetry_paused())
+        finally: helper.tearDown()
 
     def test_secret_not_saved_or_returned_and_consent_survives_reopen(self):
         self.agree();self.assertTrue(sender.status(self.root)['enabled'])

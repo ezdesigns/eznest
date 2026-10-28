@@ -68,14 +68,17 @@ def read_active(db, token):
     return current
 
 
-def status(directory):
+def status(directory, *, paused=lambda: False):
     with LOCK, telemetry.database(directory) as db:
         token = configuration()
-        consent = read_active(db, token)
+        suspended = paused()
+        # A candidate service may be rolled back with its data snapshot. Do not
+        # change consent while installation has closed operation admission.
+        consent = read(db) if suspended else read_active(db, token)
         enabled = effective(consent, token)
         instance = db.execute("SELECT value FROM metadata WHERE key='instance_id'").fetchone()[0]
         pending = db.execute('SELECT count(*) FROM events WHERE seq>? AND acknowledged=0 AND id NOT IN (SELECT event_id FROM output_rejections)', (consent['cutoff'],)).fetchone()[0] if enabled else 0
-        return {'configured': token is not None, 'configurationId': fingerprint(token) if token else None, 'enabled': enabled,
+        return {'configured': token is not None, 'configurationId': fingerprint(token) if token else None, 'enabled': enabled, 'paused': suspended,
                 'requiresConsent': bool(token and not enabled),
                 'revision': consent['revision'], 'consentVersion': CONSENT_VERSION,
                 'endpoint': ENDPOINT, 'schema': SCHEMA, 'instanceId': instance, 'appVersion': telemetry.VERSION,
@@ -177,7 +180,7 @@ def worker():
     print('true' if accepted else 'false')
 
 
-def tick(directory, stop=None, *, limit=10):
+def tick(directory, stop=None, *, limit=10, paused=lambda: False):
     """Bounded at-least-once delivery. The receiver deduplicates stable UUIDs."""
     if type(limit) is not int or not 1 <= limit <= 100:
         raise ValueError('Choose a delivery batch from 1 to 100.')
@@ -188,6 +191,8 @@ def tick(directory, stop=None, *, limit=10):
                 if str(Path(directory).resolve()) in REVOKING:
                     break
             if stop is not None and stop.is_set():
+                break
+            if paused():
                 break
             token = configuration()
             with telemetry.database(directory) as db:
@@ -206,6 +211,8 @@ def tick(directory, stop=None, *, limit=10):
                     db.execute('INSERT OR IGNORE INTO output_rejections VALUES(?,?,?)',
                                (row['id'], CONSENT_VERSION, telemetry.now()))
                 continue
+            if paused():
+                break
             sent = emit(payload, token) is True
             with telemetry.database(directory) as db:
                 # No SQLite transaction is held over network IO. The sender lock
@@ -223,16 +230,16 @@ def tick(directory, stop=None, *, limit=10):
     return count
 
 
-def run(directory, stop):
+def run(directory, stop, paused=lambda: False):
     try:
-        status(directory)  # Invalidate changed launch configuration immediately.
+        status(directory, paused=paused)  # Invalidate only after update admission opens.
     except Exception:
         pass
     delay = 5
     while not stop.wait(delay):
         try:
-            tick(directory, stop)
-            info = status(directory)
+            tick(directory, stop, paused=paused)
+            info = status(directory, paused=paused)
             delay = min(max(delay*2, 30), 900) if info['lastError'] else 30
         except Exception:
             # Local disk/database trouble must neither disclose private error
