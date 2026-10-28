@@ -2388,6 +2388,23 @@ function restoreJob(state) {
 let outputSharing = null;
 function renderOutputSharing(info) {
   outputSharing = info;
+  const source = info.connection;
+  const paired = source === 'paired';
+  const launch = source === 'environment' || source === 'environment-invalid';
+  $('output-connect-shop').hidden = !paired;
+  $('output-connect-shop').textContent = paired ? 'Connected to ' + (info.shopName || 'OUTPUT') + '.' : '';
+  $('output-pair-form').hidden = paired || launch || source === 'disabled';
+  $('output-disconnect').hidden = !paired;
+  $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
+  $('output-disconnect').disabled = !paired || info.paused;
+  const connectStatus = $('output-connect-status');
+  connectStatus.classList.remove('error');
+  if (info.paused) connectStatus.textContent = 'Sharing is paused during installation or recovery.';
+  else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.';
+  else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
+  else if (paired && info.requiresConsent) connectStatus.textContent = 'Review the sharing details below, then choose Enable sharing.';
+  else if (paired) connectStatus.textContent = '';
+  else connectStatus.textContent = 'Paste a pairing code from the shop owner.';
   $('telemetry-agree').checked = false;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
   $('telemetry-enable').disabled = true;
@@ -2396,7 +2413,7 @@ function renderOutputSharing(info) {
   $('telemetry-bands').textContent = 'Measurement range widths (null means unknown; 0 means zero): ' + Object.entries(info.bands).map(([key, step]) => key + ': ' + step).join('; ') + '.';
   const bands = Object.fromEntries(Object.entries(info.bands).map(([key, step]) => [key, `[${step},${step * 2})`]));
   $('telemetry-preview').textContent = JSON.stringify({schema: info.schema, requestId: '00000000-0000-5000-8000-000000000001', kind: 'nest.created', instanceId: info.instanceId, nestId: '00000000000000000000000000000001', occurredAt: '2026-01-01T00:00:00.000000Z', appVersion: info.appVersion, materialClass: 'moto_regular', bands}, null, 2);
-  $('telemetry-status').textContent = info.paused ? 'Sharing paused during installation or recovery. Refresh after the host restarts to change sharing settings.' : !info.configured ? 'Off. An operator must configure approved OUTPUT delivery on this host before you can enable it.' : info.enabled ? `Sharing new activity. ${info.pendingEvents} pending. ${info.withheldEvents} invalid observations kept only on this host. ${info.lastError || (info.lastDeliveredAt ? 'Last receipt: ' + info.lastDeliveredAt : 'No confirmed delivery yet.')}` : 'Off. Review the fields above to enable sharing.';
+  $('telemetry-status').textContent = info.paused ? 'Sharing paused during installation or recovery. Refresh after the host restarts to change sharing settings.' : !info.configured ? 'Off. Connect to OUTPUT on this computer, then review the fields below.' : info.enabled ? `Sharing new activity. ${info.pendingEvents} pending. ${info.withheldEvents} invalid observations kept only on this host. ${info.lastError || (info.lastDeliveredAt ? 'Last receipt: ' + info.lastDeliveredAt : 'No confirmed delivery yet.')}` : 'Off. Review the fields below to enable sharing.';
 }
 async function refreshOutputSharing() {
   try {
@@ -2407,6 +2424,49 @@ async function refreshOutputSharing() {
     outputSharing = null;
     $('telemetry-agree').disabled = $('telemetry-enable').disabled = $('telemetry-stop').disabled = true;
     $('telemetry-status').textContent = error.message;
+  }
+}
+async function connectOutput() {
+  const input = $('output-pair-code');
+  const status = $('output-connect-status');
+  const code = input.value.trim();
+  if (!code) {
+    status.textContent = 'Paste the pairing code from OUTPUT.';
+    status.classList.add('error');
+    return;
+  }
+  $('output-pair').disabled = true;
+  try {
+    const response = await fetch('/api/telemetry/output/pair', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-EZ-Token': token},
+      body: JSON.stringify({code})
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      const failure = Error(body.error || 'Could not connect to OUTPUT.');
+      failure.reason = body.reason;
+      throw failure;
+    }
+    input.value = '';
+    renderOutputSharing(body);
+    if (body.requiresConsent && !$('telemetry-agree').disabled) $('telemetry-agree').focus();
+  } catch (error) {
+    if (error.reason === 'rejected' || error.reason === 'unexpected') input.value = '';
+    await refreshOutputSharing().catch(() => {});
+    status.textContent = error.message;
+    status.classList.add('error');
+  }
+}
+async function disconnectOutput() {
+  if (!window.confirm('Disconnect this computer from OUTPUT? Sharing stops until someone pairs again.')) return;
+  $('output-disconnect').disabled = true;
+  try {
+    renderOutputSharing(await api('/api/telemetry/output/disconnect', {}));
+  } catch (error) {
+    $('output-connect-status').textContent = error.message;
+    $('output-connect-status').classList.add('error');
+    refreshOutputSharing().catch(() => {});
   }
 }
 async function changeOutputSharing(enable) {
@@ -2741,6 +2801,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('settings-telemetry').addEventListener('toggle', () => { if ($('settings-telemetry').open) refreshOutputSharing(); });
   $('telemetry-refresh').addEventListener('click', refreshOutputSharing);
   $('telemetry-agree').addEventListener('change', () => { $('telemetry-enable').disabled = !outputSharing || !outputSharing.configured || outputSharing.enabled || outputSharing.paused || !$('telemetry-agree').checked; });
+  $('output-pair').addEventListener('click', connectOutput);
+  $('output-disconnect').addEventListener('click', disconnectOutput);
+  $('output-pair-code').addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); connectOutput(); }
+  });
   $('telemetry-enable').addEventListener('click', () => changeOutputSharing(true));
   $('telemetry-stop').addEventListener('click', () => changeOutputSharing(false));
   dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });

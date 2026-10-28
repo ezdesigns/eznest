@@ -144,7 +144,12 @@ shop PC. The earlier protected PR #1 / rc.4 gate remains unchanged.
 `docs/telemetry-contract.md` before changing it. Never equate local file save with
 print delivery/completion or planned allocation with measured consumption. Keep
 the hub adapter dormant until the shared contract is registered and connection
-consent exists. The OUTPUT placeholder is not that consent. Keep exact quantities
+consent exists. The OUTPUT placeholder is not that consent. A host may store an
+OUTPUT shop credential from a pairing code (`output_credential.py`).
+`EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN` still takes precedence.
+`EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, disables delivery. The
+credential is never logged or returned to browsers, and the on-screen consent
+is still required before any send. Keep exact quantities
 local and only banded, allowlisted payloads in the outbox; preserve stable IDs,
 revision guards, explicit confirmations and failure isolation. Do not modify
 another agent's spine, ledger, render or board as part of this adapter.
@@ -184,6 +189,7 @@ workload database's retention policy.
 | PDF/cuts and frozen output | `pdf_io.py`, `cut_mapping.py`, `cut-mapping.js`, `production.py`, `output_folder.py` |
 | Illustrator handoff | `illustrator/`, `illustrator_bridge.py` |
 | Local activity | `workload.py` |
+| OUTPUT pairing | `output_pairing.py`, `output_credential.py`, `telemetry_sender.py` |
 | Windows packaging and updates | `build_windows.py`, `installer/`, `shop_deploy.py`, `installer_update.py` |
 
 Treat `archive/` as historical reference. Check the active route and callers

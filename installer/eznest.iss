@@ -1,4 +1,6 @@
 ; Shop-server installer. Build it on Windows: build_windows.py calls ISCC when Inno Setup 6 is present.
+; Requires Inno Setup 6.3 or newer because shop setup uses ExecAndLogOutput.
+; The Windows installer workflow uses 6.7.3. An older ISCC on PATH is not used when a newer compiler is installed.
 ; The shop PC runs eznest-setup.exe. It does not need Python or Git.
 
 #ifndef SourceDir

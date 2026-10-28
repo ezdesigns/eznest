@@ -13,6 +13,7 @@ import copy
 import socket
 import sqlite3
 import workload
+import output_pairing
 import telemetry
 import telemetry_sender
 import material_inventory
@@ -588,6 +589,19 @@ class Handler(BaseHTTPRequestHandler):
                     if data:
                         raise ValueError('Stopping sharing takes no additional data.')
                     return self.send(200, telemetry_sender.revoke(WORK))
+                if self.path == '/api/telemetry/output/pair':
+                    if set(data) != {'code'}:
+                        raise ValueError('Paste the pairing code from OUTPUT.')
+                    # The exchange is network IO. Do not hold the job lock.
+                    # reason is a short category. The pairing code and credential are not returned.
+                    try:
+                        return self.send(200, output_pairing.connect(WORK, data.get('code'), paused=telemetry_paused()))
+                    except output_pairing.PairingError as error:
+                        return self.send(400, {'error': str(error), 'reason': error.reason})
+                if self.path == '/api/telemetry/output/disconnect':
+                    if data:
+                        raise ValueError('Disconnect takes no additional data.')
+                    return self.send(200, output_pairing.disconnect(WORK, paused=telemetry_paused()))
                 with LOCK:
                     if self.path == '/api/telemetry/link':
                         if set(data) - {'id', 'jobCodes', 'rollId'}:

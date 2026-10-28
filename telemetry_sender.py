@@ -1,7 +1,10 @@
-"""Opt-in, future-only OUTPUT sender. No credentials are saved to disk.
+"""Opt-in, future-only OUTPUT sender.
 
-Operators provision a scoped shop-agent token and explicit upload gate through
-the launch environment. Neither is sufficient without local screen consent.
+A paired credential may be stored by output_credential. Launch environment
+settings still win: EZ_NEST_OUTPUT_UPLOADS=1 uses EZ_NEST_OUTPUT_TOKEN, and
+EZ_NEST_OUTPUT_UPLOADS=0 disables delivery (including --shop-test). Neither
+path sends anything without the on-screen consent. The credential is not
+written to the telemetry database, logs, or API responses.
 """
 import hashlib
 import json
@@ -13,6 +16,7 @@ import sys
 from pathlib import Path
 from urllib.error import URLError, HTTPError
 from urllib.request import Request, build_opener, HTTPRedirectHandler
+import output_credential
 import telemetry
 from telemetry_output import SCHEMA, BANDS, project
 
@@ -30,11 +34,29 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def configuration():
+def _env_token():
     token = os.environ.get('EZ_NEST_OUTPUT_TOKEN', '')
-    if os.environ.get('EZ_NEST_OUTPUT_UPLOADS') != '1' or not re.fullmatch(r'osa_[A-Za-z0-9_-]{43}', token):
-        return None
-    return token
+    if isinstance(token, str) and re.fullmatch(r'osa_[A-Za-z0-9_-]{43}', token):
+        return token
+    return None
+
+
+def connection(directory):
+    """Credential used for delivery. Environment settings take precedence."""
+    uploads = os.environ.get('EZ_NEST_OUTPUT_UPLOADS')
+    if uploads == '0':
+        return {'token': None, 'source': 'disabled', 'shopName': None}
+    if uploads == '1':
+        token = _env_token()
+        return {'token': token, 'source': 'environment' if token else 'environment-invalid', 'shopName': None}
+    saved = output_credential.describe(directory)
+    if saved['credential']:
+        return {'token': saved['credential'], 'source': 'paired', 'shopName': saved['shopName']}
+    return {'token': None, 'source': None, 'shopName': None}
+
+
+def configuration(directory):
+    return connection(directory)['token']
 
 
 def fingerprint(token):
@@ -70,7 +92,8 @@ def read_active(db, token):
 
 def status(directory, *, paused=lambda: False):
     with LOCK, telemetry.database(directory) as db:
-        token = configuration()
+        info = connection(directory)
+        token = info['token']
         suspended = paused()
         # A candidate service may be rolled back with its data snapshot. Do not
         # change consent while installation has closed operation admission.
@@ -80,6 +103,7 @@ def status(directory, *, paused=lambda: False):
         pending = db.execute('SELECT count(*) FROM events WHERE seq>? AND acknowledged=0 AND id NOT IN (SELECT event_id FROM output_rejections)', (consent['cutoff'],)).fetchone()[0] if enabled else 0
         return {'configured': token is not None, 'configurationId': fingerprint(token) if token else None, 'enabled': enabled, 'paused': suspended,
                 'requiresConsent': bool(token and not enabled),
+                'connection': info['source'], 'shopName': info['shopName'],
                 'revision': consent['revision'], 'consentVersion': CONSENT_VERSION,
                 'endpoint': ENDPOINT, 'schema': SCHEMA, 'instanceId': instance, 'appVersion': telemetry.VERSION,
                 'eventTypes': list(telemetry.KINDS), 'bands': BANDS,
@@ -92,7 +116,7 @@ def consent(directory, *, revision, version, configurationId, confirmed):
         raise ValueError('Review the current sharing disclosure and explicitly agree.')
     with LOCK, telemetry.database(directory) as db:
         old = read(db)
-        token = configuration()
+        token = configuration(directory)
         if token is None:
             raise ValueError('OUTPUT delivery is not configured on this host.')
         if configurationId != fingerprint(token):
@@ -194,7 +218,7 @@ def tick(directory, stop=None, *, limit=10, paused=lambda: False):
                 break
             if paused():
                 break
-            token = configuration()
+            token = configuration(directory)
             with telemetry.database(directory) as db:
                 current = read_active(db, token)
                 if not effective(current, token):

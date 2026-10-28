@@ -104,15 +104,14 @@ selected, with its blue selected look and a check, and nesting stays local.
 Don't print is a light green choice, not a selected state, with a green "Still
 get paid" badge on its lower corner. The choice and the badge both open a
 short note on every job. There is
-no stock or capacity check. The title is "Don't print!". It says AI routes
-the job to a nearby shop that can make it, then "You still get paid." Under
-"Why use it?", four lines name not enough material, a customer who is too far
-away, a shop too busy to hit the date, and needing to focus on another job. It does
-not state fees or customer counts, and there is no
-early-pilot line. Join the waitlist
-and Learn more both open the URL in
-`OUTPUT_WAITLIST_URL` (currently https://output.jeezlabs.io/) in the browser.
-EZ Nest does not send artwork, collect a signup, or call OUTPUT.
+no stock or capacity check. The title is "Don't print it. Let another shop do it."
+The body says OUTPUT routes the job to the best-fit nearby shop, then "You still get paid."
+Under "Use it when", three lines name a backed-up queue, material that is not
+in stock, and a job outside what the shop's machines can run. It does
+not state fees, counts, or how matching works, and there is no
+early-pilot line. Join the waitlist opens https://output.jeezlabs.io/waitlist.
+Learn more opens https://output.jeezlabs.io/. Both are black actions.
+EZ Nest does not send artwork or collect a signup from this note.
 Contextual help appears on label hover, keyboard focus or tap.
 Settings is a centered dialog with specialized cut/software options collapsed;
 material edits cancel on an outside click. Quantities stay beside each imported
