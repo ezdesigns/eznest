@@ -1,38 +1,63 @@
 """Exchange one OUTPUT pairing code for a shop credential.
 
-Assumed contract, used because ezdesigns/output was not readable from this
-workspace on 2026-10-28 (the repository returned 404) and
-https://output.jeezlabs.io/api/shop/agent/pair was not published yet.
-Adjust this module when docs/ez-nest-pairing.md lands. Do not log the code,
-the credential, or the response body.
+Contract from ezdesigns/output PRs #110 and #113 (`docs/ez-nest-pairing.md` on
+main). That repository returned HTTP 404 to this workspace, so this module
+follows the contract as specified with those PRs:
 
 POST https://output.jeezlabs.io/api/shop/agent/pair
-{"code": "<pairing code>", "hostName": "<this computer>", "version": "<ez nest version>"}
+{"code":"7K4NP-QRX2M","requestId":"<uuid>","hostLabel":"<computer>","hostRef":"<32 lowercase hex, optional>"}
 
-200 {"credential": "osa_<43>", "shopName": "<shop>"}
+The first success returns result.token (an osa_ credential, valid 90 days)
+exactly once. Persist it before any other work. A later POST with the same
+requestId returns outcome "replay" and no token. Create requestId once per
+attempt and reuse it only when the network attempt itself fails.
 
-Errors are fixed sentences. A redirect is not followed.
+Do not log the code, the credential, or the response body. This module does
+not change the eznest-observation/1 telemetry projection.
 """
 import json
 import os
 import re
+import sqlite3
+import uuid
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 
 import output_credential
+import telemetry
 import telemetry_sender
-from app_info import VERSION
 from shop_deploy import host_name
 from telemetry_sender import NoRedirect
 
 ENDPOINT = 'https://output.jeezlabs.io/api/shop/agent/pair'
-CODE_RE = re.compile(r'[A-Za-z0-9_-]{4,64}')
+CODE_BODY = re.compile(r'[A-Z0-9]{10}')
+UUID_RE = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
+HOST_REF_RE = re.compile(r'[0-9a-f]{32}')
+NETWORK_ATTEMPTS = 2
+
 OFFLINE = 'OUTPUT could not be reached. Check this computer\'s internet connection and try again.'
-DISABLED = 'OUTPUT pairing is turned off on the server.'
-REJECTED = 'That pairing code is not valid or has expired. Ask the shop owner for a new code.'
-UNAVAILABLE = 'OUTPUT could not complete pairing. Try again in a few minutes.'
+DISABLED = "OUTPUT isn't turned on yet for this shop. Ask the admin."
+INVALID_CODE = 'That pairing code is not valid. Ask the shop owner for a new code.'
+EXPIRED = 'That pairing code has expired. Ask the shop owner for a new code.'
+CONSUMED = 'That pairing code was already used. Ask the shop owner for a new code.'
+RATE_LIMITED = 'OUTPUT is busy. Wait a moment and try this code again.'
+LIMIT = 'This shop already has as many Ez Nest connections as OUTPUT allows. Ask the admin.'
+REPLAY = 'OUTPUT already finished this pairing attempt, but this computer did not receive the credential. Ask the shop owner for a new code.'
 UNEXPECTED = 'OUTPUT did not accept the pairing request.'
 STORE_FAILED = 'OUTPUT accepted the code, but this computer could not store the credential. Ask the shop owner for a new code.'
+
+MESSAGES = {
+    'disabled': DISABLED,
+    'invalid_code': INVALID_CODE,
+    'expired': EXPIRED,
+    'consumed': CONSUMED,
+    'rate_limited': RATE_LIMITED,
+    'limit': LIMIT,
+    'replay': REPLAY,
+    'offline': OFFLINE,
+    'unexpected': UNEXPECTED,
+}
+STATUS_REASONS = {503: 'disabled', 404: 'invalid_code', 401: 'expired', 429: 'rate_limited'}
 
 
 class PairingError(ValueError):
@@ -41,74 +66,85 @@ class PairingError(ValueError):
         self.reason = reason
 
 
-def clean_code(value):
-    if not isinstance(value, str) or not CODE_RE.fullmatch(value.strip()):
-        raise PairingError('rejected', REJECTED)
-    return value.strip()
+def normalize_code(value):
+    """Trim, uppercase, and accept the hyphen as optional. Wire form is 7K4NP-QRX2M."""
+    if not isinstance(value, str):
+        raise PairingError('invalid_code', INVALID_CODE)
+    compact = ''.join(ch for ch in value.upper() if ch not in ' \t\r\n-')
+    if not CODE_BODY.fullmatch(compact):
+        raise PairingError('invalid_code', INVALID_CODE)
+    return compact[:5] + '-' + compact[5:]
 
 
-def clean_host(value):
+def clean_host_label(value):
     if not isinstance(value, str):
         return 'localhost'
     text = ''.join(ch for ch in value if ch.isprintable() and ch not in '\r\n\t').strip()
-    return text[:253] or 'localhost'
+    return text[:80] or 'localhost'
 
 
-def clean_version(value):
-    text = str(value or '').strip()
-    if not re.fullmatch(r'[0-9A-Za-z._+-]{1,40}', text):
-        raise PairingError('unexpected', UNEXPECTED)
-    return text
+def host_ref(directory):
+    """Stable installation id. Omitted when it is not 32 lowercase hex."""
+    try:
+        with telemetry.database(directory) as db:
+            value = db.execute("SELECT value FROM metadata WHERE key='instance_id'").fetchone()[0]
+    except (OSError, sqlite3.Error, TypeError, IndexError, ValueError):
+        return None
+    if isinstance(value, str) and HOST_REF_RE.fullmatch(value):
+        return value
+    return None
 
 
 def _problem_code(payload):
     if not isinstance(payload, dict):
         return ''
-    raw = payload.get('code')
-    if not isinstance(raw, str):
-        raw = payload.get('error') if isinstance(payload.get('error'), str) else ''
-    return raw.strip().lower()
+    for key in ('code', 'error'):
+        raw = payload.get(key)
+        if isinstance(raw, str):
+            return raw.strip().lower()
+    return ''
 
 
 def classify(status, payload):
     code = _problem_code(payload)
-    if code == 'api_route_not_found' or any(part in code for part in ('disabled', 'not_enabled', 'notenabled', 'feature_off')):
+    if code == 'api_route_not_found':
         return 'disabled'
-    if status == 404 and not code:
-        return 'disabled'
-    if status in (400, 401, 403, 404, 409, 410, 422):
-        return 'rejected'
-    if status >= 500 or status in (408, 429):
-        return 'unavailable'
-    return 'unexpected'
-
-
-def _message(reason):
-    return {'offline': OFFLINE, 'disabled': DISABLED, 'rejected': REJECTED, 'unavailable': UNAVAILABLE}.get(reason, UNEXPECTED)
+    if code in MESSAGES and code not in ('offline', 'replay', 'unexpected'):
+        return code
+    if status == 409:
+        return 'unexpected'
+    return STATUS_REASONS.get(status, 'unexpected')
 
 
 def interpret(status, body):
-    if len(body) > 16384:
+    if not isinstance(body, (bytes, bytearray)) or len(body) > 16384:
         raise PairingError('unexpected', UNEXPECTED)
     try:
         payload = json.loads(body)
     except (ValueError, TypeError):
-        raise PairingError(classify(status, None), _message(classify(status, None)))
+        reason = classify(status, None)
+        raise PairingError(reason, MESSAGES.get(reason, UNEXPECTED))
     if status != 200:
-        reason = classify(status, payload)
-        raise PairingError(reason, _message(reason))
-    record = payload.get('result') if isinstance(payload, dict) and isinstance(payload.get('result'), dict) and 'credential' not in payload else payload
-    if not isinstance(record, dict):
+        reason = classify(status, payload if isinstance(payload, dict) else None)
+        raise PairingError(reason, MESSAGES.get(reason, UNEXPECTED))
+    if not isinstance(payload, dict):
         raise PairingError('unexpected', UNEXPECTED)
-    credential = record.get('credential')
-    shop = record.get('shopName', record.get('shop_name'))
+    outcome = payload.get('outcome')
+    result = payload.get('result') if isinstance(payload.get('result'), dict) else {}
+    token = result.get('token')
+    # A replay has no token. If a real token is present, keep it: it will not be sent again.
+    if not output_credential.valid_token(token):
+        if outcome == 'replay':
+            raise PairingError('replay', REPLAY)
+        raise PairingError('unexpected', UNEXPECTED)
+    shop = result.get('shopName', result.get('shop'))
+    if isinstance(shop, dict):
+        shop = shop.get('shopName') or shop.get('name')
     try:
-        if not output_credential.valid_token(credential):
-            raise ValueError('credential')
-        shop_name = output_credential.clean_shop_name(shop)
+        shop_name = output_credential.clean_shop_name(shop) if isinstance(shop, str) else 'OUTPUT'
     except ValueError:
-        raise PairingError('unexpected', UNEXPECTED)
-    return {'credential': credential, 'shopName': shop_name}
+        shop_name = 'OUTPUT'
+    return {'credential': token, 'shopName': shop_name}
 
 
 def _post(raw):
@@ -126,13 +162,35 @@ def _post(raw):
         raise PairingError('offline', OFFLINE)
 
 
-def exchange(code, host, version, *, transport=None):
-    payload = {'code': clean_code(code), 'hostName': clean_host(host), 'version': clean_version(version)}
-    raw = json.dumps(payload, separators=(',', ':')).encode()
-    status, body = transport(raw) if transport else _post(raw)
-    if not isinstance(status, int) or not isinstance(body, (bytes, bytearray)):
+def _payload(code, request_id, host_label, host_reference):
+    body = {'code': code, 'requestId': request_id, 'hostLabel': host_label}
+    if host_reference:
+        body['hostRef'] = host_reference
+    return json.dumps(body, separators=(',', ':')).encode()
+
+
+def exchange(code, *, host_label, host_ref=None, transport=None, attempts=NETWORK_ATTEMPTS):
+    """One attempt. requestId is minted here and reused only for network retries."""
+    normalized = normalize_code(code)
+    label = clean_host_label(host_label)
+    reference = host_ref if isinstance(host_ref, str) and HOST_REF_RE.fullmatch(host_ref) else None
+    request_id = str(uuid.uuid4())
+    if not UUID_RE.fullmatch(request_id):
         raise PairingError('unexpected', UNEXPECTED)
-    return interpret(status, body)
+    raw = _payload(normalized, request_id, label, reference)
+    if type(attempts) is not int or not 1 <= attempts <= 3:
+        raise PairingError('unexpected', UNEXPECTED)
+    for attempt in range(attempts):
+        try:
+            status, body = transport(raw) if transport else _post(raw)
+        except PairingError as error:
+            if error.reason == 'offline' and attempt + 1 < attempts:
+                continue
+            raise
+        if not isinstance(status, int) or not isinstance(body, (bytes, bytearray)):
+            raise PairingError('unexpected', UNEXPECTED)
+        return interpret(status, body)
+    raise PairingError('offline', OFFLINE)
 
 
 def _blocked_by_environment():
@@ -143,13 +201,15 @@ def _blocked_by_environment():
         raise PairingError('rejected', 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.')
 
 
-def connect(directory, code, *, paused=False, transport=None, host=None, version=None):
+def connect(directory, code, *, paused=False, transport=None, host=None):
     if paused:
         raise PairingError('disabled', 'Sharing is paused during installation or recovery. Refresh after the host restarts.')
     _blocked_by_environment()
     # Validate before any network use so a mistyped code is not sent.
-    clean_code(code)
-    result = exchange(code, host if host is not None else host_name(), version or VERSION, transport=transport)
+    normalize_code(code)
+    reference = host_ref(directory)
+    result = exchange(code, host_label=host if host is not None else host_name(), host_ref=reference, transport=transport)
+    # The token is returned once. Write it before status, consent, or another request.
     try:
         output_credential.save(directory, result['credential'], result['shopName'])
     except PairingError:

@@ -10,8 +10,6 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-import app_info
-
 import output_credential
 import output_pairing
 import server
@@ -19,7 +17,7 @@ import telemetry
 import telemetry_sender as sender
 
 TOKEN = 'osa_' + 'B' * 43
-CODE = 'ABCD-1234'
+CODE = '7K4NP-QRX2M'
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -64,46 +62,115 @@ class CredentialTests(unittest.TestCase):
         self.assertFalse(output_credential.path(self.root).exists())
 
 
+def created(shop='North Shop'):
+    return 200, json.dumps({'outcome': 'created', 'result': {'token': TOKEN, 'shopName': shop}}).encode()
+
+
 class ExchangeTests(unittest.TestCase):
-    def test_success_shape_and_secret_free_errors(self):
-        secret_body = json.dumps({'code': 'expired', 'detail': CODE, 'credential': TOKEN}).encode()
-        with self.assertRaises(output_pairing.PairingError) as caught:
-            output_pairing.interpret(410, secret_body)
-        self.assertEqual(caught.exception.reason, 'rejected')
-        self.assertNotIn(CODE, str(caught.exception))
-        self.assertNotIn(TOKEN, str(caught.exception))
-        disabled = output_pairing.classify(404, {'code': 'api_route_not_found', 'detail': CODE})
-        self.assertEqual(disabled, 'disabled')
-        self.assertEqual(output_pairing.classify(404, None), 'disabled')
-        self.assertEqual(output_pairing.classify(503, {'code': 'temporarily_unavailable'}), 'unavailable')
-        result = output_pairing.interpret(200, json.dumps({'result': {'credential': TOKEN, 'shop_name': 'North Shop'}, 'extra': CODE}).encode())
+    def test_code_is_trimmed_uppercased_and_hyphen_optional(self):
+        self.assertEqual(output_pairing.normalize_code('  7k4np-qrx2m '), CODE)
+        self.assertEqual(output_pairing.normalize_code('7k4npqrx2m'), CODE)
+        self.assertEqual(output_pairing.normalize_code('7K4NP - QRX2M'), CODE)
+        for bad in ('', 'NOPE-0000', '7K4NP-QRX2', '7K4NP-QRX2MM', 'not a code'):
+            with self.assertRaises(output_pairing.PairingError) as caught:
+                output_pairing.normalize_code(bad)
+            self.assertEqual(caught.exception.reason, 'invalid_code')
+            if bad.strip():
+                self.assertNotIn(bad.strip(), str(caught.exception))
+
+    def test_success_token_replay_and_each_error_code(self):
+        import telemetry_output
+        self.assertEqual(telemetry_output.SCHEMA, 'eznest-observation/1')
+        result = output_pairing.interpret(*created())
         self.assertEqual(result, {'credential': TOKEN, 'shopName': 'North Shop'})
+        self.assertEqual(output_pairing.interpret(200, json.dumps({'outcome': 'created', 'result': {'token': TOKEN}}).encode())['shopName'], 'OUTPUT')
+        secret = json.dumps({'code': 'expired', 'detail': CODE, 'token': TOKEN}).encode()
+        cases = (
+            (503, {'code': 'disabled'}, 'disabled', output_pairing.DISABLED),
+            (404, {'code': 'invalid_code', 'detail': CODE}, 'invalid_code', output_pairing.INVALID_CODE),
+            (401, {'code': 'expired', 'detail': CODE}, 'expired', output_pairing.EXPIRED),
+            (409, {'code': 'consumed', 'token': TOKEN}, 'consumed', output_pairing.CONSUMED),
+            (429, {'code': 'rate_limited'}, 'rate_limited', output_pairing.RATE_LIMITED),
+            (409, {'code': 'limit'}, 'limit', output_pairing.LIMIT),
+            (404, {'code': 'api_route_not_found', 'detail': CODE}, 'disabled', output_pairing.DISABLED),
+        )
+        for status, payload, reason, message in cases:
+            with self.assertRaises(output_pairing.PairingError) as caught:
+                output_pairing.interpret(status, json.dumps(payload).encode())
+            self.assertEqual(caught.exception.reason, reason)
+            self.assertEqual(str(caught.exception), message)
+            self.assertNotIn(CODE, str(caught.exception))
+            self.assertNotIn(TOKEN, str(caught.exception))
+        with self.assertRaises(output_pairing.PairingError) as replay:
+            output_pairing.interpret(200, b'{"outcome":"replay"}')
+        self.assertEqual(replay.exception.reason, 'replay')
+        self.assertNotIn(TOKEN, str(replay.exception))
+        with self.assertRaises(output_pairing.PairingError) as leaked:
+            output_pairing.interpret(401, secret)
+        self.assertNotIn(CODE, str(leaked.exception))
+        self.assertNotIn(TOKEN, str(leaked.exception))
         with self.assertRaises(output_pairing.PairingError) as bad:
-            output_pairing.interpret(200, json.dumps({'credential': 'not-a-token', 'shopName': 'North Shop'}).encode())
+            output_pairing.interpret(200, json.dumps({'outcome': 'created', 'result': {'token': 'not-a-token'}}).encode())
+        self.assertEqual(bad.exception.reason, 'unexpected')
         self.assertNotIn('not-a-token', str(bad.exception))
 
-    def test_transport_posts_the_assumed_contract_and_does_not_follow_redirects(self):
-        seen = {}
+    def test_request_id_is_reused_only_for_a_network_retry(self):
+        seen = []
 
         def transport(raw):
-            seen['body'] = json.loads(raw)
-            return 200, json.dumps({'credential': TOKEN, 'shopName': 'North Shop'}).encode()
+            body = json.loads(raw)
+            seen.append(body)
+            if len(seen) == 1:
+                raise output_pairing.PairingError('offline', output_pairing.OFFLINE)
+            return created()
 
-        result = output_pairing.exchange(CODE, 'SHOP PC', '1.0.0-rc.5', transport=transport)
-        self.assertEqual(seen['body'], {'code': CODE, 'hostName': 'SHOP PC', 'version': '1.0.0-rc.5'})
+        result = output_pairing.exchange('7k4npqrx2m', host_label='SHOP PC', host_ref='ab' * 16, transport=transport)
         self.assertEqual(result['shopName'], 'North Shop')
+        self.assertEqual(len(seen), 2)
+        self.assertEqual(seen[0], seen[1])
+        self.assertEqual(seen[0]['code'], CODE)
+        self.assertEqual(seen[0]['hostLabel'], 'SHOP PC')
+        self.assertEqual(seen[0]['hostRef'], 'ab' * 16)
+        self.assertRegex(seen[0]['requestId'], output_pairing.UUID_RE.pattern)
+        self.assertEqual(set(seen[0]), {'code', 'requestId', 'hostLabel', 'hostRef'})
+        again = []
+
+        def once(raw):
+            again.append(json.loads(raw)['requestId'])
+            return created()
+
+        output_pairing.exchange(CODE, host_label='SHOP PC', transport=once)
+        output_pairing.exchange(CODE, host_label='SHOP PC', transport=once)
+        self.assertEqual(len(again), 2)
+        self.assertNotEqual(again[0], again[1])
+        self.assertNotEqual(again[0], seen[0]['requestId'])
+        calls = []
+
+        def fail(_raw):
+            calls.append(1)
+            return 503, b'{"code":"disabled","detail":"7K4NP-QRX2M"}'
+
+        with self.assertRaises(output_pairing.PairingError) as disabled:
+            output_pairing.exchange(CODE, host_label='HOST', transport=fail)
+        self.assertEqual(calls, [1])
+        self.assertEqual(disabled.exception.reason, 'disabled')
+        self.assertNotIn(CODE, str(disabled.exception))
+
+    def test_transport_does_not_follow_redirects(self):
         with patch.object(output_pairing, 'build_opener') as opener:
             opener.return_value.open.side_effect = URLError('timed out')
             with self.assertRaises(output_pairing.PairingError) as offline:
-                output_pairing.exchange(CODE, 'HOST', '1.0.0-rc.5')
+                output_pairing.exchange(CODE, host_label='HOST')
             self.assertEqual(offline.exception.reason, 'offline')
             self.assertNotIn('timed out', str(offline.exception))
+            self.assertEqual(opener.return_value.open.call_count, output_pairing.NETWORK_ATTEMPTS)
             self.assertIsInstance(opener.call_args.args[0], output_pairing.NoRedirect)
         with patch.object(output_pairing, 'build_opener') as opener:
-            opener.return_value.open.side_effect = HTTPError(output_pairing.ENDPOINT, 302, 'Found', hdrs={}, fp=io.BytesIO(b'{"credential":"' + TOKEN.encode() + b'"}'))
+            opener.return_value.open.side_effect = HTTPError(output_pairing.ENDPOINT, 302, 'Found', hdrs={}, fp=io.BytesIO(b'{"result":{"token":"' + TOKEN.encode() + b'"}}'))
             with self.assertRaises(output_pairing.PairingError) as redirected:
-                output_pairing.exchange(CODE, 'HOST', '1.0.0-rc.5')
+                output_pairing.exchange(CODE, host_label='HOST')
             self.assertNotIn(TOKEN, str(redirected.exception))
+            self.assertEqual(opener.return_value.open.call_count, 1)
             self.assertIsInstance(opener.call_args.args[0], sender.NoRedirect)
 
 
@@ -119,11 +186,29 @@ class ConnectTests(unittest.TestCase):
 
     def transport(self, raw):
         self.sent = json.loads(raw)
-        return 200, json.dumps({'credential': TOKEN, 'shopName': 'North Shop'}).encode()
+        return created()
 
     def test_connect_stores_credential_and_consent_sends_it_without_env(self):
-        info = output_pairing.connect(self.root, '  ' + CODE + '  ', transport=self.transport, host='HOST', version='1.0.0-rc.5')
+        order = []
+        real_save = output_credential.save
+        real_status = sender.status
+
+        def save(*args, **kwargs):
+            order.append('save')
+            return real_save(*args, **kwargs)
+
+        def status(*args, **kwargs):
+            order.append('status')
+            self.assertEqual(output_credential.load(self.root), TOKEN)
+            return real_status(*args, **kwargs)
+
+        with patch.object(output_credential, 'save', side_effect=save), patch.object(sender, 'status', side_effect=status):
+            info = output_pairing.connect(self.root, '  7k4npqrx2m  ', transport=self.transport, host='HOST')
+        self.assertEqual(order, ['save', 'status'])
         self.assertEqual(self.sent['code'], CODE)
+        self.assertEqual(self.sent['hostLabel'], 'HOST')
+        self.assertRegex(self.sent['requestId'], output_pairing.UUID_RE.pattern)
+        self.assertRegex(self.sent['hostRef'], r'^[0-9a-f]{32}$')
         self.assertEqual(info['connection'], 'paired')
         self.assertEqual(info['shopName'], 'North Shop')
         self.assertTrue(info['requiresConsent'])
@@ -155,7 +240,7 @@ class ConnectTests(unittest.TestCase):
         self.assertFalse(output_credential.path(self.root).exists())
 
     def test_disconnect_removes_the_file_and_stops_sharing(self):
-        output_pairing.connect(self.root, CODE, transport=self.transport, host='HOST', version='1.0.0-rc.5')
+        output_pairing.connect(self.root, CODE, transport=self.transport, host='HOST')
         info = sender.status(self.root)
         sender.consent(self.root, revision=info['revision'], version=info['consentVersion'], configurationId=info['configurationId'], confirmed=True)
         disconnected = output_pairing.disconnect(self.root)
@@ -207,15 +292,15 @@ class PairApiTests(unittest.TestCase):
     def test_host_pair_and_disconnect_hide_the_credential(self):
         seen = {}
 
-        def exchange(code, host, version, *, transport=None):
-            seen.update(code=code, host=host, version=version)
+        def exchange(code, *, host_label, host_ref=None, transport=None, attempts=2):
+            seen.update(code=code, host_label=host_label, host_ref=host_ref)
             return {'credential': TOKEN, 'shopName': 'North Shop'}
 
         with patch.object(output_pairing, 'exchange', side_effect=exchange):
             status, body = self.request('/api/telemetry/output/pair', {'code': CODE})
         self.assertEqual(seen['code'], CODE)
-        self.assertEqual(seen['version'], app_info.VERSION)
-        self.assertTrue(seen['host'])
+        self.assertTrue(seen['host_label'])
+        self.assertRegex(seen['host_ref'], r'^[0-9a-f]{32}$')
         self.assertEqual(status, 200)
         self.assertEqual(body['shopName'], 'North Shop')
         self.assertEqual(body['connection'], 'paired')
@@ -308,10 +393,9 @@ class OutputScreenTests(unittest.TestCase):
                     page.locator('#settings-telemetry').evaluate('node => node.open = true')
                     page.wait_for_function("() => !document.querySelector('#output-pair').disabled")
                     expect(page.locator('#output-pair-form')).to_be_visible()
-                    page.fill('#output-pair-code', 'NOPE-0000')
+                    page.fill('#output-pair-code', '7k4np-qrx2m')
 
-                    def disabled(code, host, version, *, transport=None):
-                        self.assertEqual(code, 'NOPE-0000')
+                    def disabled(*_args, **_kwargs):
                         raise output_pairing.PairingError('disabled', output_pairing.DISABLED)
 
                     with patch.object(output_pairing, 'exchange', side_effect=disabled):
@@ -319,7 +403,7 @@ class OutputScreenTests(unittest.TestCase):
                         page.wait_for_function("() => document.querySelector('#output-connect-status').classList.contains('error')")
                     message = page.locator('#output-connect-status').inner_text()
                     self.assertEqual(message, output_pairing.DISABLED)
-                    self.assertEqual(page.input_value('#output-pair-code'), 'NOPE-0000')
+                    self.assertEqual(page.input_value('#output-pair-code'), '7k4np-qrx2m')
                     self.assertNotIn('osa_', page.locator('#settings-telemetry').inner_text())
                     self.assertEqual(page.locator('#output-connect-status').evaluate('n => getComputedStyle(n).color'), 'rgb(217, 47, 0)')
                     page.screenshot(path=str(shots / 'output-connect-error-desktop.png'))

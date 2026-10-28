@@ -172,14 +172,18 @@ On the host only, Settings → **Share activity with OUTPUT**:
 2. Expected success: `Connected to <shop name>.` Then the sharing details are on screen. Check the agreement and choose **Enable sharing**.
 3. Expected failures, in the host's own words:
    - Offline: `OUTPUT could not be reached. Check this computer's internet connection and try again.`
-   - Bad or expired code: `That pairing code is not valid or has expired. Ask the shop owner for a new code.`
-   - Feature disabled: `OUTPUT pairing is turned off on the server.`
+   - Code not valid: `That pairing code is not valid. Ask the shop owner for a new code.`
+   - Code expired: `That pairing code has expired. Ask the shop owner for a new code.`
+   - Code already used: `That pairing code was already used. Ask the shop owner for a new code.`
+   - Feature disabled: `OUTPUT isn't turned on yet for this shop. Ask the admin.`
+   - Too many tries: `OUTPUT is busy. Wait a moment and try this code again.`
+   - Connection limit: `This shop already has as many Ez Nest connections as OUTPUT allows. Ask the admin.`
 4. The page must not display the credential. `%ProgramData%\eznest\output-credential.bin` exists after success and is not a text file containing `osa_`.
 5. If `EZ_NEST_OUTPUT_UPLOADS=1` and `EZ_NEST_OUTPUT_TOKEN` are set on the host, the screen says launch settings are in use and does not spend the pairing code. Remove those variables and restart the host before pairing.
 6. **Disconnect** removes the saved credential and stops sharing. Pairing is required again.
 7. Open **Don't print**. Confirm the title, the three "Use it when" lines, the light-green button, the green Still get paid badge, black Join the waitlist and Learn more actions, and that the copy does not mention fees or how a shop is chosen.
 
-If OUTPUT has not published pairing yet, a clear disabled or offline error is the expected result. On 2026-10-28 the public pair URL returned HTTP 404 `api_route_not_found`, and Ez Nest showed `OUTPUT pairing is turned off on the server.` Record the exact sentence you see. Do not invent a token to make the success path look done.
+A pairing code looks like `7K4NP-QRX2M`. Spaces and a missing hyphen are accepted. Record the exact sentence you see. Do not invent a token to make the success path look done. The credential is returned only on the first success for that attempt.
 
 ## 8. Share the installer
 

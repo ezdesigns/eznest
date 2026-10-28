@@ -2452,7 +2452,7 @@ async function connectOutput() {
     renderOutputSharing(body);
     if (body.requiresConsent && !$('telemetry-agree').disabled) $('telemetry-agree').focus();
   } catch (error) {
-    if (error.reason === 'rejected' || error.reason === 'unexpected') input.value = '';
+    if (['invalid_code', 'expired', 'consumed', 'limit', 'replay', 'unexpected', 'rejected'].includes(error.reason)) input.value = '';
     await refreshOutputSharing().catch(() => {});
     status.textContent = error.message;
     status.classList.add('error');
