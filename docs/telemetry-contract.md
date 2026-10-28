@@ -1,5 +1,11 @@
 # EZ Nest local tracking and proposed atom contract
 
+The local proposal below is not the OUTPUT wire payload. The implemented
+consented sender and its stricter projection are documented in
+[OUTPUT sharing](output-telemetry.md). That path omits job codes, roll IDs and
+other local-only fields described here; it remains off without host configuration
+and explicit screen consent.
+
 This is an implemented **local backend and proposed integration contract**, not a
 registered Ez Ink hub integration. The referenced EZNEST-telemetry-brief.md and
 final material.allocated contract were unavailable when this was built. Have Ez
@@ -131,12 +137,16 @@ Stock events contain only `jobCodes=[]`, `rollId`, `materialKey`,
 All telemetry routes require a loopback client, the existing valid Host and
 `X-EZ-Token` from `/api/session`. POSTs retain the existing Origin check. These
 routes are not a remote login or public dashboard API. Do not forward the app
-port to the internet. There is no API to enable telemetry network transmission.
+port to the internet. The separate `/api/telemetry/output` status and consent/revoke
+routes manage the opt-in OUTPUT sender; see the sharing document.
 
 - `GET /api/telemetry`: local status, exact snapshots, roll balances, warnings,
-  available event types; `localOnly=true`, `hubConnected=false`.
+  available event types and `outputDelivery` status. `localOnly` reflects whether
+  sharing is enabled. The legacy `hubConnected` value is null when enabled; use
+  the last confirmed delivery timestamp rather than inferring a live connection.
 - `GET /api/telemetry/events`: first 100 pending **banded proposal atoms**. Read
-  does not acknowledge delivery. This is the privacy-safe export surface.
+  does not acknowledge delivery. These local proposal atoms are not the consented
+  OUTPUT projection and must not be uploaded directly.
 - `POST /api/telemetry/link`: `{id, jobCodes, rollId?}`. Current finished layout,
   before commit. Roll, if given, must exist and match its material key.
 - `POST /api/telemetry/status`: `{id, action, confirmed:true}` with action `queue`,

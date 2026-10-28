@@ -2385,6 +2385,44 @@ function restoreJob(state) {
   showWidth();
 }
 
+let outputSharing = null;
+function renderOutputSharing(info) {
+  outputSharing = info;
+  $('telemetry-agree').checked = false;
+  $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
+  $('telemetry-enable').disabled = true;
+  $('telemetry-stop').disabled = !info.enabled || info.paused;
+  $('telemetry-kinds').textContent = info.eventTypes.join(', ');
+  $('telemetry-bands').textContent = 'Measurement range widths (null means unknown; 0 means zero): ' + Object.entries(info.bands).map(([key, step]) => key + ': ' + step).join('; ') + '.';
+  const bands = Object.fromEntries(Object.entries(info.bands).map(([key, step]) => [key, `[${step},${step * 2})`]));
+  $('telemetry-preview').textContent = JSON.stringify({schema: info.schema, requestId: '00000000-0000-5000-8000-000000000001', kind: 'nest.created', instanceId: info.instanceId, nestId: '00000000000000000000000000000001', occurredAt: '2026-01-01T00:00:00.000000Z', appVersion: info.appVersion, materialClass: 'moto_regular', bands}, null, 2);
+  $('telemetry-status').textContent = info.paused ? 'Sharing paused during installation or recovery. Refresh after the host restarts to change sharing settings.' : !info.configured ? 'Off. An operator must configure approved OUTPUT delivery on this host before you can enable it.' : info.enabled ? `Sharing new activity. ${info.pendingEvents} pending. ${info.withheldEvents} invalid observations kept only on this host. ${info.lastError || (info.lastDeliveredAt ? 'Last receipt: ' + info.lastDeliveredAt : 'No confirmed delivery yet.')}` : 'Off. Review the fields above to enable sharing.';
+}
+async function refreshOutputSharing() {
+  try {
+    const response = await fetch('/api/telemetry/output', {headers: {'X-EZ-Token': token}});
+    if (!response.ok) throw Error('Review and manage OUTPUT sharing on the host computer.');
+    renderOutputSharing(await response.json());
+  } catch (error) {
+    outputSharing = null;
+    $('telemetry-agree').disabled = $('telemetry-enable').disabled = $('telemetry-stop').disabled = true;
+    $('telemetry-status').textContent = error.message;
+  }
+}
+async function changeOutputSharing(enable) {
+  if (enable && (!outputSharing || outputSharing.paused || !$('telemetry-agree').checked)) return;
+  $('telemetry-enable').disabled = $('telemetry-stop').disabled = true;
+  try {
+    const data = enable ? {revision: outputSharing.revision, version: outputSharing.consentVersion, configurationId: outputSharing.configurationId, confirmed: true} : {};
+    renderOutputSharing(await api('/api/telemetry/output/' + (enable ? 'consent' : 'revoke'), data));
+  } catch (error) {
+    $('telemetry-status').textContent = error.message + ' Refresh sharing status before trying again.';
+    outputSharing = null;
+    $('telemetry-agree').checked = false;
+    $('telemetry-agree').disabled = true;
+  }
+}
+
 async function boot() {
   closeSettingsFolds();
   await ensureLibraries();
@@ -2698,6 +2736,11 @@ document.addEventListener('DOMContentLoaded', () => {
     $('hot-folder').focus();
   });
   $('settings-close').addEventListener('click', () => $('settings').close());
+  $('settings-telemetry').addEventListener('toggle', () => { if ($('settings-telemetry').open) refreshOutputSharing(); });
+  $('telemetry-refresh').addEventListener('click', refreshOutputSharing);
+  $('telemetry-agree').addEventListener('change', () => { $('telemetry-enable').disabled = !outputSharing || !outputSharing.configured || outputSharing.enabled || outputSharing.paused || !$('telemetry-agree').checked; });
+  $('telemetry-enable').addEventListener('click', () => changeOutputSharing(true));
+  $('telemetry-stop').addEventListener('click', () => changeOutputSharing(false));
   dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });
   $('max-output-waitlist').href = OUTPUT_WAITLIST_URL;
   $('max-output-learn').href = OUTPUT_WEBSITE_URL;
