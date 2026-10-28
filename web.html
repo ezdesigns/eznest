@@ -52,79 +52,82 @@
 </button>
 <dialog id="settings" aria-labelledby="settings-title">
   <div class="panel">
-    <div class="dialog-heading"><h2 id="settings-title" class="settings-title">Settings</h2><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
-    <div class="settings-tabs" role="tablist" aria-label="Settings categories">
-      <button id="settings-tab-files" type="button" role="tab" aria-controls="settings-files" aria-selected="true">Files</button>
-      <button id="settings-tab-cuts" type="button" role="tab" aria-controls="settings-cuts" aria-selected="false" tabindex="-1">Cuts</button>
-      <button id="settings-tab-delivery" type="button" role="tab" aria-controls="settings-delivery" aria-selected="false" tabindex="-1">Printer</button>
-      <button id="settings-tab-updates" type="button" role="tab" aria-controls="settings-updates" aria-selected="false" tabindex="-1">App</button>
-      <button id="settings-tab-support" type="button" role="tab" aria-controls="settings-support" aria-selected="false" tabindex="-1">Help</button>
-    </div>
-    <div class="settings-pages">
-    <section id="settings-files" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-files">
-      <h3>Save locations</h3>
-      <p class="section-note">Choose a usual folder, or leave it blank to choose each time.</p>
+    <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title">Settings</h2><p class="hint">Set up once. Your material choices stay with the job.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
+    <section class="settings-section" aria-labelledby="destination-title">
+      <h3 id="destination-title">Where files are saved</h3>
+      <p class="section-note">Choose your usual folder. You can still choose a different location when saving a job.</p>
       <div class="fields">
-        <label class="wide">Default print folder
-          <input id="hot-folder" type="text" placeholder="Choose when saving" autocomplete="off">
-          <span id="hot-error" class="lan-note" hidden></span>
-          <button id="browse-output" class="link" type="button">Choose folder…</button>
-        </label>
-      </div>
-      <label class="check"><input id="staging-on" type="checkbox"> Keep an extra copy</label>
-      <label class="wide" id="staging-row" hidden>Extra-copy folder
-        <input id="staging-folder" type="text" placeholder="Folder for the extra copy" autocomplete="off">
+      <label class="wide">Hot folder
+        <input id="hot-folder" type="text" placeholder="Hot folder path" autocomplete="off">
+        <span id="hot-error" class="lan-note" hidden></span>
+        <button id="browse-output" class="link" type="button">Choose folder…</button>
       </label>
+      <label class="check wide"><input id="staging-on" type="checkbox"> Staging folder</label>
+      <label class="wide" id="staging-row" hidden>Staging folder
+        <input id="staging-folder" type="text" placeholder="Off" autocomplete="off">
+        <span class="hint">Optional. Off until you turn it on.</span>
+      </label>
+      </div>
     </section>
-    <section id="settings-cuts" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-cuts" hidden>
-      <h3>Cut line names</h3>
-      <p class="section-note">Leave these unchanged if your cuts already work.</p>
+    <details id="settings-cuts" class="settings-section">
+      <summary>Cut lines · how your cutter recognizes them</summary>
+      <p class="section-note">Match the cut names your print software expects. Leave these as they are if your cuts already work.</p>
       <div class="fields">
-        <label class="wide">Cut naming preset<select id="cut-preset"><option value="output" selected>Standard cut names</option><option value="ln">LN cut names</option><option value="custom">Custom</option></select></label>
-        <label class="wide">Through-cut name<input id="thru-name" type="text" maxlength="80" value="CutContour_Thru-cut" spellcheck="false" autocomplete="off"><span class="cut-hint thru-text">Blue · cuts through the backing</span></label>
-        <label class="wide">Kiss-cut name<input id="kiss-name" type="text" maxlength="80" value="CutContour_Kiss-cut" spellcheck="false" autocomplete="off"><span class="cut-hint kiss-text">Pink · leaves the backing intact</span></label>
-        <label class="wide">If a cut type is missing<select id="generic-cut"><option value="">Ask me</option><option value="thru">Through cut</option><option value="kiss">Kiss cut</option><option value="contour">Leave unassigned</option></select></label>
+      <label class="wide">Cut spot names
+        <select id="cut-preset">
+          <option value="output" selected>Standard cut names</option>
+          <option value="ln">LN cut names</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label>Thru spot
+        <input id="thru-name" type="text" maxlength="80" value="CutContour_Thru-cut" spellcheck="false" autocomplete="off">
+      </label>
+      <label>Kiss spot
+        <input id="kiss-name" type="text" maxlength="80" value="CutContour_Kiss-cut" spellcheck="false" autocomplete="off">
+      </label>
+      <label>Unnamed CutContour
+        <select id="generic-cut">
+          <option value="">Ask me</option>
+          <option value="thru">Thru-cut</option>
+          <option value="kiss">Kiss-cut</option>
+          <option value="contour">Generic cut</option>
+        </select>
+      </label>
       </div>
-    </section>
-    <section id="settings-delivery" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-delivery" hidden>
-      <h3>Print software</h3>
-      <p class="section-note">For shops using a watched print folder. Saving a file does not confirm it printed.</p>
-      <label class="wide">Printer label (optional)<input id="printer" type="text" maxlength="80" autocomplete="off"></label>
-      <label class="check"><input id="onyx-pc" type="checkbox"> ONYX is on this computer</label>
-      <label class="check"><input id="allow-undo" type="checkbox"> Show Undo send</label>
-      <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
-      <p id="hot-default" hidden></p>
-      <div class="settings-subsection">
-        <h4>Shop network</h4>
-        <label class="check"><input id="lan" type="checkbox" disabled> Other computers can connect</label>
-        <p class="hint">Shop network access is configured when the app starts.</p>
-        <p id="lan-note" class="lan-note" hidden>Anyone on the shop network can use this workspace. Keep guest devices on a separate network.</p>
-        <p id="lan-address" class="lan-address" hidden></p><p id="lan-restart" class="hint" hidden></p>
-      </div>
-    </section>
-    <section id="settings-updates" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-updates" hidden>
-      <h3>App updates</h3>
-      <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Check for updates</button></div>
-      <label class="check"><input id="updates" type="checkbox" checked> Look for app updates</label>
-      <label class="check"><input id="test-channel" type="checkbox"> Include test versions</label>
-      <label class="check" hidden><input id="output-network" type="checkbox"> Join OUTPUT network</label><p id="output-note" class="hint" hidden>Not available yet.</p>
-      <p id="update-note" class="hint" hidden></p><button id="update-cancel" type="button" class="link" hidden>Cancel waiting update</button>
-      <details id="notes"><summary>What's new</summary><div id="notes-body"></div></details>
-    </section>
-    <section id="settings-support" class="settings-section" role="tabpanel" aria-labelledby="settings-tab-support" hidden>
-      <h3>Help &amp; activity</h3>
-      <p class="section-note">Add files, choose material, nest, then review and save.</p>
-      <a id="report" class="workspace" target="_blank" rel="noopener noreferrer" href="https://github.com/ezdesigns/eznest/issues/new?template=tester-problem.yml">Report a problem</a>
-      <section id="local-activity" class="settings-subsection">
-        <h4>Activity · last 24 hours</h4>
-        <p id="activity-summary" role="status">Open to load activity.</p>
-        <p class="hint">Local records only. Sent means handed to a folder, not printed.</p>
-        <button id="activity-refresh" class="link" type="button">Refresh activity</button>
-      </section>
-      <section id="job-details" class="settings-subsection"><h4>Current job</h4><p id="job-checks" class="hint"></p><p id="sheet-id" class="sheet-id" hidden aria-label="Sheet ID"></p></section>
-      <a class="workspace" href="/">Open full workspace</a>
-    </section>
+    </details>
+    <details id="settings-delivery" class="settings-section">
+      <summary>Printer connection &amp; backup files</summary>
+      <p class="section-note">These controls do not change sticker quantities.</p>
+      <label class="wide">Printer
+        <input id="printer" type="text" maxlength="80" autocomplete="off">
+      </label>
+    <p id="hot-default" class="hint"></p>
+    <label class="check"><input id="onyx-pc" type="checkbox"> This PC runs ONYX</label>
+    <label class="check"><input id="allow-undo" type="checkbox"> Undo send</label>
+    <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
+    <div id="lan-access" hidden>
+    <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
+    <p class="hint">Shop network access is configured when the app starts.</p>
+    <p id="lan-note" class="lan-note" hidden>Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.</p>
+    <p id="lan-address" class="lan-address" hidden></p>
+    <p id="lan-restart" class="hint" hidden></p>
     </div>
+    </details>
+    <details id="settings-updates" class="settings-section">
+      <summary>App updates</summary>
+    <label class="check"><input id="updates" type="checkbox" checked> Check for updates</label>
+    <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
+    <label class="check" hidden><input id="output-network" type="checkbox"> Join OUTPUT network</label>
+    <p id="output-note" class="hint" hidden>Not available yet.</p>
+    <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
+    <p id="update-note" class="hint" hidden></p>
+    <button id="update-cancel" type="button" class="link" hidden>Cancel waiting update</button>
+    <details id="notes">
+      <summary>What's new</summary>
+      <div id="notes-body"></div>
+    </details>
+    </details>
     <input id="seconds" type="hidden" value="30">
     <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
   </div>
@@ -149,8 +152,8 @@
   <div class="result-overview" aria-label="Layout results">
   <div class="result-measures">
   <p class="metrics pending" id="readout" hidden>
-    <span id="result-heading" class="result-heading">Your layout</span>
-    <span class="metric length-metric"><span class="label">Roll length needed</span> <strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong><span id="used-width" class="used-width">on 51.5" wide</span></span>
+    <span id="result-heading" class="result-heading" hidden>Your layout</span>
+    <span class="metric length-metric"><span class="label">Roll length needed</span> <span class="length-figures"><strong id="length"><span class="num">–</span><span class="unit"> ft</span></strong><span id="piece-count" class="piece-count"></span></span><span id="used-width" class="used-width">on 51.5" wide</span></span>
     <span class="metric section-metric"><span class="label">Print sections</span> <strong id="sheets"><span class="num">–</span></strong></span>
     <span class="space-meter"><span class="space-labels"><span id="coverage-label"></span><span><strong id="waste"><span class="num">–</span><span class="unit">%</span></strong> <button id="unused-info" type="button" class="help-label" data-help="Space outside the protected artwork outlines, including gaps and margins. This is not ink coverage or money saved.">unused space</button></span></span><span class="space-track" aria-hidden="true"><span id="coverage-bar"></span></span></span>
   </p>
@@ -218,7 +221,10 @@
     <h2><span class="step-number">3</span> Where will you print?</h2>
     <div class="output-modes" aria-label="Where to print">
       <button id="in-house" class="nest-mode" type="button" aria-pressed="true">In-house</button>
-      <button id="max-output" type="button" aria-haspopup="dialog">Max output</button>
+      <button id="max-output" type="button" aria-haspopup="dialog" aria-controls="max-output-dialog">
+        <strong>Max output</strong>
+        <span>What's this?</span>
+      </button>
     </div>
     <div class="effort-heading"><button id="effort-help" class="help-label" type="button">Nesting effort</button><span class="hint">More time may find a tighter fit.</span></div>
     <span id="effort-summary" hidden></span>
@@ -267,11 +273,18 @@
 
 </main>
 <dialog id="max-output-dialog" aria-labelledby="max-output-title">
-  <div class="dialog-heading"><h2 id="max-output-title">Let another shop handle the print</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close Max output">×</button></div>
-  <p>Keep your customer and use another shop’s printing capacity through OUTPUT.</p>
-  <p class="hint">Interested? Visit OUTPUT to learn about the pilot. Your current job stays here.</p>
-  <a id="max-output-join" class="primary-link" href="https://output.jeezlabs.io/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Visit OUTPUT</a>
-  <p class="hint waitlist-note">Max output is not available in EZ Nest yet. Opening OUTPUT does not send your artwork or sign you up.</p>
+  <div class="dialog-heading"><h2 id="max-output-title">Keep the customer. Route the print.</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close Max output">×</button></div>
+  <p>When you can't print it here.</p>
+  <ul class="output-points">
+    <li>More jobs, same machines.</li>
+    <li>Take overflow, keep the customer.</li>
+    <li>Paid on delivery.</li>
+  </ul>
+  <div class="output-actions">
+    <a id="max-output-waitlist" class="primary-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Join the waitlist</a>
+    <a id="max-output-learn" class="output-learn" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Learn more</a>
+  </div>
+  <p class="hint waitlist-note">Early pilot.</p>
 </dialog>
 <dialog id="cut-review" aria-labelledby="cut-review-title" aria-describedby="cut-review-summary">
   <h2 id="cut-review-title">Are these the cut lines?</h2>
@@ -368,10 +381,8 @@
       <label hidden>Existing bleed
         <span class="measure"><input id="bleed" type="number" min="0" max="25" step="0.1" value="0" inputmode="decimal"><span>mm</span></span>
       </label>
-      <label>Material $ / m²
-        <input id="cost" type="number" min="0" step="any" placeholder="Optional" inputmode="decimal">
-      </label>
       </div>
+      <input id="cost" type="hidden">
       <label class="check"><input id="draw-marks" type="checkbox"> Draw registration marks (ONYX adds them)</label>
       </details>
       <p id="preset-error" class="lan-note" role="alert" hidden></p>
@@ -383,7 +394,33 @@
   <button id="feedback-dismiss" type="button" aria-label="Dismiss welcome">×</button>
   <strong>Thanks for trying EZ Nest.</strong><p>Have an idea or hit a snag? We'd love your feedback.</p>
 </aside>
+<div class="corner-actions">
+<details id="settings-support">
+  <summary>Help</summary>
+  <div class="help-card">
+    <h2>Help &amp; troubleshooting</h2>
+    <p class="section-note">Use these details when checking a saved job or reporting a problem.</p>
+    <details id="local-activity">
+      <summary>Local activity · last 24 hours</summary>
+      <p class="hint">Saved only on this PC for 90 days. No artwork or filenames.
+      Sent means delivered to the hot folder, not printed. Re-sending the same pack counts once.</p>
+      <p id="activity-summary" role="status">Open to load activity.</p>
+      <button id="activity-refresh" class="link" type="button">Refresh activity</button>
+    </details>
+    <details id="job-details"><summary>Job details</summary>
+      <p id="job-checks" class="hint"></p>
+      <p id="sheet-id" class="sheet-id" hidden aria-label="Sheet ID"></p>
+    </details>
+    <details class="quick-guide"><summary>How to nest</summary>
+      <p>Add files, choose material and effort, then Nest. Review the layout and save.</p>
+      <p>My computer lets you choose a folder. Default print folder uses the folder saved in Settings. Check the file in your print software before printing.</p>
+    </details>
+    <a id="report" class="workspace" target="_blank" rel="noopener noreferrer" href="https://github.com/ezdesigns/eznest/issues/new?template=tester-problem.yml">Report a problem</a>
+    <a class="workspace" href="/">Full workspace</a>
+  </div>
+</details>
 <button id="feedback-open" type="button" aria-label="Send feedback"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M7 9h10M7 13h7" stroke="currentColor" stroke-width="1.8"/></svg><span>Feedback</span></button>
+</div>
 <dialog id="feedback-dialog" aria-labelledby="feedback-title">
   <h2 id="feedback-title">Send feedback</h2>
   <p id="feedback-version"></p>

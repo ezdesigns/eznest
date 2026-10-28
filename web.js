@@ -3,6 +3,8 @@ const NS = 'http://www.w3.org/2000/svg';
 const $ = id => document.getElementById(id);
 const PREF = 'eznest-placeholders';
 const PIECE_CAP = 5000;
+// Both Max output links. Point this at a waitlist page when OUTPUT publishes one.
+const OUTPUT_WAITLIST_URL = 'https://output.jeezlabs.io/';
 let token = '';
 let localSave = false;
 let folderView = null;
@@ -57,11 +59,11 @@ function installSettingsHelp() {
     'printer': ['Printer label (optional)', 'A label for your shop setup. Changing it does not connect a printer or change print quality.'],
     'staging-on': ['Keep an extra copy', 'Also save the finished pack in the extra copy folder when you send it.'],
     'staging-folder': ['Extra copy folder', 'Choose where the extra copy is saved. This does not replace the main destination.'],
-    'onyx-pc': ['ONYX is on this computer', 'Changes the suggested output folder for this PC. It does not install ONYX or move your files.'],
+    'onyx-pc': ['This PC runs ONYX', 'Changes the suggested output folder for this PC. It does not install ONYX or move your files.'],
     'lan': ['Other computers can connect', 'Shows whether this app was started for the shop network. A saved setting cannot open network access. The separate trial stays on this PC.'],
     'updates': ['Look for app updates', 'Checks for newer app versions. Separate shop trials keep update checks off and are updated by opening a new tested build.'],
     'test-channel': ['Include test versions', 'When update checks are enabled, also show releases still being tested. Leave off for normal shop use.'],
-    'allow-undo': ['Show Undo send', 'Lets you remove a sent pack while it is still in the output folder. This cannot stop a job that ONYX has already picked up.'],
+    'allow-undo': ['Undo send', 'Lets you remove a sent pack while it is still in the output folder. This cannot stop a job that ONYX has already picked up.'],
     'preset-name': ['Material name', 'The name on the material button. Save separate materials when rolls need different widths or spacing.'],
     'unit': ['Units (inches or metric)', 'Shows these dimensions in inches, millimeters or centimeters. Existing values are converted, so the artwork stays the same size.'],
     'roll': ['Roll width', 'The full width of the material. Printable width must fit inside it. Increasing this alone does not make the layout wider.'],
@@ -69,7 +71,7 @@ function installSettingsHelp() {
     'gap': ['Space between pieces', 'Space between the outer artwork edges, including existing bleed. More space keeps pieces farther apart and usually uses more material.'],
     'margin': ['Space at roll edges', 'Keeps pieces away from the sides. More space leaves less room for pieces and may make the layout longer.'],
     'roll-length': ['Full roll length', 'The length of a new roll. This is a reference for your material list. Material left on roll is the amount available for this job.'],
-    'roll-cost': ['Full roll cost ($)', 'What you paid for a full roll, in US dollars. Enter its full length too. Savings use cost divided by full length; ink and labor are not included. Save material to remember this.'],
+    'roll-cost': ['Full roll cost ($)', 'What you paid for a full roll, in US dollars. Enter its full length and roll width too. Savings divide this cost by the full length. The pack estimate uses the same price spread over the roll area. Ink and labor are not included. Save material to remember this.'],
     'available-length': ['Length left on roll', 'Enter the physical length left, including reserved jobs. Confirmed material use subtracts stock; reservations reduce what is available. Leave blank if unknown.'],
     'low-stock': ['Low-stock alert at', 'Show a red Low stock notice when the saved material left is at or below this length. Leave blank to use 10% of the full roll length, when known. Update material left after printing.'],
     'sheet': ['Longest print section', 'Splits a long layout into sections no longer than this. A lower number can create more sections. Every piece must fit within one section.'],
@@ -78,7 +80,6 @@ function installSettingsHelp() {
     'mark-margin': ['Room for cutter marks', 'Reserves extra space at the edges, in addition to edge spacing. This does not draw marks; your print software can add them.'],
     'auto-bleed': ['Enlarge artwork at edges', 'Enlarges the artwork slightly around unchanged cut lines. It can change the design near the edges. Leave off for prepared print files and inspect any changed preview.'],
     'bleed': ['Existing color beyond cuts', 'How far the artwork already extends beyond its cut lines, in millimeters. Set this before adding files. It preserves that area during import; it does not create new color.'],
-    'cost': ['Material cost per m²', 'Used for a material-cost estimate only. Changing it does not change the layout or charge a customer.'],
     'draw-marks': ['Add cutter marks', 'Draws registration marks in the output. Leave off if ONYX adds its own marks, so you do not get two sets.']
   };
   for (const [setup, main] of Object.entries({'setup-hot': 'hot-folder', 'setup-onyx': 'onyx-pc', 'setup-printer': 'printer', 'setup-thru': 'thru-name', 'setup-kiss': 'kiss-name', 'setup-units': 'unit'})) help[setup] = help[main];
@@ -119,7 +120,10 @@ function installSettingsHelp() {
     });
   }
   for (const [id, [name, message]] of Object.entries(help)) {
-    const input = $(id), original = input.closest('label');
+    const input = $(id);
+    if (!input || input.type === 'hidden') continue;
+    const original = input.closest('label');
+    if (!original) continue;
     input.setAttribute('aria-label', name);
     // The effort heading itself explains the select; avoid repeating its title.
     if (id === 'nesting-effort') {
@@ -355,6 +359,39 @@ function shortProblem(message) {
   return text;
 }
 
+// Savings use full roll cost divided by full length. The pack estimate uses that
+// same purchase spread over roll width × full length. A saved per-m² price is
+// kept only when those three values cannot produce one.
+function derivedCostPerSquareMeter(values) {
+  if (!values || !['mm', 'cm', 'in'].includes(values.unit)) return null;
+  const priceText = String(values['roll-cost'] ?? '').trim();
+  const widthText = String(values.roll ?? '').trim();
+  const lengthText = String(values['roll-length'] ?? '').trim();
+  if (!priceText || !widthText || !lengthText) return null;
+  const price = Number(priceText), width = Number(widthText), length = Number(lengthText);
+  if (!Number.isFinite(price) || price < 0 || !Number.isFinite(width) || width <= 0 || !Number.isFinite(length) || length <= 0) return null;
+  const millimeters = EZNQueue.unitScale(values.unit);
+  const area = (width * millimeters / 1000) * (length * millimeters / 1000);
+  return area > 0 ? price / area : null;
+}
+
+function pricedMaterial(values) {
+  const derived = derivedCostPerSquareMeter(values);
+  if (derived != null) {
+    const usable = derived <= 1000000;
+    values.cost = usable ? String(derived) : '';
+    return usable ? derived : null;
+  }
+  const legacy = String(values.cost ?? '').trim();
+  const price = Number(legacy);
+  if (!legacy || !Number.isFinite(price) || price < 0 || price > 1000000) {
+    values.cost = '';
+    return null;
+  }
+  values.cost = legacy;
+  return price;
+}
+
 function preset() {
   if ($('available-length').value.trim() && Number($('available-length').value) === 0) throw Error('This material is out of stock. Update material left or choose another roll.');
   const factor = scale();
@@ -381,8 +418,11 @@ function preset() {
   if ($('sheet').value.trim()) settings.sheetLength = Number($('sheet').value) * factor;
   settings.continuous = $('print-layout').value === 'continuous';
   if (settings.continuous) settings.sheetLength = 5000;
-  if ($('cost').value.trim()) {
-    settings.costPerSquareMeter = Number($('cost').value);
+  const form = materialValues();
+  const price = pricedMaterial(form);
+  $('cost').value = form.cost;
+  if (price != null) {
+    settings.costPerSquareMeter = price;
     settings.currency = 'USD';
   }
   const name = ($('preset-name').value || $('material').selectedOptions[0].textContent).trim();
@@ -535,6 +575,7 @@ function clearReadout() {
   setNum('length', '–', 'ft');
   setNum('waste', '–', '%');
   setNum('sheets', '–');
+  $('piece-count').textContent = '';
   $('length').classList.remove('over');
   $('readout').classList.add('pending');
   $('checks').textContent = '';
@@ -601,6 +642,7 @@ function showScreen(name) {
   $('choice').hidden = name !== 'blocked' || !unresolved();
   if ($('choice').hidden) $('choose-confirm').hidden = true;
   if (idle) showSheetId(null);
+  syncWelcome();
   syncFiles();
   if (idle) {
     clearReadout();
@@ -642,6 +684,10 @@ function renderFiles() {
     qty.step = '1';
     qty.value = String(entry.sets);
     qty.setAttribute('aria-label', 'Quantity for ' + entry.name);
+    const countNote = document.createElement('span'); countNote.className = 'file-count';
+    const perFile = (entry.data?.parts || []).reduce((sum, part) => sum + (part.quantity || 1) * (part.sourcePieceCount || 1), 0);
+    const showCount = () => { countNote.textContent = `${perFile.toLocaleString()} pieces × ${entry.sets.toLocaleString()} = ${(perFile * entry.sets).toLocaleString()} total`; };
+    showCount();
     const commitQty = () => {
       const count = Number(qty.value);
       if (!Number.isInteger(count) || count < 1 || count > PIECE_CAP) {
@@ -650,6 +696,7 @@ function renderFiles() {
       }
       if (count === entry.sets) return;
       entry.sets = count;
+      showCount();
       if (kits.every(item => item.sets === count)) $('sets').value = String(count);
       requestNest();
     };
@@ -665,7 +712,7 @@ function renderFiles() {
     remove.setAttribute('aria-label', 'Remove ' + entry.name);
     remove.addEventListener('click', () => removeFile(entry.id));
     quantity.append(quantityLabel, qty);
-    row.append(name, remove, quantity);
+    row.append(name, remove, quantity, countNote);
     list.append(row);
   }
   syncFiles();
@@ -881,9 +928,7 @@ function renderPieceReview() {
     const card = document.createElement('article'); card.className = 'piece-card';
     const title = document.createElement('strong'); title.textContent = part.name || 'Piece ' + (index + 1);
     const quantity = document.createElement('span'); quantity.className = 'piece-quantity';
-    const copies = counts.get(part.id) || 0;
-    quantity.textContent = copies === part.quantity ? `${copies.toLocaleString()} ${copies === 1 ? 'copy' : 'copies'} to print` : `${copies.toLocaleString()} of ${part.quantity.toLocaleString()} copies placed`;
-    quantity.classList.toggle('piece-warning', copies !== part.quantity);
+    quantity.textContent = (counts.get(part.id) || 0) + ' of ' + part.quantity + ' copies';
     const image = document.createElement('img'); image.loading = 'lazy'; image.alt = 'Artwork for piece ' + (index + 1);
     try {
       const points = part.points;
@@ -901,16 +946,14 @@ function renderPieceReview() {
     const detail = document.createElement('span'); detail.className = 'piece-detail';
     const bits = [];
     if ((part.sourcePieceCount || 1) > 1) { if (!part.name) title.textContent = 'Piece ' + (index + 1); bits.push(part.sourcePieceCount + ' pieces kept together'); }
-    if (cuts.thru) bits.push(cuts.thru === 1 ? 'Through cut' : cuts.thru + ' through cuts');
-    if (cuts.kiss) bits.push(cuts.kiss === 1 ? 'Kiss cut' : cuts.kiss + ' kiss cuts');
+    if (cuts.thru) bits.push(cuts.thru + ' thru');
+    if (cuts.kiss) bits.push(cuts.kiss + ' kiss');
     if (cuts.contour) bits.push(cuts.contour + ' cuts need a type');
     if (!cuts.thru && !cuts.kiss && !cuts.contour) bits.push('Check cut lines');
     detail.textContent = bits.join(' · ');
-    detail.classList.toggle('thru-text', !!cuts.thru && !cuts.kiss && !cuts.contour);
-    detail.classList.toggle('kiss-text', !!cuts.kiss && !cuts.thru && !cuts.contour);
-    card.append(image, title, quantity, detail);
-    if (sources.size > 1) card.append(source);
-    cards.append(card);
+    const more = document.createElement('details'), summary = document.createElement('summary');
+    summary.textContent = 'Details'; more.append(summary, quantity, detail, source);
+    card.append(image, title, more); cards.append(card);
   });
 }
 
@@ -1123,7 +1166,8 @@ function showMetrics(state) {
   const result = state.result;
   const parts = new Map(state.job.parts.map(part => [part.id, part]));
   const count = result.placements.reduce((sum, item) => sum + (parts.get(item.id)?.sourcePieceCount || 1), 0);
-  $('result-heading').textContent = `${count.toLocaleString()} ${count === 1 ? 'piece' : 'pieces'} laid out`;
+  $('result-heading').hidden = true;
+  $('piece-count').textContent = `${count.toLocaleString()} ${count === 1 ? 'piece' : 'pieces'}`;
   $('piece-review-title').textContent = `Check ${count.toLocaleString()} ${count === 1 ? 'piece' : 'pieces'}`;
   $('piece-review-count').textContent = (state.job.productionJobs || []).map(source => {
     const copies = source.sets || 1;
@@ -1681,7 +1725,8 @@ function validateMaterial(values) {
     rotations: values.rotations === 'free' ? null : String(values.rotations).split(',').map(Number), rollWidth: n('roll')};
   if (values.sheet !== '') settings.sheetLength = n('sheet');
   if (!['continuous','sections'].includes(values['print-layout'] || 'sections')) throw Error('Choose a print layout.');
-  if (values.cost !== '') settings.costPerSquareMeter = Number(values.cost);
+  const price = pricedMaterial(values);
+  if (price != null) settings.costPerSquareMeter = price;
   EZNQueue.validatePreset({name: values['preset-name'], units: values.unit, settings});
   if (settings.width > settings.rollWidth) throw Error('Printable width cannot be wider than the roll.');
   if (!['0', '0.0625', '0.125'].includes(values['auto-bleed'])) throw Error('Choose a supported bleed setting.');
@@ -1754,10 +1799,10 @@ async function openPreset(id) {
   $('preset-error').hidden = true;
   $('preset-editor').hidden = false;
   $('material-dialog').showModal();
+  $('preset-name').focus();
   $('material-advanced').open = false;
   renderMaterialButtons();
   renderActions();
-  $('preset-name').focus();
 }
 
 function closePreset() {
@@ -1863,6 +1908,7 @@ function watchWidth() {
 
 function showLan(shop) {
   const on = $('lan').checked;
+  $('lan-access').hidden = !on;
   $('lan-note').hidden = !on;
   $('lan-note').textContent = (shop && shop.warning) || 'Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.';
   const bits = [];
@@ -2339,6 +2385,7 @@ function restoreJob(state) {
 }
 
 async function boot() {
+  closeSettingsFolds();
   await ensureLibraries();
   const stored = prefs();
   setNestingEffort(stored.nestingSeconds);
@@ -2595,16 +2642,6 @@ async function refreshUpdate(remote) {
   } catch { /* The gear still has Update. */ }
 }
 
-function showSettingsPage(name) {
-  for (const tab of document.querySelectorAll('.settings-tabs [role=tab]')) {
-    const selected = tab.id === 'settings-tab-' + name;
-    tab.setAttribute('aria-selected', String(selected));
-    tab.tabIndex = selected ? 0 : -1;
-    $(tab.getAttribute('aria-controls')).hidden = !selected;
-  }
-  if (name === 'support') refreshActivity();
-}
-
 async function refreshActivity() {
   try {
     const response = await fetch('/api/workload');
@@ -2636,35 +2673,37 @@ function dismissOnBackdrop(dialog, dismiss) {
   dialog.addEventListener('pointercancel', () => { startedOutside = false; });
 }
 
+function closeSettingsFolds() {
+  for (const id of ['settings-cuts', 'settings-delivery', 'settings-updates']) {
+    const node = $(id);
+    if (node) node.open = false;
+  }
+}
+
+function syncWelcome() {
+  $('feedback-welcome').hidden = !!prefs().feedbackWelcomed || kits.length > 0 || !!current;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  closeSettingsFolds();
   $('inventory-open').addEventListener('click', () => openPreset($('material').value));
   $('preset-editor').addEventListener('input', renderInventory);
   $('preset-editor').addEventListener('change', renderInventory);
   $('inventory-reserve').addEventListener('click', () => inventoryAction('/api/materials/reserve', {id: current?.id}));
   installSettingsHelp();
-  $('settings-open').addEventListener('click', () => { showSettingsPage('files'); $('settings').showModal(); });
-  $('settings').addEventListener('keydown', event => {
-    if (event.key !== 'Tab') return;
-    const controls = [...$('settings').querySelectorAll('button, input, select, textarea, a[href], summary, [tabindex]')]
-      .filter(node => !node.disabled && node.tabIndex >= 0 && node.getClientRects().length);
-    const first = controls[0], last = controls[controls.length - 1];
-    if (first && event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-    else if (last && !event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-  });
-  const settingsTabs = [...document.querySelectorAll('.settings-tabs [role=tab]')];
-  settingsTabs.forEach((tab, index) => {
-    tab.addEventListener('click', () => showSettingsPage(tab.id.replace('settings-tab-', '')));
-    tab.addEventListener('keydown', event => {
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? settingsTabs.length - 1
-        : event.key === 'ArrowRight' ? (index + 1) % settingsTabs.length
-        : event.key === 'ArrowLeft' ? (index + settingsTabs.length - 1) % settingsTabs.length : null;
-      if (next == null) return;
-      event.preventDefault(); settingsTabs[next].click(); settingsTabs[next].focus();
-    });
+  $('settings-open').addEventListener('click', () => {
+    const dialog = $('settings');
+    if (!dialog.open) dialog.showModal();
+    $('hot-folder').focus();
   });
   $('settings-close').addEventListener('click', () => $('settings').close());
   dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });
-  $('max-output').addEventListener('click', () => $('max-output-dialog').showModal());
+  for (const id of ['max-output-waitlist', 'max-output-learn']) $(id).href = OUTPUT_WAITLIST_URL;
+  $('max-output').addEventListener('click', () => {
+    const dialog = $('max-output-dialog');
+    if (!dialog.open) dialog.showModal();
+    $('max-output-close').focus();
+  });
   $('max-output-close').addEventListener('click', () => $('max-output-dialog').close());
   dismissOnBackdrop($('max-output-dialog'), () => $('max-output-dialog').close());
   $('save-settings').addEventListener('click', saveSettings);
@@ -2674,6 +2713,9 @@ document.addEventListener('DOMContentLoaded', () => {
   $('preview-zoom').addEventListener('change', () => {
     const width = Number($('preview-zoom').value) * 100 + '%';
     for (const id of ['preview', 'live']) $(id).style.width = width;
+  });
+  $('local-activity').addEventListener('toggle', () => {
+    if ($('local-activity').open) refreshActivity();
   });
   $('activity-refresh').addEventListener('click', refreshActivity);
   renderMaterialButtons();
@@ -2838,7 +2880,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('improve').addEventListener('click', improve);
   $('piece-review').addEventListener('toggle', renderPieceReview);
   const dismissWelcome = () => { $('feedback-welcome').hidden = true; savePrefs({feedbackWelcomed: true}); };
-  $('feedback-welcome').hidden = !!prefs().feedbackWelcomed;
+  syncWelcome();
   $('feedback-dismiss').addEventListener('click', dismissWelcome);
   $('in-house').addEventListener('click', () => $('nesting-effort').focus());
   $('start-nesting').addEventListener('click', () => { dismissWelcome(); nest(); });
@@ -2846,7 +2888,10 @@ document.addEventListener('DOMContentLoaded', () => {
     dismissWelcome();
     $('feedback-numbers').checked = false;
     $('feedback-version').textContent = 'App version: ' + $('app-version').textContent;
-    updateFeedbackPreview(); $('feedback-dialog').showModal();
+    updateFeedbackPreview();
+    const dialog = $('feedback-dialog');
+    if (!dialog.open) dialog.showModal();
+    $('feedback-message').focus();
   });
   $('feedback-close').addEventListener('click', () => $('feedback-dialog').close());
   $('feedback-message').addEventListener('input', updateFeedbackPreview);

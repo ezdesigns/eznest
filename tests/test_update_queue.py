@@ -162,7 +162,6 @@ class UpdateQueueTests(unittest.TestCase):
                     page.click('#setup-save')
                     page.wait_for_function("() => document.querySelector('#setup').hidden")
                     page.click('#settings-open')
-                    page.click('#settings-tab-updates')
                     render({**info, 'message':'Update ready. Choose Install when finished and approve the Windows prompt.'})
                     panel = page.locator('#settings .panel')
                     panel.evaluate("node => { node.style.maxHeight='none'; node.style.overflow='visible'; }")

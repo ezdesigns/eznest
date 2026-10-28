@@ -25,13 +25,11 @@ or completed printing. Do not turn this into an order-management system or RIP.
 
 ## Branch and release boundaries
 
-The owner merged tested product PR #7 into `main` at `624b9b2` on 2026-10-27.
-Further settings and piece-card cleanup is isolated on
-`feature/simple-settings-20261027`, targeting that main baseline. Shared material
-inventory is a separate follow-up on `feature/shared-materials-20261027`, based on
-UI PR #8 at `1ce8b4f`; keep its draft separate and do not merge automatically. Telemetry PR #5
-remains separate. This is not permission to merge future PRs or deploy the shop
-PC; the protected PR #1 / rc.4 gate below is unchanged.
+Shared material inventory is being integrated onto main at `445fd6e` in a separate
+checkout. Preserve the merged settings, telemetry, nesting and OUTPUT invitation
+changes. PR #8 is closed; do not restore its superseded settings layout. The owner
+authorized merging applicable tested work or submitting a PR. This does not
+change release, network, deployment or protected shop installation boundaries.
 
 - Current readiness work belongs on draft PR #4, branch
   `cursor/shop-open-handoff-9891`, targeting `cursor/eznest-web-mvp-8f6a` (PR #1).
@@ -136,6 +134,20 @@ servers. Preserve those isolation guards and the original shop installation.
 adds automatic recoloring, bleed or a native editable Illustrator return path.
 
 ## Local tracking
+
+The owner explicitly promoted the tested integration head `27f48d2` to `main` on
+2026-10-26. New backend telemetry work is isolated on its own feature branch for
+a draft PR to `main`; this does not authorize merging future PRs or deploying the
+shop PC. The earlier protected PR #1 / rc.4 gate remains unchanged.
+
+`telemetry.py` adds a separate local store and proposal atom adapter. Read
+`docs/telemetry-contract.md` before changing it. Never equate local file save with
+print delivery/completion or planned allocation with measured consumption. Keep
+the hub adapter dormant until the shared contract is registered and connection
+consent exists. The OUTPUT placeholder is not that consent. Keep exact quantities
+local and only banded, allowlisted payloads in the outbox; preserve stable IDs,
+revision guards, explicit confirmations and failure isolation. Do not modify
+another agent's spine, ledger, render or board as part of this adapter.
 
 `material_inventory.py` owns shop material profiles, measured roll stock and
 reservations in `materials.sqlite3` in the host data directory. Browser-local

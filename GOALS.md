@@ -99,16 +99,16 @@ validation can add time; more search time does not guarantee an improvement.
 Effort is saved in this browser and applies to the next search. Check pieces is
 an optional gallery of detected artwork, copies, cut types and retained groups.
 
-The job panel asks where to print: In-house or Max output. In-house nesting
-stays local. Max output opens an invitation to visit output.jeezlabs.io and
-learn about its pilot. It does not send artwork, enroll the operator or change
-the current job. Contextual help appears on label hover, keyboard focus or tap.
-Settings is a centered dialog with Files, Cuts, Printer, App and Help tabs;
-only one category is visible at a time. Material edits cancel on an outside click.
-Piece review shows the total printed quantity and source-copy breakdown; each
-card shows its preview, copies and cut type without a Details dropdown. The
-upload list keeps its editable copy count without repeating that breakdown.
-Quantities stay beside each imported
+The job panel asks where to print: In-house or Max output. In-house stays
+selected and nesting stays local. Max output does not change the job, the
+effort, or the file. It opens a short OUTPUT note: keep the customer, route
+the print, with three short reasons and an early-pilot line. Join the waitlist
+and Learn more both open the URL in `OUTPUT_WAITLIST_URL` (currently
+https://output.jeezlabs.io/) in the browser. EZ Nest does not send artwork,
+collect a signup, or call OUTPUT.
+Contextual help appears on label hover, keyboard focus or tap.
+Settings is a centered dialog with specialized cut/software options collapsed;
+material edits cancel on an outside click. Quantities stay beside each imported
 file and printable width is edited with the material. Nest is visible but disabled
 until the job is ready. Bottom help sections and the diagram are removed.
 Try tighter fit searches again without replacing a shorter previous result,
@@ -153,6 +153,21 @@ length, or 10% of the full roll when the alert is blank and full length is known
 Zero is Out of stock; unknown remaining stock does not generate an alert.
 Remaining length and alerts are manual and local to this browser. Saving or
 printing elsewhere does not automatically change stock.
+
+## Backend telemetry draft
+
+The backend telemetry draft adds local lifecycle observations and a dormant atom
+adapter in `telemetry.py`. It distinguishes accepted nests, frozen packs, planned
+material allocations, local saves and successful configured-hot-folder writes.
+Queue, printed and cancellation states require explicit backend confirmation;
+there is no printer completion detection. Versioned current stock readings and
+linked physical rolls support reservation and remaining-length estimates without
+changing the browser's manually maintained material presets. Exact measurements
+stay local; pending proposal atoms contain job codes, opaque IDs and banded
+measurements, never customer names, filenames or artwork. The shared hub contract
+is not registered, OUTPUT still sends nothing, and no dashboard pairing is wired.
+See [the telemetry contract](docs/telemetry-contract.md) for API, retention and
+integration limits. This is operational tracking, not an accounting ledger.
 
 ## Tester review and feedback
 
