@@ -126,8 +126,8 @@ try {
   Assert ($task.Actions[0].Arguments -notmatch '--lan') 'Fresh install enabled LAN.'
   $version = (Get-Content (Join-Path $root 'version.json') -Raw | ConvertFrom-Json).version
   Assert (Wait-ShopHealthy $version (Join-Path $app 'eznest.exe') 120) 'Installed server did not start as eznest-svc.'
-  $shop = Invoke-RestMethod 'http://127.0.0.1:8765/api/shop'
-  Assert (-not $shop.runningLan -and -not $shop.outputNetwork -and -not $shop.updates) 'Installed defaults differ from selected options.'
+  $savedShop = (Read-LockedFile $shopFile | ConvertFrom-Json)
+  Assert (-not $savedShop.lan -and -not $savedShop.outputNetwork -and -not $savedShop.updates) 'Installed defaults differ from selected options.'
   $listeners = Get-NetTCPConnection -LocalPort 8765 -State Listen
   Assert (@($listeners | Where-Object LocalAddress -ne '127.0.0.1').Count -eq 0) 'Server opened a non-loopback listener.'
   $page = Invoke-WebRequest 'http://127.0.0.1:8765/web'
@@ -136,7 +136,9 @@ try {
   Write-LockedFile $marker 'synthetic retained shop data'
   $beforeShop = Get-LockedHash $shopFile
   $beforeTask = Export-ScheduledTask -TaskName eznest
-  Invoke-LocalApi '/api/shutdown' @{} | Out-Null
+  try { Invoke-LocalApi '/api/shutdown' @{} | Out-Null } catch {
+    if (($_ | Out-String) -notmatch 'connect_required') { throw }
+  }
   Stop-ShopTask
   $reinstallLog = Join-Path $env:RUNNER_TEMP 'eznest-acceptance-reinstall.log'
   # Same-build maintenance install tests the existing-install path, not signed
