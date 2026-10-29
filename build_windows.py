@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 ROOT=Path(__file__).resolve().parent
-STATIC=['production.html','queue.css','queue-app.js','queue-core.js','production-features.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','CHANGELOG.md','app.js','style.css','web.html','web.css','web.js','tester-results.js']
+STATIC=['production.html','queue.css','queue-app.js','queue-core.js','production-features.js','layout-comparison.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','CHANGELOG.md','app.js','style.css','web.html','web.css','web.js','tester-results.js']
 INNO_SETUP_URL='https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe'
 
 def pinned_distribution(name, version):

@@ -47,6 +47,7 @@ jobs:
         run: |
           node --check queue-app.js
           node --check production-features.js
+          node --check layout-comparison.js
           node --check cut-mapping.js
           node --check web.js
           node --check tester-results.js
@@ -59,7 +60,10 @@ jobs:
       - name: Test cut mappings and profile sharing
         run: node tests/test_cut_mapping.cjs
       - name: Test production-file queue and presets
-        run: node tests/test_production_features.cjs
+        run: |
+          node tests/test_production_features.cjs
+          node tests/test_local_evidence.cjs
+          node tests/test_layout_comparison.cjs
       - name: Test legacy boundary policy
         run: node tests/test_boundaries.cjs
       - name: Test Illustrator pilot bridge
