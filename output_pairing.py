@@ -166,7 +166,10 @@ def pair_endpoint(directory=None):
 
 
 def _post(raw):
-    request = Request(pair_endpoint(_PAIR_DIRECTORY), data=raw, headers={'Content-Type': 'application/json', 'Accept': 'application/json'}, method='POST')
+    url = pair_endpoint(_PAIR_DIRECTORY)
+    if not shop_deploy.allowed_output_request(url):
+        raise PairingError('offline', OFFLINE)
+    request = Request(url, data=raw, headers={'Content-Type': 'application/json', 'Accept': 'application/json'}, method='POST')
     try:
         with build_opener(NoRedirect()).open(request, timeout=10) as response:
             return response.status, response.read(16385)

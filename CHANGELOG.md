@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The OUTPUT check-in record stays closed until a live check-in or pairing
+  succeeds, and it is bound to the shop credential. A current unsigned record
+  from the previous build is signed on the first load. A revoked credential
+  stays in that signed record. Connector event ids use this install's salt.
+  The container image is an installed build.
 - The shop computer must connect to OUTPUT before nesting, sending, or stock
   changes. The first run is a Connect screen. Designer PCs are told to ask
   the shop computer. A paired host keeps working for 14 days when OUTPUT is

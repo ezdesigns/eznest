@@ -51,11 +51,18 @@ the host.
 
 ## Offline grace
 
-`CHECK_IN_MAX_AGE_DAYS` is 14. After a successful pairing, Ez Nest keeps
-working when OUTPUT cannot be reached. A banner appears after 3 days offline.
-After 14 days without a successful check-in, the Connect screen returns until
-a check-in succeeds. If OUTPUT says the credential is unpaired or revoked,
-the gate returns immediately and the stored credential is removed.
+`CHECK_IN_MAX_AGE_DAYS` is 14. After a successful pairing or check-in, Ez Nest
+keeps working when OUTPUT cannot be reached. The check-in record is bound to
+the shop credential. A missing or unreadable record stays closed until a live
+check-in succeeds. A check-in record written by the previous build has no
+signature. If the credential is still present, the time is not ahead of this
+computer, and the record is under 14 days old, the first load signs it and
+the offline grace continues. Any other unsigned record stays closed. A time
+ahead of this computer is not a current check-in.
+A banner appears after 3 days offline. After 14 days without a successful
+check-in, the Connect screen returns until a check-in succeeds. If OUTPUT
+says the credential is unpaired or revoked, the gate returns immediately, the
+stored credential is removed, and that credential stays closed.
 
 Check-in is `POST /api/shop/agent/check-in` with `{"appVersion":"..."}` only.
 The computer name and installation id are not sent again. A missing route or
@@ -64,10 +71,11 @@ response that says the credential is unpaired or revoked does.
 
 ## Dev mode
 
-`EZ_NEST_DEV_NO_OUTPUT=1` is honored only when the process is a source
-checkout started in dev mode (`--dev`, which sets `EZ_NEST_DEV=1`). The page
-shows `DEV MODE: not connected to OUTPUT` the whole time. Installed Windows
-and macOS builds ignore both variables. Forks may remove the requirement
+`EZ_NEST_DEV_NO_OUTPUT=1` and `EZ_NEST_OUTPUT_GATE_OPEN=1` are honored only
+when the process is a source checkout started in dev mode (`--dev`, which
+sets `EZ_NEST_DEV=1`). The page shows `DEV MODE: not connected to OUTPUT`
+while the first of those is set. Installed Windows and macOS builds, and the
+container image, ignore those variables. Forks may remove the requirement
 under the Apache-2.0 license. Official builds enforce it.
 
 Disconnect is host-only. It returns the computer to the Connect screen.
@@ -77,13 +85,15 @@ Disconnect is host-only. It returns the computer to the Connect screen.
 The default service origin is `https://output.jeezlabs.io`. Pairing posts to
 `/api/shop/agent/pair`. Events post to `/api/shop/telemetry`.
 
-Set another origin with `EZ_NEST_OUTPUT_URL` before the process starts, or
-save `outputUrl` from the host only. The saved address must be
-`https://output.jeezlabs.io` or that same environment origin. The environment
-variable wins. The value must be an `https` origin with no path, query,
-username, or password. Any other host is rejected. Redirects are not followed.
-There is no HTTP fallback. Changing the address does not send anything;
-sharing stays off until the host pairs and agrees on screen.
+If `EZ_NEST_OUTPUT_URL` is set, that https origin becomes the allowed OUTPUT
+host and receives the shop key. Only the person who controls the process
+environment can set it. Installed builds should not set it. A saved
+`outputUrl` must be `https://output.jeezlabs.io` or that same environment
+origin. The environment variable wins. The value must be an `https` origin
+with no path, query, username, or password. Any other host is rejected.
+Redirects are not followed. There is no HTTP fallback. Changing the address
+does not send anything; sharing stays off until the host pairs and agrees
+on screen.
 
 On Windows the shop key is encrypted for the user that saved it
 (`eznest-svc` when the shop service is running), not for every account on
@@ -154,7 +164,8 @@ file mode is `0600`. The telemetry database stores only a fingerprint of the
 key.
 
 `EZ_NEST_OUTPUT_UPLOADS=1` and a valid `EZ_NEST_OUTPUT_TOKEN` still take
-precedence over a paired key, and the pairing screen says so.
+precedence over a paired key, and the pairing screen says so. That credential
+uses the same check-in record as a paired key.
 `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off.
 Disconnect deletes the paired file and stops sharing. It does not remove a
 key that is coming from launch settings.
@@ -164,3 +175,8 @@ After a successful pairing the consent screen is shown once for that key.
 readings already recorded on the host, is what the sender can deliver. The
 shop stock ledger in `materials.sqlite3` stays on the host. Exact quantities
 are not uploaded.
+
+## Known limits
+
+- OUTPUT check-in responses are not signed receipts. This build does not
+  check a signed receipt.

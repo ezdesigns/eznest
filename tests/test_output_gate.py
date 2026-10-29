@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import opt_out  # noqa: F401
 import output_credential
 import output_gate
 import output_pairing
@@ -16,7 +17,10 @@ import shop_deploy
 from app_info import VERSION
 
 TOKEN = 'osa_' + 'C' * 43
-ENV_KEYS = ('EZ_NEST_OUTPUT_GATE_ENFORCE', 'EZ_NEST_DEV', 'EZ_NEST_DEV_NO_OUTPUT', 'EZ_NEST_OUTPUT_UPLOADS', 'EZ_NEST_OUTPUT_TOKEN')
+ENV_KEYS = (
+    'EZ_NEST_OUTPUT_GATE_OPEN', 'EZ_NEST_DEV', 'EZ_NEST_DEV_NO_OUTPUT',
+    'EZ_NEST_OUTPUT_UPLOADS', 'EZ_NEST_OUTPUT_TOKEN', 'EZ_NEST_OUTPUT_URL',
+)
 
 
 class GateTests(unittest.TestCase):
@@ -28,10 +32,8 @@ class GateTests(unittest.TestCase):
         server.HOST = '127.0.0.1'
         server.PORT = 8765
         server.LAN = False
-        os.environ['EZ_NEST_OUTPUT_GATE_ENFORCE'] = '1'
         for key in ENV_KEYS:
-            if key != 'EZ_NEST_OUTPUT_GATE_ENFORCE':
-                os.environ.pop(key, None)
+            os.environ.pop(key, None)
         shop_deploy.clear_name_cache()
 
     def tearDown(self):
@@ -275,13 +277,254 @@ class GateTests(unittest.TestCase):
         finally:
             helper.tearDown()
 
-    def test_unittest_harness_does_not_open_a_normal_launch(self):
-        os.environ.pop('EZ_NEST_OUTPUT_GATE_ENFORCE', None)
-        with patch('sys.argv', ['launcher.py']):
-            self.assertFalse(output_gate.test_harness_open())
-            stock = self.handler('/api/materials')
-            stock.do_GET()
-            self.assert_blocked(stock.sent[0], output_gate.HOST_UNPAIRED)
+    def test_opt_out_requires_dev_mode_on_a_source_checkout(self):
+        os.environ['EZ_NEST_OUTPUT_GATE_OPEN'] = '1'
+        with patch('sys.argv', ['python', '-m', 'unittest', 'discover']):
+            self.assertFalse(output_gate.gate_opt_out())
+        stock = self.handler('/api/materials')
+        stock.do_GET()
+        self.assert_blocked(stock.sent[0], output_gate.HOST_UNPAIRED)
+        os.environ['EZ_NEST_DEV'] = '1'
+        self.assertTrue(output_gate.source_checkout())
+        self.assertTrue(output_gate.gate_opt_out())
+        opened = self.handler('/api/materials')
+        opened.do_GET()
+        self.assertEqual(opened.sent[0][0], 200)
+        with patch.object(sys_module(), 'frozen', True, create=True):
+            self.assertFalse(output_gate.source_checkout())
+            self.assertFalse(output_gate.gate_opt_out())
+            frozen = self.handler('/api/materials')
+            frozen.do_GET()
+            self.assert_blocked(frozen.sent[0], output_gate.HOST_UNPAIRED)
+
+    def test_release_marker_ignores_the_dev_opt_out(self):
+        marker = Path(output_gate.__file__).resolve().parent / output_gate.RELEASE_MARKER
+        self.assertFalse(marker.exists())
+        marker.write_text('release\n', encoding='utf-8')
+        try:
+            os.environ['EZ_NEST_DEV'] = '1'
+            os.environ['EZ_NEST_DEV_NO_OUTPUT'] = '1'
+            os.environ['EZ_NEST_OUTPUT_GATE_OPEN'] = '1'
+            self.assertFalse(output_gate.source_checkout())
+            self.assertFalse(output_gate.dev_escape())
+            self.assertFalse(output_gate.gate_opt_out())
+            text = (marker.parent / 'Dockerfile').read_text(encoding='utf-8')
+            self.assertIn(output_gate.RELEASE_MARKER, text)
+            self.assertIn('eznest_build.py', text)
+            self.assertIn('INSTALLED = True', text)
+            import launcher
+            with patch('sys.argv', ['eznest', '--dev', '--no-browser']):
+                with self.assertRaisesRegex(ValueError, 'source checkout'):
+                    launcher.main()
+        finally:
+            marker.unlink(missing_ok=True)
+
+    def test_missing_or_unreadable_check_in_stays_closed(self):
+        output_credential.save(server.WORK, TOKEN)
+        status = output_gate.public_status(server.WORK, True)
+        self.assertFalse(status['ok'])
+        self.assertEqual(status['message'], output_gate.HOST_CHECKIN)
+        self.assertFalse(output_gate._state_path(server.WORK).is_file())
+        output_gate._state_path(server.WORK).write_text('not-json\n', encoding='utf-8')
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.pair()
+        self.assertTrue(output_gate.public_status(server.WORK, True)['ok'])
+        state_path = output_gate._state_path(server.WORK)
+        payload = json.loads(state_path.read_text(encoding='utf-8'))
+        payload['lastOkAt'] = int(payload['lastOkAt']) - 50
+        state_path.write_text(json.dumps(payload), encoding='utf-8')
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertNotIn(TOKEN, state_path.read_text(encoding='utf-8'))
+
+    def _write_legacy(self, last_ok):
+        output_credential.save(server.WORK, TOKEN)
+        payload = {'v': 1, 'lastOkAt': last_ok, 'lastAttemptAt': last_ok, 'reason': ''}
+        output_gate._state_path(server.WORK).write_text(json.dumps(payload) + '\n', encoding='utf-8')
+
+    def test_unsigned_current_record_is_signed_on_first_load(self):
+        last_ok = int(time.time()) - (4 * output_gate.DAY_SECONDS)
+        self._write_legacy(last_ok)
+        status = output_gate.public_status(server.WORK, True)
+        self.assertTrue(status['ok'])
+        self.assertIn('unreachable', status['banner'])
+        raw = json.loads(output_gate._state_path(server.WORK).read_text(encoding='utf-8'))
+        self.assertTrue(output_gate._mac_ok(TOKEN, raw))
+        self.assertEqual(raw['lastOkAt'], last_ok)
+        again = output_gate.public_status(server.WORK, True)
+        self.assertTrue(again['ok'])
+        self.assertEqual(again['banner'], status['banner'])
+
+    def test_unsigned_old_future_or_missing_record_stays_closed(self):
+        self._write_legacy(int(time.time()) - output_gate.CHECK_IN_MAX_AGE - 30)
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertNotIn('mac', output_gate._state_path(server.WORK).read_text(encoding='utf-8'))
+        self._write_legacy(int(time.time()) + output_gate.DAY_SECONDS)
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertNotIn('mac', output_gate._state_path(server.WORK).read_text(encoding='utf-8'))
+        output_gate._state_path(server.WORK).unlink()
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertFalse(output_gate._state_path(server.WORK).is_file())
+
+    def test_revocation_stays_in_the_signed_record_without_the_side_file(self):
+        self.pair()
+
+        def deny(_raw, token):
+            self.assertEqual(token, TOKEN)
+            return 401, b'{"error":{"code":"revoked"}}'
+
+        self.assertFalse(output_gate.check_in(server.WORK, transport=deny)['ok'])
+        output_gate._revocation_path(server.WORK).unlink()
+        os.environ['EZ_NEST_OUTPUT_UPLOADS'] = '1'
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = TOKEN
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        calls = {'n': 0}
+
+        def allow(raw, token):
+            calls['n'] += 1
+            calls['token'] = token
+            self.assertEqual(json.loads(raw), {'appVersion': VERSION})
+            return 200, b'{"outcome":"ok"}'
+
+        self.assertFalse(output_gate.check_in(server.WORK, transport=allow)['ok'])
+        self.assertEqual(calls['n'], 0)
+        other = 'osa_' + 'D' * 43
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = other
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertTrue(output_gate.check_in(server.WORK, transport=allow)['ok'])
+        self.assertEqual(calls['token'], other)
+        output_gate._revocation_path(server.WORK).unlink(missing_ok=True)
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = TOKEN
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+
+    def test_installed_module_stays_installed_without_the_release_marker(self):
+        import eznest_build
+        previous = eznest_build.INSTALLED
+        eznest_build.INSTALLED = True
+        try:
+            marker = Path(output_gate.__file__).resolve().parent / output_gate.RELEASE_MARKER
+            self.assertFalse(marker.exists())
+            os.environ['EZ_NEST_DEV'] = '1'
+            os.environ['EZ_NEST_DEV_NO_OUTPUT'] = '1'
+            os.environ['EZ_NEST_OUTPUT_GATE_OPEN'] = '1'
+            self.assertFalse(output_gate.source_checkout())
+            self.assertFalse(output_gate.dev_escape())
+            self.assertFalse(output_gate.gate_opt_out())
+        finally:
+            eznest_build.INSTALLED = previous
+
+    def test_future_check_in_time_stays_closed_until_a_live_check_in(self):
+        output_credential.save(server.WORK, TOKEN)
+        output_gate.note_paired(server.WORK, now=int(time.time()) + 24 * 60 * 60)
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        stock = self.handler('/api/materials')
+        stock.do_GET()
+        self.assert_blocked(stock.sent[0], output_gate.HOST_RECONNECT)
+
+        def transport(raw, token):
+            self.assertEqual(json.loads(raw), {'appVersion': VERSION})
+            self.assertEqual(token, TOKEN)
+            return 200, b'{"outcome":"ok"}'
+
+        status = output_gate.check_in(server.WORK, transport=transport)
+        self.assertTrue(status['ok'])
+
+    def test_environment_token_needs_a_live_check_in_and_a_revoked_token_stays_closed(self):
+        os.environ['EZ_NEST_OUTPUT_UPLOADS'] = '1'
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = TOKEN
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        calls = {'n': 0}
+
+        def transport(raw, token):
+            calls['n'] += 1
+            self.assertEqual(token, TOKEN)
+            self.assertEqual(json.loads(raw), {'appVersion': VERSION})
+            return 200, b'{"outcome":"ok"}'
+
+        self.assertTrue(output_gate.check_in(server.WORK, transport=transport)['ok'])
+        self.assertEqual(calls['n'], 1)
+        output_gate._remember_revoked(server.WORK, TOKEN)
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertFalse(output_gate.check_in(server.WORK, transport=transport)['ok'])
+        self.assertEqual(calls['n'], 1)
+        self.assertNotIn(TOKEN, output_gate._revocation_path(server.WORK).read_text(encoding='utf-8'))
+        stock = self.handler('/api/materials')
+        stock.do_GET()
+        self.assert_blocked(stock.sent[0], output_gate.HOST_REVOKED)
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = 'osa_' + 'D' * 43
+
+        def other(raw, token):
+            self.assertEqual(token, 'osa_' + 'D' * 43)
+            return 200, b'{"outcome":"ok"}'
+
+        self.assertTrue(output_gate.check_in(server.WORK, transport=other)['ok'])
+
+    def test_check_in_posts_only_to_the_allowlisted_origin(self):
+        self.pair()
+        seen = {}
+
+        class Response:
+            status = 200
+
+            def read(self, _size):
+                return b'{"outcome":"ok"}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        def open_request(request, timeout=10):
+            seen['url'] = request.full_url
+            seen['authorization'] = request.get_header('Authorization')
+            return Response()
+
+        opener = type('Opener', (), {'open': staticmethod(open_request)})()
+        (server.WORK / 'shop.json').write_text(json.dumps({'outputUrl': 'https://evil.example'}), encoding='utf-8')
+        with patch.dict(os.environ, {'EZ_NEST_OUTPUT_URL': 'https://evil.example/steal'}):
+            with patch('output_gate.build_opener', return_value=opener):
+                output_gate.check_in(server.WORK)
+        self.assertEqual(seen['url'], 'https://output.jeezlabs.io/api/shop/agent/check-in')
+        self.assertTrue(seen['authorization'].startswith('Bearer '))
+        self.assertNotIn('evil.example', seen['url'])
+        seen.clear()
+        (server.WORK / 'shop.json').write_text(json.dumps({'outputUrl': 'https://other.example'}), encoding='utf-8')
+        with patch.dict(os.environ, {'EZ_NEST_OUTPUT_URL': 'https://lab.example'}):
+            with patch('output_gate.build_opener', return_value=opener):
+                output_gate.check_in(server.WORK)
+        self.assertEqual(seen['url'], 'https://lab.example/api/shop/agent/check-in')
+        self.assertNotIn('other.example', seen['url'])
+
+    def test_query_string_uses_the_same_path_as_the_gate(self):
+        blocked = self.handler('/api/materials?refresh=1')
+        blocked.do_GET()
+        self.assert_blocked(blocked.sent[0], output_gate.HOST_UNPAIRED)
+        save = self.handler('/api/materials/save?x=1', body=b'{}')
+        save.handle_post()
+        self.assert_blocked(save.sent[0], output_gate.HOST_UNPAIRED)
+        check = self.handler('/api/telemetry/output/check-in?unused=1', body=b'{}')
+        check.handle_post()
+        self.assertEqual(check.sent[0][0], 200)
+        self.assertFalse(check.sent[0][1]['ok'])
+        self.pair()
+        solve = self.handler('/api/solve?x=1', body=b'{}')
+        solve.handle_post()
+        self.assertNotEqual(solve.sent[0][0], 404)
+        self.assertNotEqual(solve.sent[0][1].get('code'), 'connect_required')
+
+    def test_loopback_helper_accepts_ipv6_loopback(self):
+        self.pair()
+        local = self.handler('/api/illustrator/' + 'ab' * 16, ip='::1')
+        self.assertTrue(local.loopback_client())
+        local.do_GET()
+        self.assertEqual(local.sent[0][0], 404)
+        mapped = self.handler('/api/illustrator/' + 'ab' * 16, ip='::ffff:127.0.0.1')
+        self.assertTrue(mapped.loopback_client())
+        remote = self.handler('/api/illustrator/' + 'ab' * 16, ip='10.0.0.9', host='127.0.0.1:8765')
+        self.assertFalse(remote.loopback_client())
+        remote.do_GET()
+        self.assertEqual(remote.sent[0][0], 403)
+        self.assertNotIn('handoff', remote.sent[0][1].get('error', ''))
 
 
 def _state_text():

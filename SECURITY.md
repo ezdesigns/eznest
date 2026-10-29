@@ -88,11 +88,11 @@ The shop computer must be paired with OUTPUT before nesting, sending, or stock c
 
 The pairing code and the shop credential are not logged, not put in source, and not returned to the browser. Check-in sends the app version only. The computer name and installation id go out once, at pairing. Customer artwork, filenames, and stock contents are not part of either request.
 
-A missing OUTPUT response does not stop a paired shop for 14 days (`CHECK_IN_MAX_AGE_DAYS`). OUTPUT saying the credential is revoked does. `EZ_NEST_DEV_NO_OUTPUT=1` is ignored unless the process is a source checkout in dev mode (`--dev`). Installed builds drop that variable. Forks may remove the requirement under Apache-2.0. Official builds enforce it.
+A missing OUTPUT response does not stop a paired shop for 14 days (`CHECK_IN_MAX_AGE_DAYS`). The check-in record is bound to the shop credential. A missing or unreadable record stays closed until a live check-in succeeds. A time ahead of this computer is not a current check-in. OUTPUT saying the credential is revoked closes the gate and that credential stays closed. `EZ_NEST_DEV_NO_OUTPUT=1` and `EZ_NEST_OUTPUT_GATE_OPEN=1` are ignored unless the process is a source checkout in dev mode (`--dev`). Installed builds and the container image drop those variables. Forks may remove the requirement under Apache-2.0. Official builds enforce it.
 
 ### OUTPUT address and key
 
-The OUTPUT address can be changed only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL` set by an administrator before the process starts.
+The OUTPUT address can be changed only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL`. If `EZ_NEST_OUTPUT_URL` is set, that origin is the allowed OUTPUT host and receives the shop key. Only the person who controls the process environment can set it. Installed builds should not set it.
 
 On Windows the OUTPUT shop key is encrypted with DPAPI for the Windows user that saved it, not for every account on the PC. Pair while the scheduled task named `eznest` is running as the user `eznest-svc`, so that account owns the key. That task is not a Windows service. The file ACL does not grant the Users group.
 

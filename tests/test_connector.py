@@ -1,4 +1,5 @@
 """Shop Connector privacy, parsing, file access, and write-only delivery."""
+import opt_out
 import io
 import json
 import os
@@ -236,13 +237,19 @@ class PrivacyReplayTests(TempCase):
     def test_idempotent_ids_and_duplicate_lines(self):
         store = self.store()
         line = onyx_line('Same Job').encode()
+        salt = store.salt()
         first = build_event(store.instance_id(), 'onyx_joblog', line, 'printer', 'print.completed',
-                            '2026-10-28T00:00:00Z', onyx_joblog.parse_line(line, {'printers': ['FAKE-PRINTER-A']}, store.salt())['payload'])
+                            '2026-10-28T00:00:00Z', onyx_joblog.parse_line(line, {'printers': ['FAKE-PRINTER-A']}, salt)['payload'], salt)
         second = build_event(store.instance_id(), 'onyx_joblog', line, 'printer', 'print.completed',
-                             '2026-10-28T00:00:00Z', first['payload'])
+                             '2026-10-28T00:00:00Z', first['payload'], salt)
         self.assertEqual(first['eventId'], second['eventId'])
         self.assertEqual(first['requestId'], second['requestId'])
-        self.assertEqual(first['requestId'], request_id_for(store.instance_id(), event_id_for('onyx_joblog', line)))
+        self.assertEqual(first['requestId'], request_id_for(store.instance_id(), event_id_for('onyx_joblog', line, salt)))
+        other = Store(self.root / 'other-install')
+        self.assertNotEqual(first['eventId'], event_id_for('onyx_joblog', line, other.salt()))
+        import hashlib
+        plain = hashlib.sha256(b'onyx_joblog\n' + line).hexdigest()
+        self.assertNotEqual(first['eventId'], plain)
         options = {'printers': ['FAKE-PRINTER-A']}
         left = onyx_joblog.parse_line(onyx_line('Alpha', epoch='1712345678'), options, store.salt())
         right = onyx_joblog.parse_line(onyx_line('Beta', epoch='1712349999'), options, store.salt())
@@ -483,8 +490,8 @@ class OnyxJobLogTests(TempCase):
         )
         self.assertEqual(parsed[0]['payload']['widthIn'], '50.50')
         self.assertFalse(parsed[0]['payload']['axisSwapped'])
-        first_id = event_id_for('onyx_joblog', lines[0].encode())
-        self.assertEqual(first_id, event_id_for('onyx_joblog', lines[-1].encode()))
+        first_id = event_id_for('onyx_joblog', lines[0].encode(), store.salt())
+        self.assertEqual(first_id, event_id_for('onyx_joblog', lines[-1].encode(), store.salt()))
         events = runtime.replay(FIXTURES, store)
         prints = [event for event in events if event['kind'] == 'print.completed']
         self.assertEqual(len(prints), 5)
@@ -589,6 +596,24 @@ class BoundAndHostTests(TempCase):
         rejected.write_text(json.dumps({'outputHost': 'http://lab.example'}), encoding='utf-8')
         with self.assertRaises(ConfigError):
             load_settings(rejected)
+
+    def test_shop_json_and_output_url_do_not_move_the_shop_key(self):
+        os.environ['EZ_NEST_OUTPUT_URL'] = 'https://evil.example/steal'
+        (self.root / 'shop.json').write_text(json.dumps({'outputUrl': 'https://evil.example'}), encoding='utf-8')
+        calls = []
+
+        def transport(url, raw, headers):
+            calls.append((url, headers.get('Authorization'), raw))
+            return 200, {}, b'{}'
+
+        client.post_json({'ok': True}, TOKEN, role='event', transport=transport)
+        client.post_json({'ok': True}, None, role='pair', transport=transport)
+        self.assertEqual(calls[0][0], 'https://output.jeezlabs.io/api/shop/telemetry')
+        self.assertEqual(calls[0][1], 'Bearer ' + TOKEN)
+        self.assertEqual(calls[1][0], 'https://output.jeezlabs.io/api/shop/agent/pair')
+        self.assertNotIn('evil.example', calls[0][0])
+        self.assertNotIn('evil.example', calls[1][0])
+        self.assertNotIn(b'evil.example', calls[0][2])
 
     def test_salt_is_random_per_install_and_state_is_private(self):
         first = self.store()
@@ -702,7 +727,7 @@ class DeliveryTests(TempCase):
         store = self.store()
         payload = onyx_joblog.parse_line(onyx_line('Delivery'), {'printers': ['FAKE-PRINTER-A']}, store.salt())['payload']
         return store, build_event(store.instance_id(), 'onyx_joblog', onyx_line('Delivery').encode(),
-                                  'printer', 'print.completed', '2024-04-05T19:34:38Z', payload)
+                                  'printer', 'print.completed', '2024-04-05T19:34:38Z', payload, store.salt())
 
     def test_post_is_write_only_and_ignores_urls_in_the_ack(self):
         source = (ROOT / 'connector' / 'client.py').read_text(encoding='utf-8')

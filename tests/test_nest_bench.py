@@ -1,4 +1,5 @@
 """Fast checks for the nesting benchmark harness. The full job set is not run here."""
+import opt_out
 import json
 import unittest
 from pathlib import Path

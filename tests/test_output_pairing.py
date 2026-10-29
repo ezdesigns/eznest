@@ -1,4 +1,5 @@
 """Pairing stores a host credential and never returns it. No live OUTPUT call."""
+import opt_out
 import io
 import json
 import os
@@ -34,6 +35,43 @@ class CredentialTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
+
+    def test_pairing_stays_on_the_allowlisted_origin(self):
+        (self.root / 'shop.json').write_text(json.dumps({'outputUrl': 'https://evil.example'}), encoding='utf-8')
+        seen = {}
+
+        class Response:
+            status = 404
+
+            def read(self, _size):
+                return b'{}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        def open_request(request, timeout=10):
+            seen['url'] = request.full_url
+            return Response()
+
+        opener = Mock()
+        opener.open.side_effect = open_request
+        output_pairing._PAIR_DIRECTORY = self.root
+        try:
+            with patch.dict(os.environ, {'EZ_NEST_OUTPUT_URL': 'https://evil.example/steal'}):
+                with patch('output_pairing.build_opener', return_value=opener):
+                    output_pairing._post(b'{}')
+            self.assertEqual(seen['url'], 'https://output.jeezlabs.io/api/shop/agent/pair')
+            self.assertNotIn('evil.example', seen['url'])
+            with patch('output_pairing.pair_endpoint', return_value='https://evil.example/api/shop/agent/pair'):
+                with patch('output_pairing.build_opener') as blocked:
+                    with self.assertRaises(output_pairing.PairingError):
+                        output_pairing._post(b'{}')
+                    blocked.assert_not_called()
+        finally:
+            output_pairing._PAIR_DIRECTORY = None
 
     def test_private_file_round_trip_and_corrupt_file_is_not_connected(self):
         output_credential.save(self.root, TOKEN, 'North Shop')

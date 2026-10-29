@@ -1,4 +1,5 @@
 """Consent UI uses the real local API; synthetic credentials never reach a network."""
+import opt_out
 import os
 import unittest
 from unittest.mock import patch

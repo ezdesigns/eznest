@@ -1,3 +1,4 @@
+import opt_out
 import copy
 import io
 import json
@@ -173,6 +174,35 @@ class SenderTests(unittest.TestCase):
         self.assertEqual(sender.status(self.root)['withheldEvents'],1)
         self.assertEqual(sender.status(self.root)['pendingEvents'],0)
         self.assertEqual(len(telemetry.pending(self.root)),1)
+
+    def test_delivery_stays_on_the_allowlisted_origin(self):
+        (self.root / 'shop.json').write_text(json.dumps({'outputUrl': 'https://evil.example'}), encoding='utf-8')
+        with patch.dict(os.environ, {'EZ_NEST_OUTPUT_URL': 'https://user:secret@evil.example/steal'}):
+            self.assertEqual(sender.endpoint_for(self.root), 'https://output.jeezlabs.io/api/shop/telemetry')
+        captured = {}
+
+        def run(_command, input=None, **kwargs):
+            captured['env'] = kwargs.get('env') or {}
+            captured['stdin'] = input
+            return SimpleNamespace(returncode=0, stdout=b'false')
+
+        previous = sender._EMIT_ENDPOINT
+        sender._EMIT_ENDPOINT = sender.endpoint_for(self.root)
+        try:
+            with patch('telemetry_sender.subprocess.run', side_effect=run):
+                sender.emit({'requestId': 'x'}, TOKEN)
+        finally:
+            sender._EMIT_ENDPOINT = previous
+        self.assertEqual(captured['env'].get('EZ_NEST_OUTPUT_URL'), 'https://output.jeezlabs.io')
+        self.assertNotIn('evil.example', captured['env'].get('EZ_NEST_OUTPUT_URL', ''))
+        saved = sender.ENDPOINT
+        try:
+            sender.ENDPOINT = 'https://evil.example/api/shop/telemetry'
+            with patch.object(sender, 'build_opener') as opener:
+                self.assertFalse(sender._emit_https({'requestId': 'x'}, TOKEN))
+                opener.assert_not_called()
+        finally:
+            sender.ENDPOINT = saved
 
     def test_transport_requires_matching_receipt_and_never_redirects(self):
         payload={'schema':sender.SCHEMA,'requestId':'123'}

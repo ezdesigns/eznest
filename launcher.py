@@ -63,10 +63,12 @@ def main():
         macos_service_runtime.validate_start(args)
     elif service_client and (args.data_dir is not None or args.port != 8765 or args.lan or args.isolated):
         raise ValueError('Open the installed shop host without custom server settings.')
-    if getattr(sys, 'frozen', False):
-        # Installed builds ignore the source-checkout escape hatch.
+    import output_gate
+    if not output_gate.source_checkout():
+        # Installed builds and the container image ignore the source-checkout escape hatch.
         os.environ.pop('EZ_NEST_DEV', None)
         os.environ.pop('EZ_NEST_DEV_NO_OUTPUT', None)
+        os.environ.pop('EZ_NEST_OUTPUT_GATE_OPEN', None)
         if args.dev:
             raise ValueError('Dev mode is only for a source checkout. Installed builds always connect to OUTPUT.')
     elif args.dev:

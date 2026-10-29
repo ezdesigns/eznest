@@ -124,7 +124,7 @@ If an update rolled back, include `helper.log` and leave customer files out of i
 
 Artwork, nests, and stock records stay on the shop host. The host must be paired with OUTPUT. Nesting does not upload artwork. Activity sharing stays **off** until the host opts in.
 
-A paired host (or `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN`) can turn on activity sharing with **Enable sharing**. `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off and does not by itself satisfy the connection. **Stop sharing** stops later activity sends. **Disconnect** removes the paired credential and returns the host to the Connect screen. Neither deletes records the service already accepted.
+A paired host, or `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN`, can turn on activity sharing with **Enable sharing** after a current OUTPUT check-in. `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off and does not by itself satisfy the connection. **Stop sharing** stops later activity sends. **Disconnect** removes the paired credential and returns the host to the Connect screen. Neither deletes records the service already accepted.
 
 The consented payload is the `eznest-observation/1` projection described in [OUTPUT sharing](docs/output-telemetry.md). The local proposal, which is not itself uploaded, is in [the telemetry contract](docs/telemetry-contract.md). A consented event can include:
 
