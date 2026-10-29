@@ -47,6 +47,16 @@ Each plug-in has its own switch in the config file.
 | summa_joblog | Summa GoProduce `Joblog.csv` | A finished cut |
 | inventory | A JSON view of on-hand quantities | The on-hand quantity changed after the connector started |
 
+An ONYX Thrive JobLog line is quoted fields separated by spaces inside
+`{{ ... }}`, not a comma-separated table. The field positions come from shop
+samples and still need confirming against one real JobLog line. The file name,
+job title, Quick Set, print mode, and raw media profile are not sent. Only
+status `1` is a completed print. Status `-1` and `0` are sent as abnormal;
+which of those two means aborted is not verified. `widthIn`, `mediaUsedFt`,
+and `machineModel` are inferred from the samples, not from ONYX documentation.
+A logged across-roll size above 64.5 inches is treated as a rotated job and
+the axes are swapped.
+
 An ONYX file can mention several printers. The connector sends a printer only
 when its name is listed in that plug-in's `printers` list. An empty list sends
 nothing.
@@ -180,11 +190,11 @@ stored there.
 
 ## Still unconfirmed
 
-- The exact ONYX `JobLog.txt` column order and brace layout. The parser assumes
-  one `{{ ... }}` record per line and a configurable column list. Confirm it
-  against a real file before enabling that plug-in.
-- Whether ONYX pixel sizes are width then length, and the time zone of Summa
-  clocks. Summa times are sent as UTC. Sizes default to millimetres.
+- The ONYX field positions are from shop samples. Confirm them against one real
+  JobLog line before enabling that plug-in. `widthIn`, `mediaUsedFt`, and
+  `machineModel` are inferred. The difference between ONYX status `-1` and `0`
+  is unverified.
+- Summa clocks are sent as UTC. Summa sizes default to millimetres.
 - OUTPUT has not yet registered `shop-connector-event/1`. Until it has, a live
   send can be refused. Use the dry run until then.
 - A log that is replaced (rotated) is treated as a new connect. Lines written

@@ -33,7 +33,14 @@ SECRETS = (
     'FAKE-EZ-CUSTOMER', 'FAKE-ART.PDF', 'EZ-999999', 'FAKE-SHOULD-NOT-EXPORT-CREATED',
     'FAKE-PARTIAL-ONYX-LINE', 'FAKE-FILTERED-PRINTER-TITLE', 'FAKE-NOT-A-RECORD',
     'FAKE-ABNORMAL-TITLE', '15234', '0.37', '22.4', '1372', '2480', '4.6', '1.25',
-    '720-8c',
+    '720-8c', 'SYNTH_CUSTOMER_A.PDF', 'SYNTH_CUSTOMER_B.PDF', 'SYNTH_CUSTOMER_C.PDF',
+    'SYNTH_CUSTOMER_D.PDF', 'SYNTH_CUSTOMER_E.PDF', 'Synthetic Title A',
+    'Synthetic Title B', 'Synthetic Title C', 'Synthetic Title D', 'Synthetic Title E',
+    'SYNTH_QUICKSET_A', 'SYNTH_QUICKSET_B', 'SYNTH_QUICKSET_C', 'SYNTH_QUICKSET_D',
+    'SYNTH_QUICKSET_E', 'IJ35-10(Graphic Film White) [3M]',
+    '8150 Clear with White-CT_18 Pass [3M]', 'Moto Holo Sticker', 'Chrome Mirror 3',
+    'Mystery Paper', '720@720x1440-CT', 'EPSON SureColor S80600',
+    'Roland VersaCAMM VS-540', 'HP Latex 570', 'Epson Stylus Pro 7890',
 )
 
 
@@ -57,12 +64,16 @@ def public_text(value):
     return '\n'.join(parts)
 
 
-def onyx_line(title, printer='FAKE-PRINTER-A', status='1', epoch='1712345678'):
-    return (
-        '{{%s,"art.pdf","%s",%s,14000,4800,7,720,"%s","FAKE-GLOSS-PROFILE",'
-        '"720-8c",640,"FAKE-QUICK-SET-NAME",1.25,0.8,0.7,1.1,0.4,0.2,0.15,4.6,22.4}}'
-        % (status, title, epoch, printer)
-    )
+def onyx_line(title, printer='FAKE-PRINTER-A', status='1', epoch='1712345678',
+              feed_px='14400', across_px='7200', dpi='720', copies='1',
+              filename='secret.pdf', quick='SYNTH_QUICKSET_X'):
+    """One invented Thrive record: quoted fields, spaces, at least 20 of them."""
+    fields = [
+        status, filename, title, epoch, '1', feed_px, across_px, feed_px, '1',
+        copies, dpi, dpi, '0', printer, 'plain vinyl', 'mode', '00:01:00', quick,
+        'K: 0.10 C: 0.10', '0.20 ml', '10%',
+    ]
+    return '{{ ' + ' '.join('"%s"' % field for field in fields) + ' }}'
 
 
 class TempCase(unittest.TestCase):
@@ -198,7 +209,8 @@ class PrivacyReplayTests(TempCase):
             events = runtime.replay(FIXTURES, store)
         self.assertEqual(sorted(event['kind'] for event in events), [
             'cut.completed', 'cut.completed', 'inventory.observed', 'nest.completed',
-            'print.completed', 'print.completed',
+            'print.completed', 'print.completed', 'print.completed', 'print.completed',
+            'print.completed',
         ])
         raw = json.dumps(events)
         self.assertNotIn(store.salt().hex(), raw)
@@ -443,6 +455,66 @@ class FileAccessTests(TempCase):
         self.assertIn('onyx_joblog', text)
         self.assertIn('idle', text)
         self.assertIn('not paired', text)
+
+
+class OnyxJobLogTests(TempCase):
+    PRINTERS = [
+        'EPSON SureColor S80600', 'Roland VersaCAMM VS-540', 'HP Latex 570',
+        'Epson Stylus Pro 7890',
+    ]
+
+    def test_synthetic_fixture_hides_names_and_collapses_the_duplicate(self):
+        store = self.store()
+        lines = [line for line in FIXTURES.joinpath('onyx_joblog.txt').read_text(encoding='utf-8').splitlines() if line.strip()]
+        self.assertEqual(len(lines), 6)
+        self.assertEqual(lines[0], lines[-1])
+        options = {'printers': self.PRINTERS}
+        parsed = [onyx_joblog.parse_line(line, options, store.salt()) for line in lines]
+        self.assertTrue(all(item is not None for item in parsed))
+        self.assertEqual(parsed[0]['payload']['status'], 'ok')
+        self.assertEqual(parsed[0]['payload']['onyxStatus'], '1')
+        self.assertEqual(parsed[1]['payload']['status'], 'abnormal')
+        self.assertEqual(parsed[1]['payload']['onyxStatus'], '-1')
+        self.assertEqual(parsed[2]['payload']['status'], 'abnormal')
+        self.assertEqual(parsed[2]['payload']['onyxStatus'], '0')
+        self.assertEqual(
+            [item['payload']['machineModel'] for item in parsed[:5]],
+            ['epson_s80600', 'epson_s80600', 'roland_vs540', 'hp_latex_570', 'epson_7890'],
+        )
+        self.assertEqual(parsed[0]['payload']['widthIn'], '50.50')
+        self.assertFalse(parsed[0]['payload']['axisSwapped'])
+        first_id = event_id_for('onyx_joblog', lines[0].encode())
+        self.assertEqual(first_id, event_id_for('onyx_joblog', lines[-1].encode()))
+        events = runtime.replay(FIXTURES, store)
+        prints = [event for event in events if event['kind'] == 'print.completed']
+        self.assertEqual(len(prints), 5)
+        self.assertEqual(sum(1 for event in prints if event['eventId'] == first_id), 1)
+        shown = public_text(prints)
+        for secret in (
+            'SYNTH_CUSTOMER_A.PDF', 'SYNTH_CUSTOMER_E.PDF', 'Synthetic Title A',
+            'Synthetic Title E', 'SYNTH_QUICKSET_A', 'SYNTH_QUICKSET_E',
+            'IJ35-10(Graphic Film White) [3M]', '720@720x1440-CT',
+            'EPSON SureColor S80600', 'HP Latex 570',
+        ):
+            self.assertNotIn(secret, shown, secret)
+        self.assertNotIn(store.salt().hex(), json.dumps(prints))
+
+    def test_rotated_job_swaps_across_and_along(self):
+        store = self.store()
+        # 70 in across and 20 in along at 100 dpi. Across is past the 64.5 in sample limit.
+        line = onyx_line(
+            'Rotated Title', printer='EPSON SureColor S80600', filename='rotated.pdf',
+            quick='SYNTH_QUICKSET_ROT', feed_px='2000', across_px='7000', dpi='100', copies='2',
+        )
+        parsed = onyx_joblog.parse_line(line, {'printers': ['EPSON SureColor S80600']}, store.salt())
+        self.assertTrue(parsed['payload']['axisSwapped'])
+        self.assertEqual(parsed['payload']['widthIn'], '20.00')
+        self.assertEqual(parsed['payload']['mediaUsedFt'], '11.67')
+        shown = json.dumps(parsed['payload'])
+        self.assertNotIn('Rotated Title', shown)
+        self.assertNotIn('rotated.pdf', shown)
+        self.assertNotIn('SYNTH_QUICKSET_ROT', shown)
+        self.assertNotIn('SureColor', shown)
 
 
 class BoundAndHostTests(TempCase):

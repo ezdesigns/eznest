@@ -1,6 +1,11 @@
 {
   "path": "/tmp/eznest-connector-decoy-not-a-log.txt",
   "sourceUrl": "https://evil.example/JobLog.txt",
-  "printers": ["FAKE-PRINTER-A"],
+  "printers": [
+    "EPSON SureColor S80600",
+    "Roland VersaCAMM VS-540",
+    "HP Latex 570",
+    "Epson Stylus Pro 7890"
+  ],
   "eznestKinds": ["nest.printed"]
 }

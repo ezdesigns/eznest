@@ -51,14 +51,26 @@ stated here so a shop can see the rounding. Exact values are not sent.
 `print.completed` (source `printer`): `status` (`ok` or `abnormal`),
 `printerClass`, `mediaClass`, `copiesBand`, `inkTotalMlBand`,
 `inkChannelsMlBand`, `coveragePercentBand`, `printTimeSecondsBand`,
-`widthMmBand`, `lengthMmBand`, `jobId`.
+`widthMmBand`, `lengthMmBand`, `jobId`, `onyxStatus`, `machineModel`,
+`mediaUsedFt`, `widthIn`, `axisSwapped`.
 
-Status `1` is `ok`. Status `0` and `-1` are `abnormal`. Any other status is
-skipped. `printerClass` is `epson_s80600` when the model text contains that
-code, otherwise `unknown`. The raw model string is not sent. `mediaClass` is
-one of `moto_regular`, `moto_holographic`, `moto_chrome`, `custom`, `unknown`.
-`jobId` is a salted SHA-256 of the job title and source file name. The salt
-stays on this computer.
+Print time, ink, and coverage keep those banded names. They are not exact
+values. Status `1` is `ok`. Status `0` and `-1` are `abnormal`, and
+`onyxStatus` repeats the raw code. The difference between `-1` and `0` is
+not verified against ONYX documentation. Any other status is skipped.
+`printerClass` and `machineModel` are the same coarse class (`epson_s80600`,
+`roland_vs540`, `hp_latex_570`, `epson_7890`, or `unknown`). The raw model
+string is not sent. `mediaClass` is one of `moto_regular`,
+`moto_holographic`, `moto_chrome`, `custom`, `unknown`. The raw media profile
+is not sent. `jobId` is a salted SHA-256 of the job title and source file
+name. The salt stays on this computer.
+
+`widthIn` and `mediaUsedFt` are inferred from the sample field positions:
+width is the across-roll size in inches, and media used is length in inches
+times copies divided by 12. They are rounded to hundredths. `axisSwapped` is
+true when the logged across-roll size was above 64.5 inches and the axes were
+exchanged. Those three values are inferred from samples, not from ONYX
+documentation.
 
 `cut.completed` (source `cutter`): `materialClass`, `thicknessMmBand`,
 `jobCountBand`, `copiesBand`, `jobSizeXMmBand`, `jobSizeYMmBand`,
@@ -123,10 +135,10 @@ either.
     "print": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "printerClass", "mediaClass", "copiesBand", "inkTotalMlBand", "inkChannelsMlBand", "coveragePercentBand", "printTimeSecondsBand", "widthMmBand", "lengthMmBand", "jobId"],
+      "required": ["status", "printerClass", "mediaClass", "copiesBand", "inkTotalMlBand", "inkChannelsMlBand", "coveragePercentBand", "printTimeSecondsBand", "widthMmBand", "lengthMmBand", "jobId", "onyxStatus", "machineModel", "mediaUsedFt", "widthIn", "axisSwapped"],
       "properties": {
         "status": {"enum": ["ok", "abnormal"]},
-        "printerClass": {"enum": ["epson_s80600", "unknown"]},
+        "printerClass": {"enum": ["epson_s80600", "roland_vs540", "hp_latex_570", "epson_7890", "unknown"]},
         "mediaClass": {"$ref": "#/$defs/material"},
         "copiesBand": {"$ref": "#/$defs/band"},
         "inkTotalMlBand": {"$ref": "#/$defs/band"},
@@ -135,7 +147,12 @@ either.
         "printTimeSecondsBand": {"$ref": "#/$defs/band"},
         "widthMmBand": {"$ref": "#/$defs/band"},
         "lengthMmBand": {"$ref": "#/$defs/band"},
-        "jobId": {"$ref": "#/$defs/hash"}
+        "jobId": {"$ref": "#/$defs/hash"},
+        "onyxStatus": {"enum": ["1", "-1", "0"]},
+        "machineModel": {"enum": ["epson_s80600", "roland_vs540", "hp_latex_570", "epson_7890", "unknown"]},
+        "mediaUsedFt": {"type": "string", "pattern": "^[0-9]+(?:\\.[0-9]{1,2})?$"},
+        "widthIn": {"type": "string", "pattern": "^[0-9]+(?:\\.[0-9]{1,2})?$"},
+        "axisSwapped": {"type": "boolean"}
       }
     },
     "cut": {
@@ -190,11 +207,15 @@ either.
 
 ## Open questions
 
-ONYX `JobLog.txt` is described as one `{{ ... }}` record per line with quoted
-fields. The column order in `onyx_joblog.py` is a placeholder. Set `columns`
-from a real file before relying on it. It is not confirmed which axis is the
-feed length, or whether the end time is seconds or milliseconds. Values above
-100 billion are treated as milliseconds.
+ONYX Thrive `JobLog.txt` lines are quoted fields separated by spaces inside
+`{{ ... }}`. The positions used here come from shop samples and still need
+confirming against one real JobLog line. Field `[6]` is treated as pixels
+across the roll and `[5]` as pixels along the feed. A logged across-roll size
+above 64.5 inches is treated as rotated and the axes are swapped. `widthIn`,
+`mediaUsedFt`, and `machineModel` are inferred from those samples, not from
+ONYX documentation. Status `1` is completed. `-1` and `0` are both abnormal;
+which means aborted and which means incomplete is unverified. The end time is
+epoch seconds. Values above 100 billion are treated as milliseconds.
 
 Summa column order is confirmed. The time zone is not. Clocks are sent as
 UTC. Size numbers are millimetres unless `sizeUnit` is `cm` or `in`. A comma

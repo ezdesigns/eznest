@@ -16,7 +16,7 @@ KINDS = ('nest.completed', 'print.completed', 'cut.completed', 'inventory.observ
 MATERIALS = ('moto_regular', 'moto_holographic', 'moto_chrome', 'custom', 'unknown')
 UNITS = ('mm', 'm', 'ml', 'sheets', 'rolls', 'each')
 INK_CHANNELS = ('c', 'm', 'y', 'k', 'lc', 'lm', 'lk', 'llk', 'or', 'gr', 'w')
-PRINTER_CLASSES = ('epson_s80600', 'unknown')
+PRINTER_CLASSES = ('epson_s80600', 'roland_vs540', 'hp_latex_570', 'epson_7890', 'unknown')
 
 ENVELOPE = (
     'schema', 'eventId', 'requestId', 'source', 'instanceId',
@@ -25,7 +25,8 @@ ENVELOPE = (
 PRINT_KEYS = (
     'status', 'printerClass', 'mediaClass', 'copiesBand', 'inkTotalMlBand',
     'inkChannelsMlBand', 'coveragePercentBand', 'printTimeSecondsBand',
-    'widthMmBand', 'lengthMmBand', 'jobId',
+    'widthMmBand', 'lengthMmBand', 'jobId', 'onyxStatus', 'machineModel',
+    'mediaUsedFt', 'widthIn', 'axisSwapped',
 )
 CUT_KEYS = (
     'materialClass', 'thicknessMmBand', 'jobCountBand', 'copiesBand',
@@ -38,6 +39,7 @@ INVENTORY_KEYS = (
 )
 
 _BAND = re.compile(r'^(?:0|\[[0-9]+(?:\.[0-9]+)?,[0-9]+(?:\.[0-9]+)?\))$')
+_MEASURE = re.compile(r'^[0-9]+(?:\.[0-9]{1,2})?$')
 _HASH = re.compile(r'^[0-9a-f]{64}$')
 _INSTANCE = re.compile(r'^[0-9a-f]{32}$')
 _UUID5 = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
@@ -196,6 +198,15 @@ def _validate_print(payload):
     ):
         _band_or_null(payload[key])
     _hash_or_null(payload['jobId'])
+    if payload['onyxStatus'] not in ('1', '-1', '0'):
+        raise ContractError('withheld')
+    if payload['machineModel'] not in PRINTER_CLASSES or payload['printerClass'] != payload['machineModel']:
+        raise ContractError('withheld')
+    for key in ('mediaUsedFt', 'widthIn'):
+        if not isinstance(payload[key], str) or not _MEASURE.fullmatch(payload[key]):
+            raise ContractError('withheld')
+    if type(payload['axisSwapped']) is not bool:
+        raise ContractError('withheld')
     channels = payload['inkChannelsMlBand']
     if not isinstance(channels, dict) or any(name not in INK_CHANNELS for name in channels):
         raise ContractError('withheld')
