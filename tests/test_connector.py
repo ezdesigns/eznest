@@ -634,15 +634,22 @@ class BoundAndHostTests(TempCase):
             # Windows privacy is an ACL property; stat's POSIX mode is synthetic.
             for path in (first.directory, first.path):
                 literal = str(path).replace("'", "''")
-                script = (f"$acl = Get-Acl -LiteralPath '{literal}'; "
-                          "$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; "
-                          "@{protected=$acl.AreAccessRulesProtected; current=$sid; "
-                          "allowed=@($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | "
-                          "Where-Object AccessControlType -eq Allow | ForEach-Object {$_.IdentityReference.Value})} | ConvertTo-Json -Compress")
+                # Windows PowerShell 5.1's ConvertTo-Json drops AreAccessRulesProtected.
+                # The DACL 'P' flag is the protected bit. Allow rules must be only this user's SID.
+                script = """
+$acl = Get-Acl -LiteralPath '__PATH__'
+$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$protected = $false
+if ([string]$acl.Sddl -match 'D:([A-Z]*)') { $protected = $Matches[1].Contains('P') }
+$allowed = @($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Value })
+$list = (@($allowed) | ForEach-Object { '"' + $_ + '"' }) -join ','
+if ($protected) { $flag = 'true' } else { $flag = 'false' }
+Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' + $list + ']}')
+""".replace('__PATH__', literal)
                 result = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
                                         check=True, capture_output=True, text=True, timeout=15)
-                acl = json.loads(result.stdout)
-                self.assertTrue(acl['protected'])
+                acl = json.loads(result.stdout.lstrip('\ufeff'))
+                self.assertIs(acl['protected'], True)
                 self.assertEqual(set(acl['allowed']), {acl['current']})
         commands = windows_acl_commands(first.directory, 'ShopUser', container=True)
         flat = [' '.join(part) for part in commands]
