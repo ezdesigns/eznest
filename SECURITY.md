@@ -16,20 +16,89 @@ Private vulnerability reporting has to be enabled in the repository security set
 
 ## Shop network mode
 
-Shop network is off until the host is started with `--lan`. The installer turns that on only when **Shop network** is selected. In that mode Ez Nest listens on all interfaces (`0.0.0.0`) and serves **plain HTTP on port 8765** (the default port, and the port the installer opens). There is no HTTPS and no login.
+**Stock database.** `materials.sqlite3` is opened only by the Ez Nest process on the host. Do not put it on an SMB share, a mapped drive, or another PC. Designer computers use the web page. They never open the database file.
 
-Use shop network only on a trusted private network. The firewall rule the installer adds, when Shop network is selected, allows inbound TCP 8765 on the **Private** profile only. It does not allow the Public profile. Do not check Public if Windows asks. Do not forward port 8765, and do not put this host on the internet or on guest Wi-Fi.
+Shop network is off until the host is started with `--lan`, and that start is refused until a shop PIN is saved on the host. The installer turns shop network on only when **Shop network** is selected. In that mode Ez Nest listens on all interfaces (`0.0.0.0`). Plain HTTP on port 8765 is the default. Local HTTPS is optional and is the recommended extra step below.
 
-Without `--lan`, Ez Nest binds to `127.0.0.1` only. A saved shop setting cannot open the listener by itself. Only a start with `--lan` does that.
+Use shop network only on a trusted private network. Do not forward port 8765, and do not put this host on the internet or on guest Wi-Fi.
 
-### `/api/session` and `X-EZ-Token`
+Without `--lan`, Ez Nest binds to `127.0.0.1` only. A saved shop setting cannot open the listener by itself.
 
-`GET /api/session` does not require a password or the `X-EZ-Token` header. Any client that can reach the listener and pass the Host check receives a JSON body that includes `token`. The browser sends that value back as the `X-EZ-Token` header.
+### Shop PIN
 
-The token is created in memory when the process starts (`secrets.token_urlsafe`). It is not a user account. POST requests (import, nest, save to the hot folder, and the other shop actions) are rejected unless `X-EZ-Token` matches. If the browser sends an `Origin` header, that origin must name this host as well. A website on another origin cannot read `/api/session`, so it cannot forge a normal browser POST.
+1. On the shop computer, open `http://127.0.0.1:8765/web`.
+2. Open **Settings** and **Shop PIN**. Enter 8 to 12 digits, or a passphrase of at least 10 characters that includes a letter, and choose **Save shop PIN**. A PIN saved before this rule still works. Settings asks the host to replace it.
+3. Restart Ez Nest with `--lan` (or reinstall with Shop network selected).
+4. On each designer PC, open `http://SHOP-HOST:8765/web` and enter that PIN once. Choose **Log out** when finished. The browser keeps an HttpOnly, SameSite=Strict cookie for at most 8 hours, and for 60 minutes after the last request. The cookie is bound to that computer's address. It does not receive the host write token.
 
-Anyone who can open `http://SHOP-HOST:8765/web` can call `/api/session`, copy the token, and use the shop. Several GET routes do not require the token at all once the Host header is accepted, including the current layout (`/api/state`), shop materials (`/api/materials`), and a saved pack download. The Host check allows this computer's name and private IP addresses. It is not a login.
+The PIN is stored as a salted scrypt hash in the host data directory. It is not written in plaintext. Five wrong tries from one address lock that address for one minute. Each later lock for that address waits twice as long, up to 64 minutes. A separate count of failures from every address, including a rotating set of addresses, shows a banner in Settings and writes a log line. That notice does not lock out the other computers. Changing the PIN signs every designer browser out.
 
-OUTPUT pairing, sharing consent, and update approval are limited to the host itself (`127.0.0.1` plus `X-EZ-Token`). A designer PC on the shop network cannot turn sharing on.
+### Plain HTTP and local HTTPS
 
-Treat every computer that can reach port 8765 as a person who can nest and send jobs.
+On plain HTTP, anyone who can watch the shop LAN traffic can copy the session cookie and reuse it until it expires or the designer logs out. That is the residual risk of the default. The recommended extra step is a certificate on the host:
+
+```text
+openssl req -x509 -newkey rsa:2048 -keyout eznest-key.pem -out eznest-cert.pem -days 825 -nodes -subj /CN=SHOP-HOST
+chmod 600 eznest-key.pem
+```
+
+On Windows, restrict the key before the shop task reads it. `eznest` is a scheduled task running as the user `eznest-svc`, not a Windows service:
+
+```text
+icacls eznest-key.pem /inheritance:r /grant:r *S-1-5-18:(R) *S-1-5-32-544:(R) eznest-svc:(R)
+```
+
+Ez Nest refuses to start HTTPS on Linux or macOS when the key is readable by the group or by other accounts. On Windows it applies that ACL when it can.
+
+Start the host with both files:
+
+```text
+python launcher.py --web --lan --tls-cert eznest-cert.pem --tls-key eznest-key.pem
+```
+
+The Windows shop task can take the same pair as `-TlsCert` and `-TlsKey` on `install-shop.ps1`. Leave both empty to keep HTTP. Designers then open `https://SHOP-HOST:8765/web` and accept the certificate warning once, or install that certificate on those PCs. When Ez Nest is serving HTTPS, the session cookie is marked Secure. A self-signed certificate is not a public certificate authority. Keep port 8765 off the internet either way.
+
+An IPv4-mapped IPv6 address such as `::ffff:127.0.0.1` is treated as `127.0.0.1`. `::ffff:` followed by any other IPv4 address is that IPv4 address for the PIN lock and the session binding.
+
+Shop settings, first-time setup, the source-folder queue, the hot-folder connection, and the OUTPUT address can be changed only from the shop computer (`127.0.0.1`). After the PIN, designer browsers can still nest and use shared stock.
+
+### Firewall
+
+When Shop network is selected, setup adds an inbound rule named `eznest` for TCP 8765 on the **Private** profile only. The rule's `remoteip` is `localsubnet` unless you pass designer PC addresses:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File install-shop.ps1 -DataDir C:\ProgramData\eznest -App "C:\Program Files\eznest\eznest.exe" -Lan 1 -StartAtBoot 1 -LanPeers "10.0.0.11,10.0.0.12,10.0.0.13"
+```
+
+Give those PCs static DHCP leases. Do not check Public if Windows asks.
+
+### Data folder
+
+Setup removes inherited permissions on `C:\ProgramData\eznest` and grants SYSTEM and Administrators full control, and `eznest-svc` modify. Other Windows users cannot replace `shop.json`.
+
+`materials.sqlite3` stays in this folder. Only the host process may open it. Never place that file on an SMB share.
+
+### Host header
+
+A request is accepted only when the Host header is this computer's own name or one of its own addresses (`localhost`, loopback, or `lan_addresses()`), on the shop port. Another private IP is rejected. State-changing requests and `GET /api/session` also need a matching `Origin` or `Sec-Fetch-Site: same-origin`. A cross-site page is rejected. Loopback programs that send neither header (the launcher, Illustrator, the update helper) still work on this computer.
+
+### OUTPUT address and key
+
+The OUTPUT address can be changed only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL` set by an administrator before the process starts.
+
+On Windows the OUTPUT shop key is encrypted with DPAPI for the Windows user that saved it, not for every account on the PC. Pair while the scheduled task named `eznest` is running as the user `eznest-svc`, so that account owns the key. That task is not a Windows service. The file ACL does not grant the Users group.
+
+### Updates and the GitHub token
+
+Update checks stay off unless `EZ_NEST_UPDATES=1` and the Settings box are both on. The installer default is off.
+
+A public repository needs no token. Do not put a GitHub token in `shop.json` or in a `github-token` file. Those are ignored. Set `EZ_NEST_GITHUB_TOKEN` for the service process, or on Windows store a generic credential named `eznest/github-token`. If an old `github-token` file is still in the data folder, delete it.
+
+### Dependency check
+
+GitHub Actions billing may be blocked. On a machine with the requirements installed, run:
+
+```text
+python -m pip install pip-audit
+python -m pip-audit -r requirements.txt
+```

@@ -58,13 +58,16 @@ class LauncherTests(unittest.TestCase):
             with self.assertRaises(ValueError):launcher.main()
             lookup.assert_not_called()
 
-    def _launch(self, argv, shop=None):
+    def _launch(self, argv, shop=None, pin=None):
         previous = {key: os.environ.get(key) for key in ('EZ_NEST_HOST', 'EZ_NEST_LAN', 'EZ_NEST_DATA', 'EZ_NEST_PORT')}
         saved = (server.HOST, server.LAN, server.PORT)
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 if shop is not None:
                     Path(tmp, 'shop.json').write_text(json.dumps(shop), encoding='utf-8')
+                if pin is not None:
+                    import shop_auth
+                    shop_auth.set_pin(tmp, pin)
                 with patch.object(sys, 'argv', ['eznest', *argv, '--data-dir', tmp]), \
                      patch.object(launcher, 'urlopen', side_effect=URLError('down')), \
                      patch('server.serve') as serve:
@@ -85,9 +88,13 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(os.environ['EZ_NEST_OUTPUT_UPLOADS'], '0')
 
     def test_lan_flag_opens_the_shop_network(self):
-        host, lan = self._launch(['--lan', '--no-browser'])
+        host, lan = self._launch(['--lan', '--no-browser'], pin='12345678')
         self.assertEqual(host, '0.0.0.0')
         self.assertEqual(lan, '1')
+
+    def test_lan_flag_without_a_pin_does_not_bind(self):
+        with self.assertRaisesRegex(ValueError, 'shop PIN'):
+            self._launch(['--lan', '--no-browser'])
 
     def test_saved_shop_network_cannot_open_without_lan_flag(self):
         host, lan = self._launch(['--no-browser'], {'onyxPc': False, 'lan': True})

@@ -30,12 +30,14 @@ These files stay under the OFL when the application is distributed. The OFL does
 not relicense the rest of eznest.
 
 PDF production additions in 0.11:
-- pypdf 6.19.0 (BSD-3-Clause): https://github.com/py-pdf/pypdf
+- pypdf 6.21.4 (BSD-3-Clause): https://github.com/py-pdf/pypdf
 - pypdfium2 5.13.0 and its PDFium binary: https://github.com/pypdfium2-team/pypdfium2
   Preserve its Apache/BSD notices, documentation attribution and bundled PDFium
   dependency notices under licenses/pypdfium2. PDFium renders review previews only.
-- Pillow 12.3.0 (MIT-CMU and bundled notices): https://github.com/python-pillow/Pillow
+- Pillow 13.0.0 (MIT-CMU and bundled notices): https://github.com/python-pillow/Pillow
 - charset-normalizer 3.5.2 (MIT): https://github.com/jawah/charset_normalizer
+- defusedxml 0.7.1 (PSF-2.0): https://github.com/tiran/defusedxml
+  Used for SVG and package XML parsing.
   Included for pypdf's optional character-encoding support; pinned for reproducible builds.
 These packages are unmodified. All installed license files are included below and
 copied to the portable build. PDF print artwork is handled by pypdf, not rasterized.

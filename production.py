@@ -8,6 +8,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from zipfile import ZipFile, ZIP_DEFLATED
 import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import fromstring as parse_untrusted_xml
 from engine import validate_result, ORDER_PIECE_CAP
 from shop_profiles import validate_profile, inspect_output
 from costing import material_cost
@@ -168,7 +169,7 @@ def validate_svg_payload(text):
     # release boundary too: packages must never contain executable SVG content.
     if not isinstance(text, str) or len(text) > 30_000_000 or '<!DOCTYPE' in text.upper() or '<!ENTITY' in text.upper():
         raise ValueError('Invalid or oversized SVG export.')
-    root = ET.fromstring(text)
+    root = parse_untrusted_xml(text)
     ns = '{http://www.w3.org/2000/svg}'
     if root.tag != ns + 'svg':
         raise ValueError('Export must be an SVG document.')

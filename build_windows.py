@@ -99,7 +99,7 @@ def main():
     command=[sys.executable,'-m','PyInstaller','--noconfirm','--onedir','--windowed','--name','eznest','--icon',str(ROOT/'assets'/'eznest.ico'),'--distpath',str(out/'dist'),'--workpath',str(out/'work'),'--specpath',str(out),'--collect-all','spyrrow','--collect-all','pypdfium2','--collect-all','pypdfium2_raw','--hidden-import','installer_update','--hidden-import','output_pairing','--hidden-import','output_credential','--exclude-module','tkinter']
     for name in STATIC:command+=['--add-data',f'{ROOT/name}{os.pathsep}.']
     command+=['--add-data',f'{ROOT/"fonts"}{os.pathsep}fonts']
-    for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer']:command+=['--copy-metadata',name]
+    for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer','defusedxml']:command+=['--copy-metadata',name]
     subprocess.run(command+[str(ROOT/'launcher.py')],cwd=ROOT,check=True)
     release=out/'dist'/'eznest'
     for name in ['START HERE.txt','Stop EZ Nest.cmd','Stop EZ Nest.ps1','eznest-web.bat','eznest-server.cmd','THIRD_PARTY.md','version.json','CHANGELOG.md','LICENSE','NOTICE']:shutil.copy2(ROOT/name,release/name)
@@ -110,7 +110,7 @@ def main():
     shutil.copytree(ROOT/'licenses',release/'licenses')
     shutil.copytree(ROOT/'illustrator',release/'illustrator')
     licenses=release/'licenses'
-    for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer','pyinstaller']:
+    for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer','defusedxml','pyinstaller']:
         distribution=metadata.distribution(name)
         for entry in distribution.files or []:
             path=Path(entry)
@@ -119,7 +119,7 @@ def main():
                 if not source.is_file():continue
                 target=licenses/name/Path(*[part for part in path.parts if part not in ('.','..')]);target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
     shutil.copy2(Path(sys.base_prefix)/'LICENSE.txt',licenses/'Python-LICENSE.txt')
-    manifest={name:metadata.version(name) for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer','pyinstaller','pyinstaller-hooks-contrib']}
+    manifest={name:metadata.version(name) for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer','defusedxml','pyinstaller','pyinstaller-hooks-contrib']}
     manifest['python']=sys.version;manifest['app']=json.loads((ROOT/'version.json').read_text())
     # Portable dependency list. The setup pin (version, commit, exe sha256) is installer/Output/BUILD.json.
     (release/'BUILD.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')

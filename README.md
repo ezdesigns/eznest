@@ -6,7 +6,9 @@ The shop host is a 64-bit PC running Windows 10 or Windows 11. Each designer PC 
 
 **Install.** On the host, download `eznest-setup.exe` and run it. It installs to `C:\Program Files\eznest`. During beta the installer is unsigned. If Windows SmartScreen appears, choose **More info**, then **Run anyway**, after you check the published `.sha256`. The steps are under [Install](#install) and [Windows warning screen](#windows-warning-screen).
 
-**Shop network.** The page stays on the host at `http://127.0.0.1:8765/web` until you turn Shop network on. Other computers then open `http://SHOP-HOST:8765/web`. That mode is plain HTTP on port 8765, with no login. Use a trusted private network. The installer firewall rule is the Private profile only. Keep port 8765 off the internet. See [Security](SECURITY.md).
+**Stock database.** `materials.sqlite3` stays on the host. Only the Ez Nest process on that PC may open it. Do not put it on an SMB share or copy it to a designer PC.
+
+**Shop network.** The page stays on the host at `http://127.0.0.1:8765/web` until you set a shop PIN and turn Shop network on. Other computers then open `http://SHOP-HOST:8765/web` and enter that PIN once. The default is plain HTTP on port 8765. Anyone who can watch that LAN can copy a signed-in browser's session cookie. Local HTTPS is the recommended extra step. See [Security](SECURITY.md). Use a trusted private network. The installer firewall rule is the Private profile only, limited to the local subnet or the designer PC addresses you pass in. Keep port 8765 off the internet.
 
 **Uninstall.** Uninstall removes the program, the startup task, the `eznest-svc` account, and the firewall rule. `%ProgramData%\eznest` stays on the host, including `materials.sqlite3`. The RIP hot folder stays too. Details are under [Uninstall](#uninstall).
 
@@ -25,11 +27,19 @@ One Windows PC runs Ez Nest. The other computers only open a browser. The shop P
 1. Download `eznest-setup.exe` from the GitHub release, or from the Windows installer artifact if you are testing a build that is not released yet. Code â†’ Download ZIP is source, not the app.
 2. If `eznest-setup.exe.sha256` is beside it, compare that checksum with the file before you run it.
 3. Close any older Ez Nest, including a build still using port 8765. `Stop EZ Nest.cmd` in the old folder does that.
-4. Run `eznest-setup.exe`. It installs to `C:\Program Files\eznest` and adds a desktop shortcut.
+4. Run `eznest-setup.exe`. It installs to `C:\Program Files\eznest`. On the tasks page, **Desktop shortcut** starts checked. Clear it if you do not want the icon. The icon is created only when that task stays selected.
 5. Leave **Start eznest when Windows starts** on if this PC should be ready after a reboot. That task is named `eznest`. It runs as the local user `eznest-svc`, which is not an administrator. The task uses limited rights. The password is random and is not written into the Ez Nest folder.
-6. Leave **Shop network** off unless other PCs on this network will open the page. Leave **Check for app updates** unchecked. Update checks stay off until you also start Ez Nest with `EZ_NEST_UPDATES=1` and turn **Check for updates** on in Settings. See [Update](#update).
+6. Leave **Shop network** off unless other PCs on this network will open the page. That choice is applied only on a fresh install. Leave **Check for app updates** unchecked. Update checks stay off until you also start Ez Nest with `EZ_NEST_UPDATES=1` and turn **Check for updates** on in Settings. See [Update](#update).
 
-The desktop shortcut opens the browser. The boot task does not. Closing the browser leaves Ez Nest running. `Stop EZ Nest.cmd` in the install folder stops it.
+The desktop shortcut, when you leave that task selected, opens the browser. The startup task named `eznest` does not. It runs as the local user `eznest-svc`. Closing the browser leaves Ez Nest running. `Stop EZ Nest.cmd` in the install folder stops it.
+
+To turn shop network on or off after the first install, run setup again with the startup task. Set the shop PIN on this PC first. `-Lan 1` adds `--lan`. `-Lan 0` removes it.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\eznest\install-shop.ps1" -DataDir "C:\ProgramData\eznest" -App "C:\Program Files\eznest\eznest.exe" -Lan 1 -StartAtBoot 1
+```
+
+Running the installer again over an existing copy does not change that task. Shop network in the installer is read only while the shop is being set up for the first time.
 
 Settings and the hot-folder path for an installed copy live in `%ProgramData%\eznest`.
 
@@ -102,7 +112,7 @@ Unsigned builds still require a manual installer upgrade. The managed helper req
 
 Pre-releases show up only when **Test channel** is on.
 
-A public repository needs no token. `github_token()` in `shop_deploy.py` is optional and only for a private-repo mirror: set `EZ_NEST_GITHUB_TOKEN`, or a one-line token file at `%ProgramData%\eznest\github-token`. The token is sent only to GitHub, and only while update checks are on. The release URL and the problem-report link can be changed without rebuilding. See [Contributing](CONTRIBUTING.md).
+A public repository needs no token. For a private-repo mirror, set `EZ_NEST_GITHUB_TOKEN` on the process that runs Ez Nest, or on Windows store a generic credential named `eznest/github-token`. A token in `shop.json` or a `github-token` file is ignored. Delete an old `github-token` file if one is still in the data folder. The token is sent only to GitHub, and only while update checks are on. The release URL and the problem-report link can be changed without rebuilding. See [Contributing](CONTRIBUTING.md).
 
 ## Report a problem
 
@@ -126,19 +136,23 @@ The host IP address and the shop credential go with those HTTPS requests. Exact 
 
 Never sent: artwork, files, filenames, customer names or contacts, job codes, roll ids, custom material names, or exact dimensions, quantities, stock, and search time.
 
-The default OUTPUT service is `https://output.jeezlabs.io` (`/api/shop/telemetry` for events and `/api/shop/agent/pair` for pairing). Change it with `EZ_NEST_OUTPUT_URL` or the **OUTPUT service address** in Settings, stored as `outputUrl` in `shop.json`. The environment variable wins. The value must be an `https` origin with no path, query, username, or password. Redirects are not followed. Changing the address does not turn sharing on.
+The default OUTPUT service is `https://output.jeezlabs.io` (`/api/shop/telemetry` for events and `/api/shop/agent/pair` for pairing). Change the saved address only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL` set before Ez Nest starts. The environment variable wins. The value must be an `https` origin with no path, query, username, or password. Redirects are not followed. Changing the address does not turn sharing on.
 
 ## Shop network
 
 The default is this computer only: `http://127.0.0.1:8765/web`.
 
-Shop network is off until you turn it on. There is no login. The page is plain HTTP. `GET /api/session` returns an `X-EZ-Token` to anyone who can open the page. That token is not a password. Anyone on the shop LAN can send a job. Do not share this network with guest WiFi. Do not forward port 8765 to the internet. See [Security](SECURITY.md).
+Shop network stays closed until a shop PIN is set on this computer and you start with `--lan`. The page is plain HTTP. Designer browsers enter the PIN once. They do not receive the host write token. Do not share this network with guest WiFi. Do not forward port 8765 to the internet. See [Security](SECURITY.md).
 
-1. Choose Shop network in the installer (which adds `--lan` to the boot task), or start the app with `--lan`. The gear reports the running mode.
-2. Restart Ez Nest. The gear then shows `http://<this-computer>:8765/web`. Other PCs open that address. They do not install Ez Nest.
-3. The installer opens Windows Firewall for TCP 8765 on the private profile only. It does not open a public profile.
+1. On the shop computer, open Settings → **Shop PIN**. Enter 8 to 12 digits, or a passphrase of at least 10 characters with a letter, and save it. An older shorter PIN still signs in. Settings asks you to replace it.
+2. Choose Shop network in the installer on a fresh install (which adds `--lan` to the startup task named `eznest`), or start the app with `--lan`. `--lan` does not open the network until the PIN is saved. The Settings checkbox only shows that start flag. It is disabled because saving settings cannot turn the network on. The gear reports the running mode. After the first install, change the network with the `install-shop.ps1` command under [Install](#install).
+3. Restart Ez Nest. The gear then shows `http://<this-computer>:8765/web`. Other PCs open that address and enter the PIN. They choose **Log out** when finished. A session ends after 60 idle minutes, after 8 hours, or when the address changes. They do not install Ez Nest.
+4. The installer opens Windows Firewall for TCP 8765 on the private profile only, for `localsubnet` or the designer PC addresses in `-LanPeers`. It does not open a public profile.
+5. Recommended: create a certificate and start with `--tls-cert` and `--tls-key` (or `-TlsCert` and `-TlsKey` on `install-shop.ps1`). Designers then use `https://`. The commands are in [Security](SECURITY.md). HTTP remains the default when those are omitted. On HTTP, a person who can watch the shop LAN can copy a session cookie and reuse it until it expires.
 
-Only `--lan` opens a non-loopback listener. A saved preference alone cannot open it.
+Only `--lan` opens a non-loopback listener, and only after the PIN exists. A saved preference alone cannot open it.
+
+`materials.sqlite3` stays on this computer. The host process is the only program that should open it. Do not put that file on a shared drive or an SMB share.
 
 ## OUTPUT
 
@@ -148,7 +162,7 @@ The separate **Join OUTPUT network** control is not that consent. It stays off, 
 
 ## Limits
 
-One material and up to 800 pieces. PDF import is 2 GB and 25 pages. No EPS, no DeviceN cut colors, no inventory, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
+One material and up to 800 pieces. PDF import is 2 GB and 25 pages. The page has Material and stock for the roll on this host. There is no separate order or parts inventory. No EPS, no DeviceN cut colors, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
 
 Not in v1: job history, order intake, and cost tracking as a product.
 

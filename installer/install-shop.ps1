@@ -9,7 +9,12 @@ param(
   [string]$OnyxPc = '0',
   [string]$Lan = '0',
   [string]$StartAtBoot = '0',
-  [string]$Updates = '0'
+  [string]$Updates = '0',
+  # localsubnet, or the designer PCs' IPv4 addresses separated by commas.
+  [string]$LanPeers = 'localsubnet',
+  # Optional local HTTPS. Set both. The installer leaves HTTP when these are empty.
+  [string]$TlsCert = '',
+  [string]$TlsKey = ''
 )
 
 # An installer launched from PowerShell 7 can inherit its incompatible modules.
@@ -85,6 +90,27 @@ function Grant-Folder([string]$Account, [string]$Folder, [string]$Rights) {
   if ($LASTEXITCODE -ne 0) { throw "Could not grant $Account permission on $Folder." }
 }
 
+function Test-LanPeers([string]$Value) {
+  if ($Value -eq 'localsubnet') { return $true }
+  $parts = @($Value.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  if ($parts.Count -lt 1 -or $parts.Count -gt 16) { return $false }
+  foreach ($part in $parts) {
+    if ($part -notmatch '^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$') { return $false }
+  }
+  return $true
+}
+
+function Protect-DataDirectory([string]$Folder, [string]$Account) {
+  # ProgramData lets Users create files. Remove that inheritance and keep
+  # SYSTEM, Administrators, and the shop service account.
+  if ($Account) {
+    & icacls.exe $Folder /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" "${Account}:(OI)(CI)M" /T
+  } else {
+    & icacls.exe $Folder /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" /T
+  }
+  if ($LASTEXITCODE -ne 0) { throw "Could not lock down $Folder to SYSTEM, Administrators, and the shop service account." }
+}
+
 function Grant-BatchLogon([string]$Account) {
   $sid = (New-Object System.Security.Principal.NTAccount($Account)).Translate([System.Security.Principal.SecurityIdentifier]).Value
   $cfg = Join-Path $env:TEMP ('eznest-rights-' + [guid]::NewGuid().ToString('n') + '.inf')
@@ -118,6 +144,34 @@ function Grant-BatchLogon([string]$Account) {
 }
 
 $ErrorActionPreference = 'Stop'
+if (-not (Test-LanPeers $LanPeers)) {
+  throw 'Designer PC addresses must be localsubnet or a comma-separated list of IPv4 addresses.'
+}
+if (($TlsCert -eq '') -ne ($TlsKey -eq '')) {
+  throw 'Set both -TlsCert and -TlsKey, or leave both empty. HTTP stays the default.'
+}
+if ($TlsCert -match '[\r\n"]' -or $TlsKey -match '[\r\n"]') {
+  throw 'TLS certificate paths cannot contain quotes or line breaks.'
+}
+$httpsLater = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -DataDir "' + $DataDir + '" -App "' + $App + '" -Lan ' + $Lan + ' -StartAtBoot ' + $StartAtBoot + ' -TlsCert C:\ProgramData\eznest\eznest-cert.pem -TlsKey C:\ProgramData\eznest\eznest-key.pem'
+if (-not $TlsCert -and -not $TlsKey) {
+  Write-Host ''
+  Write-Host 'Recommended: use HTTPS so a PIN session cannot be copied from the shop network.'
+  Write-Host 'This install keeps HTTP so setup does not stop.'
+  Write-Host 'Before you enable it, create the certificate and run: icacls C:\ProgramData\eznest\eznest-key.pem /inheritance:r /grant:r *S-1-5-18:(R) *S-1-5-32-544:(R) eznest-svc:(R)'
+  Write-Host 'To enable HTTPS later:'
+  Write-Host ('  ' + $httpsLater)
+  $ask = $env:EZ_NEST_HTTPS_PROMPT -eq '1'
+  if (-not $ask -and $env:EZ_NEST_HTTPS_PROMPT -ne '0' -and $env:GITHUB_ACTIONS -ne 'true' -and $env:CI -ne 'true') {
+    try { $ask = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected } catch { $ask = $false }
+  }
+  if ($ask) {
+    $choice = Read-Host 'Press Enter to continue with HTTP, or type HTTPS to stop and use the command above'
+    if ($choice -eq 'HTTPS') {
+      throw 'Stopped before changing this PC. HTTP is still the default. Rerun with -TlsCert and -TlsKey when the key is restricted.'
+    }
+  }
+}
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 $onyx = $OnyxPc -eq '1'
 $lanEnabled = $Lan -eq '1'
@@ -154,7 +208,7 @@ if (Get-ScheduledTask -TaskName $task -TaskPath '\' -ErrorAction SilentlyContinu
 }
 if ($boot) {
   $password = Ensure-ServiceAccount $account
-  Grant-Folder $account $DataDir '(OI)(CI)M'
+  Protect-DataDirectory $DataDir $account
   $savedHot = Join-Path $DataDir 'output-folder.json'
   if (Test-Path -LiteralPath $savedHot) {
     try {
@@ -168,6 +222,7 @@ if ($boot) {
   Grant-BatchLogon $account
   $launchArguments = '--web --no-browser --data-dir "' + $DataDir + '"'
   if ($lanEnabled) { $launchArguments += ' --lan' }
+  if ($TlsCert -and $TlsKey) { $launchArguments += ' --tls-cert "' + $TlsCert + '" --tls-key "' + $TlsKey + '"' }
   $action = New-ScheduledTaskAction -Execute $App -Argument $launchArguments
   $trigger = New-ScheduledTaskTrigger -AtStartup
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
@@ -176,10 +231,13 @@ if ($boot) {
     # in a child process command line, script, or log.
     Register-ScheduledTask -TaskName $task -TaskPath '\' -Action $action -Trigger $trigger -Settings $settings -User $account -Password $password -RunLevel Limited -Force | Out-Null
   } finally { $password = $null }
+} else {
+  Protect-DataDirectory $DataDir ''
 }
 & netsh.exe advfirewall firewall delete rule name=eznest | Out-Null
 if ($lanEnabled) {
-  & netsh.exe advfirewall firewall add rule name=eznest dir=in action=allow protocol=TCP localport=8765 profile=private
+  # Private profile only. remoteip defaults to this subnet, or the designer PCs passed in -LanPeers.
+  & netsh.exe advfirewall firewall add rule name=eznest dir=in action=allow protocol=TCP localport=8765 profile=private "remoteip=$LanPeers"
   if ($LASTEXITCODE -ne 0) { throw 'Could not open the shop-network port.' }
 }
 if ($boot) {

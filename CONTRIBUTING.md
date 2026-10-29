@@ -34,7 +34,7 @@ GitHub Actions runs those checks on Windows, Python 3.12, and Node 24. The Windo
 
 ## Shop server
 
-The default listen address is `127.0.0.1`. Shop network requires `--lan`, which binds `0.0.0.0` and accepts this computer's name. A saved preference alone must never widen the listener. Do not make the page reachable on the public internet.
+The default listen address is `127.0.0.1`. Shop network requires `--lan`, which binds `0.0.0.0` only after a shop PIN is saved, and accepts this computer's own name and addresses. A saved preference alone must never widen the listener. Do not make the page reachable on the public internet.
 
 The boot task runs as `eznest-svc` with limited rights. That account is not an administrator. Do not run the task as SYSTEM, and do not put the account password in the repository or in the data folder.
 
@@ -46,20 +46,27 @@ These can be set without changing code. Environment variables win. A one-line fi
 | --- | --- | --- |
 | Release API | `EZ_NEST_RELEASE_API` | `release-api` |
 | GitHub repository `owner/name` | `EZ_NEST_GITHUB_REPO` | `github-repo` |
-| Token, optional, private-repo mirrors only | `EZ_NEST_GITHUB_TOKEN` | `github-token` |
+| Token, optional, private-repo mirrors only | `EZ_NEST_GITHUB_TOKEN`, or Windows credential `eznest/github-token` | not stored |
 | Report-a-problem link | `EZ_NEST_ISSUES_URL` | `issues-url` |
 | OUTPUT service origin | `EZ_NEST_OUTPUT_URL` | `outputUrl` in `shop.json` |
 | Background update checks | `EZ_NEST_UPDATES` (`0` by default) | `updates` in `shop.json` (false by default) |
 
-A public repository needs no token. `shop_deploy.github_token()` is optional and only for a private-repo mirror. Leave the token unset. The token is sent only to `github.com` and `api.github.com`, and only while update checks are on. Do not commit a token, a certificate, or a password.
+A public repository needs no token. `shop_deploy.github_token()` is optional and only for a private-repo mirror. Leave the token unset. Do not put it in `shop.json` or a `github-token` file; those are ignored. The token is sent only to `github.com` and `api.github.com`, and only while update checks are on. Do not commit a token, a certificate, or a password.
 
-`EZ_NEST_OUTPUT_URL` and `outputUrl` must be an https origin. Sharing stays off until the host pairs and agrees. `EZ_NEST_UPDATES` defaults to `0`. Set it to `1` and turn **Check for updates** on before Ez Nest calls GitHub. Installing a checked download is still a separate click.
+`EZ_NEST_OUTPUT_URL` is set by an administrator when the process starts. A saved `outputUrl` must be `https://output.jeezlabs.io` or that same https origin, and it can be changed only on the host. Sharing stays off until the host pairs and agrees. `EZ_NEST_UPDATES` defaults to `0`. Set it to `1` and turn **Check for updates** on before Ez Nest calls GitHub. Installing a checked download is still a separate click.
+
+Check pinned dependencies when you change `requirements.txt`. Actions billing may be blocked, so run this locally:
+
+```text
+python -m pip install pip-audit
+python -m pip-audit -r requirements.txt
+```
 
 Test channel is off until the operator turns it on. Pre-releases are listed only then.
 
 ## Signing
 
-The Windows installer workflow signs `eznest-setup.exe` when the `WINDOWS_CERT_BASE64` and `WINDOWS_CERT_PASSWORD` secrets are set. When they are empty, the step skips and the unsigned installer is still uploaded. Do not commit a certificate.
+The Windows installer workflow builds an unsigned `eznest-setup.exe`. It does not read a certificate and it does not sign the file. Do not treat a CI artifact as a signed installer. Do not commit a certificate.
 
 ## Tests for the shop scripts
 
