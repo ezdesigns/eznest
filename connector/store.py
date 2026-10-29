@@ -21,7 +21,7 @@ def windows_acl_commands(target, username, *, container):
     if any(ch in username for ch in '*?"<>|:\r\n'):
         raise ValueError('username')
     rights = '(OI)(CI)F' if container else 'F'
-    broad = ('*S-1-1-0', '*S-1-5-32-545', '*S-1-5-11', '*S-1-5-32-544', '*S-1-5-18')
+    broad = ('*S-1-3-4', '*S-1-1-0', '*S-1-5-32-545', '*S-1-5-11', '*S-1-5-32-544', '*S-1-5-18')
     return [
         ['icacls', str(target), '/inheritance:r'],
         ['icacls', str(target), '/grant:r', f'{username}:{rights}'],
@@ -35,10 +35,13 @@ def protect_path(path, *, container):
         return
     username = os.environ.get('USERNAME', '')
     commands = windows_acl_commands(path, username, container=container)
-    for command in commands[:2]:
+    for command in commands:
         if subprocess.run(command, capture_output=True).returncode != 0:
             raise OSError('Could not restrict the connector state folder.')
-    subprocess.run(commands[2], capture_output=True)
+    # A later grant can leave inheritance on. Remove it again so the DACL stays
+    # protected and only the explicit user grant remains.
+    if subprocess.run(['icacls', str(path), '/inheritance:r'], capture_output=True).returncode != 0:
+        raise OSError('Could not restrict the connector state folder.')
 
 
 class Store:
