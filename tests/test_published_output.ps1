@@ -169,13 +169,16 @@ try {
     $receipt = Get-Content $receiptPath -Raw | ConvertFrom-Json -AsHashtable
     Assert ($receipt.paired -and $receipt.restarted -and $receipt.nested) 'Connect evidence is incomplete.'
     $null = Session
-    $deadline = [DateTime]::UtcNow.AddMinutes(10)
-    do {
+    # OUTPUT allows 8 check-ins per source address per 15 minutes. Connect uses
+    # three (including service startup); reserve at most four more here. Give
+    # the controller time to read the artifact and revoke before the first call.
+    Start-Sleep -Seconds 60
+    for ($attempt = 0; $attempt -lt 4; $attempt++) {
       $check = Api '/api/telemetry/output/check-in' @{}
       if ($check.Status -eq 200 -and $check.Json.state -eq 'revoked' -and -not $check.Json.ok) { break }
-      Start-Sleep -Seconds 10
-    } while ([DateTime]::UtcNow -lt $deadline)
-    Assert ($check.Status -eq 200 -and $check.Json.state -eq 'revoked' -and -not $check.Json.ok) 'Owner revocation was not observed within ten minutes.'
+      if ($attempt -lt 3) { Start-Sleep -Seconds 120 }
+    }
+    Assert ($check.Status -eq 200 -and $check.Json.state -eq 'revoked' -and -not $check.Json.ok) 'Owner revocation was not observed within the bounded check-in budget.'
     Assert ((Api '/api/state').Status -eq 403) 'Revoked installed workspace stayed open.'
     Assert ((Api '/api/solve' @{}).Status -eq 403) 'Revoked installed host still accepted nesting.'
     $receipt.revoked = $true; Save-Receipt $receipt
