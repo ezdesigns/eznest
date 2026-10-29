@@ -1,0 +1,28 @@
+[
+  {
+    "name": "FAKE-ROLL-ORAJET",
+    "category": "gloss",
+    "qty_on_hand": 15234,
+    "unit": "mm",
+    "reorder_threshold": 4873,
+    "updated_at": "2026-10-28T15:00:00Z",
+    "cost": 49.95,
+    "customer": "FAKE-INV-CUSTOMER",
+    "phone": "555-0177",
+    "email": "inv@example.invalid",
+    "address": "123 Fake Street",
+    "order_id": "ORDER-88421",
+    "price": "$49.95"
+  },
+  {
+    "name": "FAKE-ROLL-ORAJET",
+    "category": "gloss",
+    "qty_on_hand": 14010,
+    "unit": "mm",
+    "reorder_threshold": 4873,
+    "updated_at": "2026-10-28T16:00:00Z",
+    "cost": 49.95,
+    "customer": "FAKE-INV-CUSTOMER",
+    "order_id": "ORDER-88421"
+  }
+]

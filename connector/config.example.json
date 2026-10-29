@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "plugins": {
+    "eznest": {
+      "enabled": false,
+      "source": {"type": "file", "path": ""},
+      "kinds": ["nest.printed"]
+    },
+    "onyx_joblog": {
+      "enabled": false,
+      "source": {"type": "file", "path": ""},
+      "printers": []
+    },
+    "summa_joblog": {
+      "enabled": false,
+      "source": {"type": "file", "path": ""},
+      "delimiter": ";",
+      "dateOrder": "dmy",
+      "sizeUnit": "mm",
+      "columns": [
+        "date", "job_name", "start", "end", "material", "thickness",
+        "job_count", "job_size_x", "job_size_y", "copies", "copy_size_x", "copy_size_y"
+      ]
+    },
+    "inventory": {
+      "enabled": false,
+      "source": {"type": "file", "path": ""}
+    }
+  }
+}
