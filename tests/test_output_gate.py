@@ -317,6 +317,42 @@ class GateTests(unittest.TestCase):
         finally:
             helper.tearDown()
 
+    def test_connect_box_names_the_shop_after_pairing(self):
+        try:
+            from playwright.sync_api import expect, sync_playwright
+            import test_web_mvp
+        except ImportError:
+            self.skipTest('playwright is not installed')
+        helper = test_web_mvp.WebMvpTests(methodName='runTest')
+        helper.setUp()
+        try:
+            with sync_playwright() as playwright:
+                browser = test_web_mvp.launch_browser(playwright)
+                try:
+                    page = browser.new_page(viewport={'width': 1280, 'height': 900})
+                    page.goto(helper.url() + '/web')
+                    expect(page.locator('#output-gate')).to_be_visible()
+                    self.assertEqual(page.locator('#output-gate-code').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(243, 243, 240)')
+                    self.assertEqual(page.locator('#output-gate a').evaluate('n => getComputedStyle(n).color'), 'rgb(28, 28, 28)')
+                    self.assertEqual(page.locator('#output-gate-submit').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(17, 17, 17)')
+
+                    def exchange(*_args, **_kwargs):
+                        return {'credential': TOKEN, 'shopName': 'North Shop'}
+
+                    with patch.object(output_pairing, 'exchange', side_effect=exchange):
+                        page.fill('#output-gate-code', '7K4NP-QRX2M')
+                        page.click('#output-gate-submit')
+                        expect(page.locator('#output-gate-success')).to_have_text('Connected to North Shop.')
+                        expect(page.locator('#output-gate')).to_be_hidden(timeout=8000)
+                    page.wait_for_function("() => document.body.dataset.ready === '1'")
+                    page.click('#settings-open')
+                    page.locator('#settings-telemetry').evaluate('node => node.open = true')
+                    expect(page.locator('#output-connect-shop')).to_have_text('Connected to North Shop.')
+                finally:
+                    browser.close()
+        finally:
+            helper.tearDown()
+
     def test_opt_out_requires_dev_mode_on_a_source_checkout(self):
         os.environ['EZ_NEST_OUTPUT_GATE_OPEN'] = '1'
         with patch('sys.argv', ['python', '-m', 'unittest', 'discover']):
