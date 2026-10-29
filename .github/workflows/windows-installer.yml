@@ -125,11 +125,8 @@ jobs:
           if ($expected -ne $actual -or $sidecar -ne $actual) { throw "Checksum does not match eznest-setup.exe" }
           if ((Get-Content $pin -Raw | ConvertFrom-Json).version -ne $version) { throw "BUILD.json version does not match version.json" }
 
-      - name: Test actual fresh install on disposable Windows runner
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/test_installed_shop.ps1
-
       - name: Upload the installer artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: eznest-setup
@@ -139,6 +136,10 @@ jobs:
             installer/Output/BUILD.json
             installer/Output/manifest.json
           if-no-files-found: error
+
+      - name: Test actual fresh install on disposable Windows runner
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/test_installed_shop.ps1
 
   publish:
     name: Publish approved tag build

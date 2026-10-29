@@ -126,6 +126,18 @@ class WindowsBuildGuardTests(unittest.TestCase):
         self.assertIn('ExitCode', install)
         self.assertIn('Inno Setup 6.7.3 is not present after install', install)
         self.assertIn('EZ_NEST_ISCC', install)
+        upload, acceptance = workflow.split('- name: Test actual fresh install', 1)
+        self.assertIn('actions/upload-artifact@v4', upload)
+        self.assertIn('installer/Output/eznest-setup.exe.sha256', upload)
+        self.assertIn('if: success()', upload)
+        self.assertNotIn('- name: Test actual fresh install', upload)
+        shop = (build_windows.ROOT / 'tests' / 'test_installed_shop.ps1').read_text(encoding='utf-8')
+        lockdown = (build_windows.ROOT / 'installer' / 'install-shop.ps1').read_text(encoding='utf-8')
+        self.assertIn("UserId 'SYSTEM'", shop)
+        self.assertNotIn("Get-Content -LiteralPath (Join-Path $data 'shop.json')", shop)
+        self.assertIn('SYSTEM:(OI)(CI)F', lockdown)
+        self.assertIn('Administrators:(OI)(CI)F', lockdown)
+        self.assertIn('${Account}:(OI)(CI)M', lockdown)
 
     def test_missing_pin_names_the_requirements_files(self):
         def missing(_name):
