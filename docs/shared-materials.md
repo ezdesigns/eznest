@@ -1,6 +1,7 @@
 # Shared shop materials: internal pilot
 
 One EZ Nest host stores `materials.sqlite3` alongside its other local data.
+Only that host process may open the file. Never put `materials.sqlite3` on an SMB share.
 Browsers connected to that same host share the saved material list and stock.
 Independent installations have independent inventory. This does not enable LAN
 access or create separate job workspaces: the current host still has one active

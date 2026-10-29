@@ -16,7 +16,9 @@ Private vulnerability reporting has to be enabled in the repository security set
 
 ## Shop network mode
 
-Shop network is off until the host is started with `--lan`, and that start is refused until a shop PIN is saved on the host. The installer turns shop network on only when **Shop network** is selected. In that mode Ez Nest listens on all interfaces (`0.0.0.0`) and serves **plain HTTP on port 8765**. There is no HTTPS.
+**Stock database.** `materials.sqlite3` is opened only by the Ez Nest process on the host. Do not put it on an SMB share, a mapped drive, or another PC. Designer computers use the web page. They never open the database file.
+
+Shop network is off until the host is started with `--lan`, and that start is refused until a shop PIN is saved on the host. The installer turns shop network on only when **Shop network** is selected. In that mode Ez Nest listens on all interfaces (`0.0.0.0`). Plain HTTP on port 8765 is the default. Local HTTPS is optional and is the recommended extra step below.
 
 Use shop network only on a trusted private network. Do not forward port 8765, and do not put this host on the internet or on guest Wi-Fi.
 
@@ -25,11 +27,29 @@ Without `--lan`, Ez Nest binds to `127.0.0.1` only. A saved shop setting cannot 
 ### Shop PIN
 
 1. On the shop computer, open `http://127.0.0.1:8765/web`.
-2. Open **Settings** and **Shop PIN**. Enter 6 to 12 digits and choose **Save shop PIN**.
+2. Open **Settings** and **Shop PIN**. Enter 8 to 12 digits, or a passphrase of at least 10 characters that includes a letter, and choose **Save shop PIN**. A PIN saved before this rule still works. Settings asks the host to replace it.
 3. Restart Ez Nest with `--lan` (or reinstall with Shop network selected).
-4. On each designer PC, open `http://SHOP-HOST:8765/web` and enter that PIN once. The browser keeps an HttpOnly, SameSite=Strict cookie. It does not receive the host write token.
+4. On each designer PC, open `http://SHOP-HOST:8765/web` and enter that PIN once. Choose **Log out** when finished. The browser keeps an HttpOnly, SameSite=Strict cookie for at most 8 hours, and for 60 minutes after the last request. The cookie is bound to that computer's address. It does not receive the host write token.
 
-The PIN is stored as a salted scrypt hash in the host data directory. It is not written in plaintext. Five wrong tries lock that computer out for one minute. Changing the PIN signs every designer browser out.
+The PIN is stored as a salted scrypt hash in the host data directory. It is not written in plaintext. Five wrong tries from one address lock that address for one minute. Each later lock for that address waits twice as long, up to 64 minutes. A separate count of failures from every address, including a rotating set of addresses, shows a banner in Settings and writes a log line. That notice does not lock out the other computers. Changing the PIN signs every designer browser out.
+
+### Plain HTTP and local HTTPS
+
+On plain HTTP, anyone who can watch the shop LAN traffic can copy the session cookie and reuse it until it expires or the designer logs out. That is the residual risk of the default. The recommended extra step is a certificate on the host:
+
+```text
+openssl req -x509 -newkey rsa:2048 -keyout eznest-key.pem -out eznest-cert.pem -days 825 -nodes -subj /CN=SHOP-HOST
+```
+
+Start the host with both files:
+
+```text
+python launcher.py --web --lan --tls-cert eznest-cert.pem --tls-key eznest-key.pem
+```
+
+The Windows shop task can take the same pair as `-TlsCert` and `-TlsKey` on `install-shop.ps1`. Leave both empty to keep HTTP. Designers then open `https://SHOP-HOST:8765/web` and accept the certificate warning once, or install that certificate on those PCs. When Ez Nest is serving HTTPS, the session cookie is marked Secure. A self-signed certificate is not a public certificate authority. Keep port 8765 off the internet either way.
+
+An IPv4-mapped IPv6 address such as `::ffff:127.0.0.1` is treated as `127.0.0.1`. `::ffff:` followed by any other IPv4 address is that IPv4 address for the PIN lock and the session binding.
 
 Shop settings, first-time setup, the source-folder queue, the hot-folder connection, and the OUTPUT address can be changed only from the shop computer (`127.0.0.1`). After the PIN, designer browsers can still nest and use shared stock.
 
@@ -47,7 +67,7 @@ Give those PCs static DHCP leases. Do not check Public if Windows asks.
 
 Setup removes inherited permissions on `C:\ProgramData\eznest` and grants SYSTEM and Administrators full control, and `eznest-svc` modify. Other Windows users cannot replace `shop.json`.
 
-`materials.sqlite3` is opened only by the Ez Nest process on that host. Do not put it on an SMB share or copy it to designer PCs. Designer computers use the page on the host. They do not open the database file.
+`materials.sqlite3` stays in this folder. Only the host process may open it. Never place that file on an SMB share.
 
 ### Host header
 

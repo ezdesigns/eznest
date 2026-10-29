@@ -9,7 +9,9 @@ Nothing to install on a designer PC. Open the address your admin gave you:
 
 `http://SHOP-HOST:8765/web`
 
-The page asks for the shop PIN the first time in that browser. Ask the person at the host computer for it. You do not set a new PIN here. After it is accepted, that browser can nest and use shop stock. `SHOP-HOST` is the host computer's name. Keep that PC awake during the day.
+The page asks for the shop PIN the first time in that browser. Ask the person at the host computer for it. You do not set a new PIN here. After it is accepted, that browser can nest and use shop stock. Choose **Log out** when you are done. The sign-in also ends after an hour with no use, after eight hours, or if this computer's address changes. `SHOP-HOST` is the host computer's name. Keep that PC awake during the day.
+
+`materials.sqlite3` stays on the host. Do not copy it, and do not open it from a shared drive.
 
 ## Each job
 
@@ -50,8 +52,9 @@ host. Set a shop PIN before other PCs connect:
 
 1. On the host, open `http://127.0.0.1:8765/web`.
 2. Open **Settings**, then **Shop PIN**.
-3. Type 6 to 12 digits and choose **Save shop PIN**. Tell the designers that PIN. Do not write it in a file in the data folder.
-4. Turn on Shop network and start the host again. Shop network does not open until the PIN is saved.
+3. Type 8 to 12 digits, or a passphrase of at least 10 characters with a letter, and choose **Save shop PIN**. Tell the designers that PIN. Do not write it in a file in the data folder. If Settings says the saved PIN is old, replace it.
+4. Optional and recommended: pass `-TlsCert` and `-TlsKey` together so the shop page is HTTPS. Leave both empty to keep HTTP. On HTTP, someone who can watch the shop network can copy a signed-in browser's session. See [Security](../SECURITY.md).
+5. Turn on Shop network and start the host again. Shop network does not open until the PIN is saved.
 
 Shop network has to be on or other PCs cannot open the page. See
 [Security](../SECURITY.md).

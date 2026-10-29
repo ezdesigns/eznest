@@ -88,7 +88,7 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(os.environ['EZ_NEST_OUTPUT_UPLOADS'], '0')
 
     def test_lan_flag_opens_the_shop_network(self):
-        host, lan = self._launch(['--lan', '--no-browser'], pin='123456')
+        host, lan = self._launch(['--lan', '--no-browser'], pin='12345678')
         self.assertEqual(host, '0.0.0.0')
         self.assertEqual(lan, '1')
 

@@ -261,6 +261,8 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn('(OI)(CI)M', install)
         self.assertIn('(OI)(CI)W', install)
         self.assertIn('profile=private', install)
+        self.assertIn('TlsCert', install)
+        self.assertIn('TlsKey', install)
         self.assertIn('Name: "checkupdates"', script)
         self.assertIn('Check for app updates (also set EZ_NEST_UPDATES=1)', script)
         self.assertIn("Result := '0'", script)

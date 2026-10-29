@@ -6,7 +6,9 @@ The shop host is a 64-bit PC running Windows 10 or Windows 11. Each designer PC 
 
 **Install.** On the host, download `eznest-setup.exe` and run it. It installs to `C:\Program Files\eznest`. During beta the installer is unsigned. If Windows SmartScreen appears, choose **More info**, then **Run anyway**, after you check the published `.sha256`. The steps are under [Install](#install) and [Windows warning screen](#windows-warning-screen).
 
-**Shop network.** The page stays on the host at `http://127.0.0.1:8765/web` until you set a shop PIN and turn Shop network on. Other computers then open `http://SHOP-HOST:8765/web` and enter that PIN once. That mode is plain HTTP on port 8765. Use a trusted private network. The installer firewall rule is the Private profile only, limited to the local subnet or the designer PC addresses you pass in. Keep port 8765 off the internet. See [Security](SECURITY.md).
+**Stock database.** `materials.sqlite3` stays on the host. Only the Ez Nest process on that PC may open it. Do not put it on an SMB share or copy it to a designer PC.
+
+**Shop network.** The page stays on the host at `http://127.0.0.1:8765/web` until you set a shop PIN and turn Shop network on. Other computers then open `http://SHOP-HOST:8765/web` and enter that PIN once. The default is plain HTTP on port 8765. Anyone who can watch that LAN can copy a signed-in browser's session cookie. Local HTTPS is the recommended extra step. See [Security](SECURITY.md). Use a trusted private network. The installer firewall rule is the Private profile only, limited to the local subnet or the designer PC addresses you pass in. Keep port 8765 off the internet.
 
 **Uninstall.** Uninstall removes the program, the startup task, the `eznest-svc` account, and the firewall rule. `%ProgramData%\eznest` stays on the host, including `materials.sqlite3`. The RIP hot folder stays too. Details are under [Uninstall](#uninstall).
 
@@ -134,14 +136,15 @@ The default is this computer only: `http://127.0.0.1:8765/web`.
 
 Shop network stays closed until a shop PIN is set on this computer and you start with `--lan`. The page is plain HTTP. Designer browsers enter the PIN once. They do not receive the host write token. Do not share this network with guest WiFi. Do not forward port 8765 to the internet. See [Security](SECURITY.md).
 
-1. On the shop computer, open Settings → **Shop PIN**, enter 6 to 12 digits, and save it.
+1. On the shop computer, open Settings → **Shop PIN**. Enter 8 to 12 digits, or a passphrase of at least 10 characters with a letter, and save it. An older shorter PIN still signs in. Settings asks you to replace it.
 2. Choose Shop network in the installer (which adds `--lan` to the boot task), or start the app with `--lan`. `--lan` does not open the network until the PIN is saved. The gear reports the running mode.
-3. Restart Ez Nest. The gear then shows `http://<this-computer>:8765/web`. Other PCs open that address and enter the PIN. They do not install Ez Nest.
+3. Restart Ez Nest. The gear then shows `http://<this-computer>:8765/web`. Other PCs open that address and enter the PIN. They choose **Log out** when finished. A session ends after 60 idle minutes, after 8 hours, or when the address changes. They do not install Ez Nest.
 4. The installer opens Windows Firewall for TCP 8765 on the private profile only, for `localsubnet` or the designer PC addresses in `-LanPeers`. It does not open a public profile.
+5. Recommended: create a certificate and start with `--tls-cert` and `--tls-key` (or `-TlsCert` and `-TlsKey` on `install-shop.ps1`). Designers then use `https://`. The commands are in [Security](SECURITY.md). HTTP remains the default when those are omitted. On HTTP, a person who can watch the shop LAN can copy a session cookie and reuse it until it expires.
 
 Only `--lan` opens a non-loopback listener, and only after the PIN exists. A saved preference alone cannot open it.
 
-`materials.sqlite3` stays on this computer. The host process is the only program that should open it. Do not put that file on a shared drive.
+`materials.sqlite3` stays on this computer. The host process is the only program that should open it. Do not put that file on a shared drive or an SMB share.
 
 ## OUTPUT
 

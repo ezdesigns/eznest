@@ -12,6 +12,7 @@ import uuid
 import copy
 import socket
 import sqlite3
+import ssl
 import workload
 import output_pairing
 import telemetry
@@ -83,6 +84,29 @@ PROCESS = None
 PORT = int(os.environ.get('EZ_NEST_PORT', '8765'))
 HOST = os.environ.get('EZ_NEST_HOST', '127.0.0.1')
 LAN = os.environ.get('EZ_NEST_LAN', '') == '1'
+TLS = False
+TLS_CONTEXT = None
+
+
+def configure_tls(cert=None, key=None):
+    """Optional local HTTPS. Both files are required. Empty values leave HTTP."""
+    global TLS, TLS_CONTEXT
+    cert = (cert or '').strip()
+    key = (key or '').strip()
+    if not cert and not key:
+        TLS = False
+        TLS_CONTEXT = None
+        return
+    if not cert or not key:
+        raise ValueError('Set both the TLS certificate and the TLS key, or neither.')
+    cert_path, key_path = Path(cert), Path(key)
+    if not cert_path.is_file() or not key_path.is_file() or cert_path.is_symlink() or key_path.is_symlink():
+        raise ValueError('The TLS certificate and key must be regular files on this computer.')
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
+    TLS_CONTEXT = context
+    TLS = True
 def _approved_source_roots():
     return load_shop(WORK)['sourceRoots']
 
@@ -307,11 +331,16 @@ class Handler(BaseHTTPRequestHandler):
     def allowed(self):
         return self.local_name(self.headers.get('Host'))
 
-    def loopback_client(self):
+    def client_ip(self):
         address = getattr(self, 'client_address', None)
         if not address:
+            return '127.0.0.1'
+        return shop_auth.normalize_ip(address[0])
+
+    def loopback_client(self):
+        if not getattr(self, 'client_address', None):
             return True
-        return address[0] in ('127.0.0.1', '::1')
+        return self.client_ip() in ('127.0.0.1', '::1')
 
     def token_ok(self):
         supplied = self.headers.get('X-EZ-Token') if self.headers else None
@@ -324,7 +353,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def cookie_ok(self):
         header = self.headers.get('Cookie') if self.headers else None
-        return shop_auth.session_valid(shop_auth.read_cookie(header))
+        return shop_auth.session_valid(shop_auth.read_cookie(header), self.client_ip())
 
     def authenticated(self):
         # The write token stays on the host. A designer browser uses the PIN cookie.
@@ -333,9 +362,10 @@ class Handler(BaseHTTPRequestHandler):
         return self.cookie_ok()
 
     def origin_ok(self, origin):
-        if not isinstance(origin, str) or not origin.startswith('http://'):
+        scheme = 'https://' if TLS else 'http://'
+        if not isinstance(origin, str) or not origin.startswith(scheme):
             return False
-        rest = origin[len('http://'):]
+        rest = origin[len(scheme):]
         if not rest or '/' in rest:
             return False
         return self.local_name(rest)
@@ -372,9 +402,12 @@ class Handler(BaseHTTPRequestHandler):
             'localPC': local,
             'authenticated': bool(local or self.authenticated()),
             'pinConfigured': shop_auth.pin_configured(WORK),
+            'tls': TLS,
         }
         if local:
             body['token'] = TOKEN
+            body['pinAlert'] = shop_auth.alert_status()
+            body['pinWeak'] = shop_auth.pin_is_weak(WORK)
         return body
 
     def do_GET(self):
@@ -630,15 +663,19 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, TypeError):
             return self.send(400, {'error': 'Could not sign in.'})
         pin = data.get('pin') if isinstance(data, dict) else ''
-        result = shop_auth.login_attempt(WORK, self.client_address[0], pin if isinstance(pin, str) else '')
+        result = shop_auth.login_attempt(WORK, self.client_ip(), pin if isinstance(pin, str) else '')
         if result == 'missing':
             return self.send(403, {'error': 'The shop PIN is not set. Set it on the shop computer.'})
         if result == 'locked':
-            return self.send(429, {'error': 'Too many tries. Wait a minute and try again.'})
+            return self.send(429, {'error': 'Too many tries from this computer. Wait and try again.'})
         if result != 'ok':
             return self.send(401, {'error': 'That PIN is not right.'})
-        sid = shop_auth.issue_session()
-        return self.send(200, {'ok': True, 'authenticated': True}, extra_headers=[('Set-Cookie', shop_auth.cookie_header(sid))])
+        sid = shop_auth.issue_session(self.client_ip())
+        return self.send(200, {'ok': True, 'authenticated': True}, extra_headers=[('Set-Cookie', shop_auth.cookie_header(sid, secure=TLS))])
+
+    def _logout(self):
+        shop_auth.revoke_session(shop_auth.read_cookie(self.headers.get('Cookie') if self.headers else None))
+        return self.send(200, {'ok': True}, extra_headers=[('Set-Cookie', shop_auth.clear_cookie_header(secure=TLS))])
 
     def handle_post(self):
         global PROCESS
@@ -646,6 +683,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {'error': 'Invalid session'})
         if self.path == '/api/login':
             return self._login()
+        if self.path == '/api/logout':
+            return self._logout()
         if not self.authenticated():
             return self.send(403, {'error': 'Invalid session'})
         try:
@@ -825,7 +864,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Set the shop PIN on the shop computer.'})
                 shop_auth.set_pin(WORK, data.get('pin') if isinstance(data, dict) else None)
-                return self.send(200, {'ok': True, 'pinConfigured': True})
+                return self.send(200, {'ok': True, 'pinConfigured': True, 'pinWeak': False})
+            if self.path == '/api/pin/alert/ack':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Review PIN failures on the shop computer.'})
+                return self.send(200, shop_auth.acknowledge_alert())
             if self.path in ('/api/output/connect', '/api/output/pick'):
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
@@ -1123,6 +1166,8 @@ class LocalServer(ThreadingHTTPServer):
         if os.name == 'nt':
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
+        if TLS_CONTEXT is not None:
+            self.socket = TLS_CONTEXT.wrap_socket(self.socket, server_side=True)
 
 
 def check_updates(stop):
@@ -1145,6 +1190,7 @@ def check_updates(stop):
 
 
 def serve(open_browser=False, page='/'):
+    configure_tls(os.environ.get('EZ_NEST_TLS_CERT'), os.environ.get('EZ_NEST_TLS_KEY'))
     if HOST not in ('127.0.0.1', '::1') and not shop_auth.pin_configured(WORK):
         raise RuntimeError('Set a shop PIN on this computer before opening the shop network.')
     restore_state()

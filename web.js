@@ -2549,8 +2549,15 @@ async function boot() {
   const session = await fetchJsonRetry('/api/session');
   token = session.token || '';
   localSave = session.localSave === true;
-  if (session.localPC && $('shop-pin')) $('shop-pin').hidden = false;
-  else if (!session.localPC && !session.authenticated) await requireShopPin(session);
+  if (session.localPC && $('shop-pin')) {
+    $('shop-pin').hidden = false;
+    showPinNotices(session);
+  } else if (!session.localPC && !session.authenticated) {
+    await requireShopPin(session);
+    $('logout').hidden = false;
+  } else if (!session.localPC) {
+    $('logout').hidden = false;
+  }
   await refreshInventory().catch(() => {});
   if (inventoryReady && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
   if (inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) applyMaterial(true);
@@ -2582,6 +2589,21 @@ async function boot() {
   setInterval(() => { if (!document.hidden && !inventoryBusy) refreshInventory().catch(() => {}); }, 10000);
 }
 
+function showPinNotices(session) {
+  const box = $('pin-alert');
+  const text = $('pin-alert-text');
+  const ack = $('pin-alert-ack');
+  if (!box || !session || !session.localPC) return;
+  const parts = [];
+  if (session.pinAlert && session.pinAlert.active) {
+    parts.push('Shop PIN failures are arriving from the network (' + session.pinAlert.failures + ' since you last reviewed them). This does not lock anyone out. Each address still waits longer after repeated tries.');
+  }
+  if (session.pinWeak) parts.push('This shop PIN was saved before the current rule. Set a new one: 8 to 12 digits, or a passphrase of at least 10 characters with a letter.');
+  box.hidden = parts.length === 0;
+  text.textContent = parts.join(' ');
+  ack.hidden = !(session.pinAlert && session.pinAlert.active);
+}
+
 function requireShopPin(session) {
   const gate = $('pin-gate');
   const note = $('pin-note');
@@ -2597,7 +2619,7 @@ function requireShopPin(session) {
     gate.showModal();
     return new Promise(() => {});
   }
-  note.textContent = 'Enter the shop PIN from the computer that runs Ez Nest. You only need to enter it once in this browser.';
+  note.textContent = 'Enter the shop PIN or passphrase from the computer that runs Ez Nest. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.';
   input.hidden = false;
   submit.hidden = false;
   gate.showModal();
@@ -3008,10 +3030,17 @@ document.addEventListener('DOMContentLoaded', () => {
       input.value = '';
       error.hidden = true;
       status('Shop PIN saved on this computer.');
+      return fetchJson('/api/session').then(showPinNotices);
     }).catch(err => {
       error.hidden = false;
       error.textContent = err.message;
     });
+  });
+  $('pin-alert-ack').addEventListener('click', () => {
+    api('/api/pin/alert/ack', {}).then(() => fetchJson('/api/session').then(showPinNotices)).catch(err => status(err.message, true));
+  });
+  $('logout').addEventListener('click', () => {
+    fetch('/api/logout', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'}).finally(() => location.reload());
   });
   $('lan').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('onyx-pc').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });

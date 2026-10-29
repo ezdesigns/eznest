@@ -9,13 +9,14 @@
 <body data-step="drop">
 <header class="shop-header">
   <strong>eznest</strong>
+  <button id="logout" type="button" class="link" hidden>Log out</button>
 </header>
 <dialog id="pin-gate" aria-labelledby="pin-title">
   <form id="pin-form">
     <h2 id="pin-title">Shop PIN</h2>
     <p id="pin-note" class="hint"></p>
     <label>PIN
-      <input id="pin-input" type="password" inputmode="numeric" autocomplete="current-password" minlength="6" maxlength="12" pattern="[0-9]{6,12}">
+      <input id="pin-input" type="password" autocomplete="current-password" minlength="8" maxlength="64">
     </label>
     <button id="pin-submit" class="primary" type="submit">Continue</button>
     <p id="pin-error" class="lan-note" hidden></p>
@@ -64,6 +65,10 @@
 <dialog id="settings" aria-labelledby="settings-title">
   <div class="panel">
     <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title">Settings</h2><p class="hint">Set up once. Your material choices stay with the job.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
+    <div id="pin-alert" class="lan-note" hidden>
+      <p id="pin-alert-text"></p>
+      <button id="pin-alert-ack" type="button" class="link" hidden>Reviewed</button>
+    </div>
     <section class="settings-section" aria-labelledby="destination-title">
       <h3 id="destination-title">Where files are saved</h3>
       <p class="section-note">Choose your usual folder. You can still choose a different location when saving a job.</p>
@@ -176,9 +181,9 @@
     <input id="seconds" type="hidden" value="30">
     <details id="shop-pin" class="settings-section" hidden>
       <summary>Shop PIN</summary>
-      <p class="hint">Set this on the shop computer before other PCs connect. Use 6 to 12 digits. Designer computers enter it once. Ez Nest stores only a hash.</p>
-      <label>New PIN
-        <input id="shop-pin-input" type="password" inputmode="numeric" autocomplete="new-password" minlength="6" maxlength="12">
+      <p class="hint">Set this on the shop computer before other PCs connect. Use 8 to 12 digits, or a passphrase of at least 10 characters with a letter. Designer computers enter it once. Ez Nest stores only a hash.</p>
+      <label>New PIN or passphrase
+        <input id="shop-pin-input" type="password" autocomplete="new-password" minlength="8" maxlength="64">
       </label>
       <button id="shop-pin-save" type="button" class="link">Save shop PIN</button>
       <p id="shop-pin-error" class="lan-note" hidden></p>

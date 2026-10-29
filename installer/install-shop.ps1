@@ -11,7 +11,10 @@ param(
   [string]$StartAtBoot = '0',
   [string]$Updates = '0',
   # localsubnet, or the designer PCs' IPv4 addresses separated by commas.
-  [string]$LanPeers = 'localsubnet'
+  [string]$LanPeers = 'localsubnet',
+  # Optional local HTTPS. Set both. The installer leaves HTTP when these are empty.
+  [string]$TlsCert = '',
+  [string]$TlsKey = ''
 )
 
 # An installer launched from PowerShell 7 can inherit its incompatible modules.
@@ -144,6 +147,12 @@ $ErrorActionPreference = 'Stop'
 if (-not (Test-LanPeers $LanPeers)) {
   throw 'Designer PC addresses must be localsubnet or a comma-separated list of IPv4 addresses.'
 }
+if (($TlsCert -eq '') -ne ($TlsKey -eq '')) {
+  throw 'Set both -TlsCert and -TlsKey, or leave both empty. HTTP stays the default.'
+}
+if ($TlsCert -match '[\r\n"]' -or $TlsKey -match '[\r\n"]') {
+  throw 'TLS certificate paths cannot contain quotes or line breaks.'
+}
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 $onyx = $OnyxPc -eq '1'
 $lanEnabled = $Lan -eq '1'
@@ -194,6 +203,7 @@ if ($boot) {
   Grant-BatchLogon $account
   $launchArguments = '--web --no-browser --data-dir "' + $DataDir + '"'
   if ($lanEnabled) { $launchArguments += ' --lan' }
+  if ($TlsCert -and $TlsKey) { $launchArguments += ' --tls-cert "' + $TlsCert + '" --tls-key "' + $TlsKey + '"' }
   $action = New-ScheduledTaskAction -Execute $App -Argument $launchArguments
   $trigger = New-ScheduledTaskTrigger -AtStartup
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
