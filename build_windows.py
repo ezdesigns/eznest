@@ -5,6 +5,7 @@ import importlib.metadata as metadata
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -34,49 +35,160 @@ def iscc_supported(version):
         return True
     return tuple(version[:2])>=(6, 3)
 
-def iscc_file_version(path):
-    if os.name!='nt':
+def _usable_version(version):
+    """(0, 0, 0, 0) is an unstamped VERSIONINFO, not a compiler older than 6.3."""
+    if not version or all(part == 0 for part in version):
+        return None
+    return tuple(version)
+
+def _parse_dotted_version(text):
+    match = re.match(r'\s*(\d+(?:\.\d+){0,3})', text or '')
+    if not match:
+        return None
+    return tuple(int(part) for part in match.group(1).split('.'))
+
+def parse_iscc_version_text(text):
+    """Read a version from ISCC output. /? names the major version; the engine line has the rest."""
+    if not text:
+        return None
+    engine = re.search(r'Compiler engine version:\s*Inno Setup\s+(\d+(?:\.\d+){1,3})', text, re.I)
+    if engine:
+        return _parse_dotted_version(engine.group(1))
+    dotted = re.search(r'Inno Setup\s+(\d+\.\d+(?:\.\d+){0,2})', text, re.I)
+    if dotted:
+        return _parse_dotted_version(dotted.group(1))
+    banner = re.search(r'Inno Setup\s+(\d+)\b', text, re.I)
+    if banner:
+        return (int(banner.group(1)),)
+    return None
+
+def _version_quad(ms, ls):
+    return ((ms >> 16) & 0xFFFF, ms & 0xFFFF, (ls >> 16) & 0xFFFF, ls & 0xFFFF)
+
+def _version_resource(path):
+    if os.name != 'nt':
         return None
     import ctypes
     from ctypes import wintypes
-    size=ctypes.windll.version.GetFileVersionInfoSizeW(str(path), None)
+    size = ctypes.windll.version.GetFileVersionInfoSizeW(str(path), None)
     if not size:
         return None
-    buf=ctypes.create_string_buffer(size)
+    buf = ctypes.create_string_buffer(size)
     if not ctypes.windll.version.GetFileVersionInfoW(str(path), 0, size, buf):
         return None
-    value=ctypes.c_void_p(); length=wintypes.UINT()
+    value = ctypes.c_void_p()
+    length = wintypes.UINT()
     if not ctypes.windll.version.VerQueryValueW(buf, '\\', ctypes.byref(value), ctypes.byref(length)):
         return None
     class VS_FIXEDFILEINFO(ctypes.Structure):
-        _fields_=[('dwSignature',wintypes.DWORD),('dwStrucVersion',wintypes.DWORD),('dwFileVersionMS',wintypes.DWORD),('dwFileVersionLS',wintypes.DWORD),
-                  ('dwProductVersionMS',wintypes.DWORD),('dwProductVersionLS',wintypes.DWORD),('dwFileFlagsMask',wintypes.DWORD),('dwFileFlags',wintypes.DWORD),
-                  ('dwFileOS',wintypes.DWORD),('dwFileType',wintypes.DWORD),('dwFileSubtype',wintypes.DWORD),('dwFileDateMS',wintypes.DWORD),('dwFileDateLS',wintypes.DWORD)]
-    info=ctypes.cast(value, ctypes.POINTER(VS_FIXEDFILEINFO)).contents
-    ms, ls=info.dwFileVersionMS, info.dwFileVersionLS
-    return ((ms>>16)&0xFFFF, ms&0xFFFF, (ls>>16)&0xFFFF, ls&0xFFFF)
+        _fields_ = [('dwSignature', wintypes.DWORD), ('dwStrucVersion', wintypes.DWORD), ('dwFileVersionMS', wintypes.DWORD), ('dwFileVersionLS', wintypes.DWORD),
+                    ('dwProductVersionMS', wintypes.DWORD), ('dwProductVersionLS', wintypes.DWORD), ('dwFileFlagsMask', wintypes.DWORD), ('dwFileFlags', wintypes.DWORD),
+                    ('dwFileOS', wintypes.DWORD), ('dwFileType', wintypes.DWORD), ('dwFileSubtype', wintypes.DWORD), ('dwFileDateMS', wintypes.DWORD), ('dwFileDateLS', wintypes.DWORD)]
+    info = ctypes.cast(value, ctypes.POINTER(VS_FIXEDFILEINFO)).contents
+    strings = {}
+    if ctypes.windll.version.VerQueryValueW(buf, '\\VarFileInfo\\Translation', ctypes.byref(value), ctypes.byref(length)) and length.value >= 4 and value.value:
+        lang, codepage = struct.unpack_from('<HH', ctypes.string_at(value.value, 4))
+        for name in ('ProductVersion', 'FileVersion'):
+            key = f'\\StringFileInfo\\{lang:04x}{codepage:04x}\\{name}'
+            if ctypes.windll.version.VerQueryValueW(buf, key, ctypes.byref(value), ctypes.byref(length)) and value.value:
+                strings[name] = ctypes.wstring_at(value.value).split('\x00', 1)[0].strip()
+    return {
+        'file': _version_quad(info.dwFileVersionMS, info.dwFileVersionLS),
+        'product': _version_quad(info.dwProductVersionMS, info.dwProductVersionLS),
+        'strings': strings,
+    }
+
+def iscc_file_version(path):
+    resource = _version_resource(path)
+    if not resource:
+        return None
+    return resource['file']
+
+def iscc_product_version(path):
+    """ProductVersion when FileVersion is 0.0.0.0. String values win over a zero fixed block."""
+    try:
+        resource = _version_resource(path)
+    except (OSError, AttributeError, ValueError, struct.error):
+        return None
+    if not resource:
+        return None
+    for name in ('ProductVersion', 'FileVersion'):
+        parsed = _usable_version(_parse_dotted_version(resource['strings'].get(name, '')))
+        if parsed:
+            return parsed
+    return _usable_version(resource['product'])
+
+def _iscc_output(path, args, stdin=None):
+    kwargs = {'capture_output': True, 'timeout': 60, 'check': False, 'input': stdin}
+    if os.name == 'nt':
+        kwargs['creationflags'] = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+    try:
+        completed = subprocess.run([str(path), *args], **kwargs)
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    parts = []
+    for blob in (completed.stdout, completed.stderr):
+        if not blob:
+            continue
+        parts.append(blob.decode('utf-8', 'replace') if isinstance(blob, bytes) else blob)
+    return '\n'.join(parts)
+
+def iscc_reported_version(path):
+    """/? is enough when it includes a minor version. Otherwise read the compiler engine line."""
+    help_version = parse_iscc_version_text(_iscc_output(path, ['/?']))
+    if help_version and len(help_version) >= 2 and _usable_version(help_version):
+        return help_version
+    engine_version = parse_iscc_version_text(_iscc_output(path, ['/O-', '-'], b''))
+    if engine_version and (not help_version or len(engine_version) >= len(help_version)):
+        return engine_version
+    return help_version or engine_version
+
+def iscc_version(path):
+    file_version = _usable_version(iscc_file_version(path))
+    if file_version and len(file_version) >= 2:
+        return file_version
+    product_version = _usable_version(iscc_product_version(path))
+    if product_version and len(product_version) >= 2:
+        return product_version
+    return iscc_reported_version(path) or file_version or product_version
+
+def _iscc_rank(path, version):
+    """Known 6.3+ compilers sort first. A pinned 6.7.3 install wins ties. Unstamped is not 'too old'."""
+    override = os.environ.get('EZ_NEST_ISCC', '').strip()
+    pinned = path.parent.name.casefold() == 'inno setup 6.7.3' or (bool(override) and str(path).casefold() == override.casefold())
+    usable = _usable_version(version)
+    if usable and len(usable) >= 2 and tuple(usable[:2]) >= (6, 3):
+        return (2, usable, pinned)
+    if usable and len(usable) >= 2 and tuple(usable[:2]) < (6, 3):
+        return (0, usable, pinned)
+    return (1, usable or (), pinned)
 
 def find_iscc():
-    """Prefer the newest Inno Setup 6. An older ISCC earlier on PATH must not win."""
-    candidates=[]
+    """Prefer the pinned 6.7.3 install, otherwise the highest verified compiler. An older ISCC on PATH must not win."""
+    candidates = []
+    override = os.environ.get('EZ_NEST_ISCC', '').strip()
+    if override:
+        candidates.append(Path(override))
     for key, fallback in (('ProgramFiles(x86)', r'C:\Program Files (x86)'), ('ProgramFiles', r'C:\Program Files')):
-        candidates.append(Path(os.environ.get(key, fallback))/'Inno Setup 6'/'ISCC.exe')
-    found=shutil.which('ISCC')
+        root = Path(os.environ.get(key, fallback))
+        candidates.append(root / 'Inno Setup 6.7.3' / 'ISCC.exe')
+        candidates.append(root / 'Inno Setup 6' / 'ISCC.exe')
+    found = shutil.which('ISCC')
     if found:
         candidates.append(Path(found))
-    best=None; best_version=None; seen=set()
+    ranked = []
+    seen = set()
     for path in candidates:
-        key=str(path).casefold()
+        key = str(path).casefold()
         if key in seen or not path.is_file():
             continue
         seen.add(key)
-        version=iscc_file_version(path)
-        if best is None or (version or (0,))>(best_version or (0,)):
-            best, best_version=path, version
-    if best is None:
+        ranked.append((path, iscc_version(path)))
+    if not ranked:
         return None
-    if not iscc_supported(best_version):
-        found_version='.'.join(str(part) for part in best_version)
+    best, best_version = max(ranked, key=lambda item: _iscc_rank(item[0], item[1]))
+    if _iscc_rank(best, best_version)[0] == 0:
+        found_version = '.'.join(str(part) for part in best_version)
         raise RuntimeError(f'Inno Setup {found_version} at {best} is older than 6.3, so installer/eznest.iss cannot compile (ExecAndLogOutput). Install Inno Setup 6.7.3, the version the Windows installer workflow uses: {INNO_SETUP_URL}')
     return str(best), best_version
 

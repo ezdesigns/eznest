@@ -51,11 +51,47 @@ jobs:
           $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe"
           $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.3.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
-          Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait
-          $isccDir = "${env:ProgramFiles(x86)}\Inno Setup 6"
-          $iscc = Join-Path $isccDir "ISCC.exe"
-          if (-not (Test-Path $iscc)) { throw "ISCC missing after install (expected $iscc)" }
+          $pinnedDir = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6.7.3"
+          $start = New-Object System.Diagnostics.ProcessStartInfo
+          $start.FileName = $installer
+          $start.Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /PORTABLE=1 /DIR=""$pinnedDir"""
+          $start.UseShellExecute = $true
+          $process = [System.Diagnostics.Process]::Start($start)
+          $process.WaitForExit()
+          if ($process.ExitCode -ne 0) { throw "Inno Setup 6.7.3 installer failed with exit code $($process.ExitCode)" }
+          $candidates = @(
+            (Join-Path $pinnedDir "ISCC.exe"),
+            (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"),
+            (Join-Path $env:ProgramFiles "Inno Setup 6.7.3\ISCC.exe"),
+            (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe")
+          )
+          $previousNative = $PSNativeCommandUseErrorActionPreference
+          $PSNativeCommandUseErrorActionPreference = $false
+          $chosen = $null
+          $reports = New-Object System.Collections.Generic.List[string]
+          try {
+            foreach ($candidate in $candidates) {
+              if (-not (Test-Path -LiteralPath $candidate)) { continue }
+              $help = & $candidate '/?' 2>&1 | Out-String
+              $engine = '' | & $candidate '/O-' '-' 2>&1 | Out-String
+              $reported = "$help`n$engine"
+              $reports.Add("$candidate`n$reported")
+              if ($reported -match 'Inno Setup 6\.7\.3(\D|$)') {
+                $chosen = $candidate
+                break
+              }
+            }
+          } finally {
+            $PSNativeCommandUseErrorActionPreference = $previousNative
+          }
+          if (-not $chosen) {
+            throw "Inno Setup 6.7.3 is not present after install. Expected ISCC under '$pinnedDir'. Compiler output:`n$($reports -join "`n---`n")"
+          }
+          $isccDir = Split-Path -Parent $chosen
           Add-Content -Path $env:GITHUB_PATH -Value $isccDir
+          "EZ_NEST_ISCC=$chosen" | Add-Content -Path $env:GITHUB_ENV
+          Write-Output "Inno Setup 6.7.3 verified: $chosen"
+          exit 0
 
       - name: Build the shop installer
         shell: pwsh
@@ -89,11 +125,8 @@ jobs:
           if ($expected -ne $actual -or $sidecar -ne $actual) { throw "Checksum does not match eznest-setup.exe" }
           if ((Get-Content $pin -Raw | ConvertFrom-Json).version -ne $version) { throw "BUILD.json version does not match version.json" }
 
-      - name: Test actual fresh install on disposable Windows runner
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/test_installed_shop.ps1
-
       - name: Upload the installer artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: eznest-setup
@@ -103,6 +136,10 @@ jobs:
             installer/Output/BUILD.json
             installer/Output/manifest.json
           if-no-files-found: error
+
+      - name: Test actual fresh install on disposable Windows runner
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/test_installed_shop.ps1
 
   publish:
     name: Publish approved tag build

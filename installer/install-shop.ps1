@@ -103,12 +103,22 @@ function Test-LanPeers([string]$Value) {
 function Protect-DataDirectory([string]$Folder, [string]$Account) {
   # ProgramData lets Users create files. Remove that inheritance and keep
   # SYSTEM, Administrators, and the shop service account.
+  # (OI)(CI) belongs on the directory so new children inherit it. Copying those
+  # flags onto an existing file with /T and /grant:r leaves the file with no
+  # effective access. Files get the same three principals without inherit-only flags.
+  $inherit = @('SYSTEM:(OI)(CI)F', 'Administrators:(OI)(CI)F')
+  $object = @('SYSTEM:F', 'Administrators:F')
   if ($Account) {
-    & icacls.exe $Folder /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" "${Account}:(OI)(CI)M" /T
-  } else {
-    & icacls.exe $Folder /inheritance:r /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" /T
+    $inherit += "${Account}:(OI)(CI)M"
+    $object += "${Account}:M"
   }
+  & icacls.exe $Folder /inheritance:r /grant:r @inherit
   if ($LASTEXITCODE -ne 0) { throw "Could not lock down $Folder to SYSTEM, Administrators, and the shop service account." }
+  foreach ($child in @(Get-ChildItem -LiteralPath $Folder -Force -Recurse)) {
+    $grant = if ($child.PSIsContainer) { $inherit } else { $object }
+    & icacls.exe $child.FullName /inheritance:r /grant:r @grant
+    if ($LASTEXITCODE -ne 0) { throw "Could not lock down $($child.FullName) to SYSTEM, Administrators, and the shop service account." }
+  }
 }
 
 function Grant-BatchLogon([string]$Account) {

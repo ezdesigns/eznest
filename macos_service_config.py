@@ -103,13 +103,14 @@ def upgrade_candidate(current, candidate):
 def launch_configuration(*, lan=False, environment=None):
     if type(lan) is not bool:
         raise ValueError('Choose shop-network access explicitly.')
-    args = [str(EXECUTABLE),'--no-browser','--web','--shop-service','--data-dir',str(DATA),'--port','8765']
+    # A launchd plist targets macOS even when generated on a Windows build host.
+    args = [EXECUTABLE.as_posix(),'--no-browser','--web','--shop-service','--data-dir',DATA.as_posix(),'--port','8765']
     if lan:
         args.append('--lan')
     config = {'Label':LABEL, 'ProgramArguments':args, 'UserName':ACCOUNT,
               'GroupName':ACCOUNT, 'InitGroups':False, 'RunAtLoad':True, 'KeepAlive':True,
               'ThrottleInterval':30, 'ProcessType':'Background', 'Umask':0o077,
-              'WorkingDirectory':str(DATA)}
+              'WorkingDirectory':DATA.as_posix()}
     # Existing operator-provisioned settings may be preserved by a root-only
     # installer transaction. This function never creates a credential or opt-in.
     if environment is not None:
