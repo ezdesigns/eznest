@@ -116,8 +116,9 @@ Event schema: `eznest-observation/1`.
 The pairing request sends `hostLabel` and `hostRef` to the OUTPUT server.
 
 `hostLabel` is this computer's name. On a Windows shop host that is the
-Windows computer name (`socket.gethostname()`), trimmed to 80 printable
-characters. An empty name is sent as `localhost`.
+Windows computer name (`socket.gethostname()`), limited to 60 UTF-16 code units
+to match OUTPUT's request validation. Non-printable characters are removed;
+truncation keeps complete Unicode characters. An empty name is sent as `localhost`.
 
 `hostRef` is the installation id (`instance_id` in the local telemetry
 database). It is included only when that id is 32 lowercase hex characters.

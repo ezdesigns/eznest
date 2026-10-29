@@ -88,7 +88,9 @@ def clean_host_label(value):
     if not isinstance(value, str):
         return 'localhost'
     text = ''.join(ch for ch in value if ch.isprintable() and ch not in '\r\n\t').strip()
-    return text[:80] or 'localhost'
+    # OUTPUT validates JavaScript string.length: at most 60 UTF-16 units.
+    # Do not leave a split surrogate pair when truncating an astral character.
+    return text.encode('utf-16-le')[:120].decode('utf-16-le', errors='ignore') or 'localhost'
 
 
 def host_ref(directory):
