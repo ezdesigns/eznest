@@ -10,6 +10,7 @@ __pycache__/
 htmlcov/
 
 # Local configuration and credentials
+output-credential.bin
 .env
 .env.*
 !.env.example

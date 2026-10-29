@@ -7,10 +7,8 @@ other local-only fields described here; it remains off without host configuratio
 and explicit screen consent.
 
 This is an implemented **local backend and proposed integration contract**, not a
-registered Ez Ink hub integration. The referenced EZNEST-telemetry-brief.md and
-final material.allocated contract were unavailable when this was built. Have Ez
-Ink reconcile and register the fields below before connecting the real hub. Do
-not edit its spine, ledger.py, render.py or board to accommodate this proposal.
+registered shared hub integration. Reconcile and register the fields below
+before connecting a live hub. Do not treat this proposal as that hub's ledger.
 
 ## What is collected automatically
 
@@ -114,7 +112,7 @@ Layout event payload fields:
 
 Bands are strings `[lower,upper)`; exact zero is `"0"`, unknown is null. No exact
 quantities are exported. IDs, timestamps, version strings and booleans are not
-measurements. Proposed widths must be reconciled with Ez Ink's final banding rules.
+measurements. Proposed widths must be reconciled with the hub's final banding rules.
 
 Event-specific additional fields:
 
@@ -173,7 +171,7 @@ per installation; concurrent callers can deliver duplicate IDs.
 
 The real hub's emit signature, response, registered event names, authentication,
 privacy bands and consent flow still need integration. This is not an assertion
-that Ez Ink accepts this proposal. Do not enable a live connection just by setting
+that a hub accepts this proposal. Do not enable a live connection just by setting
 the old OUTPUT checkbox. Before remote use, agree on pairing/revocation, historical
 backfill consent, translator/validation, and an end-to-end receiver contract test.
 

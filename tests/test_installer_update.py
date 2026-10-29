@@ -1,4 +1,5 @@
 """The shop installer keeps settings and the hot folder, and restores a build that does not start."""
+import opt_out
 import hashlib
 import json
 import os
@@ -96,7 +97,7 @@ class InstallerUpdateTests(unittest.TestCase):
             def runner(setup, install_root, data_dir):
                 self.assertEqual(setup.read_bytes(), payload)
                 (data_dir / 'shop.json').write_text('{"onyxPc": false, "lan": false}', encoding='utf-8')
-                (data_dir / 'output-folder.json').write_text(json.dumps({'path': r'C:\ONYX\EPSON SureColor S80600 ONYX Input', 'configured': True}), encoding='utf-8')
+                (data_dir / 'output-folder.json').write_text(json.dumps({'path': r'C:\RIP\Example RIP Input', 'configured': True}), encoding='utf-8')
                 (install_root / 'version.json').write_text(json.dumps({'version': '1.0.0-rc.2'}), encoding='utf-8')
                 (install_root / 'eznest.py').write_text(OK, encoding='utf-8')
 

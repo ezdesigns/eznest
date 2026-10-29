@@ -1,6 +1,7 @@
 # Shared shop materials: internal pilot
 
 One EZ Nest host stores `materials.sqlite3` alongside its other local data.
+Only that host process may open the file. Never put `materials.sqlite3` on an SMB share.
 Browsers connected to that same host share the saved material list and stock.
 Independent installations have independent inventory. This does not enable LAN
 access or create separate job workspaces: the current host still has one active
@@ -21,7 +22,7 @@ unreachable, restore the connection before reserving or confirming usage. On
 reconnection, refresh the material view before making a new decision. Retry of
 the same confirmed reservation cannot deduct the stock twice.
 
-Keep the database on the host's local disk, not a shared-drive SQLite file.
+Keep the database on the host's local disk. Only the Ez Nest process on that host may open `materials.sqlite3`. Never place it on an SMB share, a mapped drive, or another PC. SQLite locking across a network share can corrupt the file, and a copied database is not the shop's stock.
 Back up the complete host data directory while the app is stopped. Existing
 independent PC databases are not merged automatically; reconcile physical stock
 before selecting the authoritative host. Guest WiFi/public internet access and

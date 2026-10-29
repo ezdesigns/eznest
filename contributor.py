@@ -62,7 +62,7 @@ def setup(paths, test_tools=False):
 
 
 def start_command(paths, port=8765, no_browser=False):
-    command = [str(paths['python']), str(paths['root'] / 'launcher.py'), '--shop-test',
+    command = [str(paths['python']), str(paths['root'] / 'launcher.py'), '--dev', '--shop-test',
                '--data-dir', str(paths['data']), '--port', str(port)]
     if no_browser:
         command.append('--no-browser')
@@ -80,7 +80,7 @@ def check(paths):
         raise ValueError('Checks require PowerShell 7.')
     commands = [[str(paths['python']), '-c', 'import playwright'],
                 [str(paths['python']), '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py']]
-    commands += [[node, '--check', script] for script in ['queue-app.js', 'production-features.js', 'cut-mapping.js', 'web.js', 'tester/feedback.js']]
+    commands += [[node, '--check', script] for script in ['queue-app.js', 'production-features.js', 'cut-mapping.js', 'web.js', 'tester-results.js']]
     commands += [[node, 'tests/' + name + '.cjs'] for name in ['test_queue', 'test_shop_profiles', 'test_cut_mapping', 'test_production_features', 'test_boundaries', 'test_illustrator_bridge']]
     commands += [[pwsh, '-NoProfile', '-File', 'tests/' + name + '.ps1'] for name in ['test_shop_scripts', 'test_update_helper']]
     for command in commands:
@@ -110,6 +110,9 @@ def main():
         else:
             if not 1024 <= args.port <= 65535:
                 raise ValueError('Choose a local port from 1024 to 65535.')
+            # A labeled source trial. Installed builds ignore both variables.
+            os.environ['EZ_NEST_DEV'] = '1'
+            os.environ['EZ_NEST_DEV_NO_OUTPUT'] = '1'
             return subprocess.call(start_command(paths, args.port, args.no_browser), cwd=paths['root'])
     return 0
 

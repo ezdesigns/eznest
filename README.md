@@ -1,25 +1,24 @@
 # Ez Nest
 
-[Goals](GOALS.md)
+Ez Nest nests a print job on one shop computer and writes the finished file to a RIP hot folder. Designers use a browser. They do not install Ez Nest.
 
-**1.0.0-rc.5 · shop release candidate.** Standalone local nesting for
-complete kits, decals and stickers. Illustrator, a printer model and an account
-are not required. Width comes from the material; length comes from the layout.
+The shop host is a 64-bit PC running Windows 10 or Windows 11. Each designer PC only needs a browser. A RIP such as ONYX is optional. **Use Example shop preset** fills placeholder printer, cut names, and hot-folder paths that you replace with your own. The host does not need an Adobe account. A designer can drop in a PDF prepared in Illustrator. Width comes from the material. Length comes from the layout.
 
-**Testing and suggesting improvements with Codex?** Use the
-[contributor setup and PR walkthrough](CONTRIBUTOR-CODEX.md) on the development
-branch `cursor/shop-open-handoff-9891`. This uses isolated source test data and
-does not replace the protected shop installation.
+**Install.** On the host, download `eznest-setup.exe` and run it. It installs to `C:\Program Files\eznest`. During beta the installer is unsigned. If Windows SmartScreen appears, choose **More info**, then **Run anyway**, after you check the published `.sha256`. The steps are under [Install](#install) and [Windows warning screen](#windows-warning-screen).
 
-[Employee quick start](docs/employee-quick-start.md) · [Host updates and rollout checks](docs/windows-updates.md)
+**Stock database.** `materials.sqlite3` stays on the host. Only the Ez Nest process on that PC may open it. Do not put it on an SMB share or copy it to a designer PC.
 
-Ez Nest is a free, open-source, self-updating desktop nesting tool that any print shop can install in minutes. It nests files, adds cut marks, and sends them to the RIP hot folder.
+**Shop network.** The page stays on the host at `http://127.0.0.1:8765/web` until you set a shop PIN and turn Shop network on. Other computers then open `http://SHOP-HOST:8765/web` and enter that PIN once. The default is plain HTTP on port 8765. Anyone who can watch that LAN can copy a signed-in browser's session cookie. Local HTTPS is the recommended extra step. See [Security](SECURITY.md). Use a trusted private network. The installer firewall rule is the Private profile only, limited to the local subnet or the designer PC addresses you pass in. Keep port 8765 off the internet.
 
-It is built first for EZ Designs (Austin). The EZ Designs printer, cut names, and hot folder are a preset. Any other shop types its own. Later, and only if a shop opts in, Ez Nest is how shops join the OUTPUT print production network. That switch is off, and it sends nothing. See [Goals](GOALS.md).
+**Uninstall.** Uninstall removes the program, the startup task, the `eznest-svc` account, and the firewall rule. `%ProgramData%\eznest` stays on the host, including `materials.sqlite3`. The RIP hot folder stays too. Details are under [Uninstall](#uninstall).
 
-**1.0.0-rc.4** is the shop release candidate. "Ez Nest" is the name of EZ Designs. The code is [MIT](LICENSE). Third-party notices stay in [THIRD_PARTY.md](THIRD_PARTY.md) and `licenses/`.
+**Data stays in the shop.** Artwork, nest files, and stock records stay on the host. The shop computer must be connected to OUTPUT before anyone can nest. That connection sends this computer's name and installation id once, then the app version on later check-ins. Activity sharing is a separate choice and stays off until **Enable sharing** on the host. See [OUTPUT pairing](docs/output-pairing.md).
 
-The page stays on this computer at `http://127.0.0.1:8765/web`. Shop network is off until you turn it on. Nothing leaves the shop unless you opt in.
+**Trademark.** Ez Nest is a project of EZ Designs. The software is [Apache-2.0](LICENSE). Third-party notices stay in [THIRD_PARTY.md](THIRD_PARTY.md) and `licenses/`.
+
+**1.0.0-rc.5** is the shop release candidate.
+
+[Shop setup walkthrough](docs/SHOP-SETUP-WALKTHROUGH.md) · [Designer quick start](docs/employee-quick-start.md) · [Host updates and rollout checks](docs/windows-updates.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Contributing](CONTRIBUTING.md)
 
 ## Install
 
@@ -28,11 +27,19 @@ One Windows PC runs Ez Nest. The other computers only open a browser. The shop P
 1. Download `eznest-setup.exe` from the GitHub release, or from the Windows installer artifact if you are testing a build that is not released yet. Code â†’ Download ZIP is source, not the app.
 2. If `eznest-setup.exe.sha256` is beside it, compare that checksum with the file before you run it.
 3. Close any older Ez Nest, including a build still using port 8765. `Stop EZ Nest.cmd` in the old folder does that.
-4. Run `eznest-setup.exe`. It installs to `C:\Program Files\eznest` and adds a desktop shortcut.
+4. Run `eznest-setup.exe`. It installs to `C:\Program Files\eznest`. On the tasks page, **Desktop shortcut** starts checked. Clear it if you do not want the icon. The icon is created only when that task stays selected.
 5. Leave **Start eznest when Windows starts** on if this PC should be ready after a reboot. That task is named `eznest`. It runs as the local user `eznest-svc`, which is not an administrator. The task uses limited rights. The password is random and is not written into the Ez Nest folder.
-6. Leave **Shop network** off unless other PCs on this network will open the page. Leave **Disable updates** unchecked unless this PC must not call GitHub.
+6. Leave **Shop network** off unless other PCs on this network will open the page. That choice is applied only on a fresh install. Leave **Check for app updates** unchecked. Update checks stay off until you also start Ez Nest with `EZ_NEST_UPDATES=1` and turn **Check for updates** on in Settings. See [Update](#update).
 
-The desktop shortcut opens the browser. The boot task does not. Closing the browser leaves Ez Nest running. `Stop EZ Nest.cmd` in the install folder stops it.
+The desktop shortcut, when you leave that task selected, opens the browser. The startup task named `eznest` does not. It runs as the local user `eznest-svc`. Closing the browser leaves Ez Nest running. `Stop EZ Nest.cmd` in the install folder stops it.
+
+To turn shop network on or off after the first install, run setup again with the startup task. Set the shop PIN on this PC first. `-Lan 1` adds `--lan`. `-Lan 0` removes it.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\eznest\install-shop.ps1" -DataDir "C:\ProgramData\eznest" -App "C:\Program Files\eznest\eznest.exe" -Lan 1 -StartAtBoot 1
+```
+
+Running the installer again over an existing copy does not change that task. Shop network in the installer is read only while the shop is being set up for the first time.
 
 Settings and the hot-folder path for an installed copy live in `%ProgramData%\eznest`.
 
@@ -45,18 +52,26 @@ py -3.12 build_windows.py --out ..\eznest-build
 
 The result is `installer\Output\eznest-setup.exe`. The version number comes from `version.json`.
 
+## Uninstall
+
+Uninstall eznest from Windows Settings, or run the uninstaller in `C:\Program Files\eznest`.
+
+That removes the program, the shortcuts the installer created, the `eznest` startup task, and the firewall rule named `eznest`. It removes the local user `eznest-svc` when Windows allows it. If that account is still signed in, uninstall disables the account instead. It also removes that account's permissions on `%ProgramData%\eznest` and on a local hot-folder path saved in `output-folder.json`.
+
+`%ProgramData%\eznest\materials.sqlite3` stays on the host with the rest of that folder: shop settings, local activity, and a paired OUTPUT credential file if one was saved. `installer/uninstall-shop.ps1` leaves shop files in the data folder. `installer/eznest.iss` runs that script and has no step that deletes `{commonappdata}\eznest`. The RIP hot folder and the files already in it stay.
+
 ## First run
 
 The first time the page opens, it asks for four things:
 
-- Hot folder, the RIP folder Send writes to
+- Hot folder, the RIP folder a save writes to
 - Printer name
 - Cut spot names, thru and kiss
 - Units
 
-**Use EZ Designs preset** fills today's EZ Designs values: the Epson SureColor S80600, CutContour thru and kiss names, and inches. Check **This PC holds the hot folder** when the folder is on this computer, and the preset uses the local path. Leave it off and the preset uses the share. You can type a different path. Nothing is connected until you save.
+**Use Example shop preset** fills placeholder values: Example printer, CutContour thru and kiss names, inches, and example hot-folder paths. Check **This PC holds the hot folder** when the folder is on this computer, and the preset uses `C:\RIP\Example RIP Input`. Leave it off and the preset uses `\\RIP\Example RIP Input`. You can type a different path. Nothing is connected until you save.
 
-After that, the page is one screen. Drop the day's files, set the quantity, and Send.
+After that, the page is one screen. Drop the day's files, set the quantity, choose **Review and save**, then **Save**.
 
 | File | What Ez Nest needs |
 | --- | --- |
@@ -66,23 +81,38 @@ After that, the page is one screen. Drop the day's files, set the quantity, and 
 
 PDF and SVG do not share a batch. One batch holds 800 pieces. Width is the material. Length comes from the layout.
 
-If Send cannot see the hot folder or the share, the page says so and does not pretend the job was sent. Check the path, and that this PC can open the share. A hot folder on another PC is a share. This installer cannot change that share's permissions. On the RIP PC, the account that runs Ez Nest needs write access to the folder.
+If the save cannot see the hot folder or the share, the page says so and does not pretend the job was sent. Check the path, and that this PC can open the share. A hot folder on another PC is a share. This installer cannot change that share's permissions. On the RIP PC, the account that runs Ez Nest needs write access to the folder.
 
 Leave colors as they are in the file. Set the printer ICC and registration marks in the RIP.
 
+## Windows warning screen
+
+During beta, `eznest-setup.exe` is unsigned. Windows SmartScreen can say it protected your PC.
+
+1. Download `eznest-setup.exe` and the published `eznest-setup.exe.sha256` beside it.
+2. Compare that checksum with the file before you run it. A mismatch means do not run the file.
+3. If SmartScreen appears, choose **More info**, then **Run anyway**.
+
+That screen is the unsigned-beta warning. It is not Ez Nest's own check. When update checks are on, a downloaded installer is kept only when its SHA-256 matches the published checksum, and installing it is still a separate click.
+
 ## Update
 
-**Update** is in the gear, with **What's new** and **Report a problem**.
+**Update** is in Settings, with **What's new** and **Report a problem**.
 
-The app checks for a newer release at startup and every six hours while updates are enabled. Update downloads an installer only when its SHA-256 checksum matches. For signed Program Files installations, **Install when finished** opens a separate helper and asks for Windows administrator approval. It waits for the current job to be sent or explicitly discarded, then installs and restarts the existing limited `eznest-svc` task. A failed startup restores the previous files. Settings, local activity and hot-folder contents stay in their existing locations.
+Background update checks are **off** during beta. Ez Nest does not call GitHub, and does not read an update token, until both of these are true:
 
-Unsigned builds still require a manual installer upgrade. The managed helper requires a signed app and installer from the same certificate, the default data directory/port, and an existing limited startup task. The helper is implemented and has mocked Windows tests; a real signed upgrade and rollback on an isolated Windows PC remains a rollout gate. See [update testing and recovery](docs/windows-updates.md).
+1. Settings → App updates → **Check for updates**. That stores `"updates": true` in `shop.json`.
+2. The process that starts Ez Nest has `EZ_NEST_UPDATES=1`. The default, when the variable is unset, is off (`0`).
+
+The installer task **Check for app updates** only saves the Settings preference. You still set `EZ_NEST_UPDATES=1` for the account that runs Ez Nest, then restart. `--shop-test` forces checks off.
+
+When both are on, Ez Nest looks for a newer release at startup and every six hours. It downloads an installer only when the SHA-256 checksum matches. For signed Program Files installations, **Install when finished** opens a separate helper and asks for Windows administrator approval. It waits for the current job to be sent or explicitly discarded, then installs and restarts the existing limited `eznest-svc` task. A failed startup restores the previous files. Settings, local activity and hot-folder contents stay in their existing locations.
+
+Unsigned builds still require a manual installer upgrade. The managed helper requires a signed app and installer from the same certificate, the default data directory/port, and an existing limited startup task. See [update testing and recovery](docs/windows-updates.md).
 
 Pre-releases show up only when **Test channel** is on.
 
-Updates are on unless you turn them off in the installer or the gear. While they are off, Ez Nest does not call GitHub and does not read a token.
-
-A public repository needs no token. A private repository can set `EZ_NEST_GITHUB_TOKEN`, or a one-line token file at `%ProgramData%\eznest\github-token`. The token is sent only to GitHub. The release URL and the problem-report link can be changed without rebuilding. See [Contributing](CONTRIBUTING.md).
+A public repository needs no token. For a private-repo mirror, set `EZ_NEST_GITHUB_TOKEN` on the process that runs Ez Nest, or on Windows store a generic credential named `eznest/github-token`. A token in `shop.json` or a `github-token` file is ignored. Delete an old `github-token` file if one is still in the data folder. The token is sent only to GitHub, and only while update checks are on. The release URL and the problem-report link can be changed without rebuilding. See [Contributing](CONTRIBUTING.md).
 
 ## Report a problem
 
@@ -90,27 +120,65 @@ A public repository needs no token. A private repository can set `EZ_NEST_GITHUB
 
 If an update rolled back, include `helper.log` and leave customer files out of it.
 
-See [the capacity-first OUTPUT roadmap](docs/customer-rollout.md) for the customer rollout and later job tracking.
+## Privacy and telemetry
+
+Artwork, nests, and stock records stay on the shop host. The host must be paired with OUTPUT. Nesting does not upload artwork. Activity sharing stays **off** until the host opts in.
+
+A paired host, or `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN`, can turn on activity sharing with **Enable sharing** after a current OUTPUT check-in. `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off and does not by itself satisfy the connection. **Stop sharing** stops later activity sends. **Disconnect** removes the paired credential and returns the host to the Connect screen. Neither deletes records the service already accepted.
+
+The consented payload is the `eznest-observation/1` projection described in [OUTPUT sharing](docs/output-telemetry.md). The local proposal, which is not itself uploaded, is in [the telemetry contract](docs/telemetry-contract.md). A consented event can include:
+
+- a stable installation id, opaque layout and request ids, event time, app version, and event type
+- a standard material category: `moto_regular`, `moto_holographic`, `moto_chrome`, `custom`, `unknown`, or null
+- measurement bands for length, width, area, unused printable percent, piece count, sheet count, search time, and stock ranges
+
+The host IP address and the shop credential go with those HTTPS requests. Exact quantities stay on the host.
+
+Never sent: artwork, files, filenames, customer names or contacts, job codes, roll ids, custom material names, or exact dimensions, quantities, stock, and search time.
+
+The default OUTPUT service is `https://output.jeezlabs.io` (`/api/shop/agent/pair` for pairing, `/api/shop/agent/check-in` for the app-version check-in, and `/api/shop/telemetry` for events after consent). Change the saved address only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL` set before Ez Nest starts. The environment variable wins. The value must be an `https` origin with no path, query, username, or password. Redirects are not followed. Changing the address does not turn activity sharing on.
+
+### What OUTPUT sees
+
+| When | Fields |
+| --- | --- |
+| Pairing, once | Computer name (`hostLabel`), installation id (`hostRef`, when it is 32 lowercase hex) |
+| Check-in | App version (`appVersion`) only |
+| After **Enable sharing** | The `eznest-observation/1` fields listed above, for new activity |
+
+The shop credential is the HTTPS bearer token on check-in and on consented events. OUTPUT also sees the host IP address on those requests.
+
+Never sent: artwork, files, filenames, customer names or contacts, job codes, roll ids, custom material names, exact dimensions, quantities, stock contents, or search time.
+
+Sharing capacity and availability with the OUTPUT network is a separate opt-in. It stays off and does not send that information. OUTPUT is pre-revenue. Money elsewhere in OUTPUT, when enabled, is Solana devnet test tokens. Ez Nest does not send a price.
+
+After pairing, Ez Nest keeps working if OUTPUT is unreachable, for 14 days from the last successful check-in (`CHECK_IN_MAX_AGE_DAYS`). A banner shows after 3 days. A revoked credential returns the host to the Connect screen. `EZ_NEST_DEV_NO_OUTPUT=1` works only with `--dev` on a source checkout and shows `DEV MODE: not connected to OUTPUT`. Installed builds ignore it. Forks may remove the requirement. Official builds enforce it.
 
 ## Shop network
 
 The default is this computer only: `http://127.0.0.1:8765/web`.
 
-Shop network is off until you turn it on. There is no login. Anyone on the shop LAN can Send. Do not share this network with guest WiFi. Do not forward port 8765 to the internet.
+Shop network stays closed until a shop PIN is set on this computer and you start with `--lan`. The page is plain HTTP. Designer browsers enter the PIN once. They do not receive the host write token. Do not share this network with guest WiFi. Do not forward port 8765 to the internet. See [Security](SECURITY.md).
 
-1. Choose Shop network in the installer (which adds `--lan` to the boot task), or start the app with `--lan`. The gear reports the running mode.
-2. Restart Ez Nest. The gear then shows `http://<this-computer>:8765/web`. Other PCs open that address. They do not install Ez Nest.
-3. The installer opens Windows Firewall for TCP 8765 on the private profile only. It does not open a public profile.
+1. On the shop computer, open Settings → **Shop PIN**. Enter 8 to 12 digits, or a passphrase of at least 10 characters with a letter, and save it. An older shorter PIN still signs in. Settings asks you to replace it.
+2. Choose Shop network in the installer on a fresh install (which adds `--lan` to the startup task named `eznest`), or start the app with `--lan`. `--lan` does not open the network until the PIN is saved. The Settings checkbox only shows that start flag. It is disabled because saving settings cannot turn the network on. The gear reports the running mode. After the first install, change the network with the `install-shop.ps1` command under [Install](#install).
+3. Restart Ez Nest. The gear then shows `http://<this-computer>:8765/web`. Other PCs open that address and enter the PIN. They choose **Log out** when finished. A session ends after 60 idle minutes, after 8 hours, or when the address changes. They do not install Ez Nest.
+4. The installer opens Windows Firewall for TCP 8765 on the private profile only, for `localsubnet` or the designer PC addresses in `-LanPeers`. It does not open a public profile.
+5. Recommended: create a certificate and start with `--tls-cert` and `--tls-key` (or `-TlsCert` and `-TlsKey` on `install-shop.ps1`). Designers then use `https://`. The commands are in [Security](SECURITY.md). HTTP remains the default when those are omitted. On HTTP, a person who can watch the shop LAN can copy a session cookie and reuse it until it expires.
 
-Only `--lan` opens a non-loopback listener. A saved preference alone cannot open it.
+Only `--lan` opens a non-loopback listener, and only after the PIN exists. A saved preference alone cannot open it.
+
+`materials.sqlite3` stays on this computer. The host process is the only program that should open it. Do not put that file on a shared drive or an SMB share.
 
 ## OUTPUT
 
-**Join OUTPUT network** is off. It sends nothing. If a shop turns it on later, the only things shared would be the machine list and free capacity, and only after that opt-in. Customer files stay in the shop.
+The shop computer connects to OUTPUT on first run. Paste a pairing code from <https://output.jeezlabs.io/outpost/ez-nest>. Until that succeeds, nesting, sending, and stock stay closed on the API as well as on the page. Designer PCs see a message to ask the shop computer to connect. See [OUTPUT pairing](docs/output-pairing.md).
+
+**Enable sharing** is still optional and off until the host agrees. **Share capacity with the OUTPUT network** is a different opt-in, also off, and it does not send capacity or availability. Customer artwork stays on the host. The service address is documented under [Privacy and telemetry](#privacy-and-telemetry).
 
 ## Limits
 
-One material and up to 800 pieces. PDF import is 2 GB and 25 pages. No EPS, no DeviceN cut colors, no inventory, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
+One material and up to 800 pieces. PDF import is 2 GB and 25 pages. The page has Material and stock for the roll on this host. There is no separate order or parts inventory. No EPS, no DeviceN cut colors, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
 
 Not in v1: job history, order intake, and cost tracking as a product.
 
@@ -134,7 +202,6 @@ network.
 ## Develop
 
 Contributing, tests, and the version source are in [CONTRIBUTING.md](CONTRIBUTING.md).
-AI coding agents should read [AGENTS.md](AGENTS.md) for workflow, safety boundaries, and validation instructions.
 
 From source, with 64-bit Python 3.12:
 
@@ -151,17 +218,10 @@ docker build -t eznest .
 docker run --rm -p 8765:8765 eznest
 ```
 
-Older Illustrator scripts and the classic page are in [archive/](archive/README.md).
+### Illustrator pilot
 
-### Illustrator pilot (draft only)
-
-**Setting up a separate design PC with Codex?** Start with
-[the onboarding and real-file walkthrough](START-CODEX.md). It includes a prompt
-to paste into Codex and an isolated setup that leaves the shop PC untouched.
-
-The new [Illustrator pilot](illustrator/START%20HERE.txt) is separate from the
-archived bridge. Run `illustrator/Nest in eznest.jsx` through Illustrator's
-File > Scripts > Other Script on the same PC as this draft. It exports a separate
+The [Illustrator pilot](illustrator/START%20HERE.txt) runs on the same PC as Ez Nest. Run `illustrator/Nest in eznest.jsx` through Illustrator's
+File > Scripts > Other Script. It exports a separate
 production copy using your chosen Adobe PDF preset and opens a local handoff.
 The first run remembers the PDF preset, material, width and existing bleed;
 later runs load an empty workspace automatically. Choose sets, review and send.
@@ -173,7 +233,7 @@ required; automated bridge tests do not establish physical production readiness.
 
 ## License
 
-Ez Nest is MIT. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Dependencies keep their own licenses. See [THIRD_PARTY.md](THIRD_PARTY.md) and `licenses/`.
+Ez Nest is Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Ez Nest is a project of EZ Designs. Dependencies keep their own licenses. See [THIRD_PARTY.md](THIRD_PARTY.md) and `licenses/`.
 
 
 ## Setup preview
@@ -192,15 +252,6 @@ stay in this browser. Chrome and Holographic are names for already prepared art,
 not automatic specialty color preparation. App settings remain in the top-right
 Settings corner.
 
-### Separate portable shop trial
+### Separate local trial
 
-Build with `python build_windows.py --portable-only --out <new-build-folder>`, then
-package with `python build_shop_trial.py --app <build-folder>/dist/eznest --out
-<new-trial-folder> --build-id <trial-label>`. The trial folder and ZIP include the
-standalone app, Illustrator scripts, licenses, checksums and a short operator guide.
-No installer or service is run. `START Shop Test.cmd` uses `--shop-test`, which
-creates separate local trial data and TEST Output, disables update checks and
-refuses an occupied port. Existing unmarked data folders are never adopted.
-`Prepare and Nest.jsx` is the short-flow entry point for the existing Illustrator
-production-copy/export handoff. It does not add recoloring or bleed generation.
-Physical Illustrator/ONYX/print/cut acceptance remains an operator test.
+`launcher.py --shop-test` starts a separate local trial with TEST output, update checks off, and OUTPUT delivery off. It refuses an occupied port and does not adopt an existing unmarked data folder. `Prepare and Nest.jsx` is the short-flow entry point for the Illustrator production-copy export. It does not add recoloring or bleed generation. Physical print and cut acceptance remains an operator test.

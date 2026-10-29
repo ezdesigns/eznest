@@ -12,12 +12,16 @@ import uuid
 import copy
 import socket
 import sqlite3
+import ssl
 import workload
+import output_gate
+import output_pairing
 import telemetry
 import telemetry_sender
 import material_inventory
 import macos_service_runtime
 import illustrator_bridge
+import shop_auth
 from import_limits import request_limit
 import print_export
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,12 +29,12 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 from engine import validate_job
 from production import validate_identity, manifest, make_package
-from folder_queue import FolderQueue
+from folder_queue import FolderQueue, real_directory
 from output_folder import OutputFolder, stage_pack
 from nesting import validate_request
 from shop_profiles import validate_profile, inspect_output
 from app_info import VERSION
-from shop_deploy import OUTPUT_NOTE, WARNING, default_hot_folder, host_name, issues_url, lan_addresses, load_shop, output_network_status, peek_latest, pull_latest, save_shop, shop_name_allowed, EZ_PRESET
+from shop_deploy import OUTPUT_NOTE, WARNING, approve_source_root, default_hot_folder, host_name, issues_url, lan_addresses, load_shop, output_network_status, output_status, peek_latest, pull_latest, save_shop, shop_name_allowed, updates_allowed, EZ_PRESET
 
 ROOT = Path(__file__).resolve().parent
 _STATIC_CACHE = {}
@@ -81,7 +85,60 @@ PROCESS = None
 PORT = int(os.environ.get('EZ_NEST_PORT', '8765'))
 HOST = os.environ.get('EZ_NEST_HOST', '127.0.0.1')
 LAN = os.environ.get('EZ_NEST_LAN', '') == '1'
-FOLDER = FolderQueue(WORK / 'production-folder.json')
+TLS = False
+TLS_CONTEXT = None
+
+
+def _protect_tls_key(path):
+    """Refuse a POSIX key other accounts can read. On Windows, tighten the ACL."""
+    if os.name == 'nt':
+        command = ['icacls', str(path), '/inheritance:r', '/grant:r', '*S-1-5-18:(R)', '*S-1-5-32-544:(R)']
+        user = os.environ.get('USERNAME', '')
+        if user and all(mark not in user for mark in '*?"<>|'):
+            command.extend(['/grant:r', user + ':(R)'])
+        service = subprocess.run(command + ['/grant:r', 'eznest-svc:(R)'], capture_output=True)
+        if service.returncode != 0:
+            narrowed = subprocess.run(command, capture_output=True)
+            if narrowed.returncode != 0:
+                raise ValueError(
+                    'Could not restrict the TLS private key. Run: '
+                    'icacls KEY /inheritance:r /grant:r *S-1-5-18:(R) *S-1-5-32-544:(R) eznest-svc:(R)'
+                )
+        return
+    if path.stat().st_mode & 0o077:
+        raise ValueError(
+            'The TLS private key is readable by the group or by other accounts. '
+            f'Run: chmod 600 {path}'
+        )
+
+
+def configure_tls(cert=None, key=None):
+    """Optional local HTTPS. Both files are required. Empty values leave HTTP."""
+    global TLS, TLS_CONTEXT
+    cert = (cert or '').strip()
+    key = (key or '').strip()
+    if not cert and not key:
+        TLS = False
+        TLS_CONTEXT = None
+        return
+    if not cert or not key:
+        raise ValueError('Set both the TLS certificate and the TLS key, or neither.')
+    cert_path, key_path = Path(cert), Path(key)
+    if not cert_path.is_file() or not key_path.is_file() or cert_path.is_symlink() or key_path.is_symlink():
+        raise ValueError('The TLS certificate and key must be regular files on this computer.')
+    _protect_tls_key(key_path)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
+    TLS_CONTEXT = context
+    TLS = True
+
+
+def _approved_source_roots():
+    return load_shop(WORK)['sourceRoots']
+
+
+FOLDER = FolderQueue(WORK / 'production-folder.json', approved=_approved_source_roots)
 FOLDER_LOCK = threading.Lock()
 OUTPUT = OutputFolder(WORK / 'output-folder.json')
 DOCUMENT_LOCK = threading.Lock()
@@ -127,6 +184,7 @@ def shop_status():
         'url': f'http://{name}:{PORT}/web',
         'warning': WARNING,
         'hotFolderDefault': default_hot_folder(saved['onyxPc']),
+        **output_status(WORK),
     }
 
 
@@ -269,7 +327,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    def send(self, status, data, mime='application/json', filename=None):
+    def send(self, status, data, mime='application/json', filename=None, extra_headers=None):
         body = json.dumps(data).encode() if mime == 'application/json' else data
         self.send_response(status)
         self.send_header('Content-Type', mime)
@@ -279,6 +337,8 @@ class Handler(BaseHTTPRequestHandler):
         if filename:
             self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
         self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
+        for key, value in extra_headers or ():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
         self.wfile.flush()
@@ -298,17 +358,138 @@ class Handler(BaseHTTPRequestHandler):
     def allowed(self):
         return self.local_name(self.headers.get('Host'))
 
+    def client_ip(self):
+        address = getattr(self, 'client_address', None)
+        if not address:
+            return '127.0.0.1'
+        return shop_auth.normalize_ip(address[0])
+
+    def loopback_client(self):
+        if not getattr(self, 'client_address', None):
+            return True
+        return self.client_ip() in ('127.0.0.1', '::1')
+
+    def route_path(self):
+        path = urlparse(self.path).path or '/'
+        if path == '/web/':
+            return '/web'
+        return path
+
+    def token_ok(self):
+        supplied = self.headers.get('X-EZ-Token') if self.headers else None
+        if not isinstance(supplied, str) or not supplied:
+            return False
+        try:
+            return secrets.compare_digest(supplied, TOKEN)
+        except (TypeError, ValueError):
+            return False
+
+    def cookie_ok(self):
+        header = self.headers.get('Cookie') if self.headers else None
+        return shop_auth.session_valid(shop_auth.read_cookie(header), self.client_ip())
+
+    def authenticated(self):
+        # The write token stays on the host. A designer browser uses the PIN cookie.
+        if self.loopback_client() and self.token_ok():
+            return True
+        return self.cookie_ok()
+
+    def reject_output_gate(self, path, *, discard=False):
+        if path in ('/api/session', '/api/health', '/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
+            return False
+        decision = output_gate.public_status(WORK, self.loopback_client())
+        if decision['ok']:
+            return False
+        if discard:
+            self._discard_request_body()
+        self.send(403, {'error': decision['message'], 'code': 'connect_required'})
+        return True
+
+    def _discard_request_body(self):
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+        except (TypeError, ValueError):
+            return
+        if size <= 0:
+            return
+        if size > 1_048_576:
+            size = 1_048_576
+        remaining = size
+        while remaining:
+            chunk = self.rfile.read(min(65536, remaining))
+            if not chunk:
+                return
+            remaining -= len(chunk)
+
+    def origin_ok(self, origin):
+        scheme = 'https://' if TLS else 'http://'
+        if not isinstance(origin, str) or not origin.startswith(scheme):
+            return False
+        rest = origin[len(scheme):]
+        if not rest or '/' in rest:
+            return False
+        return self.local_name(rest)
+
+    def browser_site_ok(self):
+        """State changes and /api/session need a same-origin browser signal.
+
+        A present Origin must name this host. A present Sec-Fetch-Site must be
+        same-origin. LAN clients must send one of those. A loopback program
+        that sends neither header (the launcher, Illustrator, the update helper)
+        is not a browser rebinding.
+        """
+        origin = self.headers.get('Origin') if self.headers else None
+        fetch_site = (self.headers.get('Sec-Fetch-Site') or '').strip().casefold() if self.headers else ''
+        origin_matches = bool(origin) and self.origin_ok(origin)
+        fetch_matches = fetch_site == 'same-origin'
+        if origin and not origin_matches:
+            return False
+        if fetch_site and not fetch_matches:
+            return False
+        if origin_matches or fetch_matches:
+            return True
+        return self.loopback_client()
+
+    def session_body(self):
+        local = self.loopback_client()
+        body = {
+            'app': 'eznest',
+            'version': VERSION,
+            'pid': os.getpid(),
+            'shopService': macos_service_runtime.active(),
+            'maintenance': macos_service_runtime.maintenance(),
+            'localSave': local and print_export.native_save_available(),
+            'localPC': local,
+            'authenticated': bool(local or self.authenticated()),
+            'pinConfigured': shop_auth.pin_configured(WORK),
+            'pinWeak': shop_auth.pin_is_weak(WORK),
+            'tls': TLS,
+            'outputConnection': output_gate.public_status(WORK, local),
+        }
+        if local:
+            body['token'] = TOKEN
+            body['pinAlert'] = shop_auth.alert_status()
+        return body
+
     def do_GET(self):
         if not self.allowed():
             return self.send(403, {'error': 'Invalid host'})
-        path = urlparse(self.path).path
-        if path == '/web/':
-            path = '/web'
+        path = self.route_path()
         if path == '/api/session':
-            return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION, 'pid': os.getpid(),
-                                   'shopService': macos_service_runtime.active(),
-                                   'maintenance': macos_service_runtime.maintenance(),
-                                   'localSave': self.client_address[0] == '127.0.0.1' and print_export.native_save_available()})
+            if not self.browser_site_ok():
+                return self.send(403, {'error': 'Invalid session'})
+            return self.send(200, self.session_body())
+        if path.startswith('/api/'):
+            if path == '/api/health':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Open health on the shop computer.'})
+                return self.send(200, {'ok': True, 'app': 'eznest'})
+            if path != '/api/session' and self.reject_output_gate(path):
+                return
+            if not self.loopback_client() and not self.authenticated():
+                return self.send(403, {'error': 'Enter the shop PIN on this computer.'})
+            if not self.loopback_client() and (path == '/api/shop' or path == '/api/folder' or path.startswith('/api/folder/')):
+                return self.send(403, {'error': 'Open this on the shop computer.'})
         if path == '/api/changelog':
             import installer_update
             return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
@@ -319,7 +500,7 @@ class Handler(BaseHTTPRequestHandler):
                     info = macos_update.start(WORK) if parse_qs(urlparse(self.path).query).get('refresh') == ['1'] else macos_update.status(WORK)
                 except (OSError, ValueError, subprocess.SubprocessError):
                     info = macos_update.status(WORK)
-                info.update(localPC=self.client_address[0] == '127.0.0.1', serverPid=os.getpid())
+                info.update(localPC=self.loopback_client(), serverPid=os.getpid())
                 return self.send(200, info)
             import installer_update
             refresh = parse_qs(urlparse(self.path).query).get('refresh', ['0'])[0] == '1'
@@ -327,14 +508,14 @@ class Handler(BaseHTTPRequestHandler):
                 info = peek_latest(WORK, VERSION)
             else:
                 info = {'ok': True, 'current': VERSION, 'updateAvailable': False, 'latest': VERSION, 'message': '', 'error': None}
-                if load_shop(WORK)['updates'] and os.environ.get('EZ_NEST_UPDATES', '1') != '0':
+                if updates_allowed(WORK):
                     info.update(UPDATE_CHECK)
             info.update(installer_update.local_state(WORK, installer_update.install_root()))
             import managed_update
             info['managedSupported'] = managed_update.supported(installer_update.install_root())
             with OPERATIONS:
                 info.update(UPDATE_QUEUE.status())
-            info['localPC'] = self.client_address[0] == '127.0.0.1'
+            info['localPC'] = self.loopback_client()
             info['serverPid'] = os.getpid()
             info['managedResult'] = installer_update.read_json(WORK/'updates'/'managed-result.json')
             info['notes'] = installer_update.current_notes(ROOT, VERSION)
@@ -354,7 +535,7 @@ class Handler(BaseHTTPRequestHandler):
                 info['message'] = info['managedResult'].get('message', '')
             return self.send(200, info)
         if path == '/api/macos-update/package':
-            if self.client_address[0] != '127.0.0.1' or self.headers.get('X-EZ-Token') != TOKEN:
+            if not self.loopback_client() or not self.token_ok():
                 return self.send(403, {'error':'Open the update on the shop Mac.'})
             import macos_update
             try:
@@ -375,7 +556,7 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Shop inventory is unavailable. Check disk space and folder permissions.'})
         if path.startswith('/api/illustrator/'):
-            if self.client_address[0] != '127.0.0.1':
+            if not self.loopback_client():
                 return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
             try:
                 return self.send(200, illustrator_bridge.read(WORK, path.rsplit('/', 1)[-1]))
@@ -389,7 +570,7 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Local activity is unavailable. Check disk space and folder permissions.'})
         if path in ('/api/telemetry', '/api/telemetry/events', '/api/telemetry/output'):
-            if self.client_address[0] != '127.0.0.1' or self.headers.get('X-EZ-Token') != TOKEN:
+            if not self.loopback_client() or not self.token_ok():
                 return self.send(403, {'error': 'Local session required for job tracking.'})
             try:
                 if path.endswith('/output'):
@@ -531,22 +712,55 @@ class Handler(BaseHTTPRequestHandler):
         # Hold admission through import, save and delivery. An update claim cannot
         # slip between a busy check and a new operation starting on another PC.
         with OPERATIONS:
-            if (UPDATE_QUEUE.stopping or macos_service_runtime.maintenance()) and self.path != '/api/macos-service/cancel':
+            if (UPDATE_QUEUE.stopping or macos_service_runtime.maintenance()) and self.route_path() != '/api/macos-service/cancel':
                 return self.send(503, {'error': 'Installing an update. Wait for eznest to restart.'})
             return self.handle_post()
 
-    def handle_post(self):
-        global PROCESS
-        if not self.allowed() or self.headers.get('X-EZ-Token') != TOKEN:
-            return self.send(403, {'error': 'Invalid session'})
-        origin = self.headers.get('Origin')
-        if origin and not self.local_name(origin.removeprefix('http://')):
-            return self.send(403, {'error': 'Invalid origin'})
+    def _login(self):
         try:
             size = int(self.headers.get('Content-Length', '0'))
-            if not 0 <= size <= request_limit(self.path):
+        except ValueError:
+            return self.send(400, {'error': 'Could not sign in.'})
+        if not 0 <= size <= 4000:
+            return self.send(400, {'error': 'Could not sign in.'})
+        try:
+            data = json.loads(self.rfile.read(size) or b'{}')
+        except (ValueError, TypeError):
+            return self.send(400, {'error': 'Could not sign in.'})
+        pin = data.get('pin') if isinstance(data, dict) else ''
+        result = shop_auth.login_attempt(WORK, self.client_ip(), pin if isinstance(pin, str) else '')
+        if result == 'missing':
+            return self.send(403, {'error': 'The shop PIN is not set. Set it on the shop computer.'})
+        if result == 'locked':
+            return self.send(429, {'error': 'Too many tries from this computer. Wait and try again.'})
+        if result != 'ok':
+            return self.send(401, {'error': 'That PIN is not right.'})
+        sid = shop_auth.issue_session(self.client_ip())
+        return self.send(200, {'ok': True, 'authenticated': True}, extra_headers=[('Set-Cookie', shop_auth.cookie_header(sid, secure=TLS))])
+
+    def _logout(self):
+        shop_auth.revoke_session(shop_auth.read_cookie(self.headers.get('Cookie') if self.headers else None))
+        return self.send(200, {'ok': True}, extra_headers=[('Set-Cookie', shop_auth.clear_cookie_header(secure=TLS))])
+
+    def handle_post(self):
+        global PROCESS
+        if not self.allowed() or not self.browser_site_ok():
+            return self.send(403, {'error': 'Invalid session'})
+        path = self.route_path()
+        if path not in ('/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
+            if self.reject_output_gate(path, discard=True):
+                return
+        if path == '/api/login':
+            return self._login()
+        if path == '/api/logout':
+            return self._logout()
+        if not self.authenticated():
+            return self.send(403, {'error': 'Invalid session'})
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 <= size <= request_limit(path):
                 raise ValueError('Job is too large.')
-            if self.path == '/api/document/import-file':
+            if path == '/api/document/import-file':
                 header = self.headers.get('X-EZ-Import', '{}')
                 if len(header) > 16_000:
                     raise ValueError('Import options are too large.')
@@ -555,13 +769,13 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Invalid import options.')
                 return self.import_document(options, upload_size=size)
             data = json.loads(self.rfile.read(size) or '{}')
-            if self.path in ('/api/macos-service/claim', '/api/macos-service/cancel'):
-                if self.client_address[0] != '127.0.0.1':
+            if path in ('/api/macos-service/claim', '/api/macos-service/cancel'):
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Approve updates on the server Mac.'})
                 if not isinstance(data, dict) or set(data) != {'ticket'}:
                     raise ValueError('Supply the administrator update ticket.')
                 macos_service_runtime.authorize_claim(data['ticket'])
-                if self.path.endswith('/cancel'):
+                if path.endswith('/cancel'):
                     if UPDATE_QUEUE.ticket not in (None, data['ticket']):
                         raise ValueError('Another update owns admission.')
                     UPDATE_QUEUE.stopping = False
@@ -575,32 +789,49 @@ class Handler(BaseHTTPRequestHandler):
                 # launchd owns the process lifetime. The privileged installer
                 # stops it only after this admission lock has closed new work.
                 return self.send(200, {'ok': True, 'ready': ready, 'pid': os.getpid()})
-            if self.path.startswith('/api/telemetry/'):
-                if self.client_address[0] != '127.0.0.1':
+            if path.startswith('/api/telemetry/'):
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Local session required for job tracking.'})
                 if not isinstance(data, dict):
                     raise ValueError('Supply a tracking request object.')
-                if self.path == '/api/telemetry/output/consent':
+                if path == '/api/telemetry/output/consent':
                     if set(data) != {'revision', 'version', 'configurationId', 'confirmed'}:
                         raise ValueError('Review and explicitly approve the sharing disclosure.')
                     return self.send(200, telemetry_sender.consent(WORK, **data))
-                if self.path == '/api/telemetry/output/revoke':
+                if path == '/api/telemetry/output/revoke':
                     if data:
                         raise ValueError('Stopping sharing takes no additional data.')
                     return self.send(200, telemetry_sender.revoke(WORK))
+                if path == '/api/telemetry/output/pair':
+                    if set(data) != {'code'}:
+                        raise ValueError('Paste the pairing code from OUTPUT.')
+                    # The exchange is network IO. Do not hold the job lock.
+                    # reason is a short category. The pairing code and credential are not returned.
+                    try:
+                        return self.send(200, output_pairing.connect(WORK, data.get('code'), paused=telemetry_paused()))
+                    except output_pairing.PairingError as error:
+                        return self.send(400, {'error': str(error), 'reason': error.reason})
+                if path == '/api/telemetry/output/disconnect':
+                    if data:
+                        raise ValueError('Disconnect takes no additional data.')
+                    return self.send(200, output_pairing.disconnect(WORK, paused=telemetry_paused()))
+                if path == '/api/telemetry/output/check-in':
+                    if data:
+                        raise ValueError('Check-in takes no additional data.')
+                    return self.send(200, output_gate.check_in(WORK, local=True))
                 with LOCK:
-                    if self.path == '/api/telemetry/link':
+                    if path == '/api/telemetry/link':
                         if set(data) - {'id', 'jobCodes', 'rollId'}:
                             raise ValueError('Only job codes and an opaque roll ID may be linked.')
                         if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id') or STATE.get('released'):
                             raise ValueError('Link the current finished layout before freezing it.')
                         record_telemetry('nest.created')
                         telemetry.link(WORK, data.get('id'), data.get('jobCodes'), data.get('rollId'))
-                    elif self.path == '/api/telemetry/status':
+                    elif path == '/api/telemetry/status':
                         if set(data) - {'id', 'action', 'confirmed'} or data.get('confirmed') is not True:
                             raise ValueError('Explicitly confirm the queue, print or cancellation observation.')
                         telemetry.transition(WORK, data.get('id'), data.get('action'))
-                    elif self.path == '/api/telemetry/stock':
+                    elif path == '/api/telemetry/stock':
                         if set(data) != {'rollId', 'materialKey', 'remainingMm', 'requestId', 'expectedRevision'}:
                             raise ValueError('Supply roll ID, material key, measured remaining mm, request ID and expected revision.')
                         telemetry.record_stock(WORK, data['rollId'], data['materialKey'], data['remainingMm'],
@@ -608,20 +839,20 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         raise ValueError('Unknown tracking operation.')
                 return self.send(200, {'ok': True})
-            if self.path.startswith('/api/update/'):
+            if path.startswith('/api/update/'):
                 import installer_update
-                if self.client_address[0] != '127.0.0.1':
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Approve updates on the server PC.'})
-                if self.path == '/api/update/cancel':
+                if path == '/api/update/cancel':
                     UPDATE_QUEUE.cancel()
                     return self.send(200, {'ok': True, 'message': 'Update cancelled. The app stays running.'})
-                if self.path == '/api/update/result':
+                if path == '/api/update/result':
                     pending = installer_update.pending_state(WORK)
                     if pending and pending['sha256'] == data.get('sha256'):
                         (WORK/'updates'/'pending.json').unlink(missing_ok=True)
                     installer_update.write_json(WORK/'updates'/'managed-result.json', {'message': str(data.get('message', ''))[:500]})
                     return self.send(200, {'ok': True})
-                if self.path in ('/api/update/queue', '/api/update/claim'):
+                if path in ('/api/update/queue', '/api/update/claim'):
                     if not installer_update.updates_enabled(WORK):
                         UPDATE_QUEUE.cancel()
                         raise ValueError('Updates are off.')
@@ -631,7 +862,7 @@ class Handler(BaseHTTPRequestHandler):
                     if pending.get('channel') != load_shop(WORK)['channel']:
                         UPDATE_QUEUE.cancel()
                         raise ValueError('The update channel changed. Download an update for the selected channel.')
-                    if self.path.endswith('/queue'):
+                    if path.endswith('/queue'):
                         UPDATE_QUEUE.queue(data.get('ticket'))
                         return self.send(200, {'ok': True, 'queued': True})
                     with LOCK:
@@ -643,24 +874,24 @@ class Handler(BaseHTTPRequestHandler):
                         threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
                 raise ValueError('Unknown update operation.')
-            if self.path == '/api/illustrator/intake':
-                if self.client_address[0] != '127.0.0.1':
+            if path == '/api/illustrator/intake':
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
                 with LOCK:
                     info = illustrator_bridge.accept(WORK, data)
                 return self.send(200, {'ok': True, 'id': info['id'], 'url': f'http://127.0.0.1:{PORT}/web?illustrator=' + info['id']})
-            if self.path == '/api/document/import':
+            if path == '/api/document/import':
                 return self.import_document(data)
-            if self.path == '/api/export/pick':
-                if self.client_address[0] != '127.0.0.1':
+            if path == '/api/export/pick':
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Use browser download on another computer.'})
                 target = print_export.pick_save_path(data.get('name'), data.get('format'))
                 return self.send(200, {'path': target, 'cancelled': target is None})
-            if self.path == '/api/export/folders':
-                if self.client_address[0] != '127.0.0.1':
+            if path == '/api/export/folders':
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Browse folders on the PC running eznest.'})
                 return self.send(200, print_export.browse_folders(data.get('path'), OUTPUT.root))
-            if self.path == '/api/export/save':
+            if path == '/api/export/save':
                 with LOCK:
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id') or not STATE.get('released'):
                         raise ValueError('Review and freeze the current layout before saving.')
@@ -671,7 +902,7 @@ class Handler(BaseHTTPRequestHandler):
                 mode = data.get('destination')
                 expected = data.get('replaceSha256')
                 if mode == 'choose':
-                    if self.client_address[0] != '127.0.0.1':
+                    if not self.loopback_client():
                         return self.send(403, {'error': 'Choose a location on the PC running eznest, or use browser download.'})
                     selected = data.get('path')
                     if not isinstance(selected, str) or len(selected) > 1000 or not Path(selected).is_absolute():
@@ -702,16 +933,29 @@ class Handler(BaseHTTPRequestHandler):
                         record_telemetry('nest.exported')
                     persist_state()
                 return self.send(200, dict(saved, ok=True))
-            if self.path in ('/api/output/connect', '/api/output/pick'):
-                if self.path.endswith('/pick'):
-                    if self.client_address[0] != '127.0.0.1':
+            if path == '/api/pin':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Set the shop PIN on the shop computer.'})
+                shop_auth.set_pin(WORK, data.get('pin') if isinstance(data, dict) else None)
+                return self.send(200, {'ok': True, 'pinConfigured': True, 'pinWeak': False})
+            if path == '/api/pin/alert/ack':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Review PIN failures on the shop computer.'})
+                return self.send(200, shop_auth.acknowledge_alert())
+            if path in ('/api/output/connect', '/api/output/pick'):
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
+                if path.endswith('/pick'):
+                    if not self.loopback_client():
                         return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
                     data = {'path': pick_folder('Select where eznest will save print packs')}
                     if not data['path']:
                         return self.send(200, {'cancelled': True})
                 with FOLDER_LOCK:
                     return self.send(200, OUTPUT.connect(data.get('path',''), FOLDER.root))
-            if self.path == '/api/setup':
+            if path == '/api/setup':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Finish setup on the shop computer.'})
                 from shop_deploy import validate_setup
                 setup = validate_setup(data)
                 if setup['hotFolder']:
@@ -720,20 +964,22 @@ class Handler(BaseHTTPRequestHandler):
                 current = load_shop(WORK)
                 save_shop(WORK, data.get('onyxPc') is True, current['lan'], setupComplete=True, **setup)
                 return self.send(200, shop_status())
-            if self.path == '/api/shop':
+            if path == '/api/shop':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Change shop settings on the shop computer.'})
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
                 fields = {}
-                for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder'):
+                for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl'):
                     if key in data:
                         fields[key] = data.get(key)
                 save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates, **fields)
                 UPDATE_CHECK.clear()
                 UPDATE_WAKE.set()
                 return self.send(200, shop_status())
-            if self.path == '/api/materials/save':
+            if path == '/api/materials/save':
                 return self.send(200, material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision')))
-            if self.path == '/api/materials/reserve':
+            if path == '/api/materials/reserve':
                 with LOCK:
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('The layout changed. Reload and review the current layout before reserving stock.')
@@ -747,11 +993,11 @@ class Handler(BaseHTTPRequestHandler):
                     result = STATE['result']
                     fingerprint = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
                     return self.send(200, material_inventory.reserve(WORK, key, STATE['id'], result['usedLength'], result['width'], fingerprint))
-            if self.path == '/api/materials/transition':
+            if path == '/api/materials/transition':
                 return self.send(200, material_inventory.transition(WORK, data.get('id'), data.get('action')))
-            if self.path == '/api/update':
+            if path == '/api/update':
                 if macos_service_runtime.active():
-                    if self.client_address[0] != '127.0.0.1':
+                    if not self.loopback_client():
                         return self.send(403, {'error':'Download and approve updates on the shop Mac.'})
                     import macos_update
                     return self.send(200, macos_update.start(WORK, 'download'))
@@ -767,34 +1013,35 @@ class Handler(BaseHTTPRequestHandler):
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
                 return self.send(200, result)
-            if self.path.startswith('/api/folder/'):
-                if self.path == '/api/folder/pick':
+            if path.startswith('/api/folder/'):
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Choose the source folder on the shop computer.'})
+                if path == '/api/folder/pick':
                     if os.name != 'nt':
                         raise ValueError('Use the folder path field on this platform.')
-                    script = "Add-Type -AssemblyName System.Windows.Forms; $picker=New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description='Select your print-ready SVG production folder'; $picker.ShowNewFolderButton=$false; if($picker.ShowDialog() -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($picker.SelectedPath)}"
-                    selected = subprocess.run(['powershell.exe','-NoProfile','-STA','-Command',script],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=300)
-                    folder_path = selected.stdout.decode('utf-8-sig').strip()
+                    folder_path = powershell_folder_picker('Select your print-ready SVG production folder', show_new=False)
                     if not folder_path:
                         return self.send(200, {'cancelled': True})
                     data = {'path':folder_path}
                 with FOLDER_LOCK:
-                    if self.path in ('/api/folder/connect','/api/folder/pick'):
-                        root = Path(data['path']).expanduser().resolve(strict=True)
+                    if path in ('/api/folder/connect','/api/folder/pick'):
+                        root = real_directory(data['path'])
                         if OUTPUT.root and OUTPUT.root.resolve().is_relative_to(root):
                             raise ValueError('The source folder must not contain your output folder.')
-                        result = FOLDER.connect(data['path'])
-                    elif self.path == '/api/folder/disconnect':
+                        approve_source_root(WORK, root)
+                        result = FOLDER.connect(str(root))
+                    elif path == '/api/folder/disconnect':
                         FOLDER.disconnect()
                         result = {'connected':False,'files':[]}
                     else:
                         raise ValueError('Unknown folder action.')
                 return self.send(200,result)
             with LOCK:
-                if self.path in ('/api/solve', '/api/improve'):
+                if path in ('/api/solve', '/api/improve'):
                     if STATE.get('status') == 'running':
                         raise ValueError('Cancel the current search before starting another.')
                     incumbent = None
-                    if self.path == '/api/improve':
+                    if path == '/api/improve':
                         if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                             raise ValueError('Calculate a current layout before improving it.')
                         if STATE.get('released'):
@@ -840,7 +1087,7 @@ class Handler(BaseHTTPRequestHandler):
                     STATE.update(status='running', id=run_id, output=str(output), job=data)
                     if incumbent:
                         STATE['incumbent'] = incumbent
-                elif self.path == '/api/cancel':
+                elif path == '/api/cancel':
                     keep = data.get('keepBest') is True
                     if PROCESS and PROCESS.poll() is None:
                         PROCESS.terminate()
@@ -866,7 +1113,7 @@ class Handler(BaseHTTPRequestHandler):
                         if incumbent:
                             STATE['note'] = 'Search cancelled; your best layout is retained.'
                     persist_state()
-                elif self.path == '/api/output/undo':
+                elif path == '/api/output/undo':
                     if STATE.get('status') != 'ready' or not STATE.get('released') or data.get('id') != STATE.get('id'):
                         raise ValueError('Send a layout before undoing it.')
                     if not OUTPUT.root:
@@ -881,7 +1128,7 @@ class Handler(BaseHTTPRequestHandler):
                     STATE.update(savedPath='', deliveryCompleted=False)
                     persist_state()
                     return self.send(200, {'ok': True})
-                elif self.path == '/api/shutdown':
+                elif path == '/api/shutdown':
                     if macos_service_runtime.active():
                         raise ValueError('The shop host stays available when a browser closes. The administrator controls its system service.')
                     if STATE.get('status') == 'running':
@@ -890,14 +1137,14 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(200, {'ok': True})
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
-                elif self.path == '/api/work/discard':
+                elif path == '/api/work/discard':
                     if STATE.get('status') == 'running':
                         raise ValueError('Stop the search before starting over.')
                     STATE.clear()
                     STATE.update(status='idle')
                     (WORK/'session.json').unlink(missing_ok=True)
                     return self.send(200, {'ok': True})
-                elif self.path == '/api/release':
+                elif path == '/api/release':
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('Calculate and review the current layout before exporting.')
                     export_job = copy.deepcopy(STATE['job'])
@@ -934,13 +1181,13 @@ class Handler(BaseHTTPRequestHandler):
                     STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved or (STATE.get('savedPath') if data.get('downloadOnly') is True else None), sha256=digest)
                     persist_state()
                     return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check,'deliveryCompleted':STATE['deliveryCompleted'],'sha256':digest})
-                elif self.path == '/api/delivery/complete':
+                elif path == '/api/delivery/complete':
                     if STATE.get('status')!='ready' or data.get('id')!=STATE.get('id') or not STATE.get('released') or not (WORK/'batches'/(STATE['id']+'.zip')).is_file():
                         raise ValueError('Download the current frozen batch before completing its delivery.')
                     STATE['deliveryCompleted']=True
                     persist_state()
                     return self.send(200,{'ok':True})
-                elif self.path == '/api/prepare-apply':
+                elif path == '/api/prepare-apply':
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('Calculate a current validated layout first.')
                     if not STATE['job'].get('captureId'):
@@ -954,12 +1201,32 @@ class Handler(BaseHTTPRequestHandler):
             self.send(400, {'error': str(error)})
 
 
-def pick_folder(description):
+def powershell_folder_picker(description, show_new=True):
+    """Ask Windows for a folder. The label is an environment variable, not script text."""
     if os.name != 'nt':
         raise ValueError('Enter the folder path on this platform.')
-    script = "Add-Type -AssemblyName System.Windows.Forms; $picker=New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description='"+description+"'; if($picker.ShowDialog() -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($picker.SelectedPath)}"
-    selected = subprocess.run(['powershell.exe','-NoProfile','-STA','-Command',script],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=300)
+    prompt = description if isinstance(description, str) else ''
+    if not prompt or len(prompt) > 200 or any(ord(char) < 32 for char in prompt):
+        prompt = 'Select a folder'
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$picker=New-Object System.Windows.Forms.FolderBrowserDialog; "
+        "$picker.Description=$env:EZ_NEST_FOLDER_PROMPT; "
+    )
+    if not show_new:
+        script += "$picker.ShowNewFolderButton=$false; "
+    script += "if($picker.ShowDialog() -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($picker.SelectedPath)}"
+    env = os.environ.copy()
+    env['EZ_NEST_FOLDER_PROMPT'] = prompt
+    flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+    selected = subprocess.run(
+        ['powershell.exe', '-NoProfile', '-STA', '-Command', script],
+        capture_output=True, env=env, creationflags=flags, timeout=300)
     return selected.stdout.decode('utf-8-sig').strip()
+
+
+def pick_folder(description):
+    return powershell_folder_picker(description, show_new=True)
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -972,6 +1239,8 @@ class LocalServer(ThreadingHTTPServer):
         if os.name == 'nt':
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
+        if TLS_CONTEXT is not None:
+            self.socket = TLS_CONTEXT.wrap_socket(self.socket, server_side=True)
 
 
 def check_updates(stop):
@@ -994,12 +1263,16 @@ def check_updates(stop):
 
 
 def serve(open_browser=False, page='/'):
+    configure_tls(os.environ.get('EZ_NEST_TLS_CERT'), os.environ.get('EZ_NEST_TLS_KEY'))
+    if HOST not in ('127.0.0.1', '::1') and not shop_auth.pin_configured(WORK):
+        raise RuntimeError('Set a shop PIN on this computer before opening the shop network.')
     restore_state()
     import installer_update
     service = LocalServer((HOST, PORT), Handler)
     update_stop = threading.Event()
     sender_thread = threading.Thread(target=telemetry_sender.run, args=(WORK, update_stop, telemetry_paused), daemon=True)
     sender_thread.start()
+    threading.Thread(target=output_gate.run, args=(WORK, update_stop), daemon=True).start()
     threading.Thread(target=check_updates, args=(update_stop,), daemon=True).start()
     if open_browser:
         import webbrowser

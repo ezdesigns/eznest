@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import ssl
 from pathlib import Path
 import sys
 from urllib.request import urlopen
@@ -44,9 +45,12 @@ def main():
     parser.add_argument('--host', default=None, help='127.0.0.1; use --lan for shop network access')
     parser.add_argument('--lan', action='store_true', help='Open the shop network on this computer')
     parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--tls-cert', default=None, help='Certificate for optional local HTTPS')
+    parser.add_argument('--tls-key', default=None, help='Private key for optional local HTTPS')
     parser.add_argument('--data-dir', type=Path)
     parser.add_argument('--isolated', action='store_true', help='Require a separate data folder and refuse an existing server')
     parser.add_argument('--shop-test', action='store_true', help='Start a separate local trial with TEST output and updates off')
+    parser.add_argument('--dev', action='store_true', help='Source checkout only. Labels dev mode. EZ_NEST_DEV_NO_OUTPUT=1 is ignored without it.')
     parser.add_argument('--update-confirm', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--shop-service', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -59,6 +63,16 @@ def main():
         macos_service_runtime.validate_start(args)
     elif service_client and (args.data_dir is not None or args.port != 8765 or args.lan or args.isolated):
         raise ValueError('Open the installed shop host without custom server settings.')
+    import output_gate
+    if not output_gate.source_checkout():
+        # Installed builds and the container image ignore the source-checkout escape hatch.
+        os.environ.pop('EZ_NEST_DEV', None)
+        os.environ.pop('EZ_NEST_DEV_NO_OUTPUT', None)
+        os.environ.pop('EZ_NEST_OUTPUT_GATE_OPEN', None)
+        if args.dev:
+            raise ValueError('Dev mode is only for a source checkout. Installed builds always connect to OUTPUT.')
+    elif args.dev:
+        os.environ['EZ_NEST_DEV'] = '1'
     if args.shop_test:
         from shop_test import default_data_directory
         args.isolated = True
@@ -70,10 +84,15 @@ def main():
         raise ValueError('Bind to 127.0.0.1 by default. Use --lan to open the shop network.')
     if not 1024 <= args.port <= 65535:
         raise ValueError('Choose a local port from 1024 to 65535.')
-    address = f'http://127.0.0.1:{args.port}'
+    if bool(args.tls_cert) != bool(args.tls_key):
+        raise ValueError('Set both --tls-cert and --tls-key, or neither.')
+    scheme = 'https' if args.tls_cert else 'http'
+    address = f'{scheme}://127.0.0.1:{args.port}'
     page = '/web' if args.web else '/'
     try:
-        with urlopen(address+'/api/session', timeout=2) as response:
+        # The probe only checks this computer. A self-signed shop certificate is not a public CA.
+        probe = ssl._create_unverified_context() if args.tls_cert else None
+        with urlopen(address+'/api/session', timeout=2, context=probe) as response:
             existing = json.load(response)
     except (URLError, TimeoutError, OSError):
         existing = None
@@ -102,6 +121,9 @@ def main():
         os.environ['EZ_NEST_OUTPUT_UPLOADS'] = '0'
     saved = load_shop(data)
     if args.lan:
+        import shop_auth
+        if not shop_auth.pin_configured(data):
+            raise ValueError('Set a shop PIN on this computer before opening the shop network.')
         host, lan = '0.0.0.0', True
     else:
         host, lan = '127.0.0.1', False
@@ -110,11 +132,18 @@ def main():
     os.environ['EZ_NEST_PORT'] = str(args.port)
     os.environ['EZ_NEST_HOST'] = host
     os.environ['EZ_NEST_LAN'] = '1' if lan else '0'
+    if args.tls_cert:
+        os.environ['EZ_NEST_TLS_CERT'] = str(Path(args.tls_cert).resolve())
+        os.environ['EZ_NEST_TLS_KEY'] = str(Path(args.tls_key).resolve())
+    else:
+        os.environ.pop('EZ_NEST_TLS_CERT', None)
+        os.environ.pop('EZ_NEST_TLS_KEY', None)
     running = sys.modules.get('server')
     if running is not None:
         running.HOST = host
         running.PORT = args.port
         running.LAN = lan
+        running.configure_tls(os.environ.get('EZ_NEST_TLS_CERT'), os.environ.get('EZ_NEST_TLS_KEY'))
     # Do not expose development-only pages in a distributed executable.
     if getattr(sys, 'frozen', False):
         os.environ.pop('EZ_NEST_TEST_UI', None)

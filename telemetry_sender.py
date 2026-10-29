@@ -1,7 +1,10 @@
-"""Opt-in, future-only OUTPUT sender. No credentials are saved to disk.
+"""Opt-in, future-only OUTPUT sender.
 
-Operators provision a scoped shop-agent token and explicit upload gate through
-the launch environment. Neither is sufficient without local screen consent.
+A paired credential may be stored by output_credential. Launch environment
+settings still win: EZ_NEST_OUTPUT_UPLOADS=1 uses EZ_NEST_OUTPUT_TOKEN, and
+EZ_NEST_OUTPUT_UPLOADS=0 disables delivery (including --shop-test). Neither
+path sends anything without the on-screen consent. The credential is not
+written to the telemetry database, logs, or API responses.
 """
 import hashlib
 import json
@@ -12,11 +15,21 @@ import subprocess
 import sys
 from pathlib import Path
 from urllib.error import URLError, HTTPError
+from urllib.parse import urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
+import output_credential
+import shop_deploy
 import telemetry
 from telemetry_output import SCHEMA, BANDS, project
 
-ENDPOINT = 'https://output.jeezlabs.io/api/shop/telemetry'
+
+def _endpoint_from_env():
+    base = shop_deploy.normalize_output_base(os.environ.get('EZ_NEST_OUTPUT_URL', '')) or shop_deploy.DEFAULT_OUTPUT_URL
+    return base + '/api/shop/telemetry'
+
+
+ENDPOINT = _endpoint_from_env()
+_EMIT_ENDPOINT = None
 CONSENT_VERSION = 'eznest-output-consent/1'
 LOCK = threading.RLock()
 CONTROL_LOCK = threading.Lock()
@@ -30,15 +43,37 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def configuration():
+def _env_token():
     token = os.environ.get('EZ_NEST_OUTPUT_TOKEN', '')
-    if os.environ.get('EZ_NEST_OUTPUT_UPLOADS') != '1' or not re.fullmatch(r'osa_[A-Za-z0-9_-]{43}', token):
-        return None
-    return token
+    if isinstance(token, str) and re.fullmatch(r'osa_[A-Za-z0-9_-]{43}', token):
+        return token
+    return None
 
 
-def fingerprint(token):
-    return hashlib.sha256((ENDPOINT + '\0' + token).encode()).hexdigest()
+def connection(directory):
+    """Credential used for delivery. Environment settings take precedence."""
+    uploads = os.environ.get('EZ_NEST_OUTPUT_UPLOADS')
+    if uploads == '0':
+        return {'token': None, 'source': 'disabled', 'shopName': None}
+    if uploads == '1':
+        token = _env_token()
+        return {'token': token, 'source': 'environment' if token else 'environment-invalid', 'shopName': None}
+    saved = output_credential.describe(directory)
+    if saved['credential']:
+        return {'token': saved['credential'], 'source': 'paired', 'shopName': saved['shopName']}
+    return {'token': None, 'source': None, 'shopName': None}
+
+
+def configuration(directory):
+    return connection(directory)['token']
+
+
+def endpoint_for(directory=None):
+    return shop_deploy.output_base_url(directory) + '/api/shop/telemetry'
+
+
+def fingerprint(token, endpoint=None):
+    return hashlib.sha256(((endpoint or ENDPOINT) + '\0' + token).encode()).hexdigest()
 
 
 def read(db):
@@ -51,15 +86,15 @@ def write(db, value):
     db.execute('INSERT OR REPLACE INTO metadata VALUES(?,?)', (KEY, json.dumps(value)))
 
 
-def effective(consent, token):
+def effective(consent, token, endpoint=None):
     return bool(token and consent.get('enabled') is True
                 and consent.get('version') == CONSENT_VERSION
-                and consent.get('credential') == fingerprint(token))
+                and consent.get('credential') == fingerprint(token, endpoint))
 
 
-def read_active(db, token):
+def read_active(db, token, endpoint=None):
     current = read(db)
-    if current.get('enabled') is True and not effective(current, token):
+    if current.get('enabled') is True and not effective(current, token, endpoint):
         # A detected mismatch permanently ends this consent. Restoring an old
         # token, gate or version must not resurrect permission or its backlog.
         current.update(enabled=False, revision=current['revision']+1,
@@ -70,18 +105,21 @@ def read_active(db, token):
 
 def status(directory, *, paused=lambda: False):
     with LOCK, telemetry.database(directory) as db:
-        token = configuration()
+        info = connection(directory)
+        token = info['token']
         suspended = paused()
         # A candidate service may be rolled back with its data snapshot. Do not
         # change consent while installation has closed operation admission.
-        consent = read(db) if suspended else read_active(db, token)
-        enabled = effective(consent, token)
+        target = endpoint_for(directory)
+        consent = read(db) if suspended else read_active(db, token, target)
+        enabled = effective(consent, token, target)
         instance = db.execute("SELECT value FROM metadata WHERE key='instance_id'").fetchone()[0]
         pending = db.execute('SELECT count(*) FROM events WHERE seq>? AND acknowledged=0 AND id NOT IN (SELECT event_id FROM output_rejections)', (consent['cutoff'],)).fetchone()[0] if enabled else 0
-        return {'configured': token is not None, 'configurationId': fingerprint(token) if token else None, 'enabled': enabled, 'paused': suspended,
+        return {'configured': token is not None, 'configurationId': fingerprint(token, target) if token else None, 'enabled': enabled, 'paused': suspended,
                 'requiresConsent': bool(token and not enabled),
+                'connection': info['source'], 'shopName': info['shopName'],
                 'revision': consent['revision'], 'consentVersion': CONSENT_VERSION,
-                'endpoint': ENDPOINT, 'schema': SCHEMA, 'instanceId': instance, 'appVersion': telemetry.VERSION,
+                'endpoint': target, 'schema': SCHEMA, 'instanceId': instance, 'appVersion': telemetry.VERSION,
                 'eventTypes': list(telemetry.KINDS), 'bands': BANDS,
                 'pendingEvents': pending, 'withheldEvents': db.execute('SELECT count(*) FROM output_rejections').fetchone()[0], 'consentedAt': consent.get('at'),
                 'lastDeliveredAt': consent.get('lastDeliveredAt'), 'lastError': consent.get('lastError')}
@@ -92,10 +130,11 @@ def consent(directory, *, revision, version, configurationId, confirmed):
         raise ValueError('Review the current sharing disclosure and explicitly agree.')
     with LOCK, telemetry.database(directory) as db:
         old = read(db)
-        token = configuration()
+        token = configuration(directory)
         if token is None:
             raise ValueError('OUTPUT delivery is not configured on this host.')
-        if configurationId != fingerprint(token):
+        target = endpoint_for(directory)
+        if configurationId != fingerprint(token, target):
             raise ValueError('The shop credential changed. Review sharing again.')
         if old['revision'] != revision:
             raise ValueError('Sharing settings changed. Review them again.')
@@ -103,7 +142,7 @@ def consent(directory, *, revision, version, configurationId, confirmed):
         # including previously consented-but-unsent data after disabling/re-enabling.
         cutoff = db.execute('SELECT coalesce(max(seq),0) FROM events').fetchone()[0]
         write(db, {'enabled': True, 'revision': revision+1, 'version': version,
-                   'credential': fingerprint(token), 'cutoff': cutoff, 'at': telemetry.now()})
+                   'credential': fingerprint(token, target), 'cutoff': cutoff, 'at': telemetry.now()})
         with CONTROL_LOCK:
             REVOKING.discard(str(Path(directory).resolve()))
     return status(directory)
@@ -121,15 +160,25 @@ def revoke(directory):
     return status(directory)
 
 
+def _destination_allowed(url):
+    """Allowlisted OUTPUT origins, plus the loopback receiver used by the deadline test."""
+    if shop_deploy.allowed_output_request(url):
+        return True
+    parsed = urlparse(url)
+    return parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', 'localhost', '::1')
+
+
 def _emit_https(payload, token):
     raw = json.dumps(payload, separators=(',', ':')).encode()
     if len(raw) > 12000:
+        return False
+    if not _destination_allowed(ENDPOINT):
         return False
     request = Request(ENDPOINT, data=raw, headers={
         'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
         'Accept': 'application/json'}, method='POST')
     # Never forward shop credentials to a redirect target. HTTPS validates the
-    # platform trust store; no bypass, arbitrary destination or fallback exists.
+    # platform trust store.
     try:
         with build_opener(NoRedirect()).open(request, timeout=10) as response:
             body = response.read(16385)
@@ -158,6 +207,14 @@ def emit(payload, token):
     # lock; no abandoned request can later resume after revocation.
     env = {key: os.environ[key] for key in
            ('PATH', 'HOME', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'TMPDIR') if key in os.environ}
+    target = _EMIT_ENDPOINT or ENDPOINT
+    if not shop_deploy.allowed_output_request(target):
+        return False
+    parsed = urlparse(target)
+    if parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password:
+        origin = f'https://{parsed.hostname}' + (f':{parsed.port}' if parsed.port else '')
+        if shop_deploy.output_url_allowed(origin):
+            env['EZ_NEST_OUTPUT_URL'] = origin
     try:
         result = subprocess.run(worker_command(), input=json.dumps({'payload':payload, 'token':token}).encode(),
                                 capture_output=True, timeout=10, env=env)
@@ -194,10 +251,11 @@ def tick(directory, stop=None, *, limit=10, paused=lambda: False):
                 break
             if paused():
                 break
-            token = configuration()
+            token = configuration(directory)
+            target = endpoint_for(directory)
             with telemetry.database(directory) as db:
-                current = read_active(db, token)
-                if not effective(current, token):
+                current = read_active(db, token, target)
+                if not effective(current, token, target):
                     break
                 row = db.execute('SELECT id,atom FROM events WHERE seq>? AND acknowledged=0 AND id NOT IN (SELECT event_id FROM output_rejections) ORDER BY seq LIMIT 1', (current['cutoff'],)).fetchone()
             if row is None:
@@ -213,7 +271,13 @@ def tick(directory, stop=None, *, limit=10, paused=lambda: False):
                 continue
             if paused():
                 break
-            sent = emit(payload, token) is True
+            global _EMIT_ENDPOINT
+            previous = _EMIT_ENDPOINT
+            _EMIT_ENDPOINT = target
+            try:
+                sent = emit(payload, token) is True
+            finally:
+                _EMIT_ENDPOINT = previous
             with telemetry.database(directory) as db:
                 # No SQLite transaction is held over network IO. The sender lock
                 # serializes consent/revocation with this exact acknowledgment.

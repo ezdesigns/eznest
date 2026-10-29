@@ -15,7 +15,7 @@ from build_windows import STATIC
 
 ROOT = Path(__file__).resolve().parent
 PACKAGES = ('spyrrow', 'shapely', 'numpy', 'pypdf', 'pypdfium2', 'pillow',
-            'charset-normalizer', 'pyinstaller', 'pyinstaller-hooks-contrib')
+            'charset-normalizer', 'defusedxml', 'pyinstaller', 'pyinstaller-hooks-contrib')
 DOCUMENTS = ('LICENSE', 'NOTICE', 'THIRD_PARTY.md', 'version.json', 'CHANGELOG.md')
 ENTRY = '''import os
 import sys
@@ -108,7 +108,7 @@ def bundle_spec(root, out, arch, version, *, service_edition=False):
 from PyInstaller.utils.hooks import collect_all, copy_metadata
 datas = {data!r}
 binaries = []
-hiddenimports = ['launcher', 'installer_update']
+hiddenimports = ['launcher', 'installer_update', 'output_gate']
 for module in ('spyrrow', 'pypdfium2', 'pypdfium2_raw'):
     module_data, module_binaries, module_imports = collect_all(module)
     datas += module_data

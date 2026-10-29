@@ -9,7 +9,37 @@
 <body data-step="drop">
 <header class="shop-header">
   <strong>eznest</strong>
+  <button id="logout" type="button" class="link" hidden>Log out</button>
 </header>
+<dialog id="pin-gate" aria-labelledby="pin-title">
+  <form id="pin-form">
+    <h2 id="pin-title">Shop PIN</h2>
+    <p id="pin-note" class="hint"></p>
+    <label>PIN
+      <input id="pin-input" type="password" autocomplete="current-password" minlength="8" maxlength="64">
+    </label>
+    <button id="pin-submit" class="primary" type="submit">Continue</button>
+    <p id="pin-error" class="lan-note" hidden></p>
+  </form>
+</dialog>
+<dialog id="output-gate" aria-labelledby="output-gate-title">
+  <form id="output-gate-form">
+    <h2 id="output-gate-title">Connect to OUTPUT</h2>
+    <p id="output-gate-note" class="hint"></p>
+    <p id="output-gate-lan" class="hint" hidden>Ask the shop computer to connect to OUTPUT.</p>
+    <div id="output-gate-fields">
+      <label>Pairing code
+        <input id="output-gate-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="characters" inputmode="text">
+      </label>
+      <button id="output-gate-submit" class="primary" type="submit">Connect</button>
+      <button id="output-gate-check" class="link" type="button" hidden>Check connection</button>
+      <p class="hint"><a href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Get a pairing code</a></p>
+      <p class="hint">Connecting sends this computer's name and installation id once. Later check-ins send the app version. Artwork, filenames, customers, and stock stay on this computer.</p>
+    </div>
+    <p id="output-gate-error" class="lan-note" hidden></p>
+  </form>
+</dialog>
+<p id="output-banner" class="lan-note" hidden></p>
 <section id="setup" hidden>
   <h2>Ready to nest</h2>
   <p class="hint">Check your cut line names. Printer and default folder are optional; you can choose where to save each finished file.</p>
@@ -36,7 +66,7 @@
     </label>
   </div>
   <div class="setup-actions">
-    <button id="setup-preset" type="button" class="link">Use EZ Designs preset</button>
+    <button id="setup-preset" type="button" class="link">Use Example shop preset</button>
     <button id="setup-save" type="button" class="primary">Start nesting</button>
   </div>
   <p id="setup-error" class="lan-note" hidden></p>
@@ -53,6 +83,10 @@
 <dialog id="settings" aria-labelledby="settings-title">
   <div class="panel">
     <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title">Settings</h2><p class="hint">Set up once. Your material choices stay with the job.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
+    <div id="pin-alert" class="lan-note" hidden>
+      <p id="pin-alert-text"></p>
+      <button id="pin-alert-ack" type="button" class="link" hidden>Reviewed</button>
+    </div>
     <section class="settings-section" aria-labelledby="destination-title">
       <h3 id="destination-title">Where files are saved</h3>
       <p class="section-note">Choose your usual folder. You can still choose a different location when saving a job.</p>
@@ -108,21 +142,41 @@
     <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
     <div id="lan-access" hidden>
     <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
-    <p class="hint">Shop network access is configured when the app starts.</p>
-    <p id="lan-note" class="lan-note" hidden>Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.</p>
+    <p class="hint">Shop network access is configured when the app starts. This box only shows whether Ez Nest was started with --lan. It stays disabled because a saved setting cannot open the shop network. To turn it on or off later, update the eznest startup task and restart. Choosing Shop network in the installer does that only on a fresh install.</p>
+    <p id="lan-note" class="lan-note" hidden>Shop computers need the shop PIN before they can nest or send. Anyone on the shop LAN can Send to ONYX after that PIN. Do not share this network with guest WiFi.</p>
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
     </div>
     </details>
     <details id="settings-telemetry" class="settings-section">
       <summary>Share activity with OUTPUT</summary>
-      <p>Off by default. After you agree, new local activity is sent automatically to OUTPUT, linked to the shop assigned to this host's credential. Earlier activity is excluded. A failed delivery is retried with the same event ID.</p>
-      <p>Shared: a stable installation ID, opaque layout and request IDs, exact event time, app version, event type, standard material category, and the measurement ranges below. IDs allow OUTPUT to link events from the same installation and layout. OUTPUT also receives this host's IP address and shop credential over HTTPS.</p>
-      <p>Never shared: artwork, files or filenames, customer names or contacts, job codes, roll IDs, custom material names, or exact dimensions, quantities, stock and search time. These are local observations; “printed” means an explicit operator confirmation, not independent proof of physical printing.</p>
+      <div id="output-connect">
+        <h3>Connect to OUTPUT</h3>
+        <p id="output-connect-shop" hidden></p>
+        <div id="output-pair-form">
+          <label>Pairing code
+            <input id="output-pair-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="text" aria-describedby="output-connect-status">
+          </label>
+          <button id="output-pair" type="button" disabled>Connect</button>
+        </div>
+        <button id="output-disconnect" type="button" hidden>Disconnect</button>
+        <p id="output-connect-status" role="status" aria-live="polite"></p>
+      </div>
+      <h3>What OUTPUT sees</h3>
+      <p>This computer has to be connected to OUTPUT before the shop can nest, send, or change stock. That connection is separate from sharing activity.</p>
+      <p>Sent when you connect: this computer's name and this installation id, once, in the pairing request. Later check-ins send the app version. The shop credential authenticates those HTTPS requests. OUTPUT also sees this computer's IP address on those requests.</p>
+      <p>Sent only after <strong>Enable sharing</strong>, and only for new activity: a stable installation id, opaque layout and request ids, the exact event time, the app version, the event type, a standard material category, and the measurement ranges below. Measured stock readings already on this host can be included. Earlier activity is excluded. A failed delivery is retried with the same event id. The shop stock ledger stays here.</p>
+      <p>Never sent: artwork, files or filenames, customer names or contacts, job codes, roll ids, custom material names, exact dimensions, quantities, stock contents, or search time. These are local observations; “printed” means an explicit operator confirmation, not independent proof of physical printing.</p>
+      <p>Sharing capacity and availability with the OUTPUT network is a separate opt-in. It stays off until you turn it on. It is not this connection, and it is not Enable sharing.</p>
+      <p>OUTPUT is pre-revenue. Where that product moves money, the money is Solana devnet test tokens. Ez Nest does not send a price.</p>
       <p>Material categories: <code>moto_regular, moto_holographic, moto_chrome, custom, unknown</code> or null. Stock-only observations have no layout ID.</p>
       <p>Event types: <span id="telemetry-kinds"></span></p>
       <p id="telemetry-bands"></p>
-      <p>Destination: <code>https://output.jeezlabs.io/api/shop/telemetry</code></p>
+      <label>OUTPUT service address
+        <input id="output-url" type="url" inputmode="url" maxlength="200" spellcheck="false" autocapitalize="none" placeholder="https://output.jeezlabs.io" aria-describedby="output-url-note">
+      </label>
+      <p id="output-url-note" class="hint">Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree here. The account connection itself is required.</p>
+      <p>Destination: <code id="output-destination">https://output.jeezlabs.io/api/shop/telemetry</code></p>
       <details><summary>Exact JSON fields (illustrative event)</summary><pre id="telemetry-preview" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
       <p>Stopping prevents further requests after any in-flight request finishes. It does not delete records already received by OUTPUT. Re-enabling excludes all activity recorded before the new consent.</p>
       <label class="check"><input id="telemetry-agree" type="checkbox" disabled> I agree to automatically share new activity using these fields.</label>
@@ -133,10 +187,11 @@
     </details>
     <details id="settings-updates" class="settings-section">
       <summary>App updates</summary>
-    <label class="check"><input id="updates" type="checkbox" checked> Check for updates</label>
+    <label class="check"><input id="updates" type="checkbox"> Check for updates</label>
+    <p class="hint">Off during beta. To turn checks on, check this box and start Ez Nest with <code>EZ_NEST_UPDATES=1</code>. Ez Nest keeps a download only when its SHA-256 matches the published checksum. Installing that file is still a separate click.</p>
     <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
-    <label class="check" hidden><input id="output-network" type="checkbox"> Join OUTPUT network</label>
-    <p id="output-note" class="hint" hidden>Not available yet.</p>
+    <label class="check" hidden><input id="output-network" type="checkbox"> Share capacity with the OUTPUT network</label>
+    <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Connecting this computer to OUTPUT is required and is not this switch.</p>
     <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
     <p id="update-note" class="hint" hidden></p>
     <button id="update-cancel" type="button" class="link" hidden>Cancel waiting update</button>
@@ -146,6 +201,15 @@
     </details>
     </details>
     <input id="seconds" type="hidden" value="30">
+    <details id="shop-pin" class="settings-section" hidden>
+      <summary>Shop PIN</summary>
+      <p class="hint">Set this on the shop computer before other PCs connect. Use 8 to 12 digits, or a passphrase of at least 10 characters with a letter. Designer computers enter it once. Ez Nest stores only a hash.</p>
+      <label>New PIN or passphrase
+        <input id="shop-pin-input" type="password" autocomplete="new-password" minlength="8" maxlength="64">
+      </label>
+      <button id="shop-pin-save" type="button" class="link">Save shop PIN</button>
+      <p id="shop-pin-error" class="lan-note" hidden></p>
+    </details>
     <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
   </div>
 </dialog>
@@ -219,7 +283,7 @@
     <div class="material-heading"><label for="material"><span class="step-number">2</span> Choose material</label><button id="edit-material" class="link" type="button">Edit</button></div>
     <p class="hint step-hint">Use the roll you plan to print on.</p>
     <select id="material" aria-label="Material">
-      <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>Moto Regular</option>
+      <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Example printer" data-quickset="Example RIP quick set" selected>Moto Regular</option>
       <option value="holographic" data-name="Moto Holographic">Moto Holographic</option>
       <option value="chrome" data-name="Moto Chrome">Moto Chrome</option>
       <option value="custom">+ Add material</option>
@@ -238,9 +302,9 @@
     <h2><span class="step-number">3</span> Where will you print?</h2>
     <div class="output-modes" aria-label="Where to print">
       <button id="in-house" class="nest-mode" type="button" aria-pressed="true">In-house</button>
-      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Still get paid. Learn about OUTPUT">
+      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Learn about OUTPUT">
         <strong>Don't print</strong>
-        <span class="paid-badge">Still get paid <span class="paid-emoji">🤑</span></span>
+        <span class="paid-badge">Devnet sandbox</span>
       </button>
     </div>
     <div class="effort-heading"><button id="effort-help" class="help-label" type="button">Nesting effort</button><span class="hint">More time may find a tighter fit.</span></div>
@@ -290,19 +354,18 @@
 
 </main>
 <dialog id="max-output-dialog" aria-labelledby="max-output-title">
-  <div class="dialog-heading"><h2 id="max-output-title">Don't print!</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
-  <p class="output-lead">Have AI route the job to the best print shop near you, based on what each shop can make.</p>
-  <p class="paid-line">You still get paid.</p>
-  <h3 class="output-when">Why use it?</h3>
+  <div class="dialog-heading"><h2 id="max-output-title">Don't print it. Let another shop do it.</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <p class="output-lead">OUTPUT can match this job with another shop. The sandbox does not take payment.</p>
+  <p class="paid-line">Devnet sandbox. No payment.</p>
+  <h3 class="output-when">Use it when</h3>
   <ul class="output-points">
-    <li>You don't have enough material</li>
-    <li>Your customer is too far away</li>
-    <li>You're too busy to hit the date</li>
-    <li>You need to focus on another job</li>
+    <li>The queue is backed up and this job would miss its date</li>
+    <li>The material is not in stock</li>
+    <li>The job is outside what your machines can run</li>
   </ul>
   <div class="output-actions">
-    <a id="max-output-waitlist" class="primary-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Join the waitlist</a>
-    <a id="max-output-learn" class="output-learn" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Learn more</a>
+    <a id="max-output-waitlist" class="primary-link" href="https://output.jeezlabs.io/waitlist" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Join the waitlist</a>
+    <a id="max-output-learn" class="primary-link" href="https://output.jeezlabs.io/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Learn more</a>
   </div>
 </dialog>
 <dialog id="cut-review" aria-labelledby="cut-review-title" aria-describedby="cut-review-summary">

@@ -1,4 +1,5 @@
 """Shop-server install choices: one computer, many browsers."""
+import opt_out
 import hashlib
 import json
 import os
@@ -42,8 +43,10 @@ class ScriptedOpener:
 
 class ShopDeployTests(unittest.TestCase):
     def test_hot_folder_default_follows_the_onyx_pc(self):
-        self.assertEqual(shop_deploy.default_hot_folder(True), r'C:\ONYX\EPSON SureColor S80600 ONYX Input')
-        self.assertEqual(shop_deploy.default_hot_folder(False), r'\\ONYX\EPSON SureColor S80600 ONYX Input')
+        self.assertEqual(shop_deploy.default_hot_folder(True), r'C:\RIP\Example RIP Input')
+        self.assertEqual(shop_deploy.default_hot_folder(False), r'\\RIP\Example RIP Input')
+        self.assertEqual(shop_deploy.EZ_PRESET['name'], 'Example shop')
+        self.assertNotIn('EZ Designs', json.dumps(shop_deploy.EZ_PRESET))
 
     def test_program_files_install_uses_program_data(self):
         installed = shop_deploy.data_directory(Path('/tmp/Program Files/eznest'), frozen=True, program_files='/tmp/Program Files', program_data='/tmp/ProgramData')
@@ -65,7 +68,7 @@ class ShopDeployTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'release file'):
             shop_deploy.choose_asset({'assets': [{'name': 'eznest-setup.exe', 'browser_download_url': 'https://evil.example/eznest-setup.exe'}]})
         self.assertFalse(shop_deploy.release_url_allowed('http://github.com/ezdesigns/eznest/releases/download/v1/eznest-setup.exe'))
-        self.assertFalse(shop_deploy.release_url_allowed('https://user:secret@github.com/ezdesigns/eznest/releases/download/v1/eznest-setup.exe'))
+        self.assertFalse(shop_deploy.release_url_allowed('https://user:REDACTED@example.com/ezdesigns/eznest/releases/download/v1/eznest-setup.exe'))
         api = shop_deploy._headers(shop_deploy.RELEASE_API, 'secret')
         cdn = shop_deploy._headers('https://objects.githubusercontent.com/eznest-setup.exe', 'secret')
         self.assertEqual(api['Authorization'], 'Bearer secret')
@@ -85,15 +88,16 @@ class ShopDeployTests(unittest.TestCase):
             {'name': 'eznest-setup.exe', 'browser_download_url': url},
             {'name': 'eznest-setup.exe.sha256', 'browser_download_url': sha_url},
         ]}).encode()
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'EZ_NEST_UPDATES': '1'}):
             root = Path(tmp)
+            shop_deploy.save_shop(root, False, False, updates=True)
             same = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: current}))
             self.assertFalse(same['updated'])
             self.assertEqual(same['message'], 'This is the latest release.')
             stable = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: payload, sha_url: (digest + '  eznest-setup.exe\n').encode()}))
             self.assertFalse(stable['updated'])
             self.assertEqual(stable['message'], 'This is the latest release.')
-            shop_deploy.save_shop(root, False, False, channel='test')
+            shop_deploy.save_shop(root, False, False, updates=True, channel='test')
             saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: payload, sha_url: (digest + '  eznest-setup.exe\n').encode()}))
             self.assertTrue(saved['updated'])
             self.assertTrue(saved['staged'])
@@ -112,10 +116,14 @@ class ShopDeployTests(unittest.TestCase):
     def test_updates_off_does_not_call_github_or_read_a_token(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self.assertTrue(shop_deploy.load_shop(root)['updates'])
+            self.assertFalse(shop_deploy.load_shop(root)['updates'])
+            self.assertFalse(shop_deploy.updates_allowed(root))
             (root / 'github-token').write_text('secret-token', encoding='utf-8')
-            shop_deploy.save_shop(root, False, False)
+            shop_deploy.save_shop(root, False, False, updates=True)
             self.assertTrue(shop_deploy.load_shop(root)['updates'])
+            self.assertFalse(shop_deploy.updates_allowed(root))
+            with patch.dict(os.environ, {'EZ_NEST_UPDATES': '1'}):
+                self.assertTrue(shop_deploy.updates_allowed(root))
             shop_deploy.save_shop(root, False, False, updates=False)
             self.assertFalse(shop_deploy.load_shop(root)['updates'])
             calls = {'token': 0, 'open': 0}
@@ -168,10 +176,17 @@ class ShopDeployTests(unittest.TestCase):
         finally:
             shop_deploy.clear_name_cache()
 
-    def test_shop_names_are_this_computer_or_a_private_address(self):
+    def test_shop_names_are_this_computer_or_its_own_address(self):
+        shop_deploy.clear_name_cache()
         self.assertTrue(shop_deploy.shop_name_allowed(socket.gethostname()))
-        self.assertTrue(shop_deploy.shop_name_allowed('192.168.1.20'))
         self.assertFalse(shop_deploy.shop_name_allowed('8.8.8.8'))
+        self.assertTrue(shop_deploy.shop_name_allowed('127.0.0.1'))
+        with patch('shop_deploy.lan_addresses', return_value=['192.168.1.20']):
+            shop_deploy.clear_name_cache()
+            self.assertTrue(shop_deploy.shop_name_allowed('192.168.1.20'))
+            self.assertFalse(shop_deploy.shop_name_allowed('192.168.1.21'))
+            self.assertFalse(shop_deploy.shop_name_allowed('10.1.1.1'))
+        shop_deploy.clear_name_cache()
 
     def test_host_header_allows_shop_names_only_in_lan_mode(self):
         old = (server.HOST, server.PORT, server.LAN)
@@ -189,10 +204,15 @@ class ShopDeployTests(unittest.TestCase):
             self.assertFalse(handler.local_name('shop-pc:8765'))
             server.LAN = True
             host = socket.gethostname()
-            self.assertTrue(handler.local_name(host + ':8765'))
-            self.assertTrue(handler.local_name('192.168.1.20:8765'))
-            self.assertFalse(handler.local_name('8.8.8.8:8765'))
-            self.assertFalse(handler.local_name(host + ':80'))
+            shop_deploy.clear_name_cache()
+            with patch('shop_deploy.lan_addresses', return_value=['192.168.1.20']):
+                shop_deploy.clear_name_cache()
+                self.assertTrue(handler.local_name(host + ':8765'))
+                self.assertTrue(handler.local_name('192.168.1.20:8765'))
+                self.assertFalse(handler.local_name('10.9.8.7:8765'))
+                self.assertFalse(handler.local_name('8.8.8.8:8765'))
+                self.assertFalse(handler.local_name(host + ':80'))
+            shop_deploy.clear_name_cache()
         finally:
             server.HOST, server.PORT, server.LAN = old
 
@@ -210,9 +230,10 @@ class ShopDeployTests(unittest.TestCase):
                 self.assertFalse(status['lan'])
                 self.assertIn('anyone on the shop lan can send to onyx', status['warning'].casefold())
                 self.assertIn('guest wifi', status['warning'].casefold())
-                self.assertTrue(status['updates'])
+                self.assertFalse(status['updates'])
+                self.assertEqual(status['outputTelemetryUrl'], 'https://output.jeezlabs.io/api/shop/telemetry')
                 self.assertEqual(status['version'], '1.0.0-rc.5')
-                self.assertIn(r'\\ONYX\EPSON SureColor S80600 ONYX Input', status['hotFolderDefault'])
+                self.assertIn(r'\\RIP\Example RIP Input', status['hotFolderDefault'])
             finally:
                 server.WORK, server.PORT, server.HOST, server.LAN = old
 
@@ -241,8 +262,15 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn('(OI)(CI)M', install)
         self.assertIn('(OI)(CI)W', install)
         self.assertIn('profile=private', install)
-        self.assertIn('Name: "noupdates"', script)
-        self.assertIn('Disable updates (offline install)', script)
+        self.assertIn('TlsCert', install)
+        self.assertIn('TlsKey', install)
+        self.assertIn('Recommended: use HTTPS', install)
+        self.assertIn('EZ_NEST_HTTPS_PROMPT', install)
+        self.assertIn('Name: "checkupdates"', script)
+        self.assertIn('Check for app updates (also set EZ_NEST_UPDATES=1)', script)
+        self.assertIn("Result := '0'", script)
+        self.assertIn('LicenseFile=..\\LICENSE', script)
+        self.assertIn('AppCopyright=Copyright (C) 2026 EZ Designs', script)
         self.assertIn('-Updates', script)
         self.assertIn('Excludes: "BUILD.json"', script)
         self.assertIn('{src}\\BUILD.json', script)
@@ -290,10 +318,13 @@ class ShopDeployTests(unittest.TestCase):
             self.assertTrue(saved['outputNetwork'])
             share = shop_deploy.output_network_status(saved)
             self.assertFalse(share['sends'])
-            self.assertIn('machine list', share['note'])
-            self.assertIn('free capacity', share['note'])
-            self.assertNotIn('http://', (root / 'shop.json').read_text(encoding='utf-8'))
-            self.assertNotIn('https://', (root / 'shop.json').read_text(encoding='utf-8'))
+            self.assertIn('does not send', share['note'])
+            self.assertIn('capacity', share['note'])
+            self.assertIn('off', share['note'].casefold())
+            saved_text = (root / 'shop.json').read_text(encoding='utf-8')
+            self.assertNotIn('http://', saved_text)
+            self.assertNotIn('https://', saved_text)
+            self.assertIn('"outputUrl": ""', saved_text)
 
     def test_release_links_follow_the_environment_and_need_no_token(self):
         self.assertNotIn('Authorization', shop_deploy._headers(shop_deploy.release_api(), ''))
@@ -326,6 +357,47 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn('install-shop.ps1', script)
         self.assertIn('uninstall-shop.ps1', script)
         self.assertIn('eznest-svc', script)
+
+    def test_output_service_url_is_allowlisted_and_https_only(self):
+        self.assertEqual(shop_deploy.output_base_url(), 'https://output.jeezlabs.io')
+        self.assertEqual(shop_deploy.normalize_output_base('https://user:secret@output.example'), '')
+        self.assertEqual(shop_deploy.normalize_output_base('http://output.example'), '')
+        self.assertEqual(shop_deploy.normalize_output_base('https://output.example/api'), '')
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            saved = shop_deploy.save_shop(root, False, False, outputUrl='https://output.jeezlabs.io')
+            self.assertEqual(saved['outputUrl'], 'https://output.jeezlabs.io')
+            self.assertEqual(shop_deploy.output_base_url(root), 'https://output.jeezlabs.io')
+            with self.assertRaisesRegex(ValueError, 'output.jeezlabs.io'):
+                shop_deploy.save_shop(root, False, False, outputUrl='https://output.example.test')
+            self.assertEqual(shop_deploy.load_shop(root)['outputUrl'], 'https://output.jeezlabs.io')
+            with patch.dict(os.environ, {'EZ_NEST_OUTPUT_URL': 'https://env.example.test'}):
+                self.assertEqual(shop_deploy.output_base_url(root), 'https://env.example.test')
+                saved = shop_deploy.save_shop(root, False, False, outputUrl='https://env.example.test')
+                self.assertEqual(saved['outputUrl'], 'https://env.example.test')
+                self.assertEqual(shop_deploy.load_shop(root)['outputUrl'], 'https://env.example.test')
+            with self.assertRaisesRegex(ValueError, 'https'):
+                shop_deploy.save_shop(root, False, False, outputUrl='http://insecure.example')
+            self.assertEqual(shop_deploy.load_shop(root)['outputUrl'], '')
+
+    def test_github_token_is_not_read_from_shop_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'github-token').write_text('file-secret\n', encoding='utf-8')
+            (root / 'shop.json').write_text(json.dumps({'githubToken': 'json-secret', 'updates': False}), encoding='utf-8')
+            with patch('shop_deploy._windows_credential', return_value='') as store:
+                self.assertEqual(shop_deploy.github_token(root), '')
+                if os.name == 'nt':
+                    store.assert_called_once_with('eznest/github-token')
+                else:
+                    store.assert_not_called()
+            with patch.dict(os.environ, {'EZ_NEST_GITHUB_TOKEN': 'env-secret'}):
+                self.assertEqual(shop_deploy.github_token(root), 'env-secret')
+            shop_deploy.save_shop(root, False, False)
+            text = (root / 'shop.json').read_text(encoding='utf-8')
+            self.assertNotIn('json-secret', text)
+            self.assertNotIn('githubToken', text)
+            self.assertEqual((root / 'github-token').read_text(encoding='utf-8'), 'file-secret\n')
 
     def test_send_names_a_missing_hot_folder(self):
         from output_folder import OutputFolder

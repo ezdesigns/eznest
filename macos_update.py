@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 import threading
-import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import fromstring as parse_untrusted_xml
 from functools import lru_cache
 from urllib.request import Request, build_opener, ProxyHandler
 
@@ -45,7 +45,7 @@ def publisher():
 
 def enabled(directory):
     return (runtime.active() and not runtime.maintenance() and
-            os.environ.get('EZ_NEST_UPDATES','1') != '0' and release.load_shop(directory)['updates'])
+            release.updates_allowed(directory))
 
 
 def verify_package(path, team, version, *, runner=subprocess.run):
@@ -79,7 +79,7 @@ def verify_package(path, team, version, *, runner=subprocess.run):
         raw=info.read_bytes()
         if b'<!DOCTYPE' in raw or b'<!ENTITY' in raw:
             raise ValueError('Unexpected package metadata declarations.')
-        root=ET.fromstring(raw)
+        root=parse_untrusted_xml(raw)
         if root.tag!='pkg-info' or root.get('identifier')!='io.jeezlabs.eznest.shop' or root.get('version')!=version.split('-',1)[0]:
             raise ValueError('The signed package is not the expected Ez Nest shop version.')
 

@@ -1,4 +1,5 @@
 """Synthetic production contracts; no claim of physical RIP/cutter validation."""
+import opt_out
 import copy
 import io
 import json

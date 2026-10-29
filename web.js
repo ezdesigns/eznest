@@ -61,8 +61,8 @@ function installSettingsHelp() {
     'staging-on': ['Keep an extra copy', 'Also save the finished pack in the extra copy folder when you send it.'],
     'staging-folder': ['Extra copy folder', 'Choose where the extra copy is saved. This does not replace the main destination.'],
     'onyx-pc': ['This PC runs ONYX', 'Changes the suggested output folder for this PC. It does not install ONYX or move your files.'],
-    'lan': ['Other computers can connect', 'Shows whether this app was started for the shop network. A saved setting cannot open network access. The separate trial stays on this PC.'],
-    'updates': ['Look for app updates', 'Checks for newer app versions. Separate shop trials keep update checks off and are updated by opening a new tested build.'],
+    'lan': ['Other computers can connect', 'Shows whether this app was started with --lan. The box is disabled because the startup task controls it. A saved setting cannot open the shop network. The installer applies Shop network only on a fresh install. Change it later by running install-shop.ps1 again with -Lan 1 or -Lan 0 and -StartAtBoot 1, then restart.'],
+    'updates': ['Look for app updates', 'Off during beta. Check this box and start Ez Nest with EZ_NEST_UPDATES=1. A download is kept only when its SHA-256 matches. Installing is still a separate click.'],
     'test-channel': ['Include test versions', 'When update checks are enabled, also show releases still being tested. Leave off for normal shop use.'],
     'allow-undo': ['Undo send', 'Lets you remove a sent pack while it is still in the output folder. This cannot stop a job that ONYX has already picked up.'],
     'preset-name': ['Material name', 'The name on the material button. Save separate materials when rolls need different widths or spacing.'],
@@ -167,9 +167,16 @@ async function sha256(data) {
 function fetchJson(path, ms) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
-  return fetch(path, {signal: controller.signal}).then(response => {
+  return fetch(path, {signal: controller.signal}).then(async response => {
     clearTimeout(timer);
-    if (!response.ok) throw Error('Request failed.');
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      if (body.code === 'connect_required') {
+        location.reload();
+        throw Error(body.error || 'Connect to OUTPUT.');
+      }
+      throw Error('Request failed.');
+    }
     return response.json();
   }, error => {
     clearTimeout(timer);
@@ -233,15 +240,25 @@ async function ensureStyles() {
   if (!stylesApplied()) throw Error('The shop stylesheet did not load.');
 }
 
+function withToken(headers) {
+  const copy = Object.assign({}, headers);
+  if (token) copy['X-EZ-Token'] = token;
+  return copy;
+}
+
 async function api(path, data, file) {
   const response = await fetch(path, {
     method: 'POST',
-    headers: file ? {'Content-Type': 'application/pdf', 'X-EZ-Token': token, 'X-EZ-Import': encodeURIComponent(JSON.stringify(data || {}))} : {'Content-Type': 'application/json', 'X-EZ-Token': token},
+    headers: file ? withToken({'Content-Type': 'application/pdf', 'X-EZ-Import': encodeURIComponent(JSON.stringify(data || {}))}) : withToken({'Content-Type': 'application/json'}),
     body: file || JSON.stringify(data || {})
   });
   const body = await response.json();
   if (!response.ok) {
+    if (body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/')) {
+      location.reload();
+    }
     const error = Error(body.error || 'Request failed.');
+    error.code = body.code;
     if (path === '/api/document/import' || path === '/api/document/import-file') {
       error.guideReview = body.guideReview; error.cutReview = body.cutReview;
     }
@@ -264,7 +281,7 @@ const CUT_PRESETS = {
   ln: {thru: 'LNThru-cut', kiss: 'LNKiss-cut'},
   output: {thru: 'CutContour_Thru-cut', kiss: 'CutContour_Kiss-cut'}
 };
-const HOT_FOLDER_LABEL = 'EPSON SureColor S80600 ONYX Input';
+const HOT_FOLDER_LABEL = 'Example RIP Input';
 
 function autoBleedMm() {
   return 0; // Prepared artwork keeps its original size and bleed.
@@ -1911,7 +1928,7 @@ function showLan(shop) {
   const on = $('lan').checked;
   $('lan-access').hidden = !on;
   $('lan-note').hidden = !on;
-  $('lan-note').textContent = (shop && shop.warning) || 'Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.';
+  $('lan-note').textContent = (shop && shop.warning) || 'Shop computers need the shop PIN before they can nest or send. Anyone on the shop LAN can Send to ONYX after that PIN. Do not share this network with guest WiFi.';
   const bits = [];
   if (shop && shop.url) bits.push(shop.url);
   if (shop && shop.addresses && shop.addresses.length) bits.push(shop.addresses[0]);
@@ -1920,8 +1937,38 @@ function showLan(shop) {
 }
 
 function showHotDefault(path) {
-  $('hot-default').textContent = path ? 'EZ Designs preset: ' + path : '';
+  $('hot-default').textContent = path ? 'Example shop preset: ' + path : '';
   if (!$('hot-folder').value && path) $('hot-folder').placeholder = path;
+}
+
+function outputUrlField() {
+  const input = $('output-url');
+  if (!input || input.disabled) return null;
+  const value = input.value.trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || (url.pathname && url.pathname !== '/')) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function showOutputService(shop) {
+  const input = $('output-url');
+  if (!input || !shop) return;
+  const locked = shop.outputUrlSource === 'environment';
+  input.disabled = locked;
+  if (document.activeElement !== input) input.value = shop.outputUrl || '';
+  const destination = $('output-destination');
+  if (destination) destination.textContent = shop.outputTelemetryUrl || 'https://output.jeezlabs.io/api/shop/telemetry';
+  const note = $('output-url-note');
+  if (note) {
+    note.textContent = locked
+      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Activity sharing stays off until you agree. The account connection is required.'
+      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree. The account connection is required.';
+  }
 }
 
 function showRestart(shop) {
@@ -1939,7 +1986,8 @@ function applyShop(shop) {
   $('app-version').textContent = (shop.version || '') + (shop.buildId ? ' · build ' + shop.buildId : '');
   $('onyx-pc').checked = shop.onyxPc === true;
   $('lan').checked = shop.runningLan === true;
-  $('updates').checked = !shop || shop.updates !== false;
+  $('updates').checked = !!(shop && shop.updates === true);
+  showOutputService(shop);
   $('update').hidden = !$('updates').checked;
   $('test-channel').checked = shop.channel === 'test';
   $('output-network').checked = shop.outputNetwork === true;
@@ -2028,13 +2076,16 @@ async function saveSetup(shop) {
 }
 
 function shopPayload(extra) {
-  return Object.assign({
+  const payload = Object.assign({
     lan: $('lan').checked,
     onyxPc: $('onyx-pc').checked,
     updates: $('updates').checked,
     channel: $('test-channel').checked ? 'test' : 'stable',
     outputNetwork: $('output-network').checked
   }, extra || {});
+  const outputUrl = outputUrlField();
+  if (outputUrl !== null) payload.outputUrl = outputUrl;
+  return payload;
 }
 
 async function saveDeploy() {
@@ -2388,6 +2439,23 @@ function restoreJob(state) {
 let outputSharing = null;
 function renderOutputSharing(info) {
   outputSharing = info;
+  const source = info.connection;
+  const paired = source === 'paired';
+  const launch = source === 'environment' || source === 'environment-invalid';
+  $('output-connect-shop').hidden = !paired;
+  $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
+  $('output-pair-form').hidden = paired || launch || source === 'disabled';
+  $('output-disconnect').hidden = !paired;
+  $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
+  $('output-disconnect').disabled = !paired || info.paused;
+  const connectStatus = $('output-connect-status');
+  connectStatus.classList.remove('error');
+  if (info.paused) connectStatus.textContent = 'Sharing is paused during installation or recovery.';
+  else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.';
+  else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
+  else if (paired && info.requiresConsent) connectStatus.textContent = 'Review the sharing details below, then choose Enable sharing.';
+  else if (paired) connectStatus.textContent = '';
+  else connectStatus.textContent = 'This computer is connected. Paste a new pairing code only when you need to connect again.';
   $('telemetry-agree').checked = false;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
   $('telemetry-enable').disabled = true;
@@ -2396,7 +2464,7 @@ function renderOutputSharing(info) {
   $('telemetry-bands').textContent = 'Measurement range widths (null means unknown; 0 means zero): ' + Object.entries(info.bands).map(([key, step]) => key + ': ' + step).join('; ') + '.';
   const bands = Object.fromEntries(Object.entries(info.bands).map(([key, step]) => [key, `[${step},${step * 2})`]));
   $('telemetry-preview').textContent = JSON.stringify({schema: info.schema, requestId: '00000000-0000-5000-8000-000000000001', kind: 'nest.created', instanceId: info.instanceId, nestId: '00000000000000000000000000000001', occurredAt: '2026-01-01T00:00:00.000000Z', appVersion: info.appVersion, materialClass: 'moto_regular', bands}, null, 2);
-  $('telemetry-status').textContent = info.paused ? 'Sharing paused during installation or recovery. Refresh after the host restarts to change sharing settings.' : !info.configured ? 'Off. An operator must configure approved OUTPUT delivery on this host before you can enable it.' : info.enabled ? `Sharing new activity. ${info.pendingEvents} pending. ${info.withheldEvents} invalid observations kept only on this host. ${info.lastError || (info.lastDeliveredAt ? 'Last receipt: ' + info.lastDeliveredAt : 'No confirmed delivery yet.')}` : 'Off. Review the fields above to enable sharing.';
+  $('telemetry-status').textContent = info.paused ? 'Sharing paused during installation or recovery. Refresh after the host restarts to change sharing settings.' : !info.configured ? 'Off. Connect this computer to OUTPUT, then review the fields below.' : info.enabled ? `Sharing new activity. ${info.pendingEvents} pending. ${info.withheldEvents} invalid observations kept only on this host. ${info.lastError || (info.lastDeliveredAt ? 'Last receipt: ' + info.lastDeliveredAt : 'No confirmed delivery yet.')}` : 'Off. Activity sharing stays off until you agree. The account connection stays in place.';
 }
 async function refreshOutputSharing() {
   try {
@@ -2407,6 +2475,50 @@ async function refreshOutputSharing() {
     outputSharing = null;
     $('telemetry-agree').disabled = $('telemetry-enable').disabled = $('telemetry-stop').disabled = true;
     $('telemetry-status').textContent = error.message;
+  }
+}
+async function connectOutput() {
+  const input = $('output-pair-code');
+  const status = $('output-connect-status');
+  const code = input.value.trim();
+  if (!code) {
+    status.textContent = 'Paste the pairing code from OUTPUT.';
+    status.classList.add('error');
+    return;
+  }
+  $('output-pair').disabled = true;
+  try {
+    const response = await fetch('/api/telemetry/output/pair', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-EZ-Token': token},
+      body: JSON.stringify({code})
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      const failure = Error(body.error || 'Could not connect to OUTPUT.');
+      failure.reason = body.reason;
+      throw failure;
+    }
+    input.value = '';
+    renderOutputSharing(body);
+    if (body.requiresConsent && !$('telemetry-agree').disabled) $('telemetry-agree').focus();
+  } catch (error) {
+    if (['invalid_code', 'expired', 'consumed', 'limit', 'replay', 'unexpected', 'rejected'].includes(error.reason)) input.value = '';
+    await refreshOutputSharing().catch(() => {});
+    status.textContent = error.message;
+    status.classList.add('error');
+  }
+}
+async function disconnectOutput() {
+  if (!window.confirm('Disconnect this computer from OUTPUT? Ez Nest stops until this computer connects again.')) return;
+  $('output-disconnect').disabled = true;
+  try {
+    await api('/api/telemetry/output/disconnect', {});
+    location.reload();
+  } catch (error) {
+    $('output-connect-status').textContent = error.message;
+    $('output-connect-status').classList.add('error');
+    refreshOutputSharing().catch(() => {});
   }
 }
 async function changeOutputSharing(enable) {
@@ -2446,9 +2558,29 @@ async function boot() {
   $('allow-hold').checked = stored.hold === true;
   await ensureLibraries();
   await ensureStyles();
-  const session = await fetchJsonRetry('/api/session');
-  token = session.token;
+  let session = await fetchJsonRetry('/api/session');
+  token = session.token || '';
   localSave = session.localSave === true;
+  showOutputBanner(session);
+  if (session.outputConnection && !session.outputConnection.ok) {
+    await requireOutputConnection(session);
+    session = await fetchJsonRetry('/api/session');
+    token = session.token || '';
+    showOutputBanner(session);
+  }
+  if (session.localPC && session.pinWeak) {
+    await requireHostPinReset();
+    session = await fetchJsonRetry('/api/session');
+  }
+  if (session.localPC && $('shop-pin')) {
+    $('shop-pin').hidden = false;
+    showPinNotices(session);
+  } else if (!session.localPC && !session.authenticated) {
+    await requireShopPin(session);
+    $('logout').hidden = false;
+  } else if (!session.localPC) {
+    $('logout').hidden = false;
+  }
   await refreshInventory().catch(() => {});
   if (inventoryReady && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
   if (inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) applyMaterial(true);
@@ -2478,6 +2610,189 @@ async function boot() {
   document.body.dataset.ready = '1';
   await autoLoadIllustrator();
   setInterval(() => { if (!document.hidden && !inventoryBusy) refreshInventory().catch(() => {}); }, 10000);
+}
+
+function showOutputBanner(session) {
+  const banner = $('output-banner');
+  if (!banner) return;
+  const text = session && session.outputConnection && session.outputConnection.banner;
+  banner.hidden = !text;
+  banner.textContent = text || '';
+}
+
+function requireOutputConnection(session) {
+  const gate = $('output-gate');
+  const info = session.outputConnection || {};
+  const fields = $('output-gate-fields');
+  const lan = $('output-gate-lan');
+  const error = $('output-gate-error');
+  const check = $('output-gate-check');
+  gate.addEventListener('cancel', event => event.preventDefault());
+  error.hidden = true;
+  $('output-gate-note').textContent = info.message || 'Connect this computer to OUTPUT.';
+  if (!session.localPC) {
+    fields.hidden = true;
+    check.hidden = true;
+    lan.hidden = false;
+    lan.textContent = info.message || 'Ask the shop computer to connect to OUTPUT.';
+    gate.showModal();
+    return new Promise(() => {});
+  }
+  lan.hidden = true;
+  fields.hidden = info.canPair === false;
+  check.hidden = !info.canCheckIn;
+  gate.showModal();
+  const input = $('output-gate-code');
+  if (!fields.hidden) input.focus();
+  return new Promise(resolve => {
+    const finish = async () => {
+      input.value = '';
+      const next = await fetchJsonRetry('/api/session');
+      if (next.outputConnection && next.outputConnection.ok) {
+        gate.close();
+        resolve();
+      }
+    };
+    $('output-gate-form').onsubmit = async event => {
+      event.preventDefault();
+      const code = input.value.trim();
+      if (!code) {
+        error.hidden = false;
+        error.textContent = 'Paste the pairing code from OUTPUT.';
+        return;
+      }
+      $('output-gate-submit').disabled = true;
+      try {
+        const response = await fetch('/api/telemetry/output/pair', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-EZ-Token': token},
+          body: JSON.stringify({code})
+        });
+        const body = await response.json();
+        if (!response.ok) throw Error(body.error || 'Could not connect to OUTPUT.');
+        input.value = '';
+        await finish();
+        $('output-gate-submit').disabled = false;
+      } catch (err) {
+        input.value = '';
+        error.hidden = false;
+        error.textContent = err.message;
+        $('output-gate-submit').disabled = false;
+      }
+    };
+    check.onclick = async () => {
+      check.disabled = true;
+      try {
+        const body = await api('/api/telemetry/output/check-in', {});
+        if (body.ok) await finish();
+        else {
+          error.hidden = false;
+          error.textContent = body.message || 'OUTPUT could not be reached.';
+          check.disabled = false;
+        }
+      } catch (err) {
+        error.hidden = false;
+        error.textContent = err.message;
+        check.disabled = false;
+      }
+    };
+  });
+}
+
+function requireHostPinReset() {
+  const gate = $('pin-gate');
+  const note = $('pin-note');
+  const input = $('pin-input');
+  const submit = $('pin-submit');
+  const error = $('pin-error');
+  $('pin-title').textContent = 'Replace the shop PIN';
+  note.textContent = 'This PIN is from before the current rule. Designer computers can keep using it until you save a new one here. Use 8 to 12 digits, or a passphrase of at least 10 characters with a letter.';
+  input.hidden = false;
+  input.value = '';
+  submit.hidden = false;
+  submit.textContent = 'Save new PIN';
+  submit.disabled = false;
+  error.hidden = true;
+  gate.addEventListener('cancel', event => event.preventDefault());
+  gate.showModal();
+  input.focus();
+  return new Promise(resolve => {
+    $('pin-form').onsubmit = async event => {
+      event.preventDefault();
+      submit.disabled = true;
+      try {
+        await api('/api/pin', {pin: input.value});
+        input.value = '';
+        gate.close();
+        resolve();
+      } catch (err) {
+        error.hidden = false;
+        error.textContent = err.message;
+        submit.disabled = false;
+      }
+    };
+  });
+}
+
+function showPinNotices(session) {
+  const box = $('pin-alert');
+  const text = $('pin-alert-text');
+  const ack = $('pin-alert-ack');
+  if (!box || !session || !session.localPC) return;
+  const parts = [];
+  if (session.pinAlert && session.pinAlert.active) {
+    parts.push('Shop PIN failures are arriving from the network (' + session.pinAlert.failures + ' since you last reviewed them). This does not lock anyone out. Each address still waits longer after repeated tries.');
+  }
+  if (session.pinWeak) parts.push('This shop PIN was saved before the current rule. Set a new one: 8 to 12 digits, or a passphrase of at least 10 characters with a letter.');
+  box.hidden = parts.length === 0;
+  text.textContent = parts.join(' ');
+  ack.hidden = !(session.pinAlert && session.pinAlert.active);
+}
+
+function requireShopPin(session) {
+  const gate = $('pin-gate');
+  const note = $('pin-note');
+  const input = $('pin-input');
+  const submit = $('pin-submit');
+  const error = $('pin-error');
+  error.hidden = true;
+  error.textContent = '';
+  if (!session.pinConfigured) {
+    note.textContent = 'Ask the person at the shop computer to set a PIN, then refresh this page.';
+    input.hidden = true;
+    submit.hidden = true;
+    gate.showModal();
+    return new Promise(() => {});
+  }
+  note.textContent = session.pinWeak
+    ? 'This PIN still works. The shop computer must replace it. You can keep nesting until then. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.'
+    : 'Enter the shop PIN or passphrase from the computer that runs Ez Nest. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.';
+  input.hidden = false;
+  submit.hidden = false;
+  gate.showModal();
+  input.focus();
+  return new Promise(resolve => {
+    $('pin-form').onsubmit = async event => {
+      event.preventDefault();
+      submit.disabled = true;
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({pin: input.value})
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw Error(body.error || 'Could not sign in.');
+        input.value = '';
+        gate.close();
+        resolve();
+      } catch (err) {
+        error.hidden = false;
+        error.textContent = err.message;
+        submit.disabled = false;
+      }
+    };
+  });
 }
 
 function stockInput(mm, unit) { return String(Number((mm / EZNQueue.unitScale(unit)).toFixed(3))); }
@@ -2741,6 +3056,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('settings-telemetry').addEventListener('toggle', () => { if ($('settings-telemetry').open) refreshOutputSharing(); });
   $('telemetry-refresh').addEventListener('click', refreshOutputSharing);
   $('telemetry-agree').addEventListener('change', () => { $('telemetry-enable').disabled = !outputSharing || !outputSharing.configured || outputSharing.enabled || outputSharing.paused || !$('telemetry-agree').checked; });
+  $('output-pair').addEventListener('click', connectOutput);
+  $('output-disconnect').addEventListener('click', disconnectOutput);
+  $('output-pair-code').addEventListener('keydown', event => {
+    if (event.key === 'Enter') { event.preventDefault(); connectOutput(); }
+  });
   $('telemetry-enable').addEventListener('click', () => changeOutputSharing(true));
   $('telemetry-stop').addEventListener('click', () => changeOutputSharing(false));
   dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });
@@ -2850,9 +3170,35 @@ document.addEventListener('DOMContentLoaded', () => {
     saveShop();
   });
   $('staging-folder').addEventListener('change', saveShop);
+  $('shop-pin-save').addEventListener('click', () => {
+    const input = $('shop-pin-input');
+    const error = $('shop-pin-error');
+    api('/api/pin', {pin: input.value}).then(() => {
+      input.value = '';
+      error.hidden = true;
+      status('Shop PIN saved on this computer.');
+      return fetchJson('/api/session').then(showPinNotices);
+    }).catch(err => {
+      error.hidden = false;
+      error.textContent = err.message;
+    });
+  });
+  $('pin-alert-ack').addEventListener('click', () => {
+    api('/api/pin/alert/ack', {}).then(() => fetchJson('/api/session').then(showPinNotices)).catch(err => status(err.message, true));
+  });
+  $('logout').addEventListener('click', () => {
+    fetch('/api/logout', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'}).finally(() => location.reload());
+  });
   $('lan').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('onyx-pc').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('updates').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  if ($('output-url')) $('output-url').addEventListener('change', () => {
+    if (outputUrlField() === null) {
+      status('OUTPUT address must be an https URL with no path or password.', true);
+      return;
+    }
+    saveDeploy().catch(error => status(error.message, true));
+  });
   $('test-channel').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('output-network').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('printer').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });

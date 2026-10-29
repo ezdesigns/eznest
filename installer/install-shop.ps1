@@ -9,7 +9,12 @@ param(
   [string]$OnyxPc = '0',
   [string]$Lan = '0',
   [string]$StartAtBoot = '0',
-  [string]$Updates = '1'
+  [string]$Updates = '0',
+  # localsubnet, or the designer PCs' IPv4 addresses separated by commas.
+  [string]$LanPeers = 'localsubnet',
+  # Optional local HTTPS. Set both. The installer leaves HTTP when these are empty.
+  [string]$TlsCert = '',
+  [string]$TlsKey = ''
 )
 
 # An installer launched from PowerShell 7 can inherit its incompatible modules.
@@ -50,23 +55,33 @@ function Ensure-ServiceAccount([string]$Name) {
   }
   $accountSid = (Get-LocalUser -Name $Name).SID
   $admins = Get-LocalGroup -SID 'S-1-5-32-544'
+  # Domain-joined PCs often have an unresolvable SID in Administrators.
+  # Listing that group then fails a retry after the account already exists.
+  # Remove by name, and fail only when the account is still a member.
   try {
-    $adminMembers = @(Get-LocalGroupMember -Group $admins.Name -ErrorAction Stop)
+    Remove-LocalGroupMember -Group $admins.Name -Member $Name -ErrorAction Stop
   } catch {
-    if ($null -ne $user) { throw }
-    $adminMembers = @()
-  }
-  foreach ($member in $adminMembers) {
-    if ($member.SID -eq $accountSid) {
-      Remove-LocalGroupMember -Group $admins.Name -Member $Name
+    $notMember = $_.Exception.Message -match 'is not a member|No mapping between account names|cannot find|cannot be resolved'
+    if (-not $notMember) {
+      $stillAdmin = $false
+      try {
+        foreach ($member in @(Get-LocalGroupMember -Group $admins.Name -ErrorAction Stop)) {
+          if ($member.SID -eq $accountSid) { $stillAdmin = $true }
+        }
+      } catch {
+        throw "Could not confirm that $Name is outside Administrators. Shop setup stopped so the service account is not left as an administrator. $($_.Exception.Message)"
+      }
+      if ($stillAdmin) { throw "Could not remove $Name from Administrators." }
     }
   }
   $users = Get-LocalGroup -SID 'S-1-5-32-545'
-  $inUsers = $false
-  foreach ($member in @(Get-LocalGroupMember -Group $users.Name -ErrorAction SilentlyContinue)) {
-    if ($member.SID -eq $accountSid) { $inUsers = $true }
+  try {
+    Add-LocalGroupMember -Group $users.Name -Member $Name -ErrorAction Stop
+  } catch {
+    if ($_.Exception.Message -notmatch 'already a member|already exists') {
+      throw "Could not add $Name to Users. The shop service must be a normal local user. $($_.Exception.Message)"
+    }
   }
-  if (-not $inUsers) { Add-LocalGroupMember -Group $users.Name -Member $Name -ErrorAction SilentlyContinue }
   return $password
 }
 
@@ -75,12 +90,45 @@ function Grant-Folder([string]$Account, [string]$Folder, [string]$Rights) {
   if ($LASTEXITCODE -ne 0) { throw "Could not grant $Account permission on $Folder." }
 }
 
+function Test-LanPeers([string]$Value) {
+  if ($Value -eq 'localsubnet') { return $true }
+  $parts = @($Value.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  if ($parts.Count -lt 1 -or $parts.Count -gt 16) { return $false }
+  foreach ($part in $parts) {
+    if ($part -notmatch '^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$') { return $false }
+  }
+  return $true
+}
+
+function Protect-DataDirectory([string]$Folder, [string]$Account) {
+  # ProgramData lets Users create files. Remove that inheritance and keep
+  # SYSTEM, Administrators, and the shop service account.
+  # (OI)(CI) belongs on the directory so new children inherit it. Copying those
+  # flags onto an existing file with /T and /grant:r leaves the file with no
+  # effective access. Files get the same three principals without inherit-only flags.
+  $inherit = @('SYSTEM:(OI)(CI)F', 'Administrators:(OI)(CI)F')
+  $object = @('SYSTEM:F', 'Administrators:F')
+  if ($Account) {
+    $inherit += "${Account}:(OI)(CI)M"
+    $object += "${Account}:M"
+  }
+  & icacls.exe $Folder /inheritance:r /grant:r @inherit
+  if ($LASTEXITCODE -ne 0) { throw "Could not lock down $Folder to SYSTEM, Administrators, and the shop service account." }
+  foreach ($child in @(Get-ChildItem -LiteralPath $Folder -Force -Recurse)) {
+    $grant = if ($child.PSIsContainer) { $inherit } else { $object }
+    & icacls.exe $child.FullName /inheritance:r /grant:r @grant
+    if ($LASTEXITCODE -ne 0) { throw "Could not lock down $($child.FullName) to SYSTEM, Administrators, and the shop service account." }
+  }
+}
+
 function Grant-BatchLogon([string]$Account) {
   $sid = (New-Object System.Security.Principal.NTAccount($Account)).Translate([System.Security.Principal.SecurityIdentifier]).Value
   $cfg = Join-Path $env:TEMP ('eznest-rights-' + [guid]::NewGuid().ToString('n') + '.inf')
   $db = Join-Path $env:TEMP ('eznest-rights-' + [guid]::NewGuid().ToString('n') + '.sdb')
   & secedit.exe /export /cfg $cfg /areas USER_RIGHTS /quiet | Out-Null
-  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $cfg)) { return }
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $cfg)) {
+    throw 'Windows could not export the user-rights policy, so eznest-svc cannot be granted batch logon. Shop setup stopped before creating the startup task.'
+  }
   $lines = New-Object System.Collections.Generic.List[string]
   foreach ($line in [System.IO.File]::ReadAllLines($cfg)) { [void]$lines.Add($line) }
   $marker = '*' + $sid
@@ -93,16 +141,47 @@ function Grant-BatchLogon([string]$Account) {
   }
   if (-not $found) {
     $at = $lines.IndexOf('[Privilege Rights]')
-    if ($at -lt 0) { return }
+    if ($at -lt 0) { throw 'Windows user-rights policy has no Privilege Rights section, so batch logon cannot be granted.' }
     $lines.Insert($at + 1, ('SeBatchLogonRight = ' + $marker))
   }
   $utf16 = New-Object System.Text.UnicodeEncoding $false, $true
   [System.IO.File]::WriteAllText($cfg, (($lines -join "`r`n") + "`r`n"), $utf16)
   & secedit.exe /configure /db $db /cfg $cfg /areas USER_RIGHTS /quiet | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "secedit could not apply batch logon (exit $LASTEXITCODE). Startup registration will still be attempted."
+  }
   Remove-Item -LiteralPath $cfg, $db, ($db + '.jfm') -Force -ErrorAction SilentlyContinue
 }
 
 $ErrorActionPreference = 'Stop'
+if (-not (Test-LanPeers $LanPeers)) {
+  throw 'Designer PC addresses must be localsubnet or a comma-separated list of IPv4 addresses.'
+}
+if (($TlsCert -eq '') -ne ($TlsKey -eq '')) {
+  throw 'Set both -TlsCert and -TlsKey, or leave both empty. HTTP stays the default.'
+}
+if ($TlsCert -match '[\r\n"]' -or $TlsKey -match '[\r\n"]') {
+  throw 'TLS certificate paths cannot contain quotes or line breaks.'
+}
+$httpsLater = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -DataDir "' + $DataDir + '" -App "' + $App + '" -Lan ' + $Lan + ' -StartAtBoot ' + $StartAtBoot + ' -TlsCert C:\ProgramData\eznest\eznest-cert.pem -TlsKey C:\ProgramData\eznest\eznest-key.pem'
+if (-not $TlsCert -and -not $TlsKey) {
+  Write-Host ''
+  Write-Host 'Recommended: use HTTPS so a PIN session cannot be copied from the shop network.'
+  Write-Host 'This install keeps HTTP so setup does not stop.'
+  Write-Host 'Before you enable it, create the certificate and run: icacls C:\ProgramData\eznest\eznest-key.pem /inheritance:r /grant:r *S-1-5-18:(R) *S-1-5-32-544:(R) eznest-svc:(R)'
+  Write-Host 'To enable HTTPS later:'
+  Write-Host ('  ' + $httpsLater)
+  $ask = $env:EZ_NEST_HTTPS_PROMPT -eq '1'
+  if (-not $ask -and $env:EZ_NEST_HTTPS_PROMPT -ne '0' -and $env:GITHUB_ACTIONS -ne 'true' -and $env:CI -ne 'true') {
+    try { $ask = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected } catch { $ask = $false }
+  }
+  if ($ask) {
+    $choice = Read-Host 'Press Enter to continue with HTTP, or type HTTPS to stop and use the command above'
+    if ($choice -eq 'HTTPS') {
+      throw 'Stopped before changing this PC. HTTP is still the default. Rerun with -TlsCert and -TlsKey when the key is restricted.'
+    }
+  }
+}
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 $onyx = $OnyxPc -eq '1'
 $lanEnabled = $Lan -eq '1'
@@ -139,7 +218,7 @@ if (Get-ScheduledTask -TaskName $task -TaskPath '\' -ErrorAction SilentlyContinu
 }
 if ($boot) {
   $password = Ensure-ServiceAccount $account
-  Grant-Folder $account $DataDir '(OI)(CI)M'
+  Protect-DataDirectory $DataDir $account
   $savedHot = Join-Path $DataDir 'output-folder.json'
   if (Test-Path -LiteralPath $savedHot) {
     try {
@@ -153,6 +232,7 @@ if ($boot) {
   Grant-BatchLogon $account
   $launchArguments = '--web --no-browser --data-dir "' + $DataDir + '"'
   if ($lanEnabled) { $launchArguments += ' --lan' }
+  if ($TlsCert -and $TlsKey) { $launchArguments += ' --tls-cert "' + $TlsCert + '" --tls-key "' + $TlsKey + '"' }
   $action = New-ScheduledTaskAction -Execute $App -Argument $launchArguments
   $trigger = New-ScheduledTaskTrigger -AtStartup
   $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
@@ -161,14 +241,34 @@ if ($boot) {
     # in a child process command line, script, or log.
     Register-ScheduledTask -TaskName $task -TaskPath '\' -Action $action -Trigger $trigger -Settings $settings -User $account -Password $password -RunLevel Limited -Force | Out-Null
   } finally { $password = $null }
+} else {
+  Protect-DataDirectory $DataDir ''
 }
 & netsh.exe advfirewall firewall delete rule name=eznest | Out-Null
 if ($lanEnabled) {
-  & netsh.exe advfirewall firewall add rule name=eznest dir=in action=allow protocol=TCP localport=8765 profile=private
+  # Private profile only. remoteip defaults to this subnet, or the designer PCs passed in -LanPeers.
+  & netsh.exe advfirewall firewall add rule name=eznest dir=in action=allow protocol=TCP localport=8765 profile=private "remoteip=$LanPeers"
   if ($LASTEXITCODE -ne 0) { throw 'Could not open the shop-network port.' }
 }
 if ($boot) {
-  Start-ScheduledTask -TaskName $task -TaskPath '\'
+  $started = $false
+  $startError = 'The startup task did not start.'
+  foreach ($attempt in 1..5) {
+    try {
+      Start-ScheduledTask -TaskName $task -TaskPath '\'
+      $started = $true
+      break
+    } catch {
+      $startError = $_.Exception.Message
+      if ($attempt -lt 5) { Start-Sleep -Seconds 2 }
+    }
+  }
+  if (-not $started) {
+    throw "The eznest startup task is registered but did not start ($startError). The limited account needs 'Log on as a batch job'. Sign out and back in, or restart this PC, then run the installer again."
+  }
 }
+Write-Host 'Connect this computer to OUTPUT before the shop nests.'
+Write-Host 'Open http://127.0.0.1:8765/web and paste a pairing code from https://output.jeezlabs.io/outpost/ez-nest.'
+Write-Host 'Activity sharing stays off until Enable sharing. This installer does not ask for or store a pairing code.'
 
 

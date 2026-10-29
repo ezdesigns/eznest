@@ -1,3 +1,4 @@
+import opt_out
 import copy
 import json
 import tempfile
@@ -62,10 +63,10 @@ class ProductionTests(unittest.TestCase):
         job=fixture()
         job['settings']['drawRegmarks']=True
         job['settings']['markMargin']=6
-        job['media']={'name':'White gloss','printer':'Epson S80600','quickSet':'Substance Gloss GL [EZ Designs 80600] @ 720-CT','hotFolderLabel':'EPSON SureColor S80600 ONYX Input','printableWidthMm':1308.1,'rollWidthMm':1371.6,'markMarginMm':12.7}
+        job['media']={'name':'White gloss','printer':'Example printer','quickSet':'Example RIP quick set','hotFolderLabel':'Example RIP Input','printableWidthMm':1308.1,'rollWidthMm':1371.6,'markMarginMm':12.7}
         data,details=make_package(job,result(),'a'*32,source,source)
-        self.assertEqual(details['media']['hotFolderLabel'],'EPSON SureColor S80600 ONYX Input')
-        self.assertEqual(details['media']['quickSet'],'Substance Gloss GL [EZ Designs 80600] @ 720-CT')
+        self.assertEqual(details['media']['hotFolderLabel'],'Example RIP Input')
+        self.assertEqual(details['media']['quickSet'],'Example RIP quick set')
         with ZipFile(BytesIO(data)) as archive:
             artwork=archive.read('artwork.svg').decode()
         self.assertIn('LNRegmark', artwork)

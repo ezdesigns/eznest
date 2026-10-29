@@ -1,4 +1,5 @@
 """Synthetic PDF regressions: compound masks and closed internal slits."""
+import opt_out
 import io
 import tempfile
 import unittest

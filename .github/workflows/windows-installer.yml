@@ -51,11 +51,47 @@ jobs:
           $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe"
           $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.3.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
-          Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait
-          $isccDir = "${env:ProgramFiles(x86)}\Inno Setup 6"
-          $iscc = Join-Path $isccDir "ISCC.exe"
-          if (-not (Test-Path $iscc)) { throw "ISCC missing after install (expected $iscc)" }
+          $pinnedDir = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6.7.3"
+          $start = New-Object System.Diagnostics.ProcessStartInfo
+          $start.FileName = $installer
+          $start.Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /PORTABLE=1 /DIR=""$pinnedDir"""
+          $start.UseShellExecute = $true
+          $process = [System.Diagnostics.Process]::Start($start)
+          $process.WaitForExit()
+          if ($process.ExitCode -ne 0) { throw "Inno Setup 6.7.3 installer failed with exit code $($process.ExitCode)" }
+          $candidates = @(
+            (Join-Path $pinnedDir "ISCC.exe"),
+            (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"),
+            (Join-Path $env:ProgramFiles "Inno Setup 6.7.3\ISCC.exe"),
+            (Join-Path $env:ProgramFiles "Inno Setup 6\ISCC.exe")
+          )
+          $previousNative = $PSNativeCommandUseErrorActionPreference
+          $PSNativeCommandUseErrorActionPreference = $false
+          $chosen = $null
+          $reports = New-Object System.Collections.Generic.List[string]
+          try {
+            foreach ($candidate in $candidates) {
+              if (-not (Test-Path -LiteralPath $candidate)) { continue }
+              $help = & $candidate '/?' 2>&1 | Out-String
+              $engine = '' | & $candidate '/O-' '-' 2>&1 | Out-String
+              $reported = "$help`n$engine"
+              $reports.Add("$candidate`n$reported")
+              if ($reported -match 'Inno Setup 6\.7\.3(\D|$)') {
+                $chosen = $candidate
+                break
+              }
+            }
+          } finally {
+            $PSNativeCommandUseErrorActionPreference = $previousNative
+          }
+          if (-not $chosen) {
+            throw "Inno Setup 6.7.3 is not present after install. Expected ISCC under '$pinnedDir'. Compiler output:`n$($reports -join "`n---`n")"
+          }
+          $isccDir = Split-Path -Parent $chosen
           Add-Content -Path $env:GITHUB_PATH -Value $isccDir
+          "EZ_NEST_ISCC=$chosen" | Add-Content -Path $env:GITHUB_ENV
+          Write-Output "Inno Setup 6.7.3 verified: $chosen"
+          exit 0
 
       - name: Build the shop installer
         shell: pwsh
@@ -89,11 +125,8 @@ jobs:
           if ($expected -ne $actual -or $sidecar -ne $actual) { throw "Checksum does not match eznest-setup.exe" }
           if ((Get-Content $pin -Raw | ConvertFrom-Json).version -ne $version) { throw "BUILD.json version does not match version.json" }
 
-      - name: Test actual fresh install on disposable Windows runner
-        shell: pwsh
-        run: pwsh -NoProfile -File tests/test_installed_shop.ps1
-
       - name: Upload the installer artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: eznest-setup
@@ -104,73 +137,9 @@ jobs:
             installer/Output/manifest.json
           if-no-files-found: error
 
-  tester:
-    name: Install and exercise the separate Windows tester
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-          architecture: x64
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-build.txt
-      - name: Install build and browser test dependencies
-        run: python -m pip install -r requirements-build.txt playwright
-      - name: Install Inno Setup 6.7.3
+      - name: Test actual fresh install on disposable Windows runner
         shell: pwsh
-        run: |
-          $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.3.exe"
-          Invoke-WebRequest -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe" -OutFile $installer
-          $process = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -WindowStyle Hidden -PassThru -Wait
-          if ($process.ExitCode -ne 0) { throw "Inno Setup installation failed" }
-          $isccDir = "${env:ProgramFiles(x86)}\Inno Setup 6"
-          if (-not (Test-Path (Join-Path $isccDir "ISCC.exe"))) { throw "ISCC missing after install" }
-          Add-Content -Path $env:GITHUB_PATH -Value $isccDir
-      - name: Build the per-user tester installer
-        shell: pwsh
-        run: |
-          $buildId = "ci-${{ github.run_id }}-${{ github.run_attempt }}"
-          $build = Join-Path $env:RUNNER_TEMP "eznest-tester-build"
-          $trial = Join-Path $env:RUNNER_TEMP "eznest-tester-package"
-          $output = Join-Path $env:RUNNER_TEMP "eznest-tester-installer"
-          New-Item -ItemType Directory -Path $output | Out-Null
-          python build_windows.py --portable-only --out $build
-          if ($LASTEXITCODE -ne 0) { throw "Portable build failed" }
-          python build_shop_trial.py --app (Join-Path $build "dist\eznest") --out $trial --build-id $buildId
-          if ($LASTEXITCODE -ne 0) { throw "Tester packaging failed" }
-          $version = (Get-Content version.json -Raw | ConvertFrom-Json).version
-          & ISCC.exe "/DSourceDir=$trial" "/DMyAppVersion=$version" "/DBuildId=$buildId" "/O$output" installer/tester.iss
-          if ($LASTEXITCODE -ne 0) { throw "Tester installer compilation failed" }
-          $setup = Join-Path $output "EZ-Nest-Tester-$buildId-Setup.exe"
-          $hash = (Get-FileHash -LiteralPath $setup).Hash.ToLowerInvariant()
-          ($hash + '  ' + (Split-Path -Leaf $setup)) | Set-Content -LiteralPath ($setup + '.sha256') -Encoding utf8
-          Copy-Item -LiteralPath (Join-Path $trial 'BUILD.json') -Destination $output
-          "TESTER_BUILD_ID=$buildId" | Add-Content $env:GITHUB_ENV
-          "TESTER_SETUP=$setup" | Add-Content $env:GITHUB_ENV
-          "TESTER_PACKAGE=$trial" | Add-Content $env:GITHUB_ENV
-      - name: Test actual tester install on this clean disposable runner
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -File tests/test_installed_tester.ps1 -Setup $env:TESTER_SETUP -TrialPackage $env:TESTER_PACKAGE -BuildId $env:TESTER_BUILD_ID -ReportDir (Join-Path $env:RUNNER_TEMP "eznest-tester-acceptance")
-          if ($LASTEXITCODE -ne 0) { throw "Tester acceptance failed; inspect the uploaded logs" }
-      - name: Upload tester installer and acceptance evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: eznest-tester-and-acceptance
-          path: |
-            ${{ runner.temp }}/eznest-tester-installer/*
-            ${{ runner.temp }}/eznest-tester-acceptance/*
-          if-no-files-found: warn
+        run: pwsh -NoProfile -File tests/test_installed_shop.ps1
 
   publish:
     name: Publish approved tag build
