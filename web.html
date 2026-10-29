@@ -158,6 +158,15 @@
       </label>
       <p id="output-url-note" class="hint">Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree in the status chip.</p>
     </details>
+    <details id="settings-stock-share" class="settings-section">
+      <summary>Stock summary for OUTPUT</summary>
+      <p class="section-note">Off until you turn it on. A paired computer can send roll width, length left, reserved length, and a low marker. Job details, cost, and customer information stay on this computer.</p>
+      <label class="check"><input id="share-stock-summary" type="checkbox"> Share stock summary with OUTPUT</label>
+      <label class="check"><input id="show-roll-names" type="checkbox" checked> Show roll names in OUTPUT</label>
+      <p class="hint">Preview of the stock summary this computer would send.</p>
+      <pre id="stock-output-preview" aria-label="Stock summary preview"></pre>
+      <p id="stock-output-note" class="hint"></p>
+    </details>
     <details id="settings-updates" class="settings-section">
       <summary>App updates</summary>
     <label class="check"><input id="updates" type="checkbox"> Check for updates</label>
