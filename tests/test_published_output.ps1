@@ -11,10 +11,14 @@ $app = Join-Path $env:ProgramFiles 'eznest'
 $data = Join-Path $env:ProgramData 'eznest'
 $receiptPath = Join-Path $env:RUNNER_TEMP 'eznest-output-acceptance.json'
 $ownedMarker = Join-Path $env:RUNNER_TEMP 'eznest-output-acceptance-owned'
+$setup = Join-Path $env:RUNNER_TEMP 'eznest-public-setup.exe'
 $version = '1.0.0-rc.5'
 $expectedHash = '05e25fddebc78b57057d9b0fb4246307d8195537b56b51f06a7d7ab51d0a0889'
 . (Join-Path $PSScriptRoot '../installer/update-shop.ps1')
-function Assert($condition, [string]$message) { if (-not $condition) { throw $message } }
+$script:assertionFailure = ''
+function Assert($condition, [string]$message) {
+  if (-not $condition) { $script:assertionFailure = $message; throw $message }
+}
 function Save-Receipt($receipt) { $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $receiptPath }
 function Api([string]$path, $body = $null) {
   $request = @{
@@ -37,10 +41,53 @@ function Session {
   Write-Host "::add-mask::$script:SessionToken"
   return $response.Json
 }
+function Read-CheckinTime {
+  # The installed service owns this protected file. Read only the successful
+  # check-in timestamp as SYSTEM; never expose the credential, HMAC or raw file.
+  $work = Join-Path $env:RUNNER_TEMP ('eznest-checkin-' + [guid]::NewGuid().ToString('n'))
+  New-Item -ItemType Directory -Path $work | Out-Null
+  $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  & icacls.exe $work /inheritance:r /grant '*S-1-5-18:(OI)(CI)F' "*${runnerSid}:(OI)(CI)F" | Out-Null
+  Assert ($LASTEXITCODE -eq 0) 'Could not prepare the restricted check-in reader.'
+  $output = Join-Path $work 'last-ok.txt'
+  $statePath = Join-Path $data 'output-checkin.json'
+  $command = "`$ErrorActionPreference='Stop'; `$state=Get-Content -LiteralPath '$statePath' -Raw | ConvertFrom-Json; [long]`$state.lastOkAt | Set-Content -LiteralPath '$output'; exit 0"
+  $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+  $taskName = 'eznest-checkin-' + [guid]::NewGuid().ToString('n')
+  $action = New-ScheduledTaskAction -Execute (Get-Process -Id $PID).Path -Argument "-NoProfile -EncodedCommand $encoded"
+  $principal = New-ScheduledTaskPrincipal -UserId SYSTEM -LogonType ServiceAccount -RunLevel Highest
+  Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal | Out-Null
+  try {
+    Start-ScheduledTask -TaskName $taskName
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    do {
+      Start-Sleep -Milliseconds 300
+      $info = Get-ScheduledTaskInfo -TaskName $taskName
+      $taskState = (Get-ScheduledTask -TaskName $taskName).State
+      if ($taskState -notin @('Running','Queued') -and $info.LastTaskResult -notin @(267009,267011)) { break }
+    } while ([DateTime]::UtcNow -lt $deadline)
+    Assert ($taskState -notin @('Running','Queued') -and $info.LastTaskResult -eq 0 -and (Test-Path $output)) 'Could not read successful check-in time.'
+    return [long](Get-Content -LiteralPath $output -Raw).Trim()
+  } finally {
+    Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+  }
+}
+function Stop-OwnedInstaller {
+  # The preflight/marker owns only this temporary installer's exact path.
+  foreach ($process in Get-Process -ErrorAction SilentlyContinue) {
+    if ($process.Path -eq $setup) {
+      $process.Kill($true)
+      Assert ($process.WaitForExit(30000)) 'Owned installer did not stop.'
+    }
+  }
+  Assert (-not @(Get-Process -ErrorAction SilentlyContinue | Where-Object Path -eq $setup).Count) 'Owned installer is still running.'
+}
 try {
   if ($Phase -eq 'Cleanup') {
     # A failed clean-run preflight never gives us ownership of an existing shop.
     if (-not (Test-Path -LiteralPath $ownedMarker)) { exit 0 }
+    Stop-OwnedInstaller
     $uninstaller = Join-Path $app 'unins000.exe'
     try {
       $null = Session
@@ -69,11 +116,14 @@ try {
     New-Item -ItemType File -Path $ownedMarker | Out-Null
     $receipt = @{ version=$version; sha256=$expectedHash; runId=$env:GITHUB_RUN_ID; hostLabel=$env:COMPUTERNAME; paired=$false; restarted=$false; nested=$false; sharingOff=$false; revoked=$false; cleanup=$false }
     Save-Receipt $receipt
-    $setup = Join-Path $env:RUNNER_TEMP 'eznest-public-setup.exe'
     Invoke-WebRequest -Uri 'https://github.com/ezdesigns/eznest/releases/download/v1.0.0-rc.5/eznest-setup.exe' -OutFile $setup
     Assert ((Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant() -eq $expectedHash) 'Public installer hash mismatch.'
     $install = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/TASKS="startatboot"' -PassThru
-    Assert ($install.WaitForExit(180000) -and $install.ExitCode -eq 0) 'Public installer failed.'
+    if (-not $install.WaitForExit(180000)) {
+      Stop-OwnedInstaller
+      throw 'Owned public installer timed out and was stopped.'
+    }
+    Assert ($install.ExitCode -eq 0) 'Public installer failed.'
     $task = Get-ScheduledTask -TaskName eznest
     Assert-ShopTask $task (Join-Path $app 'eznest.exe') $data
     Assert ($task.Actions[0].Arguments -notmatch '--lan') 'Installer enabled LAN.'
@@ -87,16 +137,23 @@ try {
     $reused = Api '/api/telemetry/output/pair' @{code=$env:EZ_NEST_ACCEPTANCE_CODE}
     Assert ($reused.Status -eq 400 -and $reused.Json.reason -eq 'consumed') 'Used pairing code was not rejected.'
     $env:EZ_NEST_ACCEPTANCE_CODE = $null
+    $pairedAt = Read-CheckinTime
+    Start-Sleep -Seconds 2
     $check = Api '/api/telemetry/output/check-in' @{}
-    Assert ($check.Status -eq 200 -and $check.Json.ok) 'Production check-in failed.'
+    $checkedAt = Read-CheckinTime
+    Assert ($check.Status -eq 200 -and $check.Json.ok -and $checkedAt -gt $pairedAt) 'Production check-in did not advance successful time.'
+    $receipt.checkedInAt = $checkedAt
     $before = (Session).pid
     Stop-ShopTask
+    Start-Sleep -Seconds 2
     Enable-ScheduledTask -TaskName eznest | Out-Null
     Start-ScheduledTask -TaskName eznest
     Assert (Wait-ShopHealthy $version (Join-Path $app 'eznest.exe') 120) 'Service restart failed.'
     $session = Session
     $check = Api '/api/telemetry/output/check-in' @{}
-    Assert ($session.pid -ne $before -and $check.Status -eq 200 -and $check.Json.ok -and -not $check.Json.devMode) 'Stored service credential did not survive restart.'
+    $restartedAt = Read-CheckinTime
+    Assert ($session.pid -ne $before -and $check.Status -eq 200 -and $check.Json.ok -and -not $check.Json.devMode -and $restartedAt -gt $checkedAt) 'Stored service credential did not complete a new check-in after restart.'
+    $receipt.restartCheckedInAt = $restartedAt
     $receipt.restarted = $true
     $sharing = Api '/api/telemetry/output'
     Assert ($sharing.Status -eq 200 -and $sharing.Json.configured -and -not $sharing.Json.enabled) 'Activity sharing unexpectedly enabled.'
@@ -126,6 +183,6 @@ try {
   }
 } catch {
   # Never emit exception/request/session bodies; they can contain credentials.
-  Write-Error "Published Windows OUTPUT acceptance failed in phase $Phase. Inspect sanitized receipt and the owner host list; revoke any created test host."
+  Write-Error "Published Windows OUTPUT acceptance failed in phase $Phase. $script:assertionFailure Inspect sanitized receipt and the owner host list; revoke any created test host."
   exit 1
 }
