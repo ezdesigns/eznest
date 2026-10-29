@@ -1,4 +1,5 @@
 """Shop-server install choices: one computer, many browsers."""
+import opt_out
 import hashlib
 import json
 import os

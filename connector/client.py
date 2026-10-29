@@ -15,6 +15,7 @@ from urllib.request import Request, build_opener
 
 import output_credential
 import output_pairing
+import shop_deploy
 import telemetry_sender
 from shop_deploy import host_name
 
@@ -62,6 +63,8 @@ def url_for(role, output_host=None):
         raise ClientError('The connector has one write-only event endpoint.')
     base = normalize_output_base(output_host)
     url = base + path
+    if output_host is None and not shop_deploy.allowed_output_request(url):
+        raise ClientError('Refusing a request outside the allowlisted OUTPUT origin.')
     parsed = urlparse(url)
     pinned = urlparse(base)
     if parsed.scheme != 'https' or parsed.hostname != pinned.hostname or parsed.port != pinned.port:

@@ -1,4 +1,5 @@
 """Exercise the real worker deadline with a slow synthetic loopback receiver."""
+import opt_out
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path

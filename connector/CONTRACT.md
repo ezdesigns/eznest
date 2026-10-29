@@ -13,7 +13,7 @@ is the `eznest-observation/1` projection from `telemetry_output.py`.
 | Field | Meaning |
 | --- | --- |
 | schema | Always `shop-connector-event/1` |
-| eventId | 64 lowercase hex characters. SHA-256 of the plug-in name, a newline, and the source line without its trailing newline. The same line always produces the same id. |
+| eventId | 64 lowercase hex characters. HMAC-SHA256 of the plug-in name, a newline, and the source line without its trailing newline, keyed by this install's salt. The same line on the same install always produces the same id. The salt stays on this computer. |
 | requestId | UUIDv5 of `shop-connector:{instanceId}:{eventId}`. A retry sends this same id. OUTPUT already treats that as an idempotent receipt (`created` or `replay`). |
 | source | `eznest`, `printer`, `cutter`, or `inventory` |
 | instanceId | 32 lowercase hex characters, created once on this computer |
@@ -22,8 +22,9 @@ is the `eznest-observation/1` projection from `telemetry_output.py`.
 | kind | `nest.completed`, `print.completed`, `cut.completed`, or `inventory.observed` |
 | payload | Kind-specific object below. No extra keys. |
 
-`eventId` is the line identity. `requestId` is the POST identity for this
-installation. Both are derived, not random, so a retry is safe.
+`eventId` is the line identity for this install. `requestId` is the POST
+identity for this installation. Both are derived, not random, so a retry is
+safe. The event id uses the same per-install salt as the other local hashes.
 
 ## Bands
 

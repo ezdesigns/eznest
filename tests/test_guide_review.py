@@ -1,4 +1,5 @@
 """Synthetic dashed-guide review: no customer artwork or automatic exclusions."""
+import opt_out
 import copy
 import hashlib
 import io

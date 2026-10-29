@@ -1,13 +1,21 @@
 """Require a shop host to be connected to OUTPUT.
 
 Nesting, sending, and stock stay closed until this computer has a shop
-credential. After a successful pairing, an unreachable OUTPUT does not stop
-the shop until CHECK_IN_MAX_AGE_DAYS have passed without a check-in. A banner
-appears after OFFLINE_BANNER_AFTER_DAYS. The check-in body is only the app
-version. The computer name and installation id are sent once, by pairing.
+credential and a current check-in. After a successful pairing or check-in,
+an unreachable OUTPUT does not stop the shop until CHECK_IN_MAX_AGE_DAYS
+have passed. A banner appears after OFFLINE_BANNER_AFTER_DAYS. The check-in
+body is only the app version. The computer name and installation id are sent
+once, by pairing.
+
+The check-in record is signed with a key derived from the shop credential.
+A missing, unreadable, or mismatched record stays closed until a live
+check-in or pairing succeeds. A check-in time ahead of this computer is not
+current. A revoked credential is remembered by a one-way fingerprint.
 
 The credential is never written here, logged, or returned to the browser.
 """
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -28,6 +36,8 @@ DAY_SECONDS = 24 * 60 * 60
 CHECK_IN_MAX_AGE = CHECK_IN_MAX_AGE_DAYS * DAY_SECONDS
 OFFLINE_BANNER_AFTER = OFFLINE_BANNER_AFTER_DAYS * DAY_SECONDS
 STATE_NAME = 'output-checkin.json'
+REVOCATION_NAME = 'output-revocations.json'
+RELEASE_MARKER = '.eznest-release'
 DEV_BANNER = 'DEV MODE: not connected to OUTPUT'
 
 HOST_UNPAIRED = 'Connect this computer to OUTPUT before nesting, sending, or changing stock.'
@@ -36,6 +46,7 @@ HOST_REVOKED = 'OUTPUT says this computer is no longer connected. Paste a new pa
 HOST_RECONNECT = (
     f'Reconnect this computer to OUTPUT. The last successful check-in was more than {CHECK_IN_MAX_AGE_DAYS} days ago.'
 )
+HOST_CHECKIN = 'This computer needs a current OUTPUT check-in before nesting, sending, or changing stock.'
 HOST_UPLOADS_OFF = (
     'This run has OUTPUT delivery turned off. Start Ez Nest without that setting, then connect with a pairing code.'
 )
@@ -46,6 +57,7 @@ REVOKED_CODES = frozenset({
     'unpaired', 'revoked', 'invalid_credential', 'invalid_token', 'unauthorized', 'not_paired',
 })
 LOCK = threading.Lock()
+_STATE_FIELDS = ('v', 'lastOkAt', 'lastAttemptAt', 'reason', 'credential')
 
 
 class Offline(Exception):
@@ -54,14 +66,18 @@ class Offline(Exception):
 
 def source_checkout():
     """True when this process is the repo's Python files, not an installed build."""
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, 'frozen', False) or _release_marked():
         return False
     root = Path(__file__).resolve().parent
     return (root / 'launcher.py').is_file() and (root / 'version.json').is_file() and (root / 'server.py').is_file()
 
 
+def _release_marked():
+    return (Path(__file__).resolve().parent / RELEASE_MARKER).is_file()
+
+
 def dev_mode():
-    """Labeled dev mode. Installed Windows and macOS builds are frozen and never qualify."""
+    """Labeled dev mode. Installed builds and the container image never qualify."""
     return source_checkout() and os.environ.get('EZ_NEST_DEV') == '1'
 
 
@@ -70,50 +86,48 @@ def dev_escape():
     return dev_mode() and os.environ.get('EZ_NEST_DEV_NO_OUTPUT') == '1'
 
 
-def test_harness_open():
-    """Regression tests started with python -m unittest are not a shop install.
-
-    EZ_NEST_OUTPUT_GATE_ENFORCE=1 turns this off so the gate tests see a real
-    unpaired host. Frozen builds never take this path. launcher.py and
-    server.py never take it either.
-    """
-    if getattr(sys, 'frozen', False):
-        return False
-    if os.environ.get('EZ_NEST_OUTPUT_GATE_ENFORCE') == '1':
-        return False
-    argv = (sys.argv[0] if sys.argv else '').replace('\\', '/')
-    if argv.endswith(('launcher.py', 'server.py', 'eznest.exe', '/eznest', '\\eznest')):
-        return False
-    main = sys.modules.get('__main__')
-    path = (getattr(main, '__file__', '') or '').replace('\\', '/')
-    if path.endswith('unittest/__main__.py'):
-        return True
-    # Some runners report argv[0] as the text "python -m unittest".
-    joined = ' '.join(sys.argv)
-    return 'unittest' in joined and ('discover' in joined or '-m unittest' in joined)
+def gate_opt_out():
+    """EZ_NEST_OUTPUT_GATE_OPEN=1 counts only in labeled dev mode on a source checkout."""
+    return dev_mode() and os.environ.get('EZ_NEST_OUTPUT_GATE_OPEN') == '1'
 
 
 def endpoint(directory=None):
     return shop_deploy.output_base_url(directory) + '/api/shop/agent/check-in'
 
 
+def credential_fingerprint(token):
+    """One-way name for a credential. The credential itself is not stored."""
+    return hashlib.sha256(b'eznest-output-credential/1\0' + token.encode('utf-8')).hexdigest()
+
+
+def _state_key(token):
+    return hashlib.sha256(b'eznest-output-checkin/1\0' + token.encode('utf-8')).digest()
+
+
 def _state_path(directory):
     return Path(directory) / STATE_NAME
 
 
-def _read_state(directory):
+def _revocation_path(directory):
+    return Path(directory) / REVOCATION_NAME
+
+
+def _read_json(path):
     try:
-        payload = json.loads(_state_path(directory).read_text(encoding='utf-8'))
+        payload = json.loads(Path(path).read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return {}
     return payload if isinstance(payload, dict) else {}
 
 
-def _write_state(directory, payload):
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    target = _state_path(directory)
-    temporary = target.with_name(STATE_NAME + '.tmp')
+def _read_state(directory):
+    return _read_json(_state_path(directory))
+
+
+def _write_json(path, payload):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + '.tmp')
     raw = (json.dumps(payload, separators=(',', ':')) + '\n').encode()
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     if hasattr(os, 'O_NOFOLLOW'):
@@ -126,24 +140,102 @@ def _write_state(directory, payload):
     finally:
         os.close(fd)
     os.chmod(temporary, 0o600)
-    os.replace(temporary, target)
-    os.chmod(target, 0o600)
+    os.replace(temporary, path)
+    os.chmod(path, 0o600)
+
+
+def _write_state(directory, payload):
+    _write_json(_state_path(directory), payload)
 
 
 def _stamp(now):
     return int(time.time() if now is None else now)
 
 
+def _signed_body(payload):
+    last = payload.get('lastOkAt')
+    attempt = payload.get('lastAttemptAt')
+    reason = payload.get('reason') if isinstance(payload.get('reason'), str) else ''
+    credential = payload.get('credential') if isinstance(payload.get('credential'), str) else ''
+    return {
+        'v': 2,
+        'lastOkAt': last if isinstance(last, int) or last is None else None,
+        'lastAttemptAt': attempt if isinstance(attempt, int) else None,
+        'reason': reason,
+        'credential': credential,
+    }
+
+
+def _canonical(body):
+    return json.dumps({key: body[key] for key in _STATE_FIELDS}, separators=(',', ':'), sort_keys=True).encode()
+
+
+def _mac(token, body):
+    return hmac.new(_state_key(token), _canonical(body), hashlib.sha256).hexdigest()
+
+
+def _mac_ok(token, payload):
+    if not token or not isinstance(payload, dict):
+        return False
+    mac = payload.get('mac')
+    if not isinstance(mac, str) or len(mac) != 64:
+        return False
+    body = _signed_body(payload)
+    if body['credential'] != credential_fingerprint(token):
+        return False
+    return hmac.compare_digest(_mac(token, body), mac)
+
+
+def _write_signed(directory, token, *, last_ok, attempt, reason):
+    body = _signed_body({
+        'lastOkAt': last_ok,
+        'lastAttemptAt': attempt,
+        'reason': reason,
+        'credential': credential_fingerprint(token),
+    })
+    stored = dict(body)
+    stored['mac'] = _mac(token, body)
+    _write_state(directory, stored)
+
+
+def _read_revocations(directory):
+    payload = _read_json(_revocation_path(directory))
+    items = payload.get('fingerprints') if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return set()
+    return {item for item in items if isinstance(item, str) and len(item) == 64 and all(char in '0123456789abcdef' for char in item)}
+
+
+def _write_revocations(directory, fingerprints):
+    _write_json(_revocation_path(directory), {'v': 1, 'fingerprints': sorted(fingerprints)})
+
+
+def _revoked(directory, token):
+    return bool(token) and credential_fingerprint(token) in _read_revocations(directory)
+
+
+def _remember_revoked(directory, token):
+    if not token:
+        return
+    fingerprints = _read_revocations(directory)
+    fingerprints.add(credential_fingerprint(token))
+    _write_revocations(directory, fingerprints)
+
+
 def note_paired(directory, now=None):
-    """A successful pairing is the first check-in."""
+    """A successful pairing is the first check-in for that credential."""
     stamp = _stamp(now)
+    token, _source = _token(directory)
     with LOCK:
-        _write_state(directory, {'v': 1, 'lastOkAt': stamp, 'lastAttemptAt': stamp, 'reason': ''})
+        if not token or _revoked(directory, token):
+            return
+        _write_signed(directory, token, last_ok=stamp, attempt=stamp, reason='')
 
 
 def note_disconnected(directory, now=None):
+    stamp = _stamp(now)
     with LOCK:
-        _write_state(directory, {'v': 1, 'lastOkAt': None, 'lastAttemptAt': _stamp(now), 'reason': 'disconnected'})
+        _write_state(directory, {'v': 2, 'lastOkAt': None, 'lastAttemptAt': stamp, 'reason': 'disconnected'})
 
 
 def _uploads():
@@ -191,19 +283,23 @@ def classify(status, body):
     return 'offline'
 
 
-def _mark_revoked(directory, now):
+def _mark_revoked(directory, token, now):
+    _remember_revoked(directory, token)
     try:
         telemetry_sender.revoke(directory)
     except Exception:
         pass
+    if token:
+        _write_signed(directory, token, last_ok=None, attempt=_stamp(now), reason='revoked')
+    else:
+        _write_state(directory, {'v': 2, 'lastOkAt': None, 'lastAttemptAt': _stamp(now), 'reason': 'revoked'})
     output_credential.clear(directory)
-    _write_state(directory, {'v': 1, 'lastOkAt': None, 'lastAttemptAt': _stamp(now), 'reason': 'revoked'})
 
 
-def _closed_message(reason, uploads):
+def _closed_message(reason, uploads, *, has_token):
     if uploads == '0':
         return HOST_UPLOADS_OFF
-    if uploads == '1':
+    if uploads == '1' and not has_token:
         return HOST_LAUNCH_MISSING
     if reason == 'disconnected':
         return HOST_DISCONNECTED
@@ -211,6 +307,8 @@ def _closed_message(reason, uploads):
         return HOST_REVOKED
     if reason == 'reconnect':
         return HOST_RECONNECT
+    if reason == 'unchecked':
+        return HOST_CHECKIN
     return HOST_UNPAIRED
 
 
@@ -228,31 +326,47 @@ def _view(ok, state, message, banner, local, can_check_in):
     }
 
 
+def _verdict(directory, token, stamp):
+    raw = _read_state(directory)
+    reason = raw.get('reason') if isinstance(raw.get('reason'), str) else ''
+    if token and _revoked(directory, token):
+        return {'open': False, 'reason': 'revoked', 'state': 'revoked', 'can_check_in': False}
+    if not token:
+        return {'open': False, 'reason': reason, 'state': reason or 'unpaired', 'can_check_in': False}
+    if not _mac_ok(token, raw):
+        return {'open': False, 'reason': 'unchecked', 'state': 'unchecked', 'can_check_in': True}
+    last = raw.get('lastOkAt')
+    if isinstance(last, int) and last > stamp:
+        return {'open': False, 'reason': 'reconnect', 'state': 'reconnect', 'can_check_in': True}
+    if not isinstance(last, int) or last <= 0:
+        closed = reason if reason in ('disconnected', 'revoked') else 'unchecked'
+        return {'open': False, 'reason': closed, 'state': closed, 'can_check_in': closed != 'revoked'}
+    return {'open': True, 'reason': '', 'state': 'ok', 'age': stamp - last, 'can_check_in': False}
+
+
 def public_status(directory, local, now=None):
     """Browser-safe connection state. No credential, code, or shop key."""
     if dev_escape():
         return _view(True, 'dev', '', DEV_BANNER, local, False)
-    if test_harness_open():
+    if gate_opt_out():
         return _view(True, 'ok', '', None, local, False)
     stamp = _stamp(now)
     token, _source = _token(directory)
     uploads = _uploads()
     with LOCK:
-        state = _read_state(directory)
-        reason = state.get('reason') if isinstance(state.get('reason'), str) else ''
-        last = state.get('lastOkAt')
-        if token and not isinstance(last, int):
-            last = stamp
-            state = {'v': 1, 'lastOkAt': stamp, 'lastAttemptAt': stamp, 'reason': ''}
-            _write_state(directory, state)
-            reason = ''
-    if not token:
-        return _view(False, reason or 'unpaired', _closed_message(reason, uploads), None, local, False)
-    age = stamp - last
-    if age < 0:
-        age = 0
+        verdict = _verdict(directory, token, stamp)
+    if not verdict['open']:
+        return _view(
+            False,
+            verdict['state'],
+            _closed_message(verdict['reason'], uploads, has_token=bool(token)),
+            None,
+            local,
+            verdict['can_check_in'],
+        )
+    age = verdict['age']
     if age >= CHECK_IN_MAX_AGE:
-        return _view(False, 'reconnect', _closed_message('reconnect', uploads), None, local, True)
+        return _view(False, 'reconnect', _closed_message('reconnect', uploads, has_token=True), None, local, True)
     if age >= OFFLINE_BANNER_AFTER:
         days = max(OFFLINE_BANNER_AFTER_DAYS, age // DAY_SECONDS)
         banner = (
@@ -263,9 +377,21 @@ def public_status(directory, local, now=None):
     return _view(True, 'ok', '', None, local, False)
 
 
+def _touch_attempt(directory, token, stamp):
+    state = _read_state(directory)
+    if not _mac_ok(token, state):
+        return
+    last = state.get('lastOkAt') if isinstance(state.get('lastOkAt'), int) else None
+    reason = state.get('reason') if isinstance(state.get('reason'), str) else ''
+    _write_signed(directory, token, last_ok=last, attempt=stamp, reason=reason)
+
+
 def _post(directory, raw, token):
+    url = endpoint(directory)
+    if not shop_deploy.allowed_output_request(url):
+        raise Offline
     request = Request(
-        endpoint(directory),
+        url,
         data=raw,
         headers={
             'Authorization': 'Bearer ' + token,
@@ -290,7 +416,9 @@ def _post(directory, raw, token):
 def check_in(directory, *, transport=None, now=None, local=True):
     """Ask OUTPUT whether this credential is still paired. Sends appVersion only."""
     token, _source = _token(directory)
-    if not token or dev_escape() or test_harness_open():
+    if not token or dev_escape() or gate_opt_out():
+        return public_status(directory, local, now=now)
+    if _revoked(directory, token):
         return public_status(directory, local, now=now)
     raw = json.dumps({'appVersion': VERSION}, separators=(',', ':')).encode()
     stamp = _stamp(now)
@@ -298,24 +426,19 @@ def check_in(directory, *, transport=None, now=None, local=True):
         status, body = transport(raw, token) if transport else _post(directory, raw, token)
     except Offline:
         with LOCK:
-            state = _read_state(directory)
-            state['lastAttemptAt'] = stamp
-            state['v'] = 1
-            _write_state(directory, state)
+            _touch_attempt(directory, token, stamp)
         return public_status(directory, local, now=stamp)
     kind = classify(status, body)
-    if kind == 'revoked':
+    if kind == 'revoked' or _revoked(directory, token):
         with LOCK:
-            _mark_revoked(directory, stamp)
+            _mark_revoked(directory, token, stamp)
     elif kind == 'ok':
         with LOCK:
-            _write_state(directory, {'v': 1, 'lastOkAt': stamp, 'lastAttemptAt': stamp, 'reason': ''})
+            if not _revoked(directory, token):
+                _write_signed(directory, token, last_ok=stamp, attempt=stamp, reason='')
     else:
         with LOCK:
-            state = _read_state(directory)
-            state['v'] = 1
-            state['lastAttemptAt'] = stamp
-            _write_state(directory, state)
+            _touch_attempt(directory, token, stamp)
     return public_status(directory, local, now=stamp)
 
 
@@ -323,9 +446,9 @@ def run(directory, stop):
     """Background check-in. A network failure must not stop nesting."""
     while not stop.is_set():
         try:
-            if not test_harness_open() and not dev_escape():
+            if not gate_opt_out() and not dev_escape():
                 token, _source = _token(directory)
-                if token:
+                if token and not _revoked(directory, token):
                     check_in(directory)
         except Exception:
             pass

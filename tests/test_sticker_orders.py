@@ -1,4 +1,5 @@
 """Synthetic large-order, lossless print-copy and explicit cut-review checks."""
+import opt_out
 import copy
 import hashlib
 import io

@@ -369,6 +369,12 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return self.client_ip() in ('127.0.0.1', '::1')
 
+    def route_path(self):
+        path = urlparse(self.path).path or '/'
+        if path == '/web/':
+            return '/web'
+        return path
+
     def token_ok(self):
         supplied = self.headers.get('X-EZ-Token') if self.headers else None
         if not isinstance(supplied, str) or not supplied:
@@ -388,8 +394,7 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return self.cookie_ok()
 
-    def reject_output_gate(self, *, discard=False):
-        path = urlparse(self.path).path
+    def reject_output_gate(self, path, *, discard=False):
         if path in ('/api/session', '/api/health', '/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
             return False
         decision = output_gate.public_status(WORK, self.loopback_client())
@@ -469,9 +474,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.allowed():
             return self.send(403, {'error': 'Invalid host'})
-        path = urlparse(self.path).path
-        if path == '/web/':
-            path = '/web'
+        path = self.route_path()
         if path == '/api/session':
             if not self.browser_site_ok():
                 return self.send(403, {'error': 'Invalid session'})
@@ -481,7 +484,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Open health on the shop computer.'})
                 return self.send(200, {'ok': True, 'app': 'eznest'})
-            if path != '/api/session' and self.reject_output_gate():
+            if path != '/api/session' and self.reject_output_gate(path):
                 return
             if not self.loopback_client() and not self.authenticated():
                 return self.send(403, {'error': 'Enter the shop PIN on this computer.'})
@@ -497,7 +500,7 @@ class Handler(BaseHTTPRequestHandler):
                     info = macos_update.start(WORK) if parse_qs(urlparse(self.path).query).get('refresh') == ['1'] else macos_update.status(WORK)
                 except (OSError, ValueError, subprocess.SubprocessError):
                     info = macos_update.status(WORK)
-                info.update(localPC=self.client_address[0] == '127.0.0.1', serverPid=os.getpid())
+                info.update(localPC=self.loopback_client(), serverPid=os.getpid())
                 return self.send(200, info)
             import installer_update
             refresh = parse_qs(urlparse(self.path).query).get('refresh', ['0'])[0] == '1'
@@ -512,7 +515,7 @@ class Handler(BaseHTTPRequestHandler):
             info['managedSupported'] = managed_update.supported(installer_update.install_root())
             with OPERATIONS:
                 info.update(UPDATE_QUEUE.status())
-            info['localPC'] = self.client_address[0] == '127.0.0.1'
+            info['localPC'] = self.loopback_client()
             info['serverPid'] = os.getpid()
             info['managedResult'] = installer_update.read_json(WORK/'updates'/'managed-result.json')
             info['notes'] = installer_update.current_notes(ROOT, VERSION)
@@ -553,7 +556,7 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Shop inventory is unavailable. Check disk space and folder permissions.'})
         if path.startswith('/api/illustrator/'):
-            if self.client_address[0] != '127.0.0.1':
+            if not self.loopback_client():
                 return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
             try:
                 return self.send(200, illustrator_bridge.read(WORK, path.rsplit('/', 1)[-1]))
@@ -709,7 +712,7 @@ class Handler(BaseHTTPRequestHandler):
         # Hold admission through import, save and delivery. An update claim cannot
         # slip between a busy check and a new operation starting on another PC.
         with OPERATIONS:
-            if (UPDATE_QUEUE.stopping or macos_service_runtime.maintenance()) and self.path != '/api/macos-service/cancel':
+            if (UPDATE_QUEUE.stopping or macos_service_runtime.maintenance()) and self.route_path() != '/api/macos-service/cancel':
                 return self.send(503, {'error': 'Installing an update. Wait for eznest to restart.'})
             return self.handle_post()
 
@@ -743,20 +746,21 @@ class Handler(BaseHTTPRequestHandler):
         global PROCESS
         if not self.allowed() or not self.browser_site_ok():
             return self.send(403, {'error': 'Invalid session'})
-        if self.path not in ('/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
-            if self.reject_output_gate(discard=True):
+        path = self.route_path()
+        if path not in ('/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
+            if self.reject_output_gate(path, discard=True):
                 return
-        if self.path == '/api/login':
+        if path == '/api/login':
             return self._login()
-        if self.path == '/api/logout':
+        if path == '/api/logout':
             return self._logout()
         if not self.authenticated():
             return self.send(403, {'error': 'Invalid session'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
-            if not 0 <= size <= request_limit(self.path):
+            if not 0 <= size <= request_limit(path):
                 raise ValueError('Job is too large.')
-            if self.path == '/api/document/import-file':
+            if path == '/api/document/import-file':
                 header = self.headers.get('X-EZ-Import', '{}')
                 if len(header) > 16_000:
                     raise ValueError('Import options are too large.')
@@ -765,13 +769,13 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Invalid import options.')
                 return self.import_document(options, upload_size=size)
             data = json.loads(self.rfile.read(size) or '{}')
-            if self.path in ('/api/macos-service/claim', '/api/macos-service/cancel'):
-                if self.client_address[0] != '127.0.0.1':
+            if path in ('/api/macos-service/claim', '/api/macos-service/cancel'):
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Approve updates on the server Mac.'})
                 if not isinstance(data, dict) or set(data) != {'ticket'}:
                     raise ValueError('Supply the administrator update ticket.')
                 macos_service_runtime.authorize_claim(data['ticket'])
-                if self.path.endswith('/cancel'):
+                if path.endswith('/cancel'):
                     if UPDATE_QUEUE.ticket not in (None, data['ticket']):
                         raise ValueError('Another update owns admission.')
                     UPDATE_QUEUE.stopping = False
@@ -785,20 +789,20 @@ class Handler(BaseHTTPRequestHandler):
                 # launchd owns the process lifetime. The privileged installer
                 # stops it only after this admission lock has closed new work.
                 return self.send(200, {'ok': True, 'ready': ready, 'pid': os.getpid()})
-            if self.path.startswith('/api/telemetry/'):
-                if self.client_address[0] != '127.0.0.1':
+            if path.startswith('/api/telemetry/'):
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Local session required for job tracking.'})
                 if not isinstance(data, dict):
                     raise ValueError('Supply a tracking request object.')
-                if self.path == '/api/telemetry/output/consent':
+                if path == '/api/telemetry/output/consent':
                     if set(data) != {'revision', 'version', 'configurationId', 'confirmed'}:
                         raise ValueError('Review and explicitly approve the sharing disclosure.')
                     return self.send(200, telemetry_sender.consent(WORK, **data))
-                if self.path == '/api/telemetry/output/revoke':
+                if path == '/api/telemetry/output/revoke':
                     if data:
                         raise ValueError('Stopping sharing takes no additional data.')
                     return self.send(200, telemetry_sender.revoke(WORK))
-                if self.path == '/api/telemetry/output/pair':
+                if path == '/api/telemetry/output/pair':
                     if set(data) != {'code'}:
                         raise ValueError('Paste the pairing code from OUTPUT.')
                     # The exchange is network IO. Do not hold the job lock.
@@ -807,27 +811,27 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(200, output_pairing.connect(WORK, data.get('code'), paused=telemetry_paused()))
                     except output_pairing.PairingError as error:
                         return self.send(400, {'error': str(error), 'reason': error.reason})
-                if self.path == '/api/telemetry/output/disconnect':
+                if path == '/api/telemetry/output/disconnect':
                     if data:
                         raise ValueError('Disconnect takes no additional data.')
                     return self.send(200, output_pairing.disconnect(WORK, paused=telemetry_paused()))
-                if self.path == '/api/telemetry/output/check-in':
+                if path == '/api/telemetry/output/check-in':
                     if data:
                         raise ValueError('Check-in takes no additional data.')
                     return self.send(200, output_gate.check_in(WORK, local=True))
                 with LOCK:
-                    if self.path == '/api/telemetry/link':
+                    if path == '/api/telemetry/link':
                         if set(data) - {'id', 'jobCodes', 'rollId'}:
                             raise ValueError('Only job codes and an opaque roll ID may be linked.')
                         if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id') or STATE.get('released'):
                             raise ValueError('Link the current finished layout before freezing it.')
                         record_telemetry('nest.created')
                         telemetry.link(WORK, data.get('id'), data.get('jobCodes'), data.get('rollId'))
-                    elif self.path == '/api/telemetry/status':
+                    elif path == '/api/telemetry/status':
                         if set(data) - {'id', 'action', 'confirmed'} or data.get('confirmed') is not True:
                             raise ValueError('Explicitly confirm the queue, print or cancellation observation.')
                         telemetry.transition(WORK, data.get('id'), data.get('action'))
-                    elif self.path == '/api/telemetry/stock':
+                    elif path == '/api/telemetry/stock':
                         if set(data) != {'rollId', 'materialKey', 'remainingMm', 'requestId', 'expectedRevision'}:
                             raise ValueError('Supply roll ID, material key, measured remaining mm, request ID and expected revision.')
                         telemetry.record_stock(WORK, data['rollId'], data['materialKey'], data['remainingMm'],
@@ -835,20 +839,20 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         raise ValueError('Unknown tracking operation.')
                 return self.send(200, {'ok': True})
-            if self.path.startswith('/api/update/'):
+            if path.startswith('/api/update/'):
                 import installer_update
-                if self.client_address[0] != '127.0.0.1':
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Approve updates on the server PC.'})
-                if self.path == '/api/update/cancel':
+                if path == '/api/update/cancel':
                     UPDATE_QUEUE.cancel()
                     return self.send(200, {'ok': True, 'message': 'Update cancelled. The app stays running.'})
-                if self.path == '/api/update/result':
+                if path == '/api/update/result':
                     pending = installer_update.pending_state(WORK)
                     if pending and pending['sha256'] == data.get('sha256'):
                         (WORK/'updates'/'pending.json').unlink(missing_ok=True)
                     installer_update.write_json(WORK/'updates'/'managed-result.json', {'message': str(data.get('message', ''))[:500]})
                     return self.send(200, {'ok': True})
-                if self.path in ('/api/update/queue', '/api/update/claim'):
+                if path in ('/api/update/queue', '/api/update/claim'):
                     if not installer_update.updates_enabled(WORK):
                         UPDATE_QUEUE.cancel()
                         raise ValueError('Updates are off.')
@@ -858,7 +862,7 @@ class Handler(BaseHTTPRequestHandler):
                     if pending.get('channel') != load_shop(WORK)['channel']:
                         UPDATE_QUEUE.cancel()
                         raise ValueError('The update channel changed. Download an update for the selected channel.')
-                    if self.path.endswith('/queue'):
+                    if path.endswith('/queue'):
                         UPDATE_QUEUE.queue(data.get('ticket'))
                         return self.send(200, {'ok': True, 'queued': True})
                     with LOCK:
@@ -870,24 +874,24 @@ class Handler(BaseHTTPRequestHandler):
                         threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
                 raise ValueError('Unknown update operation.')
-            if self.path == '/api/illustrator/intake':
-                if self.client_address[0] != '127.0.0.1':
+            if path == '/api/illustrator/intake':
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
                 with LOCK:
                     info = illustrator_bridge.accept(WORK, data)
                 return self.send(200, {'ok': True, 'id': info['id'], 'url': f'http://127.0.0.1:{PORT}/web?illustrator=' + info['id']})
-            if self.path == '/api/document/import':
+            if path == '/api/document/import':
                 return self.import_document(data)
-            if self.path == '/api/export/pick':
-                if self.client_address[0] != '127.0.0.1':
+            if path == '/api/export/pick':
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Use browser download on another computer.'})
                 target = print_export.pick_save_path(data.get('name'), data.get('format'))
                 return self.send(200, {'path': target, 'cancelled': target is None})
-            if self.path == '/api/export/folders':
-                if self.client_address[0] != '127.0.0.1':
+            if path == '/api/export/folders':
+                if not self.loopback_client():
                     return self.send(403, {'error': 'Browse folders on the PC running eznest.'})
                 return self.send(200, print_export.browse_folders(data.get('path'), OUTPUT.root))
-            if self.path == '/api/export/save':
+            if path == '/api/export/save':
                 with LOCK:
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id') or not STATE.get('released'):
                         raise ValueError('Review and freeze the current layout before saving.')
@@ -898,7 +902,7 @@ class Handler(BaseHTTPRequestHandler):
                 mode = data.get('destination')
                 expected = data.get('replaceSha256')
                 if mode == 'choose':
-                    if self.client_address[0] != '127.0.0.1':
+                    if not self.loopback_client():
                         return self.send(403, {'error': 'Choose a location on the PC running eznest, or use browser download.'})
                     selected = data.get('path')
                     if not isinstance(selected, str) or len(selected) > 1000 or not Path(selected).is_absolute():
@@ -929,27 +933,27 @@ class Handler(BaseHTTPRequestHandler):
                         record_telemetry('nest.exported')
                     persist_state()
                 return self.send(200, dict(saved, ok=True))
-            if self.path == '/api/pin':
+            if path == '/api/pin':
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Set the shop PIN on the shop computer.'})
                 shop_auth.set_pin(WORK, data.get('pin') if isinstance(data, dict) else None)
                 return self.send(200, {'ok': True, 'pinConfigured': True, 'pinWeak': False})
-            if self.path == '/api/pin/alert/ack':
+            if path == '/api/pin/alert/ack':
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Review PIN failures on the shop computer.'})
                 return self.send(200, shop_auth.acknowledge_alert())
-            if self.path in ('/api/output/connect', '/api/output/pick'):
+            if path in ('/api/output/connect', '/api/output/pick'):
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
-                if self.path.endswith('/pick'):
-                    if self.client_address[0] != '127.0.0.1':
+                if path.endswith('/pick'):
+                    if not self.loopback_client():
                         return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
                     data = {'path': pick_folder('Select where eznest will save print packs')}
                     if not data['path']:
                         return self.send(200, {'cancelled': True})
                 with FOLDER_LOCK:
                     return self.send(200, OUTPUT.connect(data.get('path',''), FOLDER.root))
-            if self.path == '/api/setup':
+            if path == '/api/setup':
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Finish setup on the shop computer.'})
                 from shop_deploy import validate_setup
@@ -960,7 +964,7 @@ class Handler(BaseHTTPRequestHandler):
                 current = load_shop(WORK)
                 save_shop(WORK, data.get('onyxPc') is True, current['lan'], setupComplete=True, **setup)
                 return self.send(200, shop_status())
-            if self.path == '/api/shop':
+            if path == '/api/shop':
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Change shop settings on the shop computer.'})
                 current = load_shop(WORK)
@@ -973,9 +977,9 @@ class Handler(BaseHTTPRequestHandler):
                 UPDATE_CHECK.clear()
                 UPDATE_WAKE.set()
                 return self.send(200, shop_status())
-            if self.path == '/api/materials/save':
+            if path == '/api/materials/save':
                 return self.send(200, material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision')))
-            if self.path == '/api/materials/reserve':
+            if path == '/api/materials/reserve':
                 with LOCK:
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('The layout changed. Reload and review the current layout before reserving stock.')
@@ -989,11 +993,11 @@ class Handler(BaseHTTPRequestHandler):
                     result = STATE['result']
                     fingerprint = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
                     return self.send(200, material_inventory.reserve(WORK, key, STATE['id'], result['usedLength'], result['width'], fingerprint))
-            if self.path == '/api/materials/transition':
+            if path == '/api/materials/transition':
                 return self.send(200, material_inventory.transition(WORK, data.get('id'), data.get('action')))
-            if self.path == '/api/update':
+            if path == '/api/update':
                 if macos_service_runtime.active():
-                    if self.client_address[0] != '127.0.0.1':
+                    if not self.loopback_client():
                         return self.send(403, {'error':'Download and approve updates on the shop Mac.'})
                     import macos_update
                     return self.send(200, macos_update.start(WORK, 'download'))
@@ -1009,10 +1013,10 @@ class Handler(BaseHTTPRequestHandler):
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
                 return self.send(200, result)
-            if self.path.startswith('/api/folder/'):
+            if path.startswith('/api/folder/'):
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Choose the source folder on the shop computer.'})
-                if self.path == '/api/folder/pick':
+                if path == '/api/folder/pick':
                     if os.name != 'nt':
                         raise ValueError('Use the folder path field on this platform.')
                     folder_path = powershell_folder_picker('Select your print-ready SVG production folder', show_new=False)
@@ -1020,24 +1024,24 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(200, {'cancelled': True})
                     data = {'path':folder_path}
                 with FOLDER_LOCK:
-                    if self.path in ('/api/folder/connect','/api/folder/pick'):
+                    if path in ('/api/folder/connect','/api/folder/pick'):
                         root = real_directory(data['path'])
                         if OUTPUT.root and OUTPUT.root.resolve().is_relative_to(root):
                             raise ValueError('The source folder must not contain your output folder.')
                         approve_source_root(WORK, root)
                         result = FOLDER.connect(str(root))
-                    elif self.path == '/api/folder/disconnect':
+                    elif path == '/api/folder/disconnect':
                         FOLDER.disconnect()
                         result = {'connected':False,'files':[]}
                     else:
                         raise ValueError('Unknown folder action.')
                 return self.send(200,result)
             with LOCK:
-                if self.path in ('/api/solve', '/api/improve'):
+                if path in ('/api/solve', '/api/improve'):
                     if STATE.get('status') == 'running':
                         raise ValueError('Cancel the current search before starting another.')
                     incumbent = None
-                    if self.path == '/api/improve':
+                    if path == '/api/improve':
                         if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                             raise ValueError('Calculate a current layout before improving it.')
                         if STATE.get('released'):
@@ -1083,7 +1087,7 @@ class Handler(BaseHTTPRequestHandler):
                     STATE.update(status='running', id=run_id, output=str(output), job=data)
                     if incumbent:
                         STATE['incumbent'] = incumbent
-                elif self.path == '/api/cancel':
+                elif path == '/api/cancel':
                     keep = data.get('keepBest') is True
                     if PROCESS and PROCESS.poll() is None:
                         PROCESS.terminate()
@@ -1109,7 +1113,7 @@ class Handler(BaseHTTPRequestHandler):
                         if incumbent:
                             STATE['note'] = 'Search cancelled; your best layout is retained.'
                     persist_state()
-                elif self.path == '/api/output/undo':
+                elif path == '/api/output/undo':
                     if STATE.get('status') != 'ready' or not STATE.get('released') or data.get('id') != STATE.get('id'):
                         raise ValueError('Send a layout before undoing it.')
                     if not OUTPUT.root:
@@ -1124,7 +1128,7 @@ class Handler(BaseHTTPRequestHandler):
                     STATE.update(savedPath='', deliveryCompleted=False)
                     persist_state()
                     return self.send(200, {'ok': True})
-                elif self.path == '/api/shutdown':
+                elif path == '/api/shutdown':
                     if macos_service_runtime.active():
                         raise ValueError('The shop host stays available when a browser closes. The administrator controls its system service.')
                     if STATE.get('status') == 'running':
@@ -1133,14 +1137,14 @@ class Handler(BaseHTTPRequestHandler):
                     self.send(200, {'ok': True})
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
-                elif self.path == '/api/work/discard':
+                elif path == '/api/work/discard':
                     if STATE.get('status') == 'running':
                         raise ValueError('Stop the search before starting over.')
                     STATE.clear()
                     STATE.update(status='idle')
                     (WORK/'session.json').unlink(missing_ok=True)
                     return self.send(200, {'ok': True})
-                elif self.path == '/api/release':
+                elif path == '/api/release':
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('Calculate and review the current layout before exporting.')
                     export_job = copy.deepcopy(STATE['job'])
@@ -1177,13 +1181,13 @@ class Handler(BaseHTTPRequestHandler):
                     STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved or (STATE.get('savedPath') if data.get('downloadOnly') is True else None), sha256=digest)
                     persist_state()
                     return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check,'deliveryCompleted':STATE['deliveryCompleted'],'sha256':digest})
-                elif self.path == '/api/delivery/complete':
+                elif path == '/api/delivery/complete':
                     if STATE.get('status')!='ready' or data.get('id')!=STATE.get('id') or not STATE.get('released') or not (WORK/'batches'/(STATE['id']+'.zip')).is_file():
                         raise ValueError('Download the current frozen batch before completing its delivery.')
                     STATE['deliveryCompleted']=True
                     persist_state()
                     return self.send(200,{'ok':True})
-                elif self.path == '/api/prepare-apply':
+                elif path == '/api/prepare-apply':
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
                         raise ValueError('Calculate a current validated layout first.')
                     if not STATE['job'].get('captureId'):

@@ -1,4 +1,5 @@
 """Installer build guards that can run outside Windows."""
+import opt_out
 import os
 import unittest
 from pathlib import Path

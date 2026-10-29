@@ -1,4 +1,5 @@
 """LAN PIN, host-only shop controls, and source-folder confinement."""
+import opt_out
 import hashlib
 import io
 import json

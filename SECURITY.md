@@ -88,7 +88,7 @@ The shop computer must be paired with OUTPUT before nesting, sending, or stock c
 
 The pairing code and the shop credential are not logged, not put in source, and not returned to the browser. Check-in sends the app version only. The computer name and installation id go out once, at pairing. Customer artwork, filenames, and stock contents are not part of either request.
 
-A missing OUTPUT response does not stop a paired shop for 14 days (`CHECK_IN_MAX_AGE_DAYS`). OUTPUT saying the credential is revoked does. `EZ_NEST_DEV_NO_OUTPUT=1` is ignored unless the process is a source checkout in dev mode (`--dev`). Installed builds drop that variable. Forks may remove the requirement under Apache-2.0. Official builds enforce it.
+A missing OUTPUT response does not stop a paired shop for 14 days (`CHECK_IN_MAX_AGE_DAYS`). The check-in record is bound to the shop credential. A missing or unreadable record stays closed until a live check-in succeeds. A time ahead of this computer is not a current check-in. OUTPUT saying the credential is revoked closes the gate and that credential stays closed. `EZ_NEST_DEV_NO_OUTPUT=1` and `EZ_NEST_OUTPUT_GATE_OPEN=1` are ignored unless the process is a source checkout in dev mode (`--dev`). Installed builds and the container image drop those variables. Forks may remove the requirement under Apache-2.0. Official builds enforce it.
 
 ### OUTPUT address and key
 

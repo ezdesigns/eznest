@@ -97,7 +97,7 @@ def _poll_log(spec, store, roles, token, stdin):
 
 def _accept_lines(spec, parser, lines, store, token):
     for raw in lines:
-        event_id = event_id_for(spec.name, raw)
+        event_id = event_id_for(spec.name, raw, store.salt())
         if store.seen(event_id):
             continue
         store.mark_seen(event_id, spec.name)
@@ -165,7 +165,7 @@ def _poll_eznest(spec, store, roles, token):
         if observation is None:
             continue
         line = observation['line']
-        event_id = event_id_for(spec.name, line)
+        event_id = event_id_for(spec.name, line, store.salt())
         if store.seen(event_id):
             continue
         store.mark_seen(event_id, spec.name)
@@ -179,7 +179,7 @@ def _enqueue(store, plugin, line, observation):
     try:
         event = build_event(
             store.instance_id(), plugin, line, observation['source'], observation['kind'],
-            observation['occurredAt'], observation['payload'],
+            observation['occurredAt'], observation['payload'], store.salt(),
         )
     except ContractError:
         store.note(plugin, last_error='withheld')
@@ -239,7 +239,7 @@ def replay(fixtures, store, options=None):
     _replay_lines(root / 'onyx_joblog.txt', 'onyx_joblog', onyx_joblog, onyx_options, salt, instance, seen, events)
     _replay_lines(root / 'summa_joblog.csv', 'summa_joblog', summa_joblog, summa_options, salt, instance, seen, events)
     _replay_inventory(root / 'inventory.json', salt, instance, seen, events)
-    _replay_eznest(root / 'eznest_events.jsonl', eznest_options, instance, seen, events)
+    _replay_eznest(root / 'eznest_events.jsonl', eznest_options, instance, seen, events, salt)
     return events
 
 
@@ -259,7 +259,7 @@ def _replay_lines(path, plugin, parser, options, salt, instance, seen, events):
     data = read_bytes(path, 0, path.parent, READ_WINDOW)
     lines, _offset, _dropped, _skipping = complete_lines(data, 0)
     for raw in lines:
-        event_id = event_id_for(plugin, raw)
+        event_id = event_id_for(plugin, raw, salt)
         if event_id in seen:
             continue
         seen.add(event_id)
@@ -269,7 +269,7 @@ def _replay_lines(path, plugin, parser, options, salt, instance, seen, events):
         try:
             events.append(build_event(
                 instance, plugin, raw, observation['source'], observation['kind'],
-                observation['occurredAt'], observation['payload'],
+                observation['occurredAt'], observation['payload'], salt,
             ))
         except ContractError:
             continue
@@ -289,27 +289,27 @@ def _replay_inventory(path, salt, instance, seen, events):
     state = inventory.MemoryQty()
     for observation in inventory.fold(rows, state, salt, replay=True):
         line = observation.get('line') or b''
-        event_id = event_id_for('inventory', line)
+        event_id = event_id_for('inventory', line, salt)
         if event_id in seen:
             continue
         seen.add(event_id)
         try:
             events.append(build_event(
                 instance, 'inventory', line, observation['source'], observation['kind'],
-                observation['occurredAt'], observation['payload'],
+                observation['occurredAt'], observation['payload'], salt,
             ))
         except ContractError:
             continue
 
 
-def _replay_eznest(path, options, instance, seen, events):
+def _replay_eznest(path, options, instance, seen, events, salt):
     if not path.is_file():
         return
     _fixture(path.parent, path.name)
     data = read_bytes(path, 0, path.parent, READ_WINDOW)
     lines, _offset, _dropped, _skipping = complete_lines(data, 0)
     for raw in lines:
-        event_id = event_id_for('eznest', raw)
+        event_id = event_id_for('eznest', raw, salt)
         if event_id in seen:
             continue
         seen.add(event_id)
@@ -323,7 +323,7 @@ def _replay_eznest(path, options, instance, seen, events):
         try:
             events.append(build_event(
                 instance, 'eznest', observation['line'], observation['source'], observation['kind'],
-                observation['occurredAt'], observation['payload'],
+                observation['occurredAt'], observation['payload'], salt,
             ))
         except ContractError:
             continue

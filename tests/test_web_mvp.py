@@ -1,4 +1,5 @@
 """Simple web page: sample SVG and PDF nest, lock, and identical re-export."""
+import opt_out
 import copy
 import hashlib
 import io
