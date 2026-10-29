@@ -12,7 +12,6 @@
   <nav class="shop-tabs" aria-label="Shop">
     <button id="tab-stock" class="shop-tab" type="button" aria-selected="true">Stock</button>
     <button id="tab-nest" class="shop-tab" type="button" aria-selected="false">Nest</button>
-    <button id="tab-jobs" class="shop-tab" type="button" aria-selected="false">Jobs</button>
   </nav>
   <div class="connect-chip-wrap">
     <button id="connect-chip" class="connect-chip" type="button" data-state="off" aria-expanded="false" aria-controls="connect-popover">Not connected</button>
@@ -26,39 +25,39 @@
           <button id="output-disconnect" class="link" type="button" hidden>Disconnect</button>
         </div>
         <div id="output-pair-form">
-          <label>Pairing code
+          <label>Code
             <input id="output-pair-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="text" aria-describedby="output-connect-status">
           </label>
-          <button id="output-pair" class="primary" type="button" disabled>Connect</button>
-          <p class="hint"><a href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Get a pairing code</a></p>
+          <p class="hint"><a href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Get a code</a></p>
         </div>
+        <button id="output-pair" class="primary" type="button" disabled>Connect</button>
         <p id="output-gate-lan" class="hint" hidden>Ask the shop computer to connect to OUTPUT.</p>
       </div>
       <div id="output-sharing">
-        <h3>Share activity</h3>
-        <details id="output-sharing-details">
-          <summary>What is shared</summary>
-          <p>Nesting and stock stay on this computer. A connection is separate from sharing activity. Nothing is sent unless this computer is paired and you agree here.</p>
-          <p>Sent when you connect: this computer's name and this installation id, once, in the pairing request. Later check-ins send the app version. The shop credential authenticates those HTTPS requests. OUTPUT also sees this computer's IP address on those requests.</p>
-          <p>Sent only after <strong>Enable sharing</strong>, and only for new activity: a stable installation id, opaque layout and request ids, the exact event time, the app version, the event type, a standard material category, and the measurement ranges below. Measured stock readings already on this host can be included. Earlier activity is excluded. A failed delivery is retried with the same event id. The shop stock ledger stays here.</p>
-          <p>Never sent: artwork, files or filenames, customer names or contacts, job codes, roll ids, custom material names, exact dimensions, quantities, stock contents, or search time. These are local observations; “printed” means an explicit operator confirmation, not independent proof of physical printing.</p>
-          <p>Sharing capacity and availability with the OUTPUT network is a separate opt-in. It stays off until you turn it on. It is not this connection, and it is not Enable sharing.</p>
-          <p>OUTPUT is pre-revenue. Where that product moves money, the money is Solana devnet test tokens. Ez Nest does not send a price.</p>
-          <p>Material categories: <code>moto_regular, moto_holographic, moto_chrome, custom, unknown</code> or null. Stock-only observations have no layout ID.</p>
+        <p id="output-sharing-line">What is shared: event time, app version, and measurement ranges for new activity. Artwork, names, and stock stay on this computer.</p>
+        <label class="check"><input id="telemetry-agree" type="checkbox" disabled> I agree to automatically share new activity using these fields.</label>
+        <p id="telemetry-status" role="status" aria-live="polite">Open this on the host computer to review sharing.</p>
+        <div id="output-sharing-details" hidden>
           <p>Event types: <span id="telemetry-kinds"></span></p>
           <p id="telemetry-bands"></p>
           <p>Destination: <code id="output-destination">https://output.jeezlabs.io/api/shop/telemetry</code></p>
-          <details><summary>Exact JSON fields (illustrative event)</summary><pre id="telemetry-preview" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
-          <p>Stopping prevents further requests after any in-flight request finishes. It does not delete records already received by OUTPUT. Re-enabling excludes all activity recorded before the new consent.</p>
-        </details>
-        <label class="check"><input id="telemetry-agree" type="checkbox" disabled> I agree to automatically share new activity using these fields.</label>
-        <button id="telemetry-enable" type="button" disabled>Enable sharing</button>
-        <button id="telemetry-stop" type="button" disabled>Stop sharing</button>
-        <button id="telemetry-refresh" type="button">Refresh sharing status</button>
-        <p id="telemetry-status" role="status" aria-live="polite">Open this on the host computer to review sharing.</p>
+          <pre id="telemetry-preview" hidden></pre>
+        </div>
+        <button id="telemetry-enable" type="button" hidden disabled>Enable sharing</button>
+        <button id="telemetry-stop" type="button" hidden disabled>Stop sharing</button>
+        <button id="telemetry-refresh" type="button" hidden>Refresh sharing status</button>
       </div>
     </div>
   </div>
+  <button id="settings-open" type="button" aria-label="Settings" aria-haspopup="dialog">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9.5 3h5l.5 2.5 1.6.9 2.4-.8 2.5 4.3-1.9 1.7v1.8l1.9 1.7-2.5 4.3-2.4-.8-1.6.9-.5 2.5h-5L9 19.5l-1.6-.9-2.4.8-2.5-4.3 1.9-1.7v-1.8L2.5 9.9 5 5.6l2.4.8L9 5.5Z"/>
+        <circle cx="12" cy="12.5" r="3"/>
+      </g>
+    </svg>
+  <span>Settings</span>
+</button>
   <button id="logout" type="button" class="link" hidden>Log out</button>
 </header>
 <dialog id="pin-gate" aria-labelledby="pin-title">
@@ -73,15 +72,7 @@
   </form>
 </dialog>
 <p id="output-banner" class="lan-note" hidden></p>
-<button id="settings-open" type="button" aria-label="Settings" aria-haspopup="dialog">
-    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-      <g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9.5 3h5l.5 2.5 1.6.9 2.4-.8 2.5 4.3-1.9 1.7v1.8l1.9 1.7-2.5 4.3-2.4-.8-1.6.9-.5 2.5h-5L9 19.5l-1.6-.9-2.4.8-2.5-4.3 1.9-1.7v-1.8L2.5 9.9 5 5.6l2.4.8L9 5.5Z"/>
-        <circle cx="12" cy="12.5" r="3"/>
-      </g>
-    </svg>
-  <span>Settings</span>
-</button>
+
 <dialog id="settings" aria-labelledby="settings-title">
   <div class="panel">
     <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title">Settings</h2><p class="hint">Set up once. Your material choices stay with the job.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
@@ -152,7 +143,7 @@
     </details>
     <details id="settings-telemetry" class="settings-section">
       <summary>Share activity with OUTPUT</summary>
-      <p class="section-note">Connection, check-in, and activity sharing are in the status chip at the top of the page. The pairing code is entered there.</p>
+      <p class="section-note">Connection, check-in, and activity sharing are in the status chip at the top of the page. The code is entered there.</p>
       <label>OUTPUT service address
         <input id="output-url" type="url" inputmode="url" maxlength="200" spellcheck="false" autocapitalize="none" placeholder="https://output.jeezlabs.io" aria-describedby="output-url-note">
       </label>
@@ -189,14 +180,19 @@
 <main>
   <section id="view-stock" class="shop-view" aria-label="Stock">
     <div class="stock-head">
-      <h2>Rolls in stock</h2>
-      <button id="add-roll-more" class="primary" type="button" hidden>+ Add roll</button>
+      <h2>Stock</h2>
+      <button id="add-roll-more" class="primary" type="button" hidden>Add roll</button>
     </div>
     <div id="stock-empty" class="stock-empty">
       <p>Add the rolls you have on the shelf.</p>
       <button id="add-roll" class="primary" type="button">Add roll</button>
     </div>
     <div id="stock-list" class="stock-list"></div>
+    <section id="recent" class="recent" hidden>
+      <h2>Recent</h2>
+      <div id="recent-list"></div>
+      <a id="recent-output" href="https://output.jeezlabs.io/" target="_blank" rel="noopener noreferrer" hidden>See all in OUTPUT</a>
+    </section>
   </section>
   <section id="view-nest" class="shop-view" hidden>
   <div class="workspace-grid">
@@ -255,6 +251,15 @@
     </label>
     <p class="hint import-hint">PDF, SVG or PDF-compatible AI</p>
   </div>
+  <ul id="files" class="files" hidden></ul>
+  <details id="job-options" hidden><summary>Copies <span id="copies-summary"></span></summary><p class="hint">Repeat every piece in this job.</p><div class="quiet">
+    <div class="sets"><span id="copies-label">Full sets</span>
+      <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
+      <input id="sets" type="number" min="1" max="800" step="1" value="1" inputmode="numeric" aria-label="Sets">
+      <button id="sets-inc" type="button" aria-label="More sets">+</button>
+    </div>
+  </div>
+  </details>
 
   <div class="result-overview" aria-label="Layout results">
   <div class="result-measures">
@@ -290,25 +295,9 @@
   </details>
   </section>
   <aside class="job-panel" aria-label="Job controls">
-    <h2><span class="step-number">1</span> Upload job</h2>
-    <p id="job-empty" class="hint">Add a print file to get started.</p>
-  <ul id="files" class="files" hidden></ul>
-  <details id="job-options" hidden><summary>Copies <span id="copies-summary"></span></summary><p class="hint">Repeat every piece in this job.</p><div class="quiet">
-
-    <div class="sets"><span id="copies-label">Full sets</span>
-      <button id="sets-dec" type="button" aria-label="Fewer sets">−</button>
-      <input id="sets" type="number" min="1" max="800" step="1" value="1" inputmode="numeric" aria-label="Sets">
-      <button id="sets-inc" type="button" aria-label="More sets">+</button>
-    </div>
-  </div>
-
-
-  </details>
-
-
+    <p id="job-empty" class="hint" hidden>Add a print file to get started.</p>
   <section class="material-area" aria-label="Job material">
-    <div class="material-heading"><label for="material"><span class="step-number">2</span> Choose material</label><button id="edit-material" class="link" type="button">Add</button></div>
-    <p class="hint step-hint">Add a name, width, and optional cost or quantity on hand.</p>
+    <div class="material-heading"><h2 id="material-title">Material</h2><button id="edit-material" class="link" type="button">Add</button></div>
     <select id="material" aria-label="Material">
       <option value="" selected>Add your first material</option>
       <option value="custom">+ Add material</option>
@@ -324,25 +313,26 @@
   </section>
 
   <section id="layout-options" class="layout-options">
-    <h2><span class="step-number">3</span> Where will you print?</h2>
+    <h2>Where will you print?</h2>
     <div class="output-modes" aria-label="Where to print">
       <button id="in-house" class="nest-mode" type="button" aria-pressed="true">In-house</button>
       <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Learn about OUTPUT">
         <strong>Don't print 🤑</strong>
-        <span class="paid-badge">Devnet sandbox</span>
+        <span class="paid-badge">Practice run. Nothing is sent.</span>
       </button>
     </div>
-    <div class="effort-heading"><button id="effort-help" class="help-label" type="button">Nesting effort</button><span class="hint">More time may find a tighter fit.</span></div>
-    <span id="effort-summary" hidden></span>
-    <label>Nesting effort
-      <select id="nesting-effort">
-        <option value="5">Quick · 5 seconds</option>
-        <option value="30" selected>Balanced · 30 seconds</option>
-        <option value="90">Best fit · 90 seconds</option>
-      </select>
-    </label>
+    <div id="effort-controls" hidden>
+      <span id="effort-summary"></span>
+      <label>Search time
+        <select id="nesting-effort">
+          <option value="5">Quick · 5 seconds</option>
+          <option value="30" selected>Balanced · 30 seconds</option>
+          <option value="90">Best fit · 90 seconds</option>
+        </select>
+      </label>
+    </div>
   </section>
-  <button id="start-nesting" class="primary" type="button" disabled>Nest</button>
+  <button id="start-nesting" class="primary" type="button" disabled>Add a print file to start</button>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
   <div id="choice" class="choice" hidden>
     <button id="choose-thru" type="button" aria-pressed="false">THRU</button>
@@ -370,30 +360,12 @@
   </div>
   <button id="undo" class="link" type="button" hidden>Undo send</button>
   <p id="delivery-receipt" class="delivery-receipt" role="status" hidden></p>
-  <button id="inventory-open" class="link" type="button">Material &amp; stock</button>
+  <button id="inventory-open" class="link" type="button" hidden>Material and stock</button>
   <p id="status" role="status" aria-live="polite"></p>
   <input id="layout-id" hidden readonly tabindex="-1" aria-label="Layout ID">
   <input id="layout-hash" hidden readonly tabindex="-1" aria-label="SHA-256">
   </aside>
   </div>
-  </section>
-  <section id="view-jobs" class="shop-view" hidden aria-label="Jobs">
-    <h2 class="stock-title">Jobs</h2>
-    <div class="job-stages">
-      <section>
-        <h3>Reserved</h3>
-        <div id="jobs-reserved" class="job-stage"></div>
-      </section>
-      <section>
-        <h3>Sent</h3>
-        <div id="jobs-sent" class="job-stage"></div>
-      </section>
-      <section>
-        <h3>Printed/Released</h3>
-        <div id="jobs-done" class="job-stage"></div>
-      </section>
-    </div>
-    <p id="jobs-empty" class="hint">Reserved jobs show up here. Confirming subtracts the length from the roll. Releasing puts it back.</p>
   </section>
 
 </main>

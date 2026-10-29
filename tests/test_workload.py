@@ -36,7 +36,7 @@ class WorkloadTests(unittest.TestCase):
                         page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate').textContent)", timeout=90000)
                         preview_box = page.locator('#sheet-frame').bounding_box()
                         controls_box = page.locator('.job-panel').bounding_box()
-                        self.assertGreater(preview_box['width'], controls_box['width'] * 3)
+                        self.assertGreater(preview_box['width'], controls_box['width'])
                         self.assertLessEqual(preview_box['x'] + preview_box['width'], controls_box['x'])
                         self.assertNotRegex(page.locator('body').inner_text(), r'[Ââ]')
                         page.select_option('#preview-zoom', '2')

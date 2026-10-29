@@ -380,7 +380,7 @@ class GateTests(unittest.TestCase):
                     page.click('#connect-chip')
                     page.wait_for_function("() => !document.querySelector('#output-pair').disabled")
                     self.assertEqual(page.locator('#output-pair-code').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(243, 243, 240)')
-                    self.assertEqual(page.locator('#connect-popover a').evaluate('n => getComputedStyle(n).color'), 'rgb(28, 28, 28)')
+                    self.assertEqual(page.locator('#connect-popover a').evaluate('n => getComputedStyle(n).color'), 'rgb(20, 20, 20)')
                     self.assertEqual(page.locator('#output-pair').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(17, 17, 17)')
                     self.assertEqual(page.locator('#settings #output-pair-code').count(), 0)
 
@@ -390,7 +390,7 @@ class GateTests(unittest.TestCase):
                     with patch.object(output_pairing, 'exchange', side_effect=exchange), patch.object(output_gate, 'check_in', return_value={'ok': True, 'state': 'ok', 'message': ''}):
                         page.fill('#output-pair-code', '7K4NP-QRX2M')
                         page.click('#output-pair')
-                        expect(page.locator('#connect-chip')).to_have_text('Connected to North Shop')
+                        expect(page.locator('#connect-chip')).to_have_text('Connected')
                         expect(page.locator('#output-connect-shop')).to_have_text('Connected to North Shop.')
                         expect(page.locator('#output-connect-status')).to_contain_text('Last check-in just now.')
                         expect(page.locator('#output-pair-form')).to_be_hidden()
@@ -398,7 +398,7 @@ class GateTests(unittest.TestCase):
                     page.click('#output-reconnect')
                     expect(page.locator('#output-pair-form')).to_be_visible()
                     expect(page.locator('#output-connect-shop')).to_have_text('Connected to North Shop.')
-                    expect(page.locator('#output-connect-status')).to_contain_text('Paste a new pairing code')
+                    expect(page.locator('#output-connect-status')).to_contain_text('Paste a new code')
                 finally:
                     browser.close()
         finally:

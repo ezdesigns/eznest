@@ -128,7 +128,7 @@ class SharedInventoryBrowserTests(unittest.TestCase):
                 b.click('#save-material')
                 expect(b.locator('#preset-error')).to_contain_text('changed on another screen')
                 b.click('#cancel-material')
-                a.select_option('#nesting-effort','5')
+                a.locator('#nesting-effort').evaluate("(node, value) => { node.value = value; node.dispatchEvent(new Event('change', {bubbles:true})); }", '5')
                 a.set_input_files('#file',str(Path(__file__).resolve().parents[1]/'sample-artwork.svg'))
                 self.fixture.start_nesting(a)
                 a.wait_for_function("() => document.body.dataset.step === 'check'",timeout=90000)

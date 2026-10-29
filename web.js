@@ -51,7 +51,7 @@ function savePrefs(patch) {
 // Explain effects beside the controls, without adding instructions to the job flow.
 function installSettingsHelp() {
   const help = {
-    'nesting-effort': ['Nesting effort', 'Quick finds a layout sooner. Best fit spends longer trying arrangements and may use less material. These are search budgets; preparation and checking take extra time. Your artwork, bleed, spacing and allowed turns stay the same. Try tighter fit keeps your best valid result.'],
+    'nesting-effort': ['Search time', 'Quick finds a layout sooner. Best fit spends longer trying arrangements and may use less material. These are search budgets; preparation and checking take extra time. Your artwork, bleed, spacing and allowed turns stay the same. Try tighter fit keeps your best valid result.'],
     'cut-preset': ['Cut naming preset', 'Choose the names your print software recognizes. This changes exported cut names; it does not create missing cut lines.'],
     'thru-name': ['Through-cut name', 'The name your print software uses for a full cut. It must match your cutter setup. Changing this name does not set the blade depth.'],
     'kiss-name': ['Kiss-cut name', 'The name your print software uses to cut the sticker and leave the backing. It must match your cutter setup.'],
@@ -127,7 +127,9 @@ function installSettingsHelp() {
     input.setAttribute('aria-label', name);
     // The effort heading itself explains the select; avoid repeating its title.
     if (id === 'nesting-effort') {
-      bindHelp($('effort-help'), message);
+      const helpButton = $('effort-help');
+      if (!helpButton) continue;
+      bindHelp(helpButton, message);
       original.classList.add('effort-field');
       for (const node of [...original.childNodes]) if (node.nodeType === Node.TEXT_NODE) node.textContent = '';
       continue;
@@ -625,12 +627,11 @@ function showSheetId(state) {
 }
 
 function selectView(name) {
-  if (!['stock', 'nest', 'jobs'].includes(name)) return;
+  if (!['stock', 'nest'].includes(name)) return;
   document.body.dataset.view = name;
   $('view-stock').hidden = name !== 'stock';
   $('view-nest').hidden = name !== 'nest';
-  $('view-jobs').hidden = name !== 'jobs';
-  for (const id of ['stock', 'nest', 'jobs']) {
+  for (const id of ['stock', 'nest']) {
     const tab = $('tab-' + id);
     if (tab) tab.setAttribute('aria-selected', String(id === name));
   }
@@ -645,8 +646,8 @@ function showScreen(name) {
   const confirming = name === 'confirm';
   $('drop-screen').hidden = !empty;
   $('upload-title').textContent = kits.length ? 'Files ready to nest' : 'Upload your print here';
-  $('upload-hint').textContent = kits.length ? 'Choose material and effort, then Nest. Click here to add files.' : 'Click to choose files or drop them here';
-  $('job-empty').hidden = kits.length > 0;
+  $('upload-hint').textContent = kits.length ? 'Choose a material, then Nest. Click here to add files.' : 'Click to choose files or drop them here';
+  $('job-empty').hidden = true;
   $('sheet-frame').hidden = empty;
   $('preview-tools').hidden = empty;
   $('legend').hidden = empty;
@@ -685,6 +686,7 @@ function syncFiles() {
   $('files').hidden = !show;
   $('copies-summary').textContent = kits.some(entry => entry.sets !== 1) ? kits.map(entry => entry.sets + '×').join(', ') : '';
   $('start-nesting').disabled = busy || importing || saving || !!presetEditor || !kits.length || !!inputIssue();
+  $('start-nesting').textContent = kits.length ? 'Nest' : 'Add a print file to start';
   $('add-files').hidden = !show || !!illustratorHandoff || document.body.dataset.step === 'nest';
   $('stop').hidden = document.body.dataset.step !== 'nest';
   $('improve').hidden = document.body.dataset.step !== 'check' || busy || !current || current.released;
@@ -1419,7 +1421,7 @@ async function improve() {
     busy = true;
     showScreen('nest');
     status('Trying a better fit…');
-    await api('/api/improve', {id: current.id, seconds: Number($('nesting-effort').value)});
+    await api('/api/improve', {id: current.id, seconds: 90});
     setTimeout(poll, 300);
   } catch (error) {
     busy = false;
@@ -2518,11 +2520,11 @@ function renderOutputSharing(info) {
   const connectStatus = $('output-connect-status');
   connectStatus.classList.remove('error');
   if (info.paused) connectStatus.textContent = 'Sharing is paused during installation or recovery.';
-  else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.';
+  else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A code is not used while those settings are present.';
   else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
-  else if (paired && reconnectOpen) connectStatus.textContent = 'Paste a new pairing code. This computer stays connected until that code is accepted.';
-  else if (paired) connectStatus.textContent = [lastCheckInText || 'Choose Check now to confirm the last check-in.', info.requiresConsent ? 'Review the sharing details below, then choose Enable sharing.' : ''].filter(Boolean).join(' ');
-  else connectStatus.textContent = 'Nesting and stock stay on this computer. Paste a pairing code if you want check-ins and activity sharing.';
+  else if (paired && reconnectOpen) connectStatus.textContent = 'Paste a new code. This computer stays connected until that code is accepted.';
+  else if (paired) connectStatus.textContent = [lastCheckInText || 'Choose Check now to confirm the last check-in.', info.requiresConsent ? 'Review what is shared, then choose Connect.' : ''].filter(Boolean).join(' ');
+  else connectStatus.textContent = 'Nesting and stock stay on this computer. Paste a code if you want check-ins and activity sharing.';
   const canPair = !outputConnection || outputConnection.canPair !== false;
   const launchLocked = launch || source === 'disabled';
   $('output-pair-form').hidden = !canPair || ((paired && !reconnectOpen) || launchLocked);
@@ -2531,10 +2533,20 @@ function renderOutputSharing(info) {
     lan.hidden = canPair || launchLocked;
     if (!lan.hidden) lan.textContent = (outputConnection && outputConnection.message) || 'Ask the shop computer to connect to OUTPUT.';
   }
-  $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
-  renderConnectionChip();
-  $('telemetry-agree').checked = false;
+  const agreed = $('telemetry-agree').checked && !info.enabled;
+  $('telemetry-agree').checked = agreed;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
+  const shareOn = info.enabled && !reconnectOpen;
+  const shareButton = $('output-pair');
+  if (shareOn) {
+    shareButton.textContent = 'Sharing is on · Turn off';
+    shareButton.disabled = !!info.paused;
+  } else {
+    shareButton.textContent = 'Connect';
+    const codeVisible = !$('output-pair-form').hidden;
+    shareButton.disabled = !!info.paused || (!codeVisible && (!connected || !agreed));
+  }
+  renderConnectionChip();
   $('telemetry-enable').disabled = true;
   $('telemetry-stop').disabled = !info.enabled || info.paused;
   $('telemetry-kinds').textContent = info.eventTypes.join(', ');
@@ -2576,7 +2588,7 @@ async function connectOutput() {
   const status = $('output-connect-status');
   const code = input.value.trim();
   if (!code) {
-    status.textContent = 'Paste the pairing code from OUTPUT.';
+    status.textContent = 'Paste the code from OUTPUT.';
     status.classList.add('error');
     return;
   }
@@ -2705,6 +2717,7 @@ async function boot() {
   document.body.dataset.ready = '1';
   await autoLoadIllustrator();
   setInterval(() => { if (!document.hidden && !inventoryBusy) refreshInventory().catch(() => {}); }, 10000);
+  setInterval(() => { if (!document.hidden) refreshOutputSharing().catch(() => {}); }, 2000);
 }
 
 function showOutputBanner(session) {
@@ -2720,21 +2733,13 @@ function renderConnectionChip() {
   if (!chip) return;
   const state = outputConnection && outputConnection.state || '';
   const source = outputSharing && outputSharing.connection || '';
-  const shop = outputSharing && outputSharing.shopName || '';
-  let label = 'Not connected';
-  let kind = 'off';
-  if (['reconnect', 'revoked', 'disconnected', 'unchecked'].includes(state)) {
-    label = 'Reconnect';
-    kind = 'reconnect';
-  } else if (source === 'paired') {
-    label = 'Connected to ' + (shop || 'OUTPUT');
-    kind = 'on';
-  } else if (source === 'environment' || source === 'environment-invalid') {
-    label = 'Connected to OUTPUT';
-    kind = 'on';
-  }
-  chip.textContent = label;
+  const failed = ['reconnect', 'revoked', 'disconnected', 'unchecked'].includes(state);
+  const linked = source === 'paired' || source === 'environment' || source === 'environment-invalid';
+  const kind = linked && !failed ? 'on' : 'off';
+  chip.textContent = kind === 'on' ? 'Connected' : 'Not connected';
   chip.dataset.state = kind;
+  const recent = $('recent-output');
+  if (recent) recent.hidden = kind !== 'on';
 }
 
 function setConnectPopover(open) {
@@ -2752,7 +2757,7 @@ function rollLengthLabel(mm) {
 
 function renderShopLists() {
   renderStock();
-  renderJobs();
+  renderRecent();
 }
 
 function renderStock() {
@@ -2760,7 +2765,12 @@ function renderStock() {
   const empty = $('stock-empty');
   const more = $('add-roll-more');
   if (!list || !empty) return;
-  const rolls = shopInventory.materials || [];
+  const rolls = [...(shopInventory.materials || [])].sort((a, b) => {
+    const lowA = lowStock(materialProfiles[a.id] || a.profile) ? 0 : 1;
+    const lowB = lowStock(materialProfiles[b.id] || b.profile) ? 0 : 1;
+    if (lowA !== lowB) return lowA - lowB;
+    return String(a.profile['preset-name'] || '').localeCompare(String(b.profile['preset-name'] || ''));
+  });
   empty.hidden = rolls.length > 0;
   if (more) more.hidden = !rolls.length;
   list.replaceChildren();
@@ -2768,38 +2778,39 @@ function renderStock() {
     const values = materialProfiles[item.id] || item.profile;
     const row = document.createElement('article');
     row.className = 'stock-row';
-    const name = document.createElement('div');
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'stock-main';
+    const name = document.createElement('span');
     name.className = 'stock-name';
     name.textContent = item.profile['preset-name'] || 'Roll';
     const warn = lowStock(values);
     if (warn) {
       const mark = document.createElement('span');
       mark.className = 'low-mark';
-      mark.textContent = warn.startsWith('Out') ? 'Out' : 'Low';
+      const dot = document.createElement('i');
+      mark.append(dot, document.createTextNode('Low'));
       name.append(mark);
     }
-    const width = document.createElement('div');
-    width.innerHTML = '<span class="label">Width</span>';
-    const widthValue = document.createElement('strong');
-    widthValue.textContent = (item.profile.width || '–') + ' ' + (item.profile.unit || '');
-    width.append(widthValue);
-    const left = document.createElement('div');
-    left.innerHTML = '<span class="label">Left</span>';
+    const width = document.createElement('span');
+    width.className = 'stock-width';
+    width.textContent = (item.profile.width || '–') + ' ' + (item.profile.unit || '');
+    const left = document.createElement('span');
+    left.className = 'stock-left';
+    const leftLabel = document.createElement('span');
+    leftLabel.className = 'label';
+    leftLabel.textContent = 'Left';
     const leftValue = document.createElement('strong');
     leftValue.textContent = rollLengthLabel(item.availableMm);
-    left.append(leftValue);
-    const held = document.createElement('div');
-    held.innerHTML = '<span class="label">Reserved</span>';
-    const heldValue = document.createElement('strong');
-    heldValue.textContent = rollLengthLabel(item.reservedMm);
-    held.append(heldValue);
-    const actions = document.createElement('div');
-    actions.className = 'stock-actions';
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'link';
-    edit.textContent = 'Edit details';
-    edit.addEventListener('click', () => openPreset(item.id));
+    left.append(leftLabel, leftValue);
+    open.append(name, width, left);
+    if (item.reservedMm > 0.05) {
+      const held = document.createElement('span');
+      held.className = 'stock-held';
+      held.textContent = 'Reserved ' + rollLengthLabel(item.reservedMm);
+      open.append(held);
+    }
+    open.addEventListener('click', () => openPreset(item.id));
     const count = document.createElement('button');
     count.type = 'button';
     count.className = 'link';
@@ -2840,51 +2851,40 @@ function renderStock() {
         save.disabled = false;
       }
     });
-    actions.append(edit, count);
-    row.append(name, width, left, held, actions, form);
+    row.append(open, count, form);
     list.append(row);
   }
 }
 
-function renderJobs() {
-  const columns = {reserved: $('jobs-reserved'), sent: $('jobs-sent'), done: $('jobs-done')};
-  if (!columns.reserved) return;
-  for (const node of Object.values(columns)) node.replaceChildren();
-  const names = Object.fromEntries(shopInventory.materials.map(item => [item.id, item.profile['preset-name'] || 'Roll']));
-  let count = 0;
-  for (const row of shopInventory.reservations || []) {
-    count += 1;
-    const card = document.createElement('article');
-    card.className = 'job-card';
-    const text = document.createElement('p');
-    const stage = row.status === 'used' ? 'Printed' : row.status === 'cancelled' ? 'Released' : row.status === 'sent' ? 'Sent' : 'Reserved';
-    text.textContent = `${names[row.material] || 'Roll'} · ${stockFeet(row.length)} · ${stage}`;
-    card.append(text);
-    const actions = document.createElement('div');
-    actions.className = 'stock-actions';
-    const buttons = [];
-    if (row.status === 'reserved') buttons.push(['send', 'Mark sent']);
+function renderRecent() {
+  const section = $('recent');
+  const list = $('recent-list');
+  if (!section || !list) return;
+  const names = Object.fromEntries((shopInventory.materials || []).map(item => [item.id, item.profile['preset-name'] || 'Roll']));
+  const words = {reserved: 'Reserved', sent: 'Sent', used: 'Printed', cancelled: 'Released'};
+  const rows = [...(shopInventory.reservations || [])].sort((a, b) => String(b.updated || b.created || '').localeCompare(String(a.updated || a.created || ''))).slice(0, 5);
+  section.hidden = rows.length === 0;
+  list.replaceChildren();
+  for (const row of rows) {
+    const line = document.createElement('div');
+    line.className = 'recent-line';
+    const text = document.createElement('span');
+    text.textContent = `${names[row.material] || 'Roll'} · ${stockFeet(row.length)} · ${words[row.status] || 'Reserved'}`;
+    line.append(text);
     if (row.status === 'reserved' || row.status === 'sent') {
-      buttons.push(['use', 'Confirm'], ['cancel', 'Release']);
-    }
-    for (const [action, label] of buttons) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'link';
-      button.textContent = label;
+      button.textContent = 'Confirm printed';
       button.addEventListener('click', async () => {
         button.disabled = true;
-        try { acceptInventory(await api('/api/materials/transition', {id: row.id, action})); }
-        catch (error) { status(error.message, true); renderJobs(); }
+        try { acceptInventory(await api('/api/materials/transition', {id: row.id, action: 'use'})); }
+        catch (error) { status(error.message, true); renderRecent(); }
       });
-      actions.append(button);
+      line.append(button);
     }
-    if (actions.childElementCount) card.append(actions);
-    const target = row.status === 'sent' ? columns.sent : (row.status === 'used' || row.status === 'cancelled') ? columns.done : columns.reserved;
-    target.append(card);
+    list.append(line);
   }
-  const empty = $('jobs-empty');
-  if (empty) empty.hidden = count > 0;
 }
 
 function requireHostPinReset() {
@@ -3277,7 +3277,7 @@ function closeSettingsFolds() {
 }
 
 function syncWelcome() {
-  $('feedback-welcome').hidden = !!prefs().feedbackWelcomed || kits.length > 0 || !!current;
+  $('feedback-welcome').hidden = true;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -3297,7 +3297,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('hot-folder').focus();
   });
   $('settings-close').addEventListener('click', () => $('settings').close());
-  for (const name of ['stock', 'nest', 'jobs']) {
+  for (const name of ['stock', 'nest']) {
     $('tab-' + name).addEventListener('click', () => selectView(name));
   }
   const openRoll = () => openPreset('custom');
@@ -3313,8 +3313,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('settings-telemetry').addEventListener('toggle', () => { if ($('settings-telemetry').open) refreshOutputSharing(); });
   $('telemetry-refresh').addEventListener('click', refreshOutputSharing);
-  $('telemetry-agree').addEventListener('change', () => { $('telemetry-enable').disabled = !outputSharing || !outputSharing.configured || outputSharing.enabled || outputSharing.paused || !$('telemetry-agree').checked; });
-  $('output-pair').addEventListener('click', connectOutput);
+  $('telemetry-agree').addEventListener('change', () => {
+    $('telemetry-enable').disabled = !outputSharing || !outputSharing.configured || outputSharing.enabled || outputSharing.paused || !$('telemetry-agree').checked;
+    if (outputSharing && !outputSharing.enabled && $('output-pair-form').hidden) $('output-pair').disabled = outputSharing.paused || !$('telemetry-agree').checked;
+  });
+  $('output-pair').addEventListener('click', () => {
+    if (outputSharing && outputSharing.enabled && !reconnectOpen) changeOutputSharing(false);
+    else if (!$('output-pair-form').hidden) connectOutput();
+    else changeOutputSharing(true);
+  });
   $('output-disconnect').addEventListener('click', disconnectOutput);
   $('output-check-now').addEventListener('click', async () => {
     $('output-check-now').disabled = true;
@@ -3575,10 +3582,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dismissWelcome = () => { $('feedback-welcome').hidden = true; savePrefs({feedbackWelcomed: true}); };
   syncWelcome();
   $('feedback-dismiss').addEventListener('click', dismissWelcome);
-  $('in-house').addEventListener('click', () => {
-    selectOutputMode('in-house');
-    $('nesting-effort').focus();
-  });
+  $('in-house').addEventListener('click', () => selectOutputMode('in-house'));
   $('start-nesting').addEventListener('click', () => { dismissWelcome(); nest(); });
   $('feedback-open').addEventListener('click', () => {
     dismissWelcome();
