@@ -237,10 +237,18 @@ def worker():
     print('true' if accepted else 'false')
 
 
+def _output_delivery_open(directory):
+    """Activity and capacity leave this computer only while the OUTPUT gate is open."""
+    import output_gate
+    return output_gate.public_status(directory, True).get('ok') is True
+
+
 def tick(directory, stop=None, *, limit=10, paused=lambda: False):
     """Bounded at-least-once delivery. The receiver deduplicates stable UUIDs."""
     if type(limit) is not int or not 1 <= limit <= 100:
         raise ValueError('Choose a delivery batch from 1 to 100.')
+    if not _output_delivery_open(directory):
+        return 0
     count = 0
     for _ in range(limit):
         with LOCK:
@@ -269,7 +277,7 @@ def tick(directory, stop=None, *, limit=10, paused=lambda: False):
                     db.execute('INSERT OR IGNORE INTO output_rejections VALUES(?,?,?)',
                                (row['id'], CONSENT_VERSION, telemetry.now()))
                 continue
-            if paused():
+            if paused() or not _output_delivery_open(directory):
                 break
             global _EMIT_ENDPOINT
             previous = _EMIT_ENDPOINT

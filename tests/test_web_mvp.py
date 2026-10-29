@@ -698,6 +698,7 @@ class WebMvpTests(unittest.TestCase):
             page.wait_for_function("() => document.body.dataset.ready === '1'")
             # Most tests exercise the browser fallback; chooser coverage opts in.
             page.evaluate('localSave = false')
+            page.evaluate("() => { if (typeof selectView === 'function') selectView('nest'); }")
         except Exception:
             detail = page.evaluate(
                 "() => JSON.stringify({ready: document.body && document.body.dataset.ready || '',"

@@ -1,14 +1,14 @@
 # OUTPUT pairing
 
-Ez Nest has to be connected to OUTPUT before a shop can nest, send, or change
-stock. The first run on the shop computer is one Connect step: paste a
-one-time pairing code from <https://output.jeezlabs.io/outpost/ez-nest>.
-Designer PCs cannot pair. If the host is not connected, they see "Ask the
-shop computer to connect to OUTPUT."
+Nesting and stock stay on this computer when it is not paired. The status chip
+says Not connected until someone pastes a one-time pairing code from
+<https://output.jeezlabs.io/outpost/ez-nest>. Designer PCs cannot pair. If the
+host is not connected, they see "Ask the shop computer to connect to OUTPUT."
 
-The account connection is required. Sharing activity, and sharing capacity
-with the OUTPUT network, are separate and stay off until someone on the host
-opts in.
+Check-ins, activity sharing, and capacity sharing stay closed until the host
+is paired. Sharing activity, and sharing capacity with the OUTPUT network, are
+separate and stay off until someone on the host opts in. Nothing is sent
+unless the host is paired and that consent is on.
 
 The public pages are <https://output.jeezlabs.io/> and the waitlist at
 <https://output.jeezlabs.io/waitlist>. Pairing, disconnect, and check-in are
@@ -37,12 +37,12 @@ devnet test tokens. Ez Nest does not send a price.
 
 ## What happens
 
-1. Until the host is paired, the page is the Connect screen and the API
-   answers `connect_required`.
-2. The host operator pastes a pairing code. The code is not logged or shown
-   again.
+1. Until the host is paired, nesting and stock still work. Paths that send a
+   check-in, activity, or capacity answer `connect_required`.
+2. The host operator pastes a pairing code in the status chip. The code is not
+   logged or shown again.
 3. Ez Nest sends that code to the pair endpoint and receives a scoped shop key.
-4. The host stores the key. Nesting works. Activity is not uploaded yet.
+4. The host stores the key. Activity is not uploaded yet.
 5. After **Enable sharing**, new local activity can be delivered as
    `eznest-observation/1` events. That consent is still optional.
 
@@ -60,9 +60,10 @@ computer, and the record is under 14 days old, the first load signs it and
 the offline grace continues. Any other unsigned record stays closed. A time
 ahead of this computer is not a current check-in.
 A banner appears after 3 days offline. After 14 days without a successful
-check-in, the Connect screen returns until a check-in succeeds. If OUTPUT
-says the credential is unpaired or revoked, the gate returns immediately, the
-stored credential is removed, and that credential stays closed.
+check-in, check-ins and activity sharing stop until a check-in succeeds.
+Nesting and stock stay available. If OUTPUT says the credential is unpaired
+or revoked, those sends stop immediately, the stored credential is removed,
+and that credential stays closed.
 
 Check-in is `POST /api/shop/agent/check-in` with `{"appVersion":"..."}` only.
 The computer name and installation id are not sent again. A missing route or
@@ -78,7 +79,7 @@ while the first of those is set. Installed Windows and macOS builds, and the
 container image, ignore those variables. Forks may remove the requirement
 under the Apache-2.0 license. Official builds enforce it.
 
-Disconnect is host-only. It returns the computer to the Connect screen.
+Disconnect is host-only. It stops check-ins and activity sharing. Nesting and stock stay on this computer.
 
 ## Endpoints
 

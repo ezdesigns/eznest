@@ -396,7 +396,14 @@ class Handler(BaseHTTPRequestHandler):
         return self.cookie_ok()
 
     def reject_output_gate(self, path, *, discard=False):
-        if path in ('/api/session', '/api/health', '/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
+        # Local nesting and stock stay available. Only paths that transmit to
+        # OUTPUT stay closed until this computer is paired and checked in.
+        if path not in (
+            '/api/telemetry/output/consent',
+            '/api/telemetry/link',
+            '/api/telemetry/status',
+            '/api/telemetry/stock',
+        ):
             return False
         decision = output_gate.public_status(WORK, self.loopback_client())
         if decision['ok']:

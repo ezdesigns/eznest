@@ -92,7 +92,10 @@ def database(directory):
 
 
 def reserved(db, material):
-    return db.execute("SELECT COALESCE(SUM(length),0) FROM reservations WHERE material=? AND status='reserved'", (material,)).fetchone()[0]
+    return db.execute(
+        "SELECT COALESCE(SUM(length),0) FROM reservations WHERE material=? AND status IN ('reserved','sent')",
+        (material,),
+    ).fetchone()[0]
 
 
 def snapshot(db):
@@ -166,7 +169,7 @@ def reserve(directory, key, run, length, width, fingerprint):
 
 def transition(directory, run, action):
     run = ident(run)
-    target = {'use': 'used', 'cancel': 'cancelled'}.get(action)
+    target = {'use': 'used', 'cancel': 'cancelled', 'send': 'sent'}.get(action)
     if not target:
         raise ValueError('Unknown inventory action.')
     with database(directory) as db:
@@ -175,7 +178,10 @@ def transition(directory, run, action):
             raise ValueError('Reservation not found.')
         if row['status'] == target:
             return snapshot(db)
-        if row['status'] != 'reserved':
+        if action == 'send':
+            if row['status'] != 'reserved':
+                raise ValueError('Only a pending reservation can be marked sent.')
+        elif row['status'] not in ('reserved', 'sent'):
             raise ValueError('Only a pending reservation can be changed. Used material is not returned by cancelling.')
         if action == 'use':
             db.execute('UPDATE materials SET stock=stock-? WHERE id=?', (row['length'], row['material']))

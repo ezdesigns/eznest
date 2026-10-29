@@ -122,9 +122,9 @@ If an update rolled back, include `helper.log` and leave customer files out of i
 
 ## Privacy and telemetry
 
-Artwork, nests, and stock records stay on the shop host. The host must be paired with OUTPUT. Nesting does not upload artwork. Activity sharing stays **off** until the host opts in.
+Artwork, nests, and stock records stay on the shop host. Nesting and stock work when the host is not paired. Nesting does not upload artwork. Activity sharing stays **off** until the host opts in.
 
-A paired host, or `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN`, can turn on activity sharing with **Enable sharing** after a current OUTPUT check-in. `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off and does not by itself satisfy the connection. **Stop sharing** stops later activity sends. **Disconnect** removes the paired credential and returns the host to the Connect screen. Neither deletes records the service already accepted.
+A paired host, or `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN`, can turn on activity sharing with **Enable sharing** after a current OUTPUT check-in. `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off. **Stop sharing** stops later activity sends. **Disconnect** removes the paired credential. Check-ins and activity sharing stop. Nesting and stock stay on this computer. Neither deletes records the service already accepted.
 
 The consented payload is the `eznest-observation/1` projection described in [OUTPUT sharing](docs/output-telemetry.md). The local proposal, which is not itself uploaded, is in [the telemetry contract](docs/telemetry-contract.md). A consented event can include:
 
@@ -152,7 +152,7 @@ Never sent: artwork, files, filenames, customer names or contacts, job codes, ro
 
 Sharing capacity and availability with the OUTPUT network is a separate opt-in. It stays off and does not send that information. OUTPUT is pre-revenue. Money elsewhere in OUTPUT, when enabled, is Solana devnet test tokens. Ez Nest does not send a price.
 
-After pairing, Ez Nest keeps working if OUTPUT is unreachable, for 14 days from the last successful check-in (`CHECK_IN_MAX_AGE_DAYS`). A banner shows after 3 days. A revoked credential returns the host to the Connect screen. `EZ_NEST_DEV_NO_OUTPUT=1` works only with `--dev` on a source checkout and shows `DEV MODE: not connected to OUTPUT`. Installed builds ignore it. Forks may remove the requirement. Official builds enforce it.
+After pairing, Ez Nest keeps working if OUTPUT is unreachable, for 14 days from the last successful check-in (`CHECK_IN_MAX_AGE_DAYS`). A banner shows after 3 days. A revoked credential stops check-ins and activity sharing until a new code is paired. Nesting and stock stay on this computer. `EZ_NEST_DEV_NO_OUTPUT=1` works only with `--dev` on a source checkout and shows `DEV MODE: not connected to OUTPUT`. Installed builds ignore it. Forks may remove the requirement. Official builds enforce it.
 
 ## Shop network
 

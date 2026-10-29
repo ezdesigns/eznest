@@ -385,6 +385,51 @@ body[data-step="confirm"] #layout-options { display: none; }
 #folder-error { color: #971b12; font-size: 13px; }
 #folder-error:empty { display: none; }
 .shop-header { display: flex; align-items: center; gap: 24px; padding-right: 155px; }
+.shop-tabs { display: flex; gap: 4px; }
+.shop-tab { min-height: 32px; padding: 4px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 700; }
+.shop-tab[aria-selected="true"] { background: #111; color: #fff; }
+.connect-chip-wrap { position: fixed; top: 14px; right: 128px; z-index: 4; }
+.connect-chip { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 32px; padding: 4px 12px; border: 1px solid #dce0e4; border-radius: 999px; background: #f3f3f0; font-size: 12px; font-weight: 700; }
+.connect-chip[data-state="reconnect"] { color: var(--alarm); border-color: #f0c2b8; background: #fff0ee; }
+.connect-popover { position: absolute; top: calc(100% + 8px); right: 0; z-index: 6; width: min(360px, calc(100vw - 24px)); max-height: min(70vh, 640px); overflow: auto; padding: 16px; background: #fff; border: 1px solid #ddd; border-radius: 14px; box-shadow: 0 6px 24px #0003; display: grid; gap: 12px; text-align: left; }
+#connect-popover h3 { margin: 0; font-size: 14px; }
+#connect-popover label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
+#output-pair-code { min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: #f3f3f0; width: 100%; }
+#connect-popover a { color: var(--ink); font-weight: 700; text-underline-offset: 3px; }
+#output-pair { justify-self: start; }
+#output-sharing { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid #e7e7e1; }
+#output-sharing-details summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+#output-sharing p { font-size: 13px; }
+.shop-view { width: min(1100px, calc(100% - 48px)); margin: 0 auto; }
+#view-nest { width: 100%; }
+.stock-head, .stock-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.stock-head h2, .stock-title { margin: 0; font-size: 20px; }
+.stock-empty { display: grid; justify-items: start; gap: 14px; margin-top: 28px; padding: 28px; background: #fff; border: 1px solid #e1e1da; border-radius: 14px; }
+.stock-empty p { margin: 0; font-size: 16px; }
+.stock-list { display: grid; gap: 10px; margin-top: 16px; }
+.stock-row { display: grid; grid-template-columns: minmax(140px, 1.4fr) repeat(3, minmax(80px, .8fr)) auto; gap: 12px 16px; align-items: center; padding: 14px 16px; background: #fff; border: 1px solid #e1e1da; border-radius: 14px; }
+.stock-row .label { display: block; color: var(--muted); font-size: 12px; font-weight: 400; }
+.stock-name { font-weight: 700; }
+.low-mark { display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: #fff0ee; color: #971b12; font-size: 11px; font-weight: 700; }
+.stock-actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-end; }
+.count-form { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.count-form label { display: grid; gap: 4px; font-size: 13px; font-weight: 700; }
+.count-form input { width: 120px; min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: #f3f3f0; }
+.nest-use { margin: 8px 0 0; font-size: 15px; font-weight: 700; }
+.job-stages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.job-stages section { display: grid; align-content: start; gap: 8px; padding: 14px; background: #fff; border: 1px solid #e1e1da; border-radius: 14px; }
+.job-stages h3 { margin: 0 0 4px; font-size: 14px; }
+.job-card { display: grid; gap: 6px; padding: 10px; border: 1px solid #e7e7e1; border-radius: 10px; background: #f7f7f4; }
+.job-card p { font-size: 13px; }
+.job-card .stock-actions { justify-content: flex-start; }
+#jobs-empty { margin-top: 12px; }
+@media (max-width: 800px) {
+  .connect-chip-wrap { right: 108px; }
+  .connect-chip { max-width: 132px; }
+  .connect-popover { position: fixed; top: 56px; right: 12px; left: 12px; width: auto; }
+  .shop-view { width: min(1100px, calc(100% - 24px)); }
+  .stock-row, .job-stages { grid-template-columns: 1fr; }
+}
 #feedback-open { font-size: 13px; margin-left: auto; }
 .nest-savings { color: #343b36; display: grid; gap: 7px; padding: 15px; background: #fff; border: 1px solid #e1e1da; border-radius: 10px; }
 .nest-savings[data-saving="positive"] { color: #225a37; background: #edf5ee; border-color: #d0e2d3; }

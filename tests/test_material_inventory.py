@@ -45,6 +45,19 @@ class InventoryTests(unittest.TestCase):
         inventory.transition(self.root, 'job2', 'cancel')
         self.assertEqual(inventory.read(self.root)['materials'][0]['availableMm'], 800)
 
+    def test_sent_job_still_holds_stock_until_confirm(self):
+        inventory.reserve(self.root, 'roll', 'job1', 200, 500, 'hash1')
+        sent = inventory.transition(self.root, 'job1', 'send')
+        self.assertEqual(sent['reservations'][0]['status'], 'sent')
+        self.assertEqual(sent['materials'][0]['onHandMm'], 1000)
+        self.assertEqual(sent['materials'][0]['reservedMm'], 200)
+        inventory.transition(self.root, 'job1', 'send')
+        used = inventory.transition(self.root, 'job1', 'use')
+        self.assertEqual(used['materials'][0]['onHandMm'], 800)
+        self.assertEqual(used['reservations'][0]['status'], 'used')
+        inventory.transition(self.root, 'job1', 'use')
+        self.assertEqual(inventory.read(self.root)['materials'][0]['onHandMm'], 800)
+
     def test_concurrent_requests_cannot_overbook(self):
         def reserve(i):
             try:
