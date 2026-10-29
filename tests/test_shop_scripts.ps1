@@ -55,6 +55,16 @@ function Grant-BatchLogon([string]$Account) { $global:eznestTestCalls.Add("batch
     $global:eznestTestCalls.Clear()
     & $installer -DataDir $sandbox -App (Join-Path $sandbox 'eznest.exe') -Lan 1 -StartAtBoot 1
     Assert (($global:eznestTestCalls | Where-Object { $_ -match '^register ' }) -match '--lan') 'Explicit LAN must reach startup arguments.'
+    $firewall = $global:eznestTestCalls | Where-Object { $_ -match 'firewall add rule' }
+    Assert ($firewall -match 'profile=private' -and $firewall -match 'remoteip=localsubnet' -and $firewall -notmatch 'profile=public' -and $firewall -notmatch 'profile=any') 'Shop firewall must be private and limited to the local subnet by default.'
+    Assert ($global:eznestTestCalls | Where-Object { $_ -match 'inheritance:r' -and $_ -match 'SYSTEM:\(OI\)\(CI\)F' -and $_ -match 'Administrators:\(OI\)\(CI\)F' -and $_ -match 'eznest-svc:\(OI\)\(CI\)M' }) 'Data directory must drop inherited permissions.'
+    $global:eznestTestCalls.Clear()
+    & $installer -DataDir $sandbox -App (Join-Path $sandbox 'eznest.exe') -Lan 1 -LanPeers '10.0.0.8,10.0.0.9' -StartAtBoot 1
+    $peers = $global:eznestTestCalls | Where-Object { $_ -match 'firewall add rule' }
+    Assert ($peers -match 'remoteip=10.0.0.8,10.0.0.9' -and $peers -match 'profile=private') 'Designer PC addresses must be the firewall remoteip.'
+    $rejected = $false
+    try { & $installer -DataDir $sandbox -App (Join-Path $sandbox 'eznest.exe') -Lan 1 -LanPeers 'not-an-ip' } catch { $rejected = $true }
+    Assert $rejected 'A firewall address that is not an IPv4 address must be rejected.'
     $after = Get-Content (Join-Path $sandbox 'shop.json') -Raw | ConvertFrom-Json
     Assert ($after.lan -eq $true -and $after.outputNetwork -eq $false) 'Explicit LAN must preserve OUTPUT off.'
     $global:eznestTestCalls.Clear()

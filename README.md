@@ -6,7 +6,7 @@ The shop host is a 64-bit PC running Windows 10 or Windows 11. Each designer PC 
 
 **Install.** On the host, download `eznest-setup.exe` and run it. It installs to `C:\Program Files\eznest`. During beta the installer is unsigned. If Windows SmartScreen appears, choose **More info**, then **Run anyway**, after you check the published `.sha256`. The steps are under [Install](#install) and [Windows warning screen](#windows-warning-screen).
 
-**Shop network.** The page stays on the host at `http://127.0.0.1:8765/web` until you turn Shop network on. Other computers then open `http://SHOP-HOST:8765/web`. That mode is plain HTTP on port 8765, with no login. Use a trusted private network. The installer firewall rule is the Private profile only. Keep port 8765 off the internet. See [Security](SECURITY.md).
+**Shop network.** The page stays on the host at `http://127.0.0.1:8765/web` until you set a shop PIN and turn Shop network on. Other computers then open `http://SHOP-HOST:8765/web` and enter that PIN once. That mode is plain HTTP on port 8765. Use a trusted private network. The installer firewall rule is the Private profile only, limited to the local subnet or the designer PC addresses you pass in. Keep port 8765 off the internet. See [Security](SECURITY.md).
 
 **Uninstall.** Uninstall removes the program, the startup task, the `eznest-svc` account, and the firewall rule. `%ProgramData%\eznest` stays on the host, including `materials.sqlite3`. The RIP hot folder stays too. Details are under [Uninstall](#uninstall).
 
@@ -102,7 +102,7 @@ Unsigned builds still require a manual installer upgrade. The managed helper req
 
 Pre-releases show up only when **Test channel** is on.
 
-A public repository needs no token. `github_token()` in `shop_deploy.py` is optional and only for a private-repo mirror: set `EZ_NEST_GITHUB_TOKEN`, or a one-line token file at `%ProgramData%\eznest\github-token`. The token is sent only to GitHub, and only while update checks are on. The release URL and the problem-report link can be changed without rebuilding. See [Contributing](CONTRIBUTING.md).
+A public repository needs no token. For a private-repo mirror, set `EZ_NEST_GITHUB_TOKEN` on the process that runs Ez Nest, or on Windows store a generic credential named `eznest/github-token`. A token in `shop.json` or a `github-token` file is ignored. Delete an old `github-token` file if one is still in the data folder. The token is sent only to GitHub, and only while update checks are on. The release URL and the problem-report link can be changed without rebuilding. See [Contributing](CONTRIBUTING.md).
 
 ## Report a problem
 
@@ -126,19 +126,22 @@ The host IP address and the shop credential go with those HTTPS requests. Exact 
 
 Never sent: artwork, files, filenames, customer names or contacts, job codes, roll ids, custom material names, or exact dimensions, quantities, stock, and search time.
 
-The default OUTPUT service is `https://output.jeezlabs.io` (`/api/shop/telemetry` for events and `/api/shop/agent/pair` for pairing). Change it with `EZ_NEST_OUTPUT_URL` or the **OUTPUT service address** in Settings, stored as `outputUrl` in `shop.json`. The environment variable wins. The value must be an `https` origin with no path, query, username, or password. Redirects are not followed. Changing the address does not turn sharing on.
+The default OUTPUT service is `https://output.jeezlabs.io` (`/api/shop/telemetry` for events and `/api/shop/agent/pair` for pairing). Change the saved address only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL` set before Ez Nest starts. The environment variable wins. The value must be an `https` origin with no path, query, username, or password. Redirects are not followed. Changing the address does not turn sharing on.
 
 ## Shop network
 
 The default is this computer only: `http://127.0.0.1:8765/web`.
 
-Shop network is off until you turn it on. There is no login. The page is plain HTTP. `GET /api/session` returns an `X-EZ-Token` to anyone who can open the page. That token is not a password. Anyone on the shop LAN can send a job. Do not share this network with guest WiFi. Do not forward port 8765 to the internet. See [Security](SECURITY.md).
+Shop network stays closed until a shop PIN is set on this computer and you start with `--lan`. The page is plain HTTP. Designer browsers enter the PIN once. They do not receive the host write token. Do not share this network with guest WiFi. Do not forward port 8765 to the internet. See [Security](SECURITY.md).
 
-1. Choose Shop network in the installer (which adds `--lan` to the boot task), or start the app with `--lan`. The gear reports the running mode.
-2. Restart Ez Nest. The gear then shows `http://<this-computer>:8765/web`. Other PCs open that address. They do not install Ez Nest.
-3. The installer opens Windows Firewall for TCP 8765 on the private profile only. It does not open a public profile.
+1. On the shop computer, open Settings → **Shop PIN**, enter 6 to 12 digits, and save it.
+2. Choose Shop network in the installer (which adds `--lan` to the boot task), or start the app with `--lan`. `--lan` does not open the network until the PIN is saved. The gear reports the running mode.
+3. Restart Ez Nest. The gear then shows `http://<this-computer>:8765/web`. Other PCs open that address and enter the PIN. They do not install Ez Nest.
+4. The installer opens Windows Firewall for TCP 8765 on the private profile only, for `localsubnet` or the designer PC addresses in `-LanPeers`. It does not open a public profile.
 
-Only `--lan` opens a non-loopback listener. A saved preference alone cannot open it.
+Only `--lan` opens a non-loopback listener, and only after the PIN exists. A saved preference alone cannot open it.
+
+`materials.sqlite3` stays on this computer. The host process is the only program that should open it. Do not put that file on a shared drive.
 
 ## OUTPUT
 

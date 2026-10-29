@@ -10,6 +10,17 @@
 <header class="shop-header">
   <strong>eznest</strong>
 </header>
+<dialog id="pin-gate" aria-labelledby="pin-title">
+  <form id="pin-form">
+    <h2 id="pin-title">Shop PIN</h2>
+    <p id="pin-note" class="hint"></p>
+    <label>PIN
+      <input id="pin-input" type="password" inputmode="numeric" autocomplete="current-password" minlength="6" maxlength="12" pattern="[0-9]{6,12}">
+    </label>
+    <button id="pin-submit" class="primary" type="submit">Continue</button>
+    <p id="pin-error" class="lan-note" hidden></p>
+  </form>
+</dialog>
 <section id="setup" hidden>
   <h2>Ready to nest</h2>
   <p class="hint">Check your cut line names. Printer and default folder are optional; you can choose where to save each finished file.</p>
@@ -109,7 +120,7 @@
     <div id="lan-access" hidden>
     <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
     <p class="hint">Shop network access is configured when the app starts.</p>
-    <p id="lan-note" class="lan-note" hidden>Anyone on the shop LAN can Send to ONYX. Do not share this network with guest WiFi.</p>
+    <p id="lan-note" class="lan-note" hidden>Shop computers need the shop PIN before they can nest or send. Anyone on the shop LAN can Send to ONYX after that PIN. Do not share this network with guest WiFi.</p>
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
     </div>
@@ -137,7 +148,7 @@
       <label>OUTPUT service address
         <input id="output-url" type="url" inputmode="url" maxlength="200" spellcheck="false" autocapitalize="none" placeholder="https://output.jeezlabs.io" aria-describedby="output-url-note">
       </label>
-      <p id="output-url-note" class="hint">Optional. Leave blank for https://output.jeezlabs.io. EZ_NEST_OUTPUT_URL overrides this saved address. Sharing stays off until you connect and agree.</p>
+      <p id="output-url-note" class="hint">Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Sharing stays off until you connect and agree.</p>
       <p>Destination: <code id="output-destination">https://output.jeezlabs.io/api/shop/telemetry</code></p>
       <details><summary>Exact JSON fields (illustrative event)</summary><pre id="telemetry-preview" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
       <p>Stopping prevents further requests after any in-flight request finishes. It does not delete records already received by OUTPUT. Re-enabling excludes all activity recorded before the new consent.</p>
@@ -163,6 +174,15 @@
     </details>
     </details>
     <input id="seconds" type="hidden" value="30">
+    <details id="shop-pin" class="settings-section" hidden>
+      <summary>Shop PIN</summary>
+      <p class="hint">Set this on the shop computer before other PCs connect. Use 6 to 12 digits. Designer computers enter it once. Ez Nest stores only a hash.</p>
+      <label>New PIN
+        <input id="shop-pin-input" type="password" inputmode="numeric" autocomplete="new-password" minlength="6" maxlength="12">
+      </label>
+      <button id="shop-pin-save" type="button" class="link">Save shop PIN</button>
+      <p id="shop-pin-error" class="lan-note" hidden></p>
+    </details>
     <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
   </div>
 </dialog>

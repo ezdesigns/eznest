@@ -26,12 +26,18 @@ the host. The stock ledger in `materials.sqlite3` is not uploaded.
 The default service origin is `https://output.jeezlabs.io`. Pairing posts to
 `/api/shop/agent/pair`. Events post to `/api/shop/telemetry`.
 
-Set another origin with `EZ_NEST_OUTPUT_URL` or `outputUrl` in `shop.json`
-(Settings → OUTPUT service address). The environment variable wins. The value
-must be an `https` origin with no path, query, username, or password. Invalid
-values are ignored and the default is used. Redirects are not followed. There
-is no HTTP fallback. Changing the address does not send anything; sharing stays
-off until the host pairs and agrees on screen.
+Set another origin with `EZ_NEST_OUTPUT_URL` before the process starts, or
+save `outputUrl` from the host only. The saved address must be
+`https://output.jeezlabs.io` or that same environment origin. The environment
+variable wins. The value must be an `https` origin with no path, query,
+username, or password. Any other host is rejected. Redirects are not followed.
+There is no HTTP fallback. Changing the address does not send anything;
+sharing stays off until the host pairs and agrees on screen.
+
+On Windows the shop key is encrypted for the user that saved it
+(`eznest-svc` when the shop service is running), not for every account on
+the PC. Pair from the running service. The key file is not granted to the
+Users group.
 
 | Use | Default |
 | --- | --- |

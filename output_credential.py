@@ -2,10 +2,11 @@
 
 The secret is not an environment variable. It is not written to logs, API
 responses, or the telemetry database. On Windows the file is a DPAPI blob
-scoped to this machine so the shop service and an interactive host session
-can both read it, and the blob is useless on another PC. The file ACL allows
-SYSTEM, Administrators, the current user, and eznest-svc. On other systems
-the file mode is 0600. Callers must not log the return value.
+for the Windows user that saved it, not for the whole machine. Pair while
+the eznest service is running so that user is eznest-svc. A different
+interactive user cannot decrypt that blob. The file ACL allows SYSTEM,
+Administrators, eznest-svc, and the user who wrote the file. On other
+systems the file mode is 0600. Callers must not log the return value.
 """
 import json
 import os
@@ -16,7 +17,6 @@ from pathlib import Path
 FILE_NAME = 'output-credential.bin'
 TOKEN_RE = re.compile(r'osa_[A-Za-z0-9_-]{43}')
 _MAGIC = b'EZNCRED1'
-_LOCAL_MACHINE = 0x4
 _UI_FORBIDDEN = 0x1
 
 
@@ -82,7 +82,8 @@ def _dpapi(data, *, protect):
     incoming = DATA_BLOB(len(raw), ctypes.cast(holder, ctypes.POINTER(ctypes.c_char)))
     outgoing = DATA_BLOB()
     if protect:
-        ok = crypt32.CryptProtectData(ctypes.byref(incoming), None, None, None, None, _LOCAL_MACHINE | _UI_FORBIDDEN, ctypes.byref(outgoing))
+        # User scope only. The machine-wide DPAPI flag is not set.
+        ok = crypt32.CryptProtectData(ctypes.byref(incoming), None, None, None, None, _UI_FORBIDDEN, ctypes.byref(outgoing))
     else:
         ok = crypt32.CryptUnprotectData(ctypes.byref(incoming), None, None, None, None, _UI_FORBIDDEN, ctypes.byref(outgoing))
     if not ok:
@@ -102,20 +103,18 @@ def _account_grant(name):
 
 
 def _restrict_windows(target):
-    # SYSTEM and Administrators can recover the file. The current user covers
-    # an interactive host session. eznest-svc is granted separately because
-    # that account does not exist until shop setup.
+    # SYSTEM and Administrators can recover the file. eznest-svc is the shop
+    # service. The current user is included because user-scoped DPAPI only
+    # decrypts for the account that protected the blob.
     grants = ['*S-1-5-18:(M)', '*S-1-5-32-544:(M)']
-    current = _account_grant(os.environ.get('USERNAME', ''))
-    if current:
-        grants.append(current)
+    for name in ('eznest-svc', os.environ.get('USERNAME', '')):
+        grant = _account_grant(name)
+        if grant and grant not in grants:
+            grants.append(grant)
     if subprocess.run(['icacls', str(target), '/inheritance:r'], capture_output=True).returncode != 0:
         raise ValueError('Could not protect the saved OUTPUT credential on this computer.')
     if subprocess.run(['icacls', str(target), '/grant:r', *grants], capture_output=True).returncode != 0:
         raise ValueError('Could not protect the saved OUTPUT credential on this computer.')
-    service = _account_grant('eznest-svc')
-    if service:
-        subprocess.run(['icacls', str(target), '/grant:r', service], capture_output=True)
 
 
 def _write(directory, payload, codec):

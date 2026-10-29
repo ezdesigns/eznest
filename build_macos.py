@@ -15,7 +15,7 @@ from build_windows import STATIC
 
 ROOT = Path(__file__).resolve().parent
 PACKAGES = ('spyrrow', 'shapely', 'numpy', 'pypdf', 'pypdfium2', 'pillow',
-            'charset-normalizer', 'pyinstaller', 'pyinstaller-hooks-contrib')
+            'charset-normalizer', 'defusedxml', 'pyinstaller', 'pyinstaller-hooks-contrib')
 DOCUMENTS = ('LICENSE', 'NOTICE', 'THIRD_PARTY.md', 'version.json', 'CHANGELOG.md')
 ENTRY = '''import os
 import sys

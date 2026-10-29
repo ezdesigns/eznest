@@ -175,10 +175,17 @@ class ShopDeployTests(unittest.TestCase):
         finally:
             shop_deploy.clear_name_cache()
 
-    def test_shop_names_are_this_computer_or_a_private_address(self):
+    def test_shop_names_are_this_computer_or_its_own_address(self):
+        shop_deploy.clear_name_cache()
         self.assertTrue(shop_deploy.shop_name_allowed(socket.gethostname()))
-        self.assertTrue(shop_deploy.shop_name_allowed('192.168.1.20'))
         self.assertFalse(shop_deploy.shop_name_allowed('8.8.8.8'))
+        self.assertTrue(shop_deploy.shop_name_allowed('127.0.0.1'))
+        with patch('shop_deploy.lan_addresses', return_value=['192.168.1.20']):
+            shop_deploy.clear_name_cache()
+            self.assertTrue(shop_deploy.shop_name_allowed('192.168.1.20'))
+            self.assertFalse(shop_deploy.shop_name_allowed('192.168.1.21'))
+            self.assertFalse(shop_deploy.shop_name_allowed('10.1.1.1'))
+        shop_deploy.clear_name_cache()
 
     def test_host_header_allows_shop_names_only_in_lan_mode(self):
         old = (server.HOST, server.PORT, server.LAN)
@@ -196,10 +203,15 @@ class ShopDeployTests(unittest.TestCase):
             self.assertFalse(handler.local_name('shop-pc:8765'))
             server.LAN = True
             host = socket.gethostname()
-            self.assertTrue(handler.local_name(host + ':8765'))
-            self.assertTrue(handler.local_name('192.168.1.20:8765'))
-            self.assertFalse(handler.local_name('8.8.8.8:8765'))
-            self.assertFalse(handler.local_name(host + ':80'))
+            shop_deploy.clear_name_cache()
+            with patch('shop_deploy.lan_addresses', return_value=['192.168.1.20']):
+                shop_deploy.clear_name_cache()
+                self.assertTrue(handler.local_name(host + ':8765'))
+                self.assertTrue(handler.local_name('192.168.1.20:8765'))
+                self.assertFalse(handler.local_name('10.9.8.7:8765'))
+                self.assertFalse(handler.local_name('8.8.8.8:8765'))
+                self.assertFalse(handler.local_name(host + ':80'))
+            shop_deploy.clear_name_cache()
         finally:
             server.HOST, server.PORT, server.LAN = old
 
@@ -340,21 +352,46 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn('uninstall-shop.ps1', script)
         self.assertIn('eznest-svc', script)
 
-    def test_output_service_url_is_configurable_and_https_only(self):
+    def test_output_service_url_is_allowlisted_and_https_only(self):
         self.assertEqual(shop_deploy.output_base_url(), 'https://output.jeezlabs.io')
         self.assertEqual(shop_deploy.normalize_output_base('https://user:secret@output.example'), '')
         self.assertEqual(shop_deploy.normalize_output_base('http://output.example'), '')
         self.assertEqual(shop_deploy.normalize_output_base('https://output.example/api'), '')
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            saved = shop_deploy.save_shop(root, False, False, outputUrl='https://output.example.test')
-            self.assertEqual(saved['outputUrl'], 'https://output.example.test')
-            self.assertEqual(shop_deploy.output_base_url(root), 'https://output.example.test')
+            saved = shop_deploy.save_shop(root, False, False, outputUrl='https://output.jeezlabs.io')
+            self.assertEqual(saved['outputUrl'], 'https://output.jeezlabs.io')
+            self.assertEqual(shop_deploy.output_base_url(root), 'https://output.jeezlabs.io')
+            with self.assertRaisesRegex(ValueError, 'output.jeezlabs.io'):
+                shop_deploy.save_shop(root, False, False, outputUrl='https://output.example.test')
+            self.assertEqual(shop_deploy.load_shop(root)['outputUrl'], 'https://output.jeezlabs.io')
             with patch.dict(os.environ, {'EZ_NEST_OUTPUT_URL': 'https://env.example.test'}):
                 self.assertEqual(shop_deploy.output_base_url(root), 'https://env.example.test')
+                saved = shop_deploy.save_shop(root, False, False, outputUrl='https://env.example.test')
+                self.assertEqual(saved['outputUrl'], 'https://env.example.test')
+                self.assertEqual(shop_deploy.load_shop(root)['outputUrl'], 'https://env.example.test')
             with self.assertRaisesRegex(ValueError, 'https'):
                 shop_deploy.save_shop(root, False, False, outputUrl='http://insecure.example')
-            self.assertEqual(shop_deploy.load_shop(root)['outputUrl'], 'https://output.example.test')
+            self.assertEqual(shop_deploy.load_shop(root)['outputUrl'], '')
+
+    def test_github_token_is_not_read_from_shop_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'github-token').write_text('file-secret\n', encoding='utf-8')
+            (root / 'shop.json').write_text(json.dumps({'githubToken': 'json-secret', 'updates': False}), encoding='utf-8')
+            with patch('shop_deploy._windows_credential', return_value='') as store:
+                self.assertEqual(shop_deploy.github_token(root), '')
+                if os.name == 'nt':
+                    store.assert_called_once_with('eznest/github-token')
+                else:
+                    store.assert_not_called()
+            with patch.dict(os.environ, {'EZ_NEST_GITHUB_TOKEN': 'env-secret'}):
+                self.assertEqual(shop_deploy.github_token(root), 'env-secret')
+            shop_deploy.save_shop(root, False, False)
+            text = (root / 'shop.json').read_text(encoding='utf-8')
+            self.assertNotIn('json-secret', text)
+            self.assertNotIn('githubToken', text)
+            self.assertEqual((root / 'github-token').read_text(encoding='utf-8'), 'file-secret\n')
 
     def test_send_names_a_missing_hot_folder(self):
         from output_folder import OutputFolder

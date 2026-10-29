@@ -102,6 +102,9 @@ def main():
         os.environ['EZ_NEST_OUTPUT_UPLOADS'] = '0'
     saved = load_shop(data)
     if args.lan:
+        import shop_auth
+        if not shop_auth.pin_configured(data):
+            raise ValueError('Set a shop PIN on this computer before opening the shop network.')
         host, lan = '0.0.0.0', True
     else:
         host, lan = '127.0.0.1', False

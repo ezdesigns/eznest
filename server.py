@@ -19,6 +19,7 @@ import telemetry_sender
 import material_inventory
 import macos_service_runtime
 import illustrator_bridge
+import shop_auth
 from import_limits import request_limit
 import print_export
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,12 +27,12 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 from engine import validate_job
 from production import validate_identity, manifest, make_package
-from folder_queue import FolderQueue
+from folder_queue import FolderQueue, real_directory
 from output_folder import OutputFolder, stage_pack
 from nesting import validate_request
 from shop_profiles import validate_profile, inspect_output
 from app_info import VERSION
-from shop_deploy import OUTPUT_NOTE, WARNING, default_hot_folder, host_name, issues_url, lan_addresses, load_shop, output_network_status, output_status, peek_latest, pull_latest, save_shop, shop_name_allowed, updates_allowed, EZ_PRESET
+from shop_deploy import OUTPUT_NOTE, WARNING, approve_source_root, default_hot_folder, host_name, issues_url, lan_addresses, load_shop, output_network_status, output_status, peek_latest, pull_latest, save_shop, shop_name_allowed, updates_allowed, EZ_PRESET
 
 ROOT = Path(__file__).resolve().parent
 _STATIC_CACHE = {}
@@ -82,7 +83,11 @@ PROCESS = None
 PORT = int(os.environ.get('EZ_NEST_PORT', '8765'))
 HOST = os.environ.get('EZ_NEST_HOST', '127.0.0.1')
 LAN = os.environ.get('EZ_NEST_LAN', '') == '1'
-FOLDER = FolderQueue(WORK / 'production-folder.json')
+def _approved_source_roots():
+    return load_shop(WORK)['sourceRoots']
+
+
+FOLDER = FolderQueue(WORK / 'production-folder.json', approved=_approved_source_roots)
 FOLDER_LOCK = threading.Lock()
 OUTPUT = OutputFolder(WORK / 'output-folder.json')
 DOCUMENT_LOCK = threading.Lock()
@@ -271,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    def send(self, status, data, mime='application/json', filename=None):
+    def send(self, status, data, mime='application/json', filename=None, extra_headers=None):
         body = json.dumps(data).encode() if mime == 'application/json' else data
         self.send_response(status)
         self.send_header('Content-Type', mime)
@@ -281,6 +286,8 @@ class Handler(BaseHTTPRequestHandler):
         if filename:
             self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
         self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
+        for key, value in extra_headers or ():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
         self.wfile.flush()
@@ -300,6 +307,76 @@ class Handler(BaseHTTPRequestHandler):
     def allowed(self):
         return self.local_name(self.headers.get('Host'))
 
+    def loopback_client(self):
+        address = getattr(self, 'client_address', None)
+        if not address:
+            return True
+        return address[0] in ('127.0.0.1', '::1')
+
+    def token_ok(self):
+        supplied = self.headers.get('X-EZ-Token') if self.headers else None
+        if not isinstance(supplied, str) or not supplied:
+            return False
+        try:
+            return secrets.compare_digest(supplied, TOKEN)
+        except (TypeError, ValueError):
+            return False
+
+    def cookie_ok(self):
+        header = self.headers.get('Cookie') if self.headers else None
+        return shop_auth.session_valid(shop_auth.read_cookie(header))
+
+    def authenticated(self):
+        # The write token stays on the host. A designer browser uses the PIN cookie.
+        if self.loopback_client() and self.token_ok():
+            return True
+        return self.cookie_ok()
+
+    def origin_ok(self, origin):
+        if not isinstance(origin, str) or not origin.startswith('http://'):
+            return False
+        rest = origin[len('http://'):]
+        if not rest or '/' in rest:
+            return False
+        return self.local_name(rest)
+
+    def browser_site_ok(self):
+        """State changes and /api/session need a same-origin browser signal.
+
+        A present Origin must name this host. A present Sec-Fetch-Site must be
+        same-origin. LAN clients must send one of those. A loopback program
+        that sends neither header (the launcher, Illustrator, the update helper)
+        is not a browser rebinding.
+        """
+        origin = self.headers.get('Origin') if self.headers else None
+        fetch_site = (self.headers.get('Sec-Fetch-Site') or '').strip().casefold() if self.headers else ''
+        origin_matches = bool(origin) and self.origin_ok(origin)
+        fetch_matches = fetch_site == 'same-origin'
+        if origin and not origin_matches:
+            return False
+        if fetch_site and not fetch_matches:
+            return False
+        if origin_matches or fetch_matches:
+            return True
+        return self.loopback_client()
+
+    def session_body(self):
+        local = self.loopback_client()
+        body = {
+            'app': 'eznest',
+            'version': VERSION,
+            'pid': os.getpid(),
+            'shopService': macos_service_runtime.active(),
+            'maintenance': macos_service_runtime.maintenance(),
+            'localSave': local and print_export.native_save_available(),
+            'localPC': local,
+            'authenticated': bool(local or self.authenticated()),
+            'pinConfigured': shop_auth.pin_configured(WORK),
+        }
+        if local:
+            body['token'] = TOKEN
+        return body
+
     def do_GET(self):
         if not self.allowed():
             return self.send(403, {'error': 'Invalid host'})
@@ -307,10 +384,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/web/':
             path = '/web'
         if path == '/api/session':
-            return self.send(200, {'token': TOKEN, 'app': 'eznest', 'version': VERSION, 'pid': os.getpid(),
-                                   'shopService': macos_service_runtime.active(),
-                                   'maintenance': macos_service_runtime.maintenance(),
-                                   'localSave': self.client_address[0] == '127.0.0.1' and print_export.native_save_available()})
+            if not self.browser_site_ok():
+                return self.send(403, {'error': 'Invalid session'})
+            return self.send(200, self.session_body())
+        if path.startswith('/api/'):
+            if not self.loopback_client() and not self.authenticated():
+                return self.send(403, {'error': 'Enter the shop PIN on this computer.'})
+            if not self.loopback_client() and (path == '/api/shop' or path == '/api/folder' or path.startswith('/api/folder/')):
+                return self.send(403, {'error': 'Open this on the shop computer.'})
         if path == '/api/changelog':
             import installer_update
             return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
@@ -356,7 +437,7 @@ class Handler(BaseHTTPRequestHandler):
                 info['message'] = info['managedResult'].get('message', '')
             return self.send(200, info)
         if path == '/api/macos-update/package':
-            if self.client_address[0] != '127.0.0.1' or self.headers.get('X-EZ-Token') != TOKEN:
+            if not self.loopback_client() or not self.token_ok():
                 return self.send(403, {'error':'Open the update on the shop Mac.'})
             import macos_update
             try:
@@ -391,7 +472,7 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Local activity is unavailable. Check disk space and folder permissions.'})
         if path in ('/api/telemetry', '/api/telemetry/events', '/api/telemetry/output'):
-            if self.client_address[0] != '127.0.0.1' or self.headers.get('X-EZ-Token') != TOKEN:
+            if not self.loopback_client() or not self.token_ok():
                 return self.send(403, {'error': 'Local session required for job tracking.'})
             try:
                 if path.endswith('/output'):
@@ -537,13 +618,36 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(503, {'error': 'Installing an update. Wait for eznest to restart.'})
             return self.handle_post()
 
+    def _login(self):
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+        except ValueError:
+            return self.send(400, {'error': 'Could not sign in.'})
+        if not 0 <= size <= 4000:
+            return self.send(400, {'error': 'Could not sign in.'})
+        try:
+            data = json.loads(self.rfile.read(size) or b'{}')
+        except (ValueError, TypeError):
+            return self.send(400, {'error': 'Could not sign in.'})
+        pin = data.get('pin') if isinstance(data, dict) else ''
+        result = shop_auth.login_attempt(WORK, self.client_address[0], pin if isinstance(pin, str) else '')
+        if result == 'missing':
+            return self.send(403, {'error': 'The shop PIN is not set. Set it on the shop computer.'})
+        if result == 'locked':
+            return self.send(429, {'error': 'Too many tries. Wait a minute and try again.'})
+        if result != 'ok':
+            return self.send(401, {'error': 'That PIN is not right.'})
+        sid = shop_auth.issue_session()
+        return self.send(200, {'ok': True, 'authenticated': True}, extra_headers=[('Set-Cookie', shop_auth.cookie_header(sid))])
+
     def handle_post(self):
         global PROCESS
-        if not self.allowed() or self.headers.get('X-EZ-Token') != TOKEN:
+        if not self.allowed() or not self.browser_site_ok():
             return self.send(403, {'error': 'Invalid session'})
-        origin = self.headers.get('Origin')
-        if origin and not self.local_name(origin.removeprefix('http://')):
-            return self.send(403, {'error': 'Invalid origin'})
+        if self.path == '/api/login':
+            return self._login()
+        if not self.authenticated():
+            return self.send(403, {'error': 'Invalid session'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
             if not 0 <= size <= request_limit(self.path):
@@ -717,7 +821,14 @@ class Handler(BaseHTTPRequestHandler):
                         record_telemetry('nest.exported')
                     persist_state()
                 return self.send(200, dict(saved, ok=True))
+            if self.path == '/api/pin':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Set the shop PIN on the shop computer.'})
+                shop_auth.set_pin(WORK, data.get('pin') if isinstance(data, dict) else None)
+                return self.send(200, {'ok': True, 'pinConfigured': True})
             if self.path in ('/api/output/connect', '/api/output/pick'):
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
                 if self.path.endswith('/pick'):
                     if self.client_address[0] != '127.0.0.1':
                         return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
@@ -727,6 +838,8 @@ class Handler(BaseHTTPRequestHandler):
                 with FOLDER_LOCK:
                     return self.send(200, OUTPUT.connect(data.get('path',''), FOLDER.root))
             if self.path == '/api/setup':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Finish setup on the shop computer.'})
                 from shop_deploy import validate_setup
                 setup = validate_setup(data)
                 if setup['hotFolder']:
@@ -736,6 +849,8 @@ class Handler(BaseHTTPRequestHandler):
                 save_shop(WORK, data.get('onyxPc') is True, current['lan'], setupComplete=True, **setup)
                 return self.send(200, shop_status())
             if self.path == '/api/shop':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Change shop settings on the shop computer.'})
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
                 fields = {}
@@ -783,21 +898,22 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 return self.send(200, result)
             if self.path.startswith('/api/folder/'):
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Choose the source folder on the shop computer.'})
                 if self.path == '/api/folder/pick':
                     if os.name != 'nt':
                         raise ValueError('Use the folder path field on this platform.')
-                    script = "Add-Type -AssemblyName System.Windows.Forms; $picker=New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description='Select your print-ready SVG production folder'; $picker.ShowNewFolderButton=$false; if($picker.ShowDialog() -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($picker.SelectedPath)}"
-                    selected = subprocess.run(['powershell.exe','-NoProfile','-STA','-Command',script],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=300)
-                    folder_path = selected.stdout.decode('utf-8-sig').strip()
+                    folder_path = powershell_folder_picker('Select your print-ready SVG production folder', show_new=False)
                     if not folder_path:
                         return self.send(200, {'cancelled': True})
                     data = {'path':folder_path}
                 with FOLDER_LOCK:
                     if self.path in ('/api/folder/connect','/api/folder/pick'):
-                        root = Path(data['path']).expanduser().resolve(strict=True)
+                        root = real_directory(data['path'])
                         if OUTPUT.root and OUTPUT.root.resolve().is_relative_to(root):
                             raise ValueError('The source folder must not contain your output folder.')
-                        result = FOLDER.connect(data['path'])
+                        approve_source_root(WORK, root)
+                        result = FOLDER.connect(str(root))
                     elif self.path == '/api/folder/disconnect':
                         FOLDER.disconnect()
                         result = {'connected':False,'files':[]}
@@ -969,12 +1085,32 @@ class Handler(BaseHTTPRequestHandler):
             self.send(400, {'error': str(error)})
 
 
-def pick_folder(description):
+def powershell_folder_picker(description, show_new=True):
+    """Ask Windows for a folder. The label is an environment variable, not script text."""
     if os.name != 'nt':
         raise ValueError('Enter the folder path on this platform.')
-    script = "Add-Type -AssemblyName System.Windows.Forms; $picker=New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description='"+description+"'; if($picker.ShowDialog() -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($picker.SelectedPath)}"
-    selected = subprocess.run(['powershell.exe','-NoProfile','-STA','-Command',script],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=300)
+    prompt = description if isinstance(description, str) else ''
+    if not prompt or len(prompt) > 200 or any(ord(char) < 32 for char in prompt):
+        prompt = 'Select a folder'
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "$picker=New-Object System.Windows.Forms.FolderBrowserDialog; "
+        "$picker.Description=$env:EZ_NEST_FOLDER_PROMPT; "
+    )
+    if not show_new:
+        script += "$picker.ShowNewFolderButton=$false; "
+    script += "if($picker.ShowDialog() -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write($picker.SelectedPath)}"
+    env = os.environ.copy()
+    env['EZ_NEST_FOLDER_PROMPT'] = prompt
+    flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+    selected = subprocess.run(
+        ['powershell.exe', '-NoProfile', '-STA', '-Command', script],
+        capture_output=True, env=env, creationflags=flags, timeout=300)
     return selected.stdout.decode('utf-8-sig').strip()
+
+
+def pick_folder(description):
+    return powershell_folder_picker(description, show_new=True)
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -1009,6 +1145,8 @@ def check_updates(stop):
 
 
 def serve(open_browser=False, page='/'):
+    if HOST not in ('127.0.0.1', '::1') and not shop_auth.pin_configured(WORK):
+        raise RuntimeError('Set a shop PIN on this computer before opening the shop network.')
     restore_state()
     import installer_update
     service = LocalServer((HOST, PORT), Handler)

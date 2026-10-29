@@ -9,7 +9,7 @@ Nothing to install on a designer PC. Open the address your admin gave you:
 
 `http://SHOP-HOST:8765/web`
 
-`SHOP-HOST` is the host computer's name. Keep that PC awake during the day.
+The page asks for the shop PIN the first time in that browser. Ask the person at the host computer for it. You do not set a new PIN here. After it is accepted, that browser can nest and use shop stock. `SHOP-HOST` is the host computer's name. Keep that PC awake during the day.
 
 ## Each job
 
@@ -46,8 +46,19 @@ Your artwork stays on that computer.
 ## For the admin
 
 Designer PCs only open `http://SHOP-HOST:8765/web`. Install Ez Nest on the
-host. Shop network has to be on or other PCs cannot open the page. See
+host. Set a shop PIN before other PCs connect:
+
+1. On the host, open `http://127.0.0.1:8765/web`.
+2. Open **Settings**, then **Shop PIN**.
+3. Type 6 to 12 digits and choose **Save shop PIN**. Tell the designers that PIN. Do not write it in a file in the data folder.
+4. Turn on Shop network and start the host again. Shop network does not open until the PIN is saved.
+
+Shop network has to be on or other PCs cannot open the page. See
 [Security](../SECURITY.md).
+
+**Stock database.** `materials.sqlite3` stays on the host. Only the Ez Nest
+program on that PC should open it. Do not put the data folder on a shared
+drive, and do not copy the database to a designer PC.
 
 **Unsigned installer.** Windows SmartScreen warns on an unsigned
 `eznest-setup.exe`. Choose **More info**, then **Run anyway**. Leave
@@ -56,7 +67,14 @@ SmartScreen on for the rest of the PC.
 **Firewall.** If Windows asks whether to allow eznest through the firewall,
 allow private networks only. When **Shop network** is checked, setup adds an
 inbound rule named `eznest` for TCP port 8765 on the Private profile only.
-Leave the Public profile closed, and leave port 8765 off the internet.
+By default that rule accepts the local subnet. To allow only the three
+designer PCs, give them static addresses and pass them to setup as
+`-LanPeers "10.0.0.11,10.0.0.12,10.0.0.13"`. Leave the Public profile closed,
+and leave port 8765 off the internet.
+
+**Data folder.** Setup limits `C:\ProgramData\eznest` to SYSTEM,
+Administrators, and the `eznest-svc` account. Other Windows users cannot
+replace the shop settings file.
 
 **Uninstall.** Uninstall from Windows Settings, or run the uninstaller in
 `C:\Program Files\eznest`. That removes the program, the `eznest` startup
