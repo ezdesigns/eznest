@@ -37,6 +37,7 @@
       <p class="hint">Connecting sends this computer's name and installation id once. Later check-ins send the app version. Artwork, filenames, customers, and stock stay on this computer.</p>
     </div>
     <p id="output-gate-success" class="connect-success" role="status" hidden></p>
+    <p id="output-gate-checkin" class="hint" hidden></p>
     <p id="output-gate-error" class="lan-note" hidden></p>
   </form>
 </dialog>
@@ -123,6 +124,11 @@
       <div id="output-connect">
         <h3>Connect to OUTPUT</h3>
         <p id="output-connect-shop" class="connect-success" role="status" hidden></p>
+        <div class="connect-status-row">
+          <p id="output-connect-status" role="status" aria-live="polite"></p>
+          <button id="output-check-now" class="link" type="button" hidden>Check now</button>
+        </div>
+        <button id="output-reconnect" class="link" type="button" hidden>Reconnect with a new code</button>
         <div id="output-pair-form">
           <label>Pairing code
             <input id="output-pair-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="text" aria-describedby="output-connect-status">
@@ -130,7 +136,6 @@
           <button id="output-pair" class="primary" type="button" disabled>Connect</button>
         </div>
         <button id="output-disconnect" class="link" type="button" hidden>Disconnect</button>
-        <p id="output-connect-status" role="status" aria-live="polite"></p>
       </div>
       <h3>What OUTPUT sees</h3>
       <p>This computer has to be connected to OUTPUT before the shop can nest, send, or change stock. That connection is separate from sharing activity.</p>

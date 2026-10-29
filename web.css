@@ -529,9 +529,11 @@ body:has(#settings-support[open]) #feedback-welcome { display: none; }
 #output-connect label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
 #output-pair-code { width: 100%; min-height: 36px; padding: 0 10px; border: 0; border-radius: 8px; background: #f3f3f0; font-weight: 400; }
 #output-connect-shop { margin: 0; }
+.connect-status-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 #output-connect-status { margin: 0; font-size: 13px; }
+#output-check-now, #output-reconnect { font-size: 13px; }
 #output-connect-status.error { color: #D92F00; }
-#output-pair, #output-disconnect { justify-self: start; }
+#output-pair, #output-disconnect, #output-reconnect { justify-self: start; }
 .output-actions { display: grid; gap: 10px; justify-items: center; }
 .primary-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; width: 100%; border: 1px solid #111; border-radius: 10px; background: #111; color: #fff; text-decoration: none; font-weight: 700; font-size: 14px; }
 .primary-link:hover { background: #000; }

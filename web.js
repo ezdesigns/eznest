@@ -1692,17 +1692,33 @@ function stagingPath() {
   return $('staging-folder').value.trim();
 }
 
+function legacyRollUnconfirmed() {
+  const stored = prefs();
+  return stored.material === 'white-gloss' && stored.materialPicked !== true;
+}
+
 function renderMaterialButtons() {
   if (syncMaterialChoice()) return;
   const selected = $('material').value;
   $('material').disabled = !!illustratorHandoff || !!presetEditor || busy || saving || document.body.dataset.step === 'confirm';
   for (const option of $('material').options) {
-    option.hidden = !!illustratorHandoff && option.value !== 'white-gloss';
     const stock = lowStock(materialProfiles[option.value]);
     option.textContent = (option.dataset.name || option.textContent.split(' · ')[0]) + (stock ? ' · ' + stock.split(' · ')[0] : '');
   }
   const prompt = [...$('material').options].find(option => option.value === '');
-  if (prompt && !illustratorHandoff) prompt.hidden = [...$('material').options].some(option => option.value && option.value !== 'custom');
+  const saved = [...$('material').options].filter(option => option.value && option.value !== 'custom');
+  const picked = !!materialProfiles[selected];
+  if (prompt) {
+    if (!saved.length) {
+      prompt.hidden = false;
+      prompt.textContent = 'Add your first material';
+    } else if (!picked || legacyRollUnconfirmed()) {
+      prompt.hidden = false;
+      prompt.textContent = 'Pick a roll';
+      if (!picked) $('material').value = '';
+    } else prompt.hidden = true;
+  }
+  if ($('edit-material')) $('edit-material').textContent = picked ? 'Edit' : 'Add';
   const box = $('materials');
   box.replaceChildren();
   const stock = lowStock(materialProfiles[selected]);
@@ -1773,11 +1789,9 @@ function registerMaterial(id, values) {
 }
 
 function syncMaterialChoice() {
+  if (legacyRollUnconfirmed() && $('material').value === 'white-gloss') $('material').value = '';
   const saved = [...$('material').options].filter(option => option.value && option.value !== 'custom');
-  const prompt = [...$('material').options].find(option => option.value === '');
-  if (prompt && !illustratorHandoff) prompt.hidden = saved.length > 0;
-  if ($('edit-material')) $('edit-material').textContent = saved.length ? 'Edit' : 'Add';
-  if (presetEditor || !saved.length || materialProfiles[$('material').value]) return false;
+  if (presetEditor || !saved.length || materialProfiles[$('material').value] || legacyRollUnconfirmed()) return false;
   $('material').value = saved[0].value;
   applyMaterial(true);
   return true;
@@ -1805,6 +1819,7 @@ function chooseMaterial(id) {
   if (id && id === activeMaterial && materialProfiles[id]) return;
   if (!id || id === 'custom' || !materialProfiles[id]) { openPreset(!id || id === 'custom' ? 'custom' : id); return; }
   $('material').value = id;
+  savePrefs({material: id, materialPicked: true});
   applyMaterial();
   requestNest();
 }
@@ -1865,7 +1880,7 @@ async function saveMaterial() {
     if (Object.entries(materialProfiles).some(([key, item]) => key !== id && item['preset-name'].toLowerCase() === values['preset-name'].toLowerCase())) throw Error('A preset with that name already exists. Choose another name.');
     const updated = await api('/api/materials/save', {id, profile: values, revision: presetEditor.revision});
     acceptInventory(updated);
-    savePrefs({material: id, nestWidth: String(Number(values.width) * EZNQueue.unitScale(values.unit) / 25.4)});
+    savePrefs({material: id, materialPicked: true, nestWidth: String(Number(values.width) * EZNQueue.unitScale(values.unit) / 25.4)});
     presetEditor = null;
     $('preset-editor').hidden = true;
     $('material-dialog').close();
@@ -2040,7 +2055,7 @@ function reportLink(shop) {
 
 function showSetup(shop) {
   const panel = $('setup');
-  if (!shop || shop.setupComplete || prefs().setupDismissed) {
+  if (!shop || shop.setupComplete || shop.setupDismissed) {
     panel.hidden = true;
     return;
   }
@@ -2458,15 +2473,20 @@ function restoreJob(state) {
 }
 
 let outputSharing = null;
+let reconnectOpen = false;
+let lastCheckInText = '';
 function renderOutputSharing(info) {
   outputSharing = info;
   const source = info.connection;
   const paired = source === 'paired';
   const launch = source === 'environment' || source === 'environment-invalid';
+  const connected = paired || launch;
   $('output-connect-shop').hidden = !paired;
   $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
-  $('output-pair-form').hidden = paired || launch || source === 'disabled';
+  $('output-pair-form').hidden = ((paired && !reconnectOpen) || launch || source === 'disabled');
   $('output-disconnect').hidden = !paired;
+  $('output-reconnect').hidden = !paired || info.paused;
+  $('output-check-now').hidden = !connected || info.paused;
   $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
   $('output-disconnect').disabled = !paired || info.paused;
   const connectStatus = $('output-connect-status');
@@ -2474,9 +2494,9 @@ function renderOutputSharing(info) {
   if (info.paused) connectStatus.textContent = 'Sharing is paused during installation or recovery.';
   else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.';
   else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
-  else if (paired && info.requiresConsent) connectStatus.textContent = 'Review the sharing details below, then choose Enable sharing.';
-  else if (paired) connectStatus.textContent = '';
-  else connectStatus.textContent = 'This computer is connected. Paste a new pairing code only when you need to connect again.';
+  else if (paired && reconnectOpen) connectStatus.textContent = 'Paste a new pairing code. This computer stays connected until that code is accepted.';
+  else if (paired) connectStatus.textContent = [lastCheckInText || 'Choose Check now to confirm the last check-in.', info.requiresConsent ? 'Review the sharing details below, then choose Enable sharing.' : ''].filter(Boolean).join(' ');
+  else connectStatus.textContent = 'This computer is not connected. Paste a pairing code from OUTPUT.';
   $('telemetry-agree').checked = false;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
   $('telemetry-enable').disabled = true;
@@ -2496,6 +2516,21 @@ async function refreshOutputSharing() {
     outputSharing = null;
     $('telemetry-agree').disabled = $('telemetry-enable').disabled = $('telemetry-stop').disabled = true;
     $('telemetry-status').textContent = error.message;
+  }
+}
+async function runOutputCheckIn(reportError) {
+  try {
+    const body = await api('/api/telemetry/output/check-in', {});
+    if (body && body.ok === false) lastCheckInText = body.message || 'Check-in did not succeed.';
+    else lastCheckInText = 'Last check-in just now.';
+    return body;
+  } catch (error) {
+    if (reportError || !lastCheckInText) {
+      lastCheckInText = error.message;
+      const status = $('output-connect-status');
+      if (status) status.classList.add('error');
+    }
+    return null;
   }
 }
 async function connectOutput() {
@@ -2521,7 +2556,10 @@ async function connectOutput() {
       throw failure;
     }
     input.value = '';
+    reconnectOpen = false;
+    lastCheckInText = 'Last check-in just now.';
     renderOutputSharing(body);
+    runOutputCheckIn().then(() => { if (outputSharing) renderOutputSharing(outputSharing); });
     if (body.requiresConsent && !$('telemetry-agree').disabled) $('telemetry-agree').focus();
   } catch (error) {
     if (['invalid_code', 'expired', 'consumed', 'limit', 'replay', 'unexpected', 'rejected'].includes(error.reason)) input.value = '';
@@ -2562,7 +2600,7 @@ async function boot() {
   const stored = prefs();
   setNestingEffort(stored.nestingSeconds);
   loadMaterialProfiles(stored);
-  if (stored.material && [...$('material').options].some(option => option.value === stored.material)) {
+  if (!legacyRollUnconfirmed() && stored.material && [...$('material').options].some(option => option.value === stored.material)) {
     $('material').value = stored.material;
     applyMaterial(true);
   }
@@ -2603,8 +2641,8 @@ async function boot() {
     $('logout').hidden = false;
   }
   await refreshInventory().catch(() => {});
-  if (inventoryReady && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
-  if (inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) applyMaterial(true);
+  if (!legacyRollUnconfirmed() && inventoryReady && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
+  if (!legacyRollUnconfirmed() && inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) applyMaterial(true);
   try {
     const folder = await fetchJson('/api/output', 5000);
     if (folder.path) $('hot-folder').value = folder.path;
@@ -2696,6 +2734,11 @@ function requireOutputConnection(session) {
         success.textContent = body.shopName ? 'Connected to ' + body.shopName + '.' : 'Connected to OUTPUT';
         success.hidden = false;
         fields.hidden = true;
+        lastCheckInText = 'Last check-in just now.';
+        const checkin = $('output-gate-checkin');
+        checkin.hidden = false;
+        checkin.textContent = lastCheckInText;
+        runOutputCheckIn().then(() => { if (checkin.isConnected) checkin.textContent = lastCheckInText; });
         await new Promise(resolveDelay => setTimeout(resolveDelay, 1200));
         await finish();
         if (gate.open) {
@@ -2787,13 +2830,66 @@ function requireShopPin(session) {
   const error = $('pin-error');
   error.hidden = true;
   error.textContent = '';
+  const pinLabel = input.closest('label');
+  function showPinEntry(next) {
+    note.textContent = next && next.pinWeak
+      ? 'This PIN still works. The shop computer must replace it. You can keep nesting until then. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.'
+      : 'Enter the shop PIN from the host PC. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.';
+    if (pinLabel) pinLabel.hidden = false;
+    input.hidden = false;
+    submit.hidden = false;
+    submit.disabled = false;
+    input.focus();
+  }
   if (!session.pinConfigured) {
-    note.textContent = 'Ask the person at the shop computer to set a PIN, then refresh this page.';
+    note.textContent = 'Set the shop PIN on the host PC. Open Settings on that computer and choose Shop PIN. This page updates on its own when the PIN is saved.';
+    if (pinLabel) pinLabel.hidden = true;
     input.hidden = true;
     submit.hidden = true;
     gate.showModal();
-    return new Promise(() => {});
+    let waiting = 0;
+    const watch = () => {
+      waiting = setTimeout(async () => {
+        try {
+          const next = await fetchJson('/api/session', 4000);
+          if (next.pinConfigured) {
+            showPinEntry(next);
+            return;
+          }
+        } catch { /* The host may still be saving the PIN. */ }
+        watch();
+      }, 1500);
+    };
+    watch();
+    return new Promise(resolve => {
+      $('pin-form').onsubmit = async event => {
+        event.preventDefault();
+        if (input.hidden) return;
+        clearTimeout(waiting);
+        submit.disabled = true;
+        try {
+          const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pin: input.value})
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) throw Error(body.error || 'Could not sign in.');
+          input.value = '';
+          gate.close();
+          resolve();
+        } catch (err) {
+          error.hidden = false;
+          error.textContent = err.message;
+          submit.disabled = false;
+          watch();
+        }
+      };
+    });
   }
+  if (pinLabel) pinLabel.hidden = false;
+  input.hidden = false;
+  submit.hidden = false;
   note.textContent = session.pinWeak
     ? 'This PIN still works. The shop computer must replace it. You can keep nesting until then. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.'
     : 'Enter the shop PIN or passphrase from the computer that runs Ez Nest. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.';
@@ -2946,19 +3042,12 @@ async function loadIllustrator() {
   const data = await response.json();
   if (!response.ok) throw Error(data.error);
   nextKit();
-  if (![...$('material').options].some(option => option.value === 'white-gloss')) {
-    const values = materialValues();
-    values['preset-name'] = 'Regular';
-    registerMaterial('white-gloss', values);
-  }
-  $('material').value = 'white-gloss';
-  const regular = $('material').selectedOptions[0];
-  regular.dataset.name = 'Regular';
-  regular.dataset.width = data.widthIn;
-  regular.dataset.roll = Math.max(54, data.widthIn);
-  regular.textContent = 'Regular';
-  applyMaterial(true);
+  $('unit').value = 'in';
+  $('unit').dataset.current = 'in';
+  $('width').value = data.widthIn;
+  $('roll').value = String(Math.max(54, Number(data.widthIn) || 54));
   $('nest-width').value = data.widthIn;
+  for (const node of document.querySelectorAll('span[data-unit]')) node.textContent = 'in';
   $('sets').value = data.sets;
   $('bleed').value = data.bleedMm;
   $('auto-bleed').value = '0';
@@ -3097,6 +3186,19 @@ document.addEventListener('DOMContentLoaded', () => {
   $('telemetry-agree').addEventListener('change', () => { $('telemetry-enable').disabled = !outputSharing || !outputSharing.configured || outputSharing.enabled || outputSharing.paused || !$('telemetry-agree').checked; });
   $('output-pair').addEventListener('click', connectOutput);
   $('output-disconnect').addEventListener('click', disconnectOutput);
+  $('output-check-now').addEventListener('click', async () => {
+    $('output-check-now').disabled = true;
+    $('output-connect-status').textContent = 'Checking…';
+    await runOutputCheckIn(true);
+    if (outputSharing) renderOutputSharing(outputSharing);
+    else $('output-connect-status').textContent = lastCheckInText;
+    $('output-check-now').disabled = false;
+  });
+  $('output-reconnect').addEventListener('click', () => {
+    reconnectOpen = true;
+    if (outputSharing) renderOutputSharing(outputSharing);
+    $('output-pair-code').focus();
+  });
   $('output-pair-code').addEventListener('keydown', event => {
     if (event.key === 'Enter') { event.preventDefault(); connectOutput(); }
   });
@@ -3249,9 +3351,13 @@ document.addEventListener('DOMContentLoaded', () => {
   $('test-channel').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('output-network').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('printer').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
-  $('setup-dismiss').addEventListener('click', () => {
-    savePrefs({setupDismissed: true});
+  $('setup-dismiss').addEventListener('click', async () => {
     $('setup').hidden = true;
+    try { applyShop(await api('/api/shop', shopPayload({setupDismissed: true}))); }
+    catch (error) {
+      $('setup').hidden = false;
+      status(error.message, true);
+    }
   });
   $('setup-preset').addEventListener('click', async () => {
     try { applyEzPreset(await (await fetch('/api/shop')).json()); }

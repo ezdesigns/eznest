@@ -339,15 +339,24 @@ class GateTests(unittest.TestCase):
                     def exchange(*_args, **_kwargs):
                         return {'credential': TOKEN, 'shopName': 'North Shop'}
 
-                    with patch.object(output_pairing, 'exchange', side_effect=exchange):
+                    with patch.object(output_pairing, 'exchange', side_effect=exchange), patch.object(output_gate, 'check_in', return_value={'ok': True, 'state': 'ok', 'message': ''}):
                         page.fill('#output-gate-code', '7K4NP-QRX2M')
                         page.click('#output-gate-submit')
                         expect(page.locator('#output-gate-success')).to_have_text('Connected to North Shop.')
+                        expect(page.locator('#output-gate-checkin')).to_contain_text('Last check-in just now.')
+                        expect(page.locator('#output-gate-fields')).to_be_hidden()
                         expect(page.locator('#output-gate')).to_be_hidden(timeout=8000)
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
                     page.click('#settings-open')
                     page.locator('#settings-telemetry').evaluate('node => node.open = true')
                     expect(page.locator('#output-connect-shop')).to_have_text('Connected to North Shop.')
+                    expect(page.locator('#output-connect-status')).to_contain_text('Last check-in just now.')
+                    expect(page.locator('#output-pair-form')).to_be_hidden()
+                    expect(page.locator('#output-check-now')).to_be_visible()
+                    page.click('#output-reconnect')
+                    expect(page.locator('#output-pair-form')).to_be_visible()
+                    expect(page.locator('#output-connect-shop')).to_have_text('Connected to North Shop.')
+                    expect(page.locator('#output-connect-status')).to_contain_text('Paste a new pairing code')
                 finally:
                     browser.close()
         finally:

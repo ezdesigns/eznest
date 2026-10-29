@@ -94,7 +94,8 @@ class IllustratorBridgeTests(unittest.TestCase):
                             except Exception:
                                 self.fail(page.locator('#illustrator-note').inner_text() + ' / ' + page.locator('#gate').inner_text() + ' / ' + page.locator('#status').inner_text())
                             self.assertEqual(page.input_value('#auto-bleed'), '0')
-                            self.assertIn('Regular', page.locator('#material option:checked').inner_text())
+                            self.assertEqual(page.locator('#material option[value="white-gloss"]').count(), 0)
+                            self.assertNotIn('Regular', page.locator('#material').inner_text())
                             if run == 0:
                                 shots = Path(__file__).resolve().parents[1]/'.local'/'screenshots'
                                 shots.mkdir(parents=True, exist_ok=True)

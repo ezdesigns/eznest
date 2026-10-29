@@ -1515,6 +1515,8 @@ class WebMvpTests(unittest.TestCase):
                 page.reload()
                 self.wait_ready(page)
                 self.assertTrue(page.locator('#setup').is_hidden())
+                import shop_deploy
+                self.assertTrue(shop_deploy.load_shop(server.WORK)['setupDismissed'])
                 self.assertEqual(page.locator('#material option:checked').inner_text(), 'Add your first material')
                 profile = {
                     'preset-name': 'Saved vinyl', 'unit': 'in', 'width': '48', 'roll': '54',
@@ -1534,7 +1536,75 @@ class WebMvpTests(unittest.TestCase):
                 fresh = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
                 fresh.goto(self.url() + '/web', wait_until='domcontentloaded')
                 self.wait_ready(fresh)
+                self.assertTrue(fresh.locator('#setup').is_hidden())
                 self.assertEqual(fresh.locator('#material option:checked').inner_text(), 'Add your first material')
+            finally:
+                browser.close()
+
+    def test_upgrade_keeps_a_reserved_default_roll_until_the_operator_picks(self):
+        from playwright.sync_api import sync_playwright
+        import material_inventory as inventory
+        profile = {
+            'preset-name': 'Moto Regular', 'unit': 'mm', 'width': '500', 'roll': '510',
+            'available-length': '1000', 'roll-length': '5000', 'gap': '2', 'margin': '5',
+            'mark-margin': '0', 'sheet': '1000', 'rotations': '0,90,180,270', 'auto-bleed': '0',
+            'bleed': '0', 'cost': '', 'roll-cost': '', 'low-stock': '200', 'print-layout': 'sections',
+        }
+        other = dict(profile, **{'preset-name': 'Other roll'})
+        inventory.save(server.WORK, 'other-roll', other, 0)
+        inventory.save(server.WORK, 'white-gloss', profile, 0)
+        inventory.reserve(server.WORK, 'white-gloss', 'job-old', 100, 500, 'legacy')
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+            try:
+                page.add_init_script("if (!localStorage.getItem('eznest-placeholders')) localStorage.setItem('eznest-placeholders', JSON.stringify({material:'white-gloss'}))")
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                self.wait_ready(page)
+                self.assertEqual(page.locator('#material option:checked').inner_text(), 'Pick a roll')
+                self.assertEqual(page.input_value('#material'), '')
+                self.assertEqual(page.locator('#material option[value="white-gloss"]').count(), 1)
+                self.assertEqual(page.locator('#material option[value="other-roll"]').count(), 1)
+                reserved = inventory.read(server.WORK)['reservations']
+                self.assertEqual(reserved[0]['id'], 'job-old')
+                self.assertEqual(reserved[0]['material'], 'white-gloss')
+                self.assertEqual(reserved[0]['status'], 'reserved')
+                page.select_option('#material', 'white-gloss')
+                self.assertEqual(page.input_value('#material'), 'white-gloss')
+                page.reload()
+                self.wait_ready(page)
+                self.assertEqual(page.input_value('#material'), 'white-gloss')
+                self.assertEqual(inventory.read(server.WORK)['reservations'][0]['status'], 'reserved')
+            finally:
+                browser.close()
+
+    def test_designer_pin_gate_explains_the_host_and_unlocks_when_set(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 800}).new_page()
+            try:
+                state = {'configured': False}
+                def fulfill(route):
+                    route.fulfill(status=200, content_type='application/json', body=json.dumps({
+                        'app': 'eznest', 'version': 'test', 'localPC': False, 'authenticated': False,
+                        'pinConfigured': state['configured'], 'pinWeak': False, 'localSave': False,
+                        'setupComplete': True, 'setupDismissed': True,
+                        'outputConnection': {'ok': True, 'state': 'ok', 'message': '', 'banner': None, 'devMode': False, 'canPair': False, 'canCheckIn': False},
+                    }))
+                page.route('**/api/session', fulfill)
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                expect(page.locator('#pin-gate')).to_be_visible()
+                expect(page.locator('#pin-input')).to_be_hidden()
+                expect(page.locator('#pin-submit')).to_be_hidden()
+                note = page.locator('#pin-note').inner_text()
+                self.assertIn('host PC', note)
+                self.assertIn('Settings', note)
+                self.assertIn('Shop PIN', note)
+                state['configured'] = True
+                expect(page.locator('#pin-input')).to_be_visible(timeout=5000)
+                expect(page.locator('#pin-submit')).to_be_visible()
+                expect(page.locator('#pin-note')).to_contain_text('Enter the shop PIN from the host PC')
             finally:
                 browser.close()
 
