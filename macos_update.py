@@ -45,7 +45,7 @@ def publisher():
 
 def enabled(directory):
     return (runtime.active() and not runtime.maintenance() and
-            os.environ.get('EZ_NEST_UPDATES','1') != '0' and release.load_shop(directory)['updates'])
+            release.updates_allowed(directory))
 
 
 def verify_package(path, team, version, *, runner=subprocess.run):

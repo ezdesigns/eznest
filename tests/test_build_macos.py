@@ -29,6 +29,7 @@ class MacPackagingTests(unittest.TestCase):
              patch('shop_deploy.github_token', side_effect=AssertionError('credential read')), \
              patch('shop_deploy._open', side_effect=AssertionError('network')):
             root = Path(tmp)
+            shop_deploy.save_shop(root, False, False, updates=True)
             for when in ('now', 'restart'):
                 result = shop_deploy.pull_latest(root, '1.0.0-rc.5', when=when)
                 self.assertFalse(result['updated'])

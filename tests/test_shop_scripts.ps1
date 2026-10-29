@@ -43,6 +43,7 @@ function Grant-BatchLogon([string]$Account) { $global:eznestTestCalls.Add("batch
     & $installer -DataDir $sandbox -App (Join-Path $sandbox 'eznest.exe') -StartAtBoot 1
     $shop = Get-Content (Join-Path $sandbox 'shop.json') -Raw | ConvertFrom-Json
     Assert (-not $shop.lan -and -not $shop.outputNetwork) 'Network defaults must be off.'
+    Assert ($shop.updates -eq $false) 'Update checks default off.'
     Assert ($global:eznestTestCalls.Contains('account eznest-svc')) 'The limited service account must be used.'
     $task = $global:eznestTestCalls | Where-Object { $_ -match '^register ' }
     Assert ($task -match 'register eznest-svc Limited') 'Boot task must run with limited rights.'

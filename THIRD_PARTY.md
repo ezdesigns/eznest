@@ -1,6 +1,6 @@
 # External components
 
-The Ez Nest application is MIT. See LICENSE and NOTICE. "Ez Nest" is the name of EZ Designs. The packages below keep their own licenses.
+The Ez Nest application is Apache-2.0. See LICENSE and NOTICE. Ez Nest is a project of EZ Designs. The packages below keep their own licenses.
 
 The application imports independently obtained packages from PyPI:
 

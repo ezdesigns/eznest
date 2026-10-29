@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Ez Nest did not behave as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe what a shop operator would notice. Leave customer artwork, filenames, paths, and credentials out of this report.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you clicked and the words on screen.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ez Nest version
+      description: Shown in Settings, App updates.
+      placeholder: 1.0.0-rc.5
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Extra detail
+      description: Optional. Do not paste customer files, tokens, or shop paths.

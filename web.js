@@ -62,7 +62,7 @@ function installSettingsHelp() {
     'staging-folder': ['Extra copy folder', 'Choose where the extra copy is saved. This does not replace the main destination.'],
     'onyx-pc': ['This PC runs ONYX', 'Changes the suggested output folder for this PC. It does not install ONYX or move your files.'],
     'lan': ['Other computers can connect', 'Shows whether this app was started for the shop network. A saved setting cannot open network access. The separate trial stays on this PC.'],
-    'updates': ['Look for app updates', 'Checks for newer app versions. Separate shop trials keep update checks off and are updated by opening a new tested build.'],
+    'updates': ['Look for app updates', 'Off during beta. Check this box and start Ez Nest with EZ_NEST_UPDATES=1. A download is kept only when its SHA-256 matches. Installing is still a separate click.'],
     'test-channel': ['Include test versions', 'When update checks are enabled, also show releases still being tested. Leave off for normal shop use.'],
     'allow-undo': ['Undo send', 'Lets you remove a sent pack while it is still in the output folder. This cannot stop a job that ONYX has already picked up.'],
     'preset-name': ['Material name', 'The name on the material button. Save separate materials when rolls need different widths or spacing.'],
@@ -264,7 +264,7 @@ const CUT_PRESETS = {
   ln: {thru: 'LNThru-cut', kiss: 'LNKiss-cut'},
   output: {thru: 'CutContour_Thru-cut', kiss: 'CutContour_Kiss-cut'}
 };
-const HOT_FOLDER_LABEL = 'EPSON SureColor S80600 ONYX Input';
+const HOT_FOLDER_LABEL = 'Example RIP Input';
 
 function autoBleedMm() {
   return 0; // Prepared artwork keeps its original size and bleed.
@@ -1920,8 +1920,38 @@ function showLan(shop) {
 }
 
 function showHotDefault(path) {
-  $('hot-default').textContent = path ? 'EZ Designs preset: ' + path : '';
+  $('hot-default').textContent = path ? 'Example shop preset: ' + path : '';
   if (!$('hot-folder').value && path) $('hot-folder').placeholder = path;
+}
+
+function outputUrlField() {
+  const input = $('output-url');
+  if (!input || input.disabled) return null;
+  const value = input.value.trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || (url.pathname && url.pathname !== '/')) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function showOutputService(shop) {
+  const input = $('output-url');
+  if (!input || !shop) return;
+  const locked = shop.outputUrlSource === 'environment';
+  input.disabled = locked;
+  if (document.activeElement !== input) input.value = shop.outputUrl || '';
+  const destination = $('output-destination');
+  if (destination) destination.textContent = shop.outputTelemetryUrl || 'https://output.jeezlabs.io/api/shop/telemetry';
+  const note = $('output-url-note');
+  if (note) {
+    note.textContent = locked
+      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Sharing stays off until you connect and agree.'
+      : 'Optional. Leave blank for https://output.jeezlabs.io. EZ_NEST_OUTPUT_URL overrides this saved address. Sharing stays off until you connect and agree.';
+  }
 }
 
 function showRestart(shop) {
@@ -1939,7 +1969,8 @@ function applyShop(shop) {
   $('app-version').textContent = (shop.version || '') + (shop.buildId ? ' · build ' + shop.buildId : '');
   $('onyx-pc').checked = shop.onyxPc === true;
   $('lan').checked = shop.runningLan === true;
-  $('updates').checked = !shop || shop.updates !== false;
+  $('updates').checked = !!(shop && shop.updates === true);
+  showOutputService(shop);
   $('update').hidden = !$('updates').checked;
   $('test-channel').checked = shop.channel === 'test';
   $('output-network').checked = shop.outputNetwork === true;
@@ -2028,13 +2059,16 @@ async function saveSetup(shop) {
 }
 
 function shopPayload(extra) {
-  return Object.assign({
+  const payload = Object.assign({
     lan: $('lan').checked,
     onyxPc: $('onyx-pc').checked,
     updates: $('updates').checked,
     channel: $('test-channel').checked ? 'test' : 'stable',
     outputNetwork: $('output-network').checked
   }, extra || {});
+  const outputUrl = outputUrlField();
+  if (outputUrl !== null) payload.outputUrl = outputUrl;
+  return payload;
 }
 
 async function saveDeploy() {
@@ -2918,6 +2952,13 @@ document.addEventListener('DOMContentLoaded', () => {
   $('lan').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('onyx-pc').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('updates').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  if ($('output-url')) $('output-url').addEventListener('change', () => {
+    if (outputUrlField() === null) {
+      status('OUTPUT address must be an https URL with no path or password.', true);
+      return;
+    }
+    saveDeploy().catch(error => status(error.message, true));
+  });
   $('test-channel').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('output-network').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('printer').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });

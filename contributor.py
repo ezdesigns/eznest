@@ -80,7 +80,7 @@ def check(paths):
         raise ValueError('Checks require PowerShell 7.')
     commands = [[str(paths['python']), '-c', 'import playwright'],
                 [str(paths['python']), '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py']]
-    commands += [[node, '--check', script] for script in ['queue-app.js', 'production-features.js', 'cut-mapping.js', 'web.js', 'tester/feedback.js']]
+    commands += [[node, '--check', script] for script in ['queue-app.js', 'production-features.js', 'cut-mapping.js', 'web.js', 'tester-results.js']]
     commands += [[node, 'tests/' + name + '.cjs'] for name in ['test_queue', 'test_shop_profiles', 'test_cut_mapping', 'test_production_features', 'test_boundaries', 'test_illustrator_bridge']]
     commands += [[pwsh, '-NoProfile', '-File', 'tests/' + name + '.ps1'] for name in ['test_shop_scripts', 'test_update_helper']]
     for command in commands:

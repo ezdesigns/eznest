@@ -11,7 +11,7 @@
 #ifndef MyAppVersion
   #error MyAppVersion is passed from version.json by build_windows.py
 #endif
-#define MyAppPublisher "EZ Designs TX"
+#define MyAppPublisher "EZ Designs"
 
 [Setup]
 AppId={{A7E2C1D4-9B55-4E18-8C3A-6F0E2B9D4A11}
@@ -19,6 +19,8 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+AppCopyright=Copyright (C) 2026 EZ Designs
+LicenseFile=..\LICENSE
 DefaultDirName={autopf}\eznest
 DefaultGroupName=eznest
 DisableProgramGroupPage=no
@@ -40,7 +42,7 @@ Name: "desktopicon"; Description: "Desktop shortcut"; GroupDescription: "Shortcu
 Name: "startatboot"; Description: "Start eznest when Windows starts"; GroupDescription: "Shop server:"; Flags: checkedonce
 Name: "lan"; Description: "Shop network (other PCs on this network)"; GroupDescription: "Shop server:"; Flags: unchecked
 Name: "onyxpc"; Description: "This PC runs ONYX"; GroupDescription: "Shop server:"; Flags: unchecked
-Name: "noupdates"; Description: "Disable updates (offline install)"; GroupDescription: "Shop server:"; Flags: unchecked
+Name: "checkupdates"; Description: "Check for app updates (also set EZ_NEST_UPDATES=1)"; GroupDescription: "Shop server:"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "BUILD.json"
@@ -89,7 +91,7 @@ end;
 
 function UpdatesFlag(Param: String): String;
 begin
-  if WizardIsTaskSelected('noupdates') then Result := '0' else Result := '1';
+  if WizardIsTaskSelected('checkupdates') then Result := '1' else Result := '0';
 end;
 
 function IsUpgrade: Boolean;

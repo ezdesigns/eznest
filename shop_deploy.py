@@ -1,6 +1,6 @@
 """Shop-server install choices: one computer, many browsers.
 
-LAN binding, the EZ Designs preset, and release checks live here so the
+LAN binding, the example shop preset, and release checks live here so the
 nest, the file import, and the gear can stay separate.
 """
 import hmac
@@ -18,16 +18,17 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
-# Today's EZ Designs shop. A preset the operator can apply. Nothing is connected until they save.
+# Example shop preset. The operator can apply it. Nothing is connected until they save.
+DEFAULT_OUTPUT_URL = 'https://output.jeezlabs.io'
 EZ_PRESET = {
-    'name': 'EZ Designs',
-    'printer': 'Epson SureColor S80600',
+    'name': 'Example shop',
+    'printer': 'Example printer',
     'units': 'in',
     'thru': 'CutContour_Thru-cut',
     'kiss': 'CutContour_Kiss-cut',
-    'hotFolderLabel': 'EPSON SureColor S80600 ONYX Input',
-    'localHotFolder': r'C:\ONYX\EPSON SureColor S80600 ONYX Input',
-    'shareHotFolder': r'\\ONYX\EPSON SureColor S80600 ONYX Input',
+    'hotFolderLabel': 'Example RIP Input',
+    'localHotFolder': r'C:\RIP\Example RIP Input',
+    'shareHotFolder': r'\\RIP\Example RIP Input',
 }
 DEFAULT_REPO = 'ezdesigns/eznest'
 RELEASE_API = f'https://api.github.com/repos/{DEFAULT_REPO}/releases?per_page=20'
@@ -47,8 +48,34 @@ REDIRECT_HOSTS = {
 
 
 def default_hot_folder(onyx_pc):
-    """The EZ Designs preset path. The shop saves a path on first run."""
+    """The example shop preset path. The shop saves a path on first run."""
     return EZ_PRESET['localHotFolder'] if onyx_pc else EZ_PRESET['shareHotFolder']
+
+
+def normalize_output_base(value):
+    """HTTPS origin only. A path, query, fragment, or embedded password is rejected."""
+    if not isinstance(value, str):
+        return ''
+    text = value.strip()
+    if not text or any(ord(char) < 33 for char in text):
+        return ''
+    parsed = urlparse(text)
+    if parsed.scheme != 'https' or parsed.username or parsed.password or not parsed.hostname:
+        return ''
+    if parsed.query or parsed.fragment or parsed.params or parsed.path.rstrip('/'):
+        return ''
+    if parsed.port:
+        return f'https://{parsed.hostname}:{parsed.port}'
+    return f'https://{parsed.hostname}'
+
+
+def clean_output_url(value):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return ''
+    cleaned = normalize_output_base(value)
+    if not cleaned:
+        raise ValueError('OUTPUT address must be an https URL with no path, query, user, or password.')
+    return cleaned
 
 
 def _clip(value, limit):
@@ -94,7 +121,7 @@ def load_shop(directory):
     return {
         'onyxPc': data.get('onyxPc') is True,
         'lan': data.get('lan') is True,
-        'updates': data.get('updates') is not False,
+        'updates': data.get('updates') is True,
         'channel': 'test' if data.get('channel') == 'test' else 'stable',
         'outputNetwork': data.get('outputNetwork') is True,
         'setupComplete': data.get('setupComplete') is True,
@@ -103,7 +130,45 @@ def load_shop(directory):
         'thru': _clip(data.get('thru'), 80),
         'kiss': _clip(data.get('kiss'), 80),
         'hotFolder': _clip(data.get('hotFolder'), 400),
+        'outputUrl': normalize_output_base(data.get('outputUrl')),
     }
+
+
+def updates_allowed(directory=None):
+    """Background update checks stay off unless the operator opts in.
+
+    EZ_NEST_UPDATES defaults to 0. shop.json updates defaults to false.
+    Both must allow a check. A download is kept only when its SHA-256 matches,
+    and installation stays a separate click.
+    """
+    if os.environ.get('EZ_NEST_UPDATES', '0') == '0':
+        return False
+    if directory is not None and not load_shop(directory)['updates']:
+        return False
+    return True
+
+
+def output_status(directory=None):
+    """Effective OUTPUT service origin. The environment overrides shop.json."""
+    saved = load_shop(directory).get('outputUrl') or '' if directory is not None else ''
+    env = normalize_output_base(os.environ.get('EZ_NEST_OUTPUT_URL', ''))
+    if env:
+        base, source = env, 'environment'
+    elif saved:
+        base, source = saved, 'shop'
+    else:
+        base, source = DEFAULT_OUTPUT_URL, 'default'
+    return {
+        'outputBaseUrl': base,
+        'outputUrl': saved,
+        'outputUrlSource': source,
+        'outputTelemetryUrl': base + '/api/shop/telemetry',
+        'outputPairUrl': base + '/api/shop/agent/pair',
+    }
+
+
+def output_base_url(directory=None):
+    return output_status(directory)['outputBaseUrl']
 
 
 def save_shop(directory, onyx_pc, lan, updates=None, **fields):
@@ -124,6 +189,7 @@ def save_shop(directory, onyx_pc, lan, updates=None, **fields):
         'thru': current['thru'] if 'thru' not in fields else _clip(fields.get('thru'), 80),
         'kiss': current['kiss'] if 'kiss' not in fields else _clip(fields.get('kiss'), 80),
         'hotFolder': current['hotFolder'] if 'hotFolder' not in fields else _clip(fields.get('hotFolder'), 400),
+        'outputUrl': current['outputUrl'] if 'outputUrl' not in fields else clean_output_url(fields.get('outputUrl')),
     }
     path = Path(directory) / 'shop.json'
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -351,6 +417,12 @@ def choose_asset(release, repo=None):
 
 
 def github_token(directory):
+    """Optional credential for a private repository mirror.
+
+    A public repository needs no token. EZ_NEST_GITHUB_TOKEN wins over a
+    one-line github-token file in the data directory. The value is sent only
+    to github.com and api.github.com, and only while update checks are on.
+    """
     token = os.environ.get('EZ_NEST_GITHUB_TOKEN', '').strip()
     if token:
         return token
@@ -498,7 +570,7 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
     asks the helper to swap it in. The installer is not opened from the browser.
     """
     directory = Path(directory)
-    if os.environ.get('EZ_NEST_UPDATES', '1') == '0' or not load_shop(directory)['updates']:
+    if not updates_allowed(directory):
         return _idle(current, current, 'Updates are off.')
     if sys.platform == 'darwin':
         return {**_idle(current, current, MAC_UPDATE_NOTE), 'applySupported': False}
@@ -561,7 +633,7 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
 def peek_latest(directory, current, opener=None):
     """Say whether a newer release exists. This does not download the installer."""
     directory = Path(directory)
-    if os.environ.get('EZ_NEST_UPDATES', '1') == '0' or not load_shop(directory)['updates']:
+    if not updates_allowed(directory):
         return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': current, 'message': 'Update checks are off.', 'error': None}
     if sys.platform == 'darwin':
         return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': None,
