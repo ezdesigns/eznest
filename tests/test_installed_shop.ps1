@@ -24,7 +24,7 @@ function Invoke-SystemCommand([string]$Command) {
 try {
   & {
 $Command
-  } | Out-File -LiteralPath '$stdout' -Encoding utf8
+  } | Out-File -LiteralPath '$stdout' -Encoding utf8 -Width 4096
   exit 0
 } catch {
   `$_ | Out-File -LiteralPath '$stderr' -Encoding utf8
@@ -74,19 +74,50 @@ function Write-LockedFile([string]$Path, [string]$Text) {
   if ($LASTEXITCODE -ne 0) { throw 'Could not grant SYSTEM read on the acceptance marker.' }
   Invoke-SystemCommand "Copy-Item -LiteralPath '$src' -Destination '$Path' -Force" | Out-Null
 }
+function Get-LockedAcl([string]$Path) {
+  # icacls omits ACE lines when stdout is a pipe. /save writes SDDL as SYSTEM,
+  # using SY / BA or the account SID, and the runner never opens shop.json.
+  $work = Join-Path $env:RUNNER_TEMP ('eznest-acl-' + [guid]::NewGuid().ToString('n'))
+  New-Item -ItemType Directory -Path $work | Out-Null
+  & icacls.exe $work /grant '*S-1-5-18:(OI)(CI)M' 'Users:(OI)(CI)M' | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the ACL save folder.' }
+  $save = Join-Path $work 'shop.acl'
+  return Invoke-SystemCommand "& icacls.exe '$Path' /save '$save' /Q; if (`$LASTEXITCODE -ne 0) { throw 'icacls /save could not read the shop ACL' }; Get-Content -LiteralPath '$save' -Raw"
+}
+function Assert-LockedShopAcl([string]$Text, [string]$ServiceSid) {
+  $dacl = [regex]::Match($Text, 'D:[^\r\n]*').Value
+  Assert ($dacl) "Shop data ACL was not saved as SDDL.`n$Text"
+  $accounts = New-Object System.Collections.Generic.List[string]
+  foreach ($ace in [regex]::Matches($dacl, '\((?:[^;]*;){5}([^)]*)\)')) {
+    if ($ace.Groups[1].Value) { [void]$accounts.Add($ace.Groups[1].Value.Trim()) }
+  }
+  Assert ($accounts.Count -gt 0) "Shop data ACL had no entries.`n$Text"
+  $system = $false
+  $admins = $false
+  $service = $false
+  $serviceKey = $ServiceSid.ToUpperInvariant()
+  foreach ($account in $accounts) {
+    $name = $account.ToUpperInvariant()
+    if ($name -in @('SY', 'S-1-5-18') -or $name.EndsWith('\SYSTEM')) { $system = $true; continue }
+    if ($name -in @('BA', 'S-1-5-32-544') -or $name.EndsWith('\ADMINISTRATORS')) { $admins = $true; continue }
+    if ($name -eq $serviceKey -or $name.EndsWith('\EZNEST-SVC')) { $service = $true; continue }
+    throw "Shop data ACL grants $account, which is not SYSTEM, Administrators, or eznest-svc.`n$Text"
+  }
+  Assert ($system -and $admins -and $service) "Shop data ACL is missing SYSTEM, Administrators, or eznest-svc.`n$Text"
+}
 $setup = Join-Path $root 'installer\Output\eznest-setup.exe'
 $setupLog = Join-Path $env:RUNNER_TEMP 'eznest-acceptance-install.log'
 $install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/TASKS="startatboot"',('/LOG="' + $setupLog + '"') -WindowStyle Hidden -PassThru
 if (-not $install.WaitForExit(180000)) { throw 'Fresh installation timed out.' }
 Get-Content -LiteralPath $setupLog -Tail 55
+Assert ($install.ExitCode -eq 0) 'Fresh installer failed.'
 $shopFile = Join-Path $data 'shop.json'
 Assert (Test-Path -LiteralPath $shopFile) 'Fresh install did not write shop.json.'
-$acl = Invoke-SystemCommand "& icacls.exe '$shopFile'; if (`$LASTEXITCODE -ne 0) { throw 'icacls could not read the shop ACL' }"
+$serviceSid = (Get-LocalUser -Name 'eznest-svc').SID.Value
+$acl = Get-LockedAcl $shopFile
 Write-Output $acl
-Assert ($acl -match 'SYSTEM' -and $acl -match 'Administrators' -and $acl -match 'eznest-svc') 'Shop data ACL is missing SYSTEM, Administrators, or eznest-svc.'
-Assert ($acl -notmatch '\\Users:' -and $acl -notmatch 'Everyone') 'Shop data ACL is broader than SYSTEM, Administrators, and eznest-svc.'
+Assert-LockedShopAcl $acl $serviceSid
 Write-Output (Read-LockedFile $shopFile)
-Assert ($install.ExitCode -eq 0) 'Fresh installer failed.'
 try {
   $task = Get-ScheduledTask -TaskName eznest -ErrorAction Stop
   . (Join-Path $root 'installer/update-shop.ps1')
