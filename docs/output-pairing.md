@@ -1,25 +1,76 @@
 # OUTPUT pairing
 
-Sharing is optional and off by default. Nesting, local stock, and export do
-not use it. Nothing is sent until someone on the shop host pairs this computer
-and then turns sharing on. Designer PCs on the shop network cannot pair,
-disconnect, or change that consent. Those actions are accepted only from
-`127.0.0.1` on the host.
+Ez Nest has to be connected to OUTPUT before a shop can nest, send, or change
+stock. The first run on the shop computer is one Connect step: paste a
+one-time pairing code from <https://output.jeezlabs.io/outpost/ez-nest>.
+Designer PCs cannot pair. If the host is not connected, they see "Ask the
+shop computer to connect to OUTPUT."
+
+The account connection is required. Sharing activity, and sharing capacity
+with the OUTPUT network, are separate and stay off until someone on the host
+opts in.
 
 The public pages are <https://output.jeezlabs.io/> and the waitlist at
-<https://output.jeezlabs.io/waitlist>.
+<https://output.jeezlabs.io/waitlist>. Pairing, disconnect, and check-in are
+accepted only from `127.0.0.1` on the host.
+
+## What OUTPUT sees
+
+Sent when this computer connects:
+
+- `hostLabel`: this computer's name, once, in the pairing request
+- `hostRef`: this installation id, once, when it is 32 lowercase hex characters
+- `appVersion`: the app version, on each later check-in
+- the shop credential, as the HTTPS bearer token on check-in and, after **Enable sharing**, on activity posts
+- this computer's IP address, because that is how HTTPS works
+
+Never sent: artwork, files, filenames, customer names or contacts, job codes,
+roll ids, custom material names, exact dimensions, quantities, stock contents,
+or search time. The stock ledger in `materials.sqlite3` stays on the host.
+
+Sharing capacity and availability with the OUTPUT network (matching) is a
+separate checkbox. It is off by default and does not send that information.
+It is not the account connection.
+
+OUTPUT is pre-revenue. Where that product moves money, the money is Solana
+devnet test tokens. Ez Nest does not send a price.
 
 ## What happens
 
-1. The host operator pastes a pairing code.
-2. Ez Nest sends that code to the pair endpoint and receives a scoped shop key.
-3. The host stores the key, then shows the consent screen.
-4. After **Enable sharing**, new local activity can be delivered as
-   `eznest-observation/1` events to the event endpoint. The shop key
-   authenticates those requests.
+1. Until the host is paired, the page is the Connect screen and the API
+   answers `connect_required`.
+2. The host operator pastes a pairing code. The code is not logged or shown
+   again.
+3. Ez Nest sends that code to the pair endpoint and receives a scoped shop key.
+4. The host stores the key. Nesting works. Activity is not uploaded yet.
+5. After **Enable sharing**, new local activity can be delivered as
+   `eznest-observation/1` events. That consent is still optional.
 
 Earlier activity is not uploaded for that consent. Exact quantities stay on
-the host. The stock ledger in `materials.sqlite3` is not uploaded.
+the host.
+
+## Offline grace
+
+`CHECK_IN_MAX_AGE_DAYS` is 14. After a successful pairing, Ez Nest keeps
+working when OUTPUT cannot be reached. A banner appears after 3 days offline.
+After 14 days without a successful check-in, the Connect screen returns until
+a check-in succeeds. If OUTPUT says the credential is unpaired or revoked,
+the gate returns immediately and the stored credential is removed.
+
+Check-in is `POST /api/shop/agent/check-in` with `{"appVersion":"..."}` only.
+The computer name and installation id are not sent again. A missing route or
+a network failure counts as unreachable, not as an unpaired computer. A
+response that says the credential is unpaired or revoked does.
+
+## Dev mode
+
+`EZ_NEST_DEV_NO_OUTPUT=1` is honored only when the process is a source
+checkout started in dev mode (`--dev`, which sets `EZ_NEST_DEV=1`). The page
+shows `DEV MODE: not connected to OUTPUT` the whole time. Installed Windows
+and macOS builds ignore both variables. Forks may remove the requirement
+under the Apache-2.0 license. Official builds enforce it.
+
+Disconnect is host-only. It returns the computer to the Connect screen.
 
 ## Endpoints
 

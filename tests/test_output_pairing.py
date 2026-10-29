@@ -365,7 +365,10 @@ class DialogCopyTests(unittest.TestCase):
         script = (ROOT / 'web.js').read_text(encoding='utf-8')
         dialog = html.split('id="max-output-dialog"', 1)[1].split('</dialog>', 1)[0]
         self.assertIn("Don't print it. Let another shop do it.", dialog)
-        self.assertIn('OUTPUT routes the job to the best-fit nearby shop. You still get paid.', dialog)
+        self.assertIn('OUTPUT can match this job with another shop. The sandbox does not take payment.', dialog)
+        self.assertIn('id="output-gate"', html)
+        self.assertIn('Ask the shop computer to connect to OUTPUT.', html)
+        self.assertIn('DEV MODE: not connected to OUTPUT', (ROOT / 'output_gate.py').read_text(encoding='utf-8'))
         self.assertIn('The queue is backed up and this job would miss its date', dialog)
         self.assertIn('The material is not in stock', dialog)
         self.assertIn('The job is outside what your machines can run', dialog)

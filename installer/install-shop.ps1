@@ -257,5 +257,8 @@ if ($boot) {
     throw "The eznest startup task is registered but did not start ($startError). The limited account needs 'Log on as a batch job'. Sign out and back in, or restart this PC, then run the installer again."
   }
 }
+Write-Host 'Connect this computer to OUTPUT before the shop nests.'
+Write-Host 'Open http://127.0.0.1:8765/web and paste a pairing code from https://output.jeezlabs.io/outpost/ez-nest.'
+Write-Host 'Activity sharing stays off until Enable sharing. This installer does not ask for or store a pairing code.'
 
 

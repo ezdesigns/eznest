@@ -13,6 +13,9 @@
 #endif
 #define MyAppPublisher "EZ Designs"
 
+[Messages]
+FinishedLabel=Setup has finished installing eznest on this computer.%n%nOpen the page on this PC and choose Connect to OUTPUT. Paste a pairing code from https://output.jeezlabs.io/outpost/ez-nest. The shop cannot nest until that connection is in place. Activity sharing stays off until Enable sharing. This installer does not ask for a pairing code.
+
 [Setup]
 AppId={{A7E2C1D4-9B55-4E18-8C3A-6F0E2B9D4A11}
 AppName={#MyAppName}

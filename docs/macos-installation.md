@@ -27,6 +27,11 @@ inputs, and the unnotarized pilot status. A dirty build is not attributed solely
 to its recorded commit. A checksum identifies
 bytes, not an approved publisher. No signing keys are read and no release is sent.
 
+The installed app ignores `EZ_NEST_DEV_NO_OUTPUT`. On first launch the shop
+Mac connects to OUTPUT with a pairing code from
+<https://output.jeezlabs.io/outpost/ez-nest>. A source checkout can pass
+`--dev` and set `EZ_NEST_DEV_NO_OUTPUT=1` to skip that. Official builds do not.
+
 ## Isolated local test
 
 This is an ad-hoc-signed developer pilot, **not a Developer ID signed or notarized
