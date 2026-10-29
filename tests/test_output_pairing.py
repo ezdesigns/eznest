@@ -1,4 +1,5 @@
 """Pairing stores a host credential and never returns it. No live OUTPUT call."""
+import opt_out
 import io
 import json
 import os
@@ -35,6 +36,43 @@ class CredentialTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
 
+    def test_pairing_stays_on_the_allowlisted_origin(self):
+        (self.root / 'shop.json').write_text(json.dumps({'outputUrl': 'https://evil.example'}), encoding='utf-8')
+        seen = {}
+
+        class Response:
+            status = 404
+
+            def read(self, _size):
+                return b'{}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        def open_request(request, timeout=10):
+            seen['url'] = request.full_url
+            return Response()
+
+        opener = Mock()
+        opener.open.side_effect = open_request
+        output_pairing._PAIR_DIRECTORY = self.root
+        try:
+            with patch.dict(os.environ, {'EZ_NEST_OUTPUT_URL': 'https://evil.example/steal'}):
+                with patch('output_pairing.build_opener', return_value=opener):
+                    output_pairing._post(b'{}')
+            self.assertEqual(seen['url'], 'https://output.jeezlabs.io/api/shop/agent/pair')
+            self.assertNotIn('evil.example', seen['url'])
+            with patch('output_pairing.pair_endpoint', return_value='https://evil.example/api/shop/agent/pair'):
+                with patch('output_pairing.build_opener') as blocked:
+                    with self.assertRaises(output_pairing.PairingError):
+                        output_pairing._post(b'{}')
+                    blocked.assert_not_called()
+        finally:
+            output_pairing._PAIR_DIRECTORY = None
+
     def test_private_file_round_trip_and_corrupt_file_is_not_connected(self):
         output_credential.save(self.root, TOKEN, 'North Shop')
         target = output_credential.path(self.root)
@@ -68,6 +106,201 @@ class CredentialTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             output_credential.save(self.root, 'osa_short', 'North Shop')
         self.assertFalse(output_credential.path(self.root).exists())
+
+
+class _Icacls:
+    def __init__(self, code, stdout=b'', stderr=b''):
+        self.returncode = code
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+class WindowsAclTests(unittest.TestCase):
+    """ACL grants are checked with a mocked icacls so Linux CI covers Windows."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.target = self.root / output_credential.FILE_NAME
+        self.target.write_bytes(b'blob')
+
+    def _restrict(self, run, account_exists):
+        return (
+            patch.object(output_credential, '_account_exists', return_value=account_exists),
+            patch.object(output_credential.subprocess, 'run', side_effect=run),
+            patch.dict(os.environ, {'USERNAME': 'shop-user'}),
+        )
+
+    def test_all_grants_succeed(self):
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append((list(args), kwargs))
+            self.assertIsNot(kwargs.get('shell'), True)
+            self.assertTrue(kwargs.get('capture_output'))
+            return _Icacls(0)
+
+        account, process, env = self._restrict(run, True)
+        with account, process, env:
+            output_credential._restrict_windows(self.target)
+        self.assertEqual(calls[0][0], ['icacls', str(self.target), '/inheritance:r'])
+        grant = calls[1][0]
+        self.assertEqual(grant[:3], ['icacls', str(self.target), '/grant:r'])
+        self.assertEqual(grant[3:], [
+            '*S-1-5-18:(M)', '*S-1-5-32-544:(M)', 'shop-user:(M)', 'eznest-svc:(M)',
+        ])
+        self.assertEqual(len(calls), 2)
+
+    def test_unmapped_service_account_retries_without_it(self):
+        failures = (
+            _Icacls(1332),
+            _Icacls(5, stdout='No mapping between account names and security IDs was done.'),
+        )
+        for failure in failures:
+            calls = []
+
+            def run(args, **kwargs):
+                calls.append(list(args))
+                self.assertIsNot(kwargs.get('shell'), True)
+                if args[2] == '/inheritance:r':
+                    return _Icacls(0)
+                if 'eznest-svc:(M)' in args:
+                    return failure
+                return _Icacls(0)
+
+            account, process, env = self._restrict(run, None)
+            with account, process, env:
+                output_credential._restrict_windows(self.target)
+            self.assertEqual(calls[0], ['icacls', str(self.target), '/inheritance:r'])
+            self.assertIn('eznest-svc:(M)', calls[1])
+            self.assertEqual(calls[2][:3], ['icacls', str(self.target), '/grant:r'])
+            self.assertNotIn('eznest-svc:(M)', calls[2])
+            self.assertEqual(calls[2][3:], ['*S-1-5-18:(M)', '*S-1-5-32-544:(M)', 'shop-user:(M)'])
+            for broad in ('Everyone', 'Users', 'Authenticated Users', 'BUILTIN\\Users'):
+                self.assertNotIn(broad, calls[2])
+            self.assertEqual(len(calls), 3)
+
+    def test_known_missing_service_account_is_omitted(self):
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append(list(args))
+            return _Icacls(0)
+
+        account, process, env = self._restrict(run, False)
+        with account, process, env:
+            output_credential._restrict_windows(self.target)
+        self.assertEqual([call[2] for call in calls], ['/inheritance:r', '/grant:r'])
+        self.assertNotIn('eznest-svc:(M)', calls[1])
+        self.assertEqual(calls[1][3:], ['*S-1-5-18:(M)', '*S-1-5-32-544:(M)', 'shop-user:(M)'])
+
+    def test_required_grant_failure_raises(self):
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append(list(args))
+            if args[2] == '/inheritance:r':
+                return _Icacls(0)
+            return _Icacls(1332, stderr=b'No mapping between account names and security IDs was done.')
+
+        account, process, env = self._restrict(run, False)
+        with account, process, env:
+            with self.assertRaisesRegex(ValueError, 'Could not protect the saved OUTPUT credential'):
+                output_credential._restrict_windows(self.target)
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn('eznest-svc:(M)', calls[1])
+
+        calls.clear()
+
+        def retry(args, **kwargs):
+            calls.append(list(args))
+            if args[2] == '/inheritance:r':
+                return _Icacls(0)
+            if 'eznest-svc:(M)' in args:
+                return _Icacls(1332, stderr=b'No mapping between account names and security IDs was done.')
+            return _Icacls(5, stderr=b'Access is denied.')
+
+        account, process, env = self._restrict(retry, None)
+        with account, process, env:
+            with self.assertRaisesRegex(ValueError, 'Could not protect the saved OUTPUT credential'):
+                output_credential._restrict_windows(self.target)
+        grants = [call for call in calls if call[2] == '/grant:r']
+        self.assertEqual(len(grants), 2)
+        self.assertNotIn('eznest-svc:(M)', grants[1])
+        self.assertIn('shop-user:(M)', grants[1])
+        self.assertIn('*S-1-5-18:(M)', grants[1])
+        self.assertIn('*S-1-5-32-544:(M)', grants[1])
+
+    def test_inheritance_failure_raises(self):
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append(list(args))
+            return _Icacls(1, stderr=b'Access is denied.')
+
+        account, process, env = self._restrict(run, True)
+        with account, process, env:
+            with self.assertRaisesRegex(ValueError, 'Could not protect the saved OUTPUT credential'):
+                output_credential._restrict_windows(self.target)
+        self.assertEqual(calls, [['icacls', str(self.target), '/inheritance:r']])
+
+    def test_account_grant_rejects_unsafe_names(self):
+        for name in (
+            '', 'a' * 65, 'user*', 'user?', 'has"quote', 'a<b', 'a>b', 'a|b', 'a:b',
+            'line\n', 'line\r', 'has\x00null', None, 7, b'eznest-svc',
+        ):
+            self.assertIsNone(output_credential._account_grant(name), name)
+        self.assertEqual(output_credential._account_grant('eznest-svc'), 'eznest-svc:(M)')
+        self.assertEqual(output_credential._account_grant('a' * 64), ('a' * 64) + ':(M)')
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append(list(args))
+            return _Icacls(0)
+
+        with patch.object(output_credential, '_account_exists', return_value=False), \
+             patch.object(output_credential.subprocess, 'run', side_effect=run), \
+             patch.dict(os.environ, {'USERNAME': 'shop:user'}):
+            output_credential._restrict_windows(self.target)
+        self.assertNotIn('shop:user:(M)', calls[1])
+        self.assertNotIn('shop:user', calls[1])
+        self.assertEqual(calls[1][3:], ['*S-1-5-18:(M)', '*S-1-5-32-544:(M)'])
+
+    def test_account_lookup_does_not_shell_out(self):
+        with patch.object(output_credential.subprocess, 'run', side_effect=AssertionError('shell')):
+            result = output_credential._account_exists('eznest-svc')
+        self.assertIn(result, (True, False, None))
+
+    def test_save_round_trip_when_service_account_is_unmapped(self):
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append(list(args))
+            self.assertIsNot(kwargs.get('shell'), True)
+            if args[2] == '/inheritance:r':
+                return _Icacls(0)
+            if 'eznest-svc:(M)' in args:
+                return _Icacls(1332, stderr=b'No mapping between account names and security IDs was done.')
+            return _Icacls(0)
+
+        with patch.object(output_credential, '_use_windows_acl', return_value=True), \
+             patch.object(output_credential, '_account_exists', return_value=None), \
+             patch.object(output_credential.subprocess, 'run', side_effect=run), \
+             patch.dict(os.environ, {'USERNAME': 'shop-user'}):
+            output_credential.save(self.root, TOKEN, 'North Shop')
+        self.assertEqual(output_credential.load(self.root), TOKEN)
+        self.assertEqual(output_credential.describe(self.root)['shopName'], 'North Shop')
+        if os.name != 'nt':
+            self.assertEqual(output_credential.path(self.root).stat().st_mode & 0o077, 0)
+        self.assertEqual(sum(call[2] == '/inheritance:r' for call in calls), 2)
+        attempted = [call for call in calls if 'eznest-svc:(M)' in call]
+        applied = [call for call in calls if call[2] == '/grant:r' and 'eznest-svc:(M)' not in call]
+        self.assertEqual(len(attempted), 2)
+        self.assertEqual(len(applied), 2)
+        for call in applied:
+            self.assertEqual(call[3:], ['*S-1-5-18:(M)', '*S-1-5-32-544:(M)', 'shop-user:(M)'])
+            self.assertNotIn('Everyone', call)
 
 
 def created(shop='North Shop'):
@@ -365,7 +598,10 @@ class DialogCopyTests(unittest.TestCase):
         script = (ROOT / 'web.js').read_text(encoding='utf-8')
         dialog = html.split('id="max-output-dialog"', 1)[1].split('</dialog>', 1)[0]
         self.assertIn("Don't print it. Let another shop do it.", dialog)
-        self.assertIn('OUTPUT routes the job to the best-fit nearby shop. You still get paid.', dialog)
+        self.assertIn('OUTPUT can match this job with another shop. The sandbox does not take payment.', dialog)
+        self.assertIn('id="output-gate"', html)
+        self.assertIn('Ask the shop computer to connect to OUTPUT.', html)
+        self.assertIn('DEV MODE: not connected to OUTPUT', (ROOT / 'output_gate.py').read_text(encoding='utf-8'))
         self.assertIn('The queue is backed up and this job would miss its date', dialog)
         self.assertIn('The material is not in stock', dialog)
         self.assertIn('The job is outside what your machines can run', dialog)
@@ -394,9 +630,9 @@ class OutputScreenTests(unittest.TestCase):
         from playwright.sync_api import expect, sync_playwright
         helper = test_web_mvp.WebMvpTests(methodName='runTest')
         helper.setUp()
-        shots = Path('/opt/cursor/artifacts/screenshots')
-        shots.mkdir(parents=True, exist_ok=True)
         try:
+            shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
+            shots.mkdir(parents=True, exist_ok=True)
             with patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS': '', 'EZ_NEST_OUTPUT_TOKEN': ''}), sync_playwright() as playwright:
                 browser = test_web_mvp.launch_browser(playwright)
                 try:

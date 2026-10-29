@@ -1,4 +1,5 @@
 """Independent HTTP clients share one authoritative host; no offline stock writes."""
+import opt_out
 import concurrent.futures
 import json
 import unittest

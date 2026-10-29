@@ -160,15 +160,25 @@ def revoke(directory):
     return status(directory)
 
 
+def _destination_allowed(url):
+    """Allowlisted OUTPUT origins, plus the loopback receiver used by the deadline test."""
+    if shop_deploy.allowed_output_request(url):
+        return True
+    parsed = urlparse(url)
+    return parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', 'localhost', '::1')
+
+
 def _emit_https(payload, token):
     raw = json.dumps(payload, separators=(',', ':')).encode()
     if len(raw) > 12000:
+        return False
+    if not _destination_allowed(ENDPOINT):
         return False
     request = Request(ENDPOINT, data=raw, headers={
         'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
         'Accept': 'application/json'}, method='POST')
     # Never forward shop credentials to a redirect target. HTTPS validates the
-    # platform trust store; no bypass, arbitrary destination or fallback exists.
+    # platform trust store.
     try:
         with build_opener(NoRedirect()).open(request, timeout=10) as response:
             body = response.read(16385)
@@ -197,10 +207,14 @@ def emit(payload, token):
     # lock; no abandoned request can later resume after revocation.
     env = {key: os.environ[key] for key in
            ('PATH', 'HOME', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'TMPDIR') if key in os.environ}
-    parsed = urlparse(_EMIT_ENDPOINT or ENDPOINT)
+    target = _EMIT_ENDPOINT or ENDPOINT
+    if not shop_deploy.allowed_output_request(target):
+        return False
+    parsed = urlparse(target)
     if parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password:
         origin = f'https://{parsed.hostname}' + (f':{parsed.port}' if parsed.port else '')
-        env['EZ_NEST_OUTPUT_URL'] = origin
+        if shop_deploy.output_url_allowed(origin):
+            env['EZ_NEST_OUTPUT_URL'] = origin
     try:
         result = subprocess.run(worker_command(), input=json.dumps({'payload':payload, 'token':token}).encode(),
                                 capture_output=True, timeout=10, env=env)

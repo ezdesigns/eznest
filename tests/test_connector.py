@@ -1,8 +1,10 @@
 """Shop Connector privacy, parsing, file access, and write-only delivery."""
+import opt_out
 import io
 import json
 import os
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -236,13 +238,19 @@ class PrivacyReplayTests(TempCase):
     def test_idempotent_ids_and_duplicate_lines(self):
         store = self.store()
         line = onyx_line('Same Job').encode()
+        salt = store.salt()
         first = build_event(store.instance_id(), 'onyx_joblog', line, 'printer', 'print.completed',
-                            '2026-10-28T00:00:00Z', onyx_joblog.parse_line(line, {'printers': ['FAKE-PRINTER-A']}, store.salt())['payload'])
+                            '2026-10-28T00:00:00Z', onyx_joblog.parse_line(line, {'printers': ['FAKE-PRINTER-A']}, salt)['payload'], salt)
         second = build_event(store.instance_id(), 'onyx_joblog', line, 'printer', 'print.completed',
-                             '2026-10-28T00:00:00Z', first['payload'])
+                             '2026-10-28T00:00:00Z', first['payload'], salt)
         self.assertEqual(first['eventId'], second['eventId'])
         self.assertEqual(first['requestId'], second['requestId'])
-        self.assertEqual(first['requestId'], request_id_for(store.instance_id(), event_id_for('onyx_joblog', line)))
+        self.assertEqual(first['requestId'], request_id_for(store.instance_id(), event_id_for('onyx_joblog', line, salt)))
+        other = Store(self.root / 'other-install')
+        self.assertNotEqual(first['eventId'], event_id_for('onyx_joblog', line, other.salt()))
+        import hashlib
+        plain = hashlib.sha256(b'onyx_joblog\n' + line).hexdigest()
+        self.assertNotEqual(first['eventId'], plain)
         options = {'printers': ['FAKE-PRINTER-A']}
         left = onyx_joblog.parse_line(onyx_line('Alpha', epoch='1712345678'), options, store.salt())
         right = onyx_joblog.parse_line(onyx_line('Beta', epoch='1712349999'), options, store.salt())
@@ -264,15 +272,19 @@ class FileAccessTests(TempCase):
 
         with patch('os.open', spy):
             with open_shared_read(path) as handle:
+                self.assertFalse(handle.writable())
+                with self.assertRaises(OSError):
+                    handle.write(b'forbidden')
                 with open(path, 'ab') as writer:
                     writer.write(b'more\n')
                 handle.seek(0)
                 data = handle.read()
         self.assertIn(b'more\n', data)
-        flags = seen[0]
-        self.assertEqual(flags & os.O_ACCMODE, os.O_RDONLY)
-        for bit in (os.O_WRONLY, os.O_RDWR, os.O_APPEND, os.O_CREAT, getattr(os, 'O_TRUNC', 0)):
-            self.assertFalse(flags & bit)
+        if os.name != 'nt':  # Windows opens via CreateFileW, not os.open.
+            flags = seen[0]
+            self.assertEqual(flags & os.O_ACCMODE, os.O_RDONLY)
+            for bit in (os.O_WRONLY, os.O_RDWR, os.O_APPEND, os.O_CREAT, getattr(os, 'O_TRUNC', 0)):
+                self.assertFalse(flags & bit)
         access, share, _disposition = readfiles.windows_open_arguments()
         self.assertEqual(access, readfiles.GENERIC_READ)
         self.assertFalse(access & readfiles.GENERIC_WRITE)
@@ -483,8 +495,8 @@ class OnyxJobLogTests(TempCase):
         )
         self.assertEqual(parsed[0]['payload']['widthIn'], '50.50')
         self.assertFalse(parsed[0]['payload']['axisSwapped'])
-        first_id = event_id_for('onyx_joblog', lines[0].encode())
-        self.assertEqual(first_id, event_id_for('onyx_joblog', lines[-1].encode()))
+        first_id = event_id_for('onyx_joblog', lines[0].encode(), store.salt())
+        self.assertEqual(first_id, event_id_for('onyx_joblog', lines[-1].encode(), store.salt()))
         events = runtime.replay(FIXTURES, store)
         prints = [event for event in events if event['kind'] == 'print.completed']
         self.assertEqual(len(prints), 5)
@@ -590,6 +602,24 @@ class BoundAndHostTests(TempCase):
         with self.assertRaises(ConfigError):
             load_settings(rejected)
 
+    def test_shop_json_and_output_url_do_not_move_the_shop_key(self):
+        os.environ['EZ_NEST_OUTPUT_URL'] = 'https://evil.example/steal'
+        (self.root / 'shop.json').write_text(json.dumps({'outputUrl': 'https://evil.example'}), encoding='utf-8')
+        calls = []
+
+        def transport(url, raw, headers):
+            calls.append((url, headers.get('Authorization'), raw))
+            return 200, {}, b'{}'
+
+        client.post_json({'ok': True}, TOKEN, role='event', transport=transport)
+        client.post_json({'ok': True}, None, role='pair', transport=transport)
+        self.assertEqual(calls[0][0], 'https://output.jeezlabs.io/api/shop/telemetry')
+        self.assertEqual(calls[0][1], 'Bearer ' + TOKEN)
+        self.assertEqual(calls[1][0], 'https://output.jeezlabs.io/api/shop/agent/pair')
+        self.assertNotIn('evil.example', calls[0][0])
+        self.assertNotIn('evil.example', calls[1][0])
+        self.assertNotIn(b'evil.example', calls[0][2])
+
     def test_salt_is_random_per_install_and_state_is_private(self):
         first = self.store()
         again = Store(first.directory)
@@ -597,8 +627,30 @@ class BoundAndHostTests(TempCase):
         self.assertEqual(len(first.salt()), 32)
         self.assertEqual(first.salt(), again.salt())
         self.assertNotEqual(first.salt(), other.salt())
-        self.assertEqual(first.directory.stat().st_mode & 0o077, 0)
-        self.assertEqual(first.path.stat().st_mode & 0o077, 0)
+        if os.name != 'nt':
+            self.assertEqual(first.directory.stat().st_mode & 0o077, 0)
+            self.assertEqual(first.path.stat().st_mode & 0o077, 0)
+        else:
+            # Windows privacy is an ACL property; stat's POSIX mode is synthetic.
+            for path in (first.directory, first.path):
+                literal = str(path).replace("'", "''")
+                # Windows PowerShell 5.1's ConvertTo-Json drops AreAccessRulesProtected.
+                # The DACL 'P' flag is the protected bit. Allow rules must be only this user's SID.
+                script = """
+$acl = Get-Acl -LiteralPath '__PATH__'
+$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$protected = $false
+if ([string]$acl.Sddl -match 'D:([A-Z]*)') { $protected = $Matches[1].Contains('P') }
+$allowed = @($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Value })
+$list = (@($allowed) | ForEach-Object { '"' + $_ + '"' }) -join ','
+if ($protected) { $flag = 'true' } else { $flag = 'false' }
+Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' + $list + ']}')
+""".replace('__PATH__', literal)
+                result = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
+                                        check=True, capture_output=True, text=True, timeout=15)
+                acl = json.loads(result.stdout.lstrip('\ufeff'))
+                self.assertIs(acl['protected'], True)
+                self.assertEqual(set(acl['allowed']), {acl['current']})
         commands = windows_acl_commands(first.directory, 'ShopUser', container=True)
         flat = [' '.join(part) for part in commands]
         self.assertIn('/inheritance:r', flat[0])
@@ -702,7 +754,7 @@ class DeliveryTests(TempCase):
         store = self.store()
         payload = onyx_joblog.parse_line(onyx_line('Delivery'), {'printers': ['FAKE-PRINTER-A']}, store.salt())['payload']
         return store, build_event(store.instance_id(), 'onyx_joblog', onyx_line('Delivery').encode(),
-                                  'printer', 'print.completed', '2024-04-05T19:34:38Z', payload)
+                                  'printer', 'print.completed', '2024-04-05T19:34:38Z', payload, store.salt())
 
     def test_post_is_write_only_and_ignores_urls_in_the_ack(self):
         source = (ROOT / 'connector' / 'client.py').read_text(encoding='utf-8')

@@ -1,4 +1,5 @@
 """macOS packaging guards and resource assembly, without building or signing."""
+import opt_out
 import hashlib
 import json
 from pathlib import Path

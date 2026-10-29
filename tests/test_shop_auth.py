@@ -1,4 +1,5 @@
 """LAN PIN, host-only shop controls, and source-folder confinement."""
+import opt_out
 import hashlib
 import io
 import json
@@ -22,6 +23,9 @@ from folder_queue import FolderQueue
 
 class ShopAuthTests(unittest.TestCase):
     def setUp(self):
+        tls = patch.multiple(server, TLS=False, TLS_CONTEXT=None)
+        tls.start()
+        self.addCleanup(tls.stop)
         self.old = (server.WORK, server.HOST, server.PORT, server.LAN)
         self.tmp = tempfile.TemporaryDirectory()
         server.WORK = Path(self.tmp.name)
@@ -109,7 +113,8 @@ class ShopAuthTests(unittest.TestCase):
         shop_auth.set_pin(server.WORK, '12345678')
         stored = (server.WORK / 'shop-pin.json').read_text(encoding='utf-8')
         self.assertNotIn('12345678', stored)
-        self.assertEqual((server.WORK / 'shop-pin.json').stat().st_mode & 0o777, 0o600)
+        if os.name != 'nt':
+            self.assertEqual((server.WORK / 'shop-pin.json').stat().st_mode & 0o777, 0o600)
         for attempt in range(shop_auth.LOCK_AFTER):
             self.assertEqual(shop_auth.login_attempt(server.WORK, '10.0.0.9', '000000', now=attempt), 'denied')
         self.assertEqual(shop_auth.login_attempt(server.WORK, '10.0.0.9', '12345678', now=shop_auth.LOCK_AFTER), 'locked')
@@ -284,10 +289,11 @@ class ShopAuthTests(unittest.TestCase):
                 'openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-keyout', str(key), '-out', str(cert),
                 '-days', '1', '-nodes', '-subj', '/CN=localhost',
             ], check=True, capture_output=True)
-            os.chmod(key, 0o644)
-            with self.assertRaisesRegex(ValueError, 'chmod 600'):
-                server.configure_tls(str(cert), str(key))
-            self.assertFalse(server.TLS)
+            if os.name != 'nt':
+                os.chmod(key, 0o644)
+                with self.assertRaisesRegex(ValueError, 'chmod 600'):
+                    server.configure_tls(str(cert), str(key))
+                self.assertFalse(server.TLS)
             os.chmod(key, 0o600)
             service = thread = None
             server.configure_tls(str(cert), str(key))
@@ -324,7 +330,7 @@ class ShopAuthTests(unittest.TestCase):
 class SourceFolderTests(unittest.TestCase):
     def test_connect_and_read_stay_inside_approved_roots(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             ready = root / 'ready'
             outside = root / 'outside'
             ready.mkdir()

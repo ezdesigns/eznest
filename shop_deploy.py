@@ -33,7 +33,10 @@ EZ_PRESET = {
 DEFAULT_REPO = 'ezdesigns/eznest'
 RELEASE_API = f'https://api.github.com/repos/{DEFAULT_REPO}/releases?per_page=20'
 WARNING = 'Shop computers need the shop PIN before they can nest or send. Anyone on the shop LAN can Send to ONYX after that PIN. Do not share this network with guest WiFi.'
-OUTPUT_NOTE = 'Off. Nothing is sent. If you turn this on later, only the machine list and free capacity would be shared, and only after you opt in.'
+OUTPUT_NOTE = (
+    'Off. Sharing capacity and availability with the OUTPUT network is a separate opt-in. '
+    'It does not send that information. Connecting this computer to OUTPUT is required and is not this switch.'
+)
 MAX_RELEASE_BYTES = 300_000_000
 MAC_UPDATE_NOTE = 'Automatic updates are unavailable on macOS. Install an approved Mac build manually; the current app stays running.'
 _REPO = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
@@ -79,6 +82,19 @@ def output_url_allowed(value):
         return True
     env = normalize_output_base(os.environ.get('EZ_NEST_OUTPUT_URL', ''))
     return bool(env) and value == env
+
+
+def allowed_output_request(url):
+    """True when url is an https request on the allowlisted OUTPUT origin."""
+    if not isinstance(url, str) or not url:
+        return False
+    parsed = urlparse(url)
+    if parsed.scheme != 'https' or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.params:
+        return False
+    if not parsed.hostname or '\\' in parsed.path or not parsed.path.startswith('/'):
+        return False
+    origin = f'https://{parsed.hostname}' + (f':{parsed.port}' if parsed.port else '')
+    return output_url_allowed(origin)
 
 
 def clean_output_url(value):

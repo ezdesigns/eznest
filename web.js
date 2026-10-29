@@ -167,9 +167,16 @@ async function sha256(data) {
 function fetchJson(path, ms) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
-  return fetch(path, {signal: controller.signal}).then(response => {
+  return fetch(path, {signal: controller.signal}).then(async response => {
     clearTimeout(timer);
-    if (!response.ok) throw Error('Request failed.');
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      if (body.code === 'connect_required') {
+        location.reload();
+        throw Error(body.error || 'Connect to OUTPUT.');
+      }
+      throw Error('Request failed.');
+    }
     return response.json();
   }, error => {
     clearTimeout(timer);
@@ -247,7 +254,11 @@ async function api(path, data, file) {
   });
   const body = await response.json();
   if (!response.ok) {
+    if (body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/')) {
+      location.reload();
+    }
     const error = Error(body.error || 'Request failed.');
+    error.code = body.code;
     if (path === '/api/document/import' || path === '/api/document/import-file') {
       error.guideReview = body.guideReview; error.cutReview = body.cutReview;
     }
@@ -1955,8 +1966,8 @@ function showOutputService(shop) {
   const note = $('output-url-note');
   if (note) {
     note.textContent = locked
-      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Sharing stays off until you connect and agree.'
-      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Sharing stays off until you connect and agree.';
+      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Activity sharing stays off until you agree. The account connection is required.'
+      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree. The account connection is required.';
   }
 }
 
@@ -2444,7 +2455,7 @@ function renderOutputSharing(info) {
   else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
   else if (paired && info.requiresConsent) connectStatus.textContent = 'Review the sharing details below, then choose Enable sharing.';
   else if (paired) connectStatus.textContent = '';
-  else connectStatus.textContent = 'Paste a pairing code from the shop owner.';
+  else connectStatus.textContent = 'This computer is connected. Paste a new pairing code only when you need to connect again.';
   $('telemetry-agree').checked = false;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
   $('telemetry-enable').disabled = true;
@@ -2453,7 +2464,7 @@ function renderOutputSharing(info) {
   $('telemetry-bands').textContent = 'Measurement range widths (null means unknown; 0 means zero): ' + Object.entries(info.bands).map(([key, step]) => key + ': ' + step).join('; ') + '.';
   const bands = Object.fromEntries(Object.entries(info.bands).map(([key, step]) => [key, `[${step},${step * 2})`]));
   $('telemetry-preview').textContent = JSON.stringify({schema: info.schema, requestId: '00000000-0000-5000-8000-000000000001', kind: 'nest.created', instanceId: info.instanceId, nestId: '00000000000000000000000000000001', occurredAt: '2026-01-01T00:00:00.000000Z', appVersion: info.appVersion, materialClass: 'moto_regular', bands}, null, 2);
-  $('telemetry-status').textContent = info.paused ? 'Sharing paused during installation or recovery. Refresh after the host restarts to change sharing settings.' : !info.configured ? 'Off. Connect to OUTPUT on this computer, then review the fields below.' : info.enabled ? `Sharing new activity. ${info.pendingEvents} pending. ${info.withheldEvents} invalid observations kept only on this host. ${info.lastError || (info.lastDeliveredAt ? 'Last receipt: ' + info.lastDeliveredAt : 'No confirmed delivery yet.')}` : 'Off. Review the fields below to enable sharing.';
+  $('telemetry-status').textContent = info.paused ? 'Sharing paused during installation or recovery. Refresh after the host restarts to change sharing settings.' : !info.configured ? 'Off. Connect this computer to OUTPUT, then review the fields below.' : info.enabled ? `Sharing new activity. ${info.pendingEvents} pending. ${info.withheldEvents} invalid observations kept only on this host. ${info.lastError || (info.lastDeliveredAt ? 'Last receipt: ' + info.lastDeliveredAt : 'No confirmed delivery yet.')}` : 'Off. Activity sharing stays off until you agree. The account connection stays in place.';
 }
 async function refreshOutputSharing() {
   try {
@@ -2499,10 +2510,11 @@ async function connectOutput() {
   }
 }
 async function disconnectOutput() {
-  if (!window.confirm('Disconnect this computer from OUTPUT? Sharing stops until someone pairs again.')) return;
+  if (!window.confirm('Disconnect this computer from OUTPUT? Ez Nest stops until this computer connects again.')) return;
   $('output-disconnect').disabled = true;
   try {
-    renderOutputSharing(await api('/api/telemetry/output/disconnect', {}));
+    await api('/api/telemetry/output/disconnect', {});
+    location.reload();
   } catch (error) {
     $('output-connect-status').textContent = error.message;
     $('output-connect-status').classList.add('error');
@@ -2549,6 +2561,13 @@ async function boot() {
   let session = await fetchJsonRetry('/api/session');
   token = session.token || '';
   localSave = session.localSave === true;
+  showOutputBanner(session);
+  if (session.outputConnection && !session.outputConnection.ok) {
+    await requireOutputConnection(session);
+    session = await fetchJsonRetry('/api/session');
+    token = session.token || '';
+    showOutputBanner(session);
+  }
   if (session.localPC && session.pinWeak) {
     await requireHostPinReset();
     session = await fetchJsonRetry('/api/session');
@@ -2591,6 +2610,93 @@ async function boot() {
   document.body.dataset.ready = '1';
   await autoLoadIllustrator();
   setInterval(() => { if (!document.hidden && !inventoryBusy) refreshInventory().catch(() => {}); }, 10000);
+}
+
+function showOutputBanner(session) {
+  const banner = $('output-banner');
+  if (!banner) return;
+  const text = session && session.outputConnection && session.outputConnection.banner;
+  banner.hidden = !text;
+  banner.textContent = text || '';
+}
+
+function requireOutputConnection(session) {
+  const gate = $('output-gate');
+  const info = session.outputConnection || {};
+  const fields = $('output-gate-fields');
+  const lan = $('output-gate-lan');
+  const error = $('output-gate-error');
+  const check = $('output-gate-check');
+  gate.addEventListener('cancel', event => event.preventDefault());
+  error.hidden = true;
+  $('output-gate-note').textContent = info.message || 'Connect this computer to OUTPUT.';
+  if (!session.localPC) {
+    fields.hidden = true;
+    check.hidden = true;
+    lan.hidden = false;
+    lan.textContent = info.message || 'Ask the shop computer to connect to OUTPUT.';
+    gate.showModal();
+    return new Promise(() => {});
+  }
+  lan.hidden = true;
+  fields.hidden = info.canPair === false;
+  check.hidden = !info.canCheckIn;
+  gate.showModal();
+  const input = $('output-gate-code');
+  if (!fields.hidden) input.focus();
+  return new Promise(resolve => {
+    const finish = async () => {
+      input.value = '';
+      const next = await fetchJsonRetry('/api/session');
+      if (next.outputConnection && next.outputConnection.ok) {
+        gate.close();
+        resolve();
+      }
+    };
+    $('output-gate-form').onsubmit = async event => {
+      event.preventDefault();
+      const code = input.value.trim();
+      if (!code) {
+        error.hidden = false;
+        error.textContent = 'Paste the pairing code from OUTPUT.';
+        return;
+      }
+      $('output-gate-submit').disabled = true;
+      try {
+        const response = await fetch('/api/telemetry/output/pair', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-EZ-Token': token},
+          body: JSON.stringify({code})
+        });
+        const body = await response.json();
+        if (!response.ok) throw Error(body.error || 'Could not connect to OUTPUT.');
+        input.value = '';
+        await finish();
+        $('output-gate-submit').disabled = false;
+      } catch (err) {
+        input.value = '';
+        error.hidden = false;
+        error.textContent = err.message;
+        $('output-gate-submit').disabled = false;
+      }
+    };
+    check.onclick = async () => {
+      check.disabled = true;
+      try {
+        const body = await api('/api/telemetry/output/check-in', {});
+        if (body.ok) await finish();
+        else {
+          error.hidden = false;
+          error.textContent = body.message || 'OUTPUT could not be reached.';
+          check.disabled = false;
+        }
+      } catch (err) {
+        error.hidden = false;
+        error.textContent = err.message;
+        check.disabled = false;
+      }
+    };
+  });
 }
 
 function requireHostPinReset() {

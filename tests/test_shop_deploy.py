@@ -1,4 +1,5 @@
 """Shop-server install choices: one computer, many browsers."""
+import opt_out
 import hashlib
 import json
 import os
@@ -317,8 +318,9 @@ class ShopDeployTests(unittest.TestCase):
             self.assertTrue(saved['outputNetwork'])
             share = shop_deploy.output_network_status(saved)
             self.assertFalse(share['sends'])
-            self.assertIn('machine list', share['note'])
-            self.assertIn('free capacity', share['note'])
+            self.assertIn('does not send', share['note'])
+            self.assertIn('capacity', share['note'])
+            self.assertIn('off', share['note'].casefold())
             saved_text = (root / 'shop.json').read_text(encoding='utf-8')
             self.assertNotIn('http://', saved_text)
             self.assertNotIn('https://', saved_text)

@@ -4,6 +4,7 @@ Numeric bands follow docs/telemetry-contract.md: a string "[lower,upper)",
 or "0" when the measurement is exactly zero. Unknown stays null.
 """
 import hashlib
+import hmac
 import json
 import re
 import uuid
@@ -94,12 +95,14 @@ def _decimal(value):
     return text or '0'
 
 
-def event_id_for(plugin, line):
-    """Stable id from the plug-in name and the exact source line (no newline)."""
+def event_id_for(plugin, line, salt):
+    """Stable id for this install. The same line and salt always match."""
+    if not isinstance(salt, (bytes, bytearray)) or not salt:
+        raise ContractError('withheld')
     if isinstance(line, str):
         line = line.encode('utf-8')
     raw = plugin.encode('utf-8') + b'\n' + bytes(line).rstrip(b'\r\n')
-    return hashlib.sha256(raw).hexdigest()
+    return hmac.new(bytes(salt), raw, hashlib.sha256).hexdigest()
 
 
 def request_id_for(instance_id, event_id):
@@ -117,8 +120,8 @@ def salted_hash(salt, kind, text):
     return hashlib.sha256(bytes(salt) + b'\0' + kind.encode('utf-8') + b'\0' + normalized).hexdigest()
 
 
-def build_event(instance_id, plugin, line, source, kind, occurred_at, payload):
-    event_id = event_id_for(plugin, line)
+def build_event(instance_id, plugin, line, source, kind, occurred_at, payload, salt):
+    event_id = event_id_for(plugin, line, salt)
     event = {
         'schema': SCHEMA,
         'eventId': event_id,

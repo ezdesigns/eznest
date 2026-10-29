@@ -1,10 +1,11 @@
 # OUTPUT sharing
 
-Sharing is off by default and never required for nesting, local inventory or
-export. The host can connect with a pairing code. Ez Nest exchanges that code
-for an `osa_` credential, stores it in `output-credential.bin` in the host data
-directory, and then shows the existing consent screen. See
-[OUTPUT pairing](output-pairing.md). Launch settings still take precedence:
+The shop computer must be connected to OUTPUT before nesting, stock, or
+export. That connection is the pairing flow in
+[OUTPUT pairing](output-pairing.md). Activity sharing is a second step. It
+stays off until the host agrees. The host exchanges a pairing code for an
+`osa_` credential, stores it in `output-credential.bin` in the host data
+directory, and then shows the consent screen. Launch settings still take precedence:
 `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN` is used instead of the
 stored credential, and `EZ_NEST_OUTPUT_UPLOADS=0` (including `--shop-test`)
 disables delivery. Do not put a token in a command argument, source, committed

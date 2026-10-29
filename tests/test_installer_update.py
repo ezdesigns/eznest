@@ -1,4 +1,5 @@
 """The shop installer keeps settings and the hot folder, and restores a build that does not start."""
+import opt_out
 import hashlib
 import json
 import os

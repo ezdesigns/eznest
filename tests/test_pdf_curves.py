@@ -1,4 +1,5 @@
 """Curve flattening must preserve the conservative distance criterion."""
+import opt_out
 import random
 import unittest
 from shapely.geometry import LineString, Point

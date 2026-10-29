@@ -166,7 +166,10 @@ def pair_endpoint(directory=None):
 
 
 def _post(raw):
-    request = Request(pair_endpoint(_PAIR_DIRECTORY), data=raw, headers={'Content-Type': 'application/json', 'Accept': 'application/json'}, method='POST')
+    url = pair_endpoint(_PAIR_DIRECTORY)
+    if not shop_deploy.allowed_output_request(url):
+        raise PairingError('offline', OFFLINE)
+    request = Request(url, data=raw, headers={'Content-Type': 'application/json', 'Accept': 'application/json'}, method='POST')
     try:
         with build_opener(NoRedirect()).open(request, timeout=10) as response:
             return response.status, response.read(16385)
@@ -240,6 +243,8 @@ def connect(directory, code, *, paused=False, transport=None, host=None):
         raise
     except (OSError, ValueError):
         raise PairingError('unexpected', STORE_FAILED) from None
+    import output_gate
+    output_gate.note_paired(directory)
     return telemetry_sender.status(directory)
 
 
@@ -253,4 +258,6 @@ def disconnect(directory, *, paused=False):
         raise PairingError('rejected', 'This computer is not connected with a pairing code.')
     telemetry_sender.revoke(directory)
     output_credential.clear(directory)
+    import output_gate
+    output_gate.note_disconnected(directory)
     return telemetry_sender.status(directory)

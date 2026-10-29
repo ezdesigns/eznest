@@ -12,7 +12,7 @@ The shop host is a 64-bit PC running Windows 10 or Windows 11. Each designer PC 
 
 **Uninstall.** Uninstall removes the program, the startup task, the `eznest-svc` account, and the firewall rule. `%ProgramData%\eznest` stays on the host, including `materials.sqlite3`. The RIP hot folder stays too. Details are under [Uninstall](#uninstall).
 
-**Data stays in the shop.** Artwork, nest files, and stock records stay on the host. OUTPUT sharing is optional and off by default. A send to OUTPUT needs a shop key (from a pairing code on the host, or from launch settings) and **Enable sharing** on that host. See [OUTPUT pairing](docs/output-pairing.md).
+**Data stays in the shop.** Artwork, nest files, and stock records stay on the host. The shop computer must be connected to OUTPUT before anyone can nest. That connection sends this computer's name and installation id once, then the app version on later check-ins. Activity sharing is a separate choice and stays off until **Enable sharing** on the host. See [OUTPUT pairing](docs/output-pairing.md).
 
 **Trademark.** Ez Nest is a project of EZ Designs. The software is [Apache-2.0](LICENSE). Third-party notices stay in [THIRD_PARTY.md](THIRD_PARTY.md) and `licenses/`.
 
@@ -122,9 +122,9 @@ If an update rolled back, include `helper.log` and leave customer files out of i
 
 ## Privacy and telemetry
 
-Artwork, nests, and stock records stay on the shop host. Remote sharing is optional and **off** until the host opts in. Nesting, previewing, and saving a file do not send anything.
+Artwork, nests, and stock records stay on the shop host. The host must be paired with OUTPUT. Nesting does not upload artwork. Activity sharing stays **off** until the host opts in.
 
-A send to OUTPUT needs both a shop credential (a pairing code on the host, or `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN`) and **Enable sharing** after the on-screen agreement. `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off. **Stop sharing** or disconnect stops later sends. It does not delete records the service already accepted.
+A paired host, or `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN`, can turn on activity sharing with **Enable sharing** after a current OUTPUT check-in. `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off and does not by itself satisfy the connection. **Stop sharing** stops later activity sends. **Disconnect** removes the paired credential and returns the host to the Connect screen. Neither deletes records the service already accepted.
 
 The consented payload is the `eznest-observation/1` projection described in [OUTPUT sharing](docs/output-telemetry.md). The local proposal, which is not itself uploaded, is in [the telemetry contract](docs/telemetry-contract.md). A consented event can include:
 
@@ -136,7 +136,23 @@ The host IP address and the shop credential go with those HTTPS requests. Exact 
 
 Never sent: artwork, files, filenames, customer names or contacts, job codes, roll ids, custom material names, or exact dimensions, quantities, stock, and search time.
 
-The default OUTPUT service is `https://output.jeezlabs.io` (`/api/shop/telemetry` for events and `/api/shop/agent/pair` for pairing). Change the saved address only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL` set before Ez Nest starts. The environment variable wins. The value must be an `https` origin with no path, query, username, or password. Redirects are not followed. Changing the address does not turn sharing on.
+The default OUTPUT service is `https://output.jeezlabs.io` (`/api/shop/agent/pair` for pairing, `/api/shop/agent/check-in` for the app-version check-in, and `/api/shop/telemetry` for events after consent). Change the saved address only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL` set before Ez Nest starts. The environment variable wins. The value must be an `https` origin with no path, query, username, or password. Redirects are not followed. Changing the address does not turn activity sharing on.
+
+### What OUTPUT sees
+
+| When | Fields |
+| --- | --- |
+| Pairing, once | Computer name (`hostLabel`), installation id (`hostRef`, when it is 32 lowercase hex) |
+| Check-in | App version (`appVersion`) only |
+| After **Enable sharing** | The `eznest-observation/1` fields listed above, for new activity |
+
+The shop credential is the HTTPS bearer token on check-in and on consented events. OUTPUT also sees the host IP address on those requests.
+
+Never sent: artwork, files, filenames, customer names or contacts, job codes, roll ids, custom material names, exact dimensions, quantities, stock contents, or search time.
+
+Sharing capacity and availability with the OUTPUT network is a separate opt-in. It stays off and does not send that information. OUTPUT is pre-revenue. Money elsewhere in OUTPUT, when enabled, is Solana devnet test tokens. Ez Nest does not send a price.
+
+After pairing, Ez Nest keeps working if OUTPUT is unreachable, for 14 days from the last successful check-in (`CHECK_IN_MAX_AGE_DAYS`). A banner shows after 3 days. A revoked credential returns the host to the Connect screen. `EZ_NEST_DEV_NO_OUTPUT=1` works only with `--dev` on a source checkout and shows `DEV MODE: not connected to OUTPUT`. Installed builds ignore it. Forks may remove the requirement. Official builds enforce it.
 
 ## Shop network
 
@@ -156,9 +172,9 @@ Only `--lan` opens a non-loopback listener, and only after the PIN exists. A sav
 
 ## OUTPUT
 
-OUTPUT sharing is optional and off by default. On the host, **Share activity with OUTPUT** accepts a pairing code and then requires **Enable sharing**. Nesting and hot-folder delivery stay on the shop PC either way. Customer artwork stays on the host. See [OUTPUT pairing](docs/output-pairing.md).
+The shop computer connects to OUTPUT on first run. Paste a pairing code from <https://output.jeezlabs.io/outpost/ez-nest>. Until that succeeds, nesting, sending, and stock stay closed on the API as well as on the page. Designer PCs see a message to ask the shop computer to connect. See [OUTPUT pairing](docs/output-pairing.md).
 
-The separate **Join OUTPUT network** control is not that consent. It stays off, and its status says nothing is sent. The service address is documented under [Privacy and telemetry](#privacy-and-telemetry).
+**Enable sharing** is still optional and off until the host agrees. **Share capacity with the OUTPUT network** is a different opt-in, also off, and it does not send capacity or availability. Customer artwork stays on the host. The service address is documented under [Privacy and telemetry](#privacy-and-telemetry).
 
 ## Limits
 

@@ -1,5 +1,6 @@
+import opt_out
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import plistlib
 import stat
 import struct
@@ -83,6 +84,17 @@ class MacServiceConfigTests(unittest.TestCase):
         self.assertEqual(plistlib.loads(plistlib.dumps(loopback)),loopback)
         for environment in ({'DYLD_INSERT_LIBRARIES':'evil.dylib'},{'EZ_NEST_OUTPUT_TOKEN':'not-a-token'},{'EZ_NEST_OUTPUT_UPLOADS':'yes'}):
             with self.assertRaises(ValueError):service.launch_configuration(environment=environment)
+
+    def test_launchd_paths_remain_posix_on_windows_build_hosts(self):
+        expected = service.launch_configuration()
+        with patch.object(service, 'EXECUTABLE', PureWindowsPath('/Applications/eznest.app/Contents/MacOS/eznest')), \
+             patch.object(service, 'DATA', PureWindowsPath('/Library/Application Support/eznest')):
+            config = service.launch_configuration()
+        self.assertEqual(config['ProgramArguments'][0], '/Applications/eznest.app/Contents/MacOS/eznest')
+        self.assertIn('/Library/Application Support/eznest', config['ProgramArguments'])
+        self.assertEqual(config['WorkingDirectory'], '/Library/Application Support/eznest')
+        self.assertEqual(config, expected)
+        self.assertEqual(plistlib.loads(plistlib.dumps(config)), config)
 
     def test_private_root_plist_rejects_changed_identity_and_arguments(self):
         path=Path(self.tmp.name)/'service.plist'
