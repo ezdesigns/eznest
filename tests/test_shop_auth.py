@@ -2,6 +2,7 @@
 import hashlib
 import io
 import json
+import os
 import shutil
 import ssl
 import subprocess
@@ -229,6 +230,17 @@ class ShopAuthTests(unittest.TestCase):
         }), encoding='utf-8')
         self.assertTrue(shop_auth.pin_is_weak(server.WORK))
         self.assertEqual(shop_auth.login_attempt(server.WORK, '10.0.0.4', '123456', now=1), 'ok')
+        shop_deploy.clear_name_cache()
+        with patch('shop_deploy.lan_addresses', return_value=['192.168.1.50']):
+            shop_deploy.clear_name_cache()
+            host = self.handler('/api/session', ip='127.0.0.1', host='127.0.0.1:8765', headers={'Origin': None})
+            host.do_GET()
+            self.assertTrue(host.sent[0][1]['pinWeak'])
+            designer = self.handler('/api/session')
+            designer.do_GET()
+            self.assertTrue(designer.sent[0][1]['pinWeak'])
+            self.assertNotIn('pinAlert', designer.sent[0][1])
+            self.assertNotIn('token', designer.sent[0][1])
         with self.assertRaisesRegex(ValueError, '8 to 12'):
             shop_auth.set_pin(server.WORK, '123456')
         shop_auth.set_pin(server.WORK, 'correct-horse')
@@ -272,6 +284,11 @@ class ShopAuthTests(unittest.TestCase):
                 'openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-keyout', str(key), '-out', str(cert),
                 '-days', '1', '-nodes', '-subj', '/CN=localhost',
             ], check=True, capture_output=True)
+            os.chmod(key, 0o644)
+            with self.assertRaisesRegex(ValueError, 'chmod 600'):
+                server.configure_tls(str(cert), str(key))
+            self.assertFalse(server.TLS)
+            os.chmod(key, 0o600)
             service = thread = None
             server.configure_tls(str(cert), str(key))
             try:

@@ -88,6 +88,29 @@ TLS = False
 TLS_CONTEXT = None
 
 
+def _protect_tls_key(path):
+    """Refuse a POSIX key other accounts can read. On Windows, tighten the ACL."""
+    if os.name == 'nt':
+        command = ['icacls', str(path), '/inheritance:r', '/grant:r', '*S-1-5-18:(R)', '*S-1-5-32-544:(R)']
+        user = os.environ.get('USERNAME', '')
+        if user and all(mark not in user for mark in '*?"<>|'):
+            command.extend(['/grant:r', user + ':(R)'])
+        service = subprocess.run(command + ['/grant:r', 'eznest-svc:(R)'], capture_output=True)
+        if service.returncode != 0:
+            narrowed = subprocess.run(command, capture_output=True)
+            if narrowed.returncode != 0:
+                raise ValueError(
+                    'Could not restrict the TLS private key. Run: '
+                    'icacls KEY /inheritance:r /grant:r *S-1-5-18:(R) *S-1-5-32-544:(R) eznest-svc:(R)'
+                )
+        return
+    if path.stat().st_mode & 0o077:
+        raise ValueError(
+            'The TLS private key is readable by the group or by other accounts. '
+            f'Run: chmod 600 {path}'
+        )
+
+
 def configure_tls(cert=None, key=None):
     """Optional local HTTPS. Both files are required. Empty values leave HTTP."""
     global TLS, TLS_CONTEXT
@@ -102,11 +125,14 @@ def configure_tls(cert=None, key=None):
     cert_path, key_path = Path(cert), Path(key)
     if not cert_path.is_file() or not key_path.is_file() or cert_path.is_symlink() or key_path.is_symlink():
         raise ValueError('The TLS certificate and key must be regular files on this computer.')
+    _protect_tls_key(key_path)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
     TLS_CONTEXT = context
     TLS = True
+
+
 def _approved_source_roots():
     return load_shop(WORK)['sourceRoots']
 
@@ -402,12 +428,12 @@ class Handler(BaseHTTPRequestHandler):
             'localPC': local,
             'authenticated': bool(local or self.authenticated()),
             'pinConfigured': shop_auth.pin_configured(WORK),
+            'pinWeak': shop_auth.pin_is_weak(WORK),
             'tls': TLS,
         }
         if local:
             body['token'] = TOKEN
             body['pinAlert'] = shop_auth.alert_status()
-            body['pinWeak'] = shop_auth.pin_is_weak(WORK)
         return body
 
     def do_GET(self):

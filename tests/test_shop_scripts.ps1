@@ -31,6 +31,7 @@ function global:Register-ScheduledTask {
 function global:Start-ScheduledTask { param($TaskName, $TaskPath); $global:eznestTestCalls.Add('start ' + $TaskName) }
 function global:Remove-CimInstance { throw 'Unexpected profile deletion' }
 try {
+    $env:EZ_NEST_HTTPS_PROMPT = '0'
     $source = Get-Content (Join-Path $root 'installer/install-shop.ps1') -Raw
     # Inject two system-boundary fakes after function definitions, leaving the
     # installer's argument parsing and orchestration unchanged.

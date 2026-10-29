@@ -263,6 +263,8 @@ class ShopDeployTests(unittest.TestCase):
         self.assertIn('profile=private', install)
         self.assertIn('TlsCert', install)
         self.assertIn('TlsKey', install)
+        self.assertIn('Recommended: use HTTPS', install)
+        self.assertIn('EZ_NEST_HTTPS_PROMPT', install)
         self.assertIn('Name: "checkupdates"', script)
         self.assertIn('Check for app updates (also set EZ_NEST_UPDATES=1)', script)
         self.assertIn("Result := '0'", script)

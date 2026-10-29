@@ -66,7 +66,7 @@ Test channel is off until the operator turns it on. Pre-releases are listed only
 
 ## Signing
 
-The Windows installer workflow signs `eznest-setup.exe` when the `WINDOWS_CERT_BASE64` and `WINDOWS_CERT_PASSWORD` secrets are set. When they are empty, the step skips and the unsigned installer is still uploaded. Do not commit a certificate.
+The Windows installer workflow builds an unsigned `eznest-setup.exe`. It does not read a certificate and it does not sign the file. Do not treat a CI artifact as a signed installer. Do not commit a certificate.
 
 ## Tests for the shop scripts
 

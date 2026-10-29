@@ -39,7 +39,16 @@ On plain HTTP, anyone who can watch the shop LAN traffic can copy the session co
 
 ```text
 openssl req -x509 -newkey rsa:2048 -keyout eznest-key.pem -out eznest-cert.pem -days 825 -nodes -subj /CN=SHOP-HOST
+chmod 600 eznest-key.pem
 ```
+
+On Windows, restrict the key before the shop task reads it. `eznest` is a scheduled task running as the user `eznest-svc`, not a Windows service:
+
+```text
+icacls eznest-key.pem /inheritance:r /grant:r *S-1-5-18:(R) *S-1-5-32-544:(R) eznest-svc:(R)
+```
+
+Ez Nest refuses to start HTTPS on Linux or macOS when the key is readable by the group or by other accounts. On Windows it applies that ACL when it can.
 
 Start the host with both files:
 
@@ -77,7 +86,7 @@ A request is accepted only when the Host header is this computer's own name or o
 
 The OUTPUT address can be changed only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL` set by an administrator before the process starts.
 
-On Windows the OUTPUT shop key is encrypted with DPAPI for the Windows user that saved it, not for every account on the PC. Pair while the `eznest-svc` service is running so that account owns the key. The file ACL does not grant the Users group.
+On Windows the OUTPUT shop key is encrypted with DPAPI for the Windows user that saved it, not for every account on the PC. Pair while the scheduled task named `eznest` is running as the user `eznest-svc`, so that account owns the key. That task is not a Windows service. The file ACL does not grant the Users group.
 
 ### Updates and the GitHub token
 
