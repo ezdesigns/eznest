@@ -22,10 +22,10 @@ unsent backlog after stopping and re-enabling. Credentials or consent-contract
 changes invalidate consent. Stop sharing waits for a bounded in-flight request
 and prevents any subsequent request; it cannot remove data already accepted.
 
-The receiver is `https://output.jeezlabs.io/api/shop/telemetry` with the
-`eznest-observation/1` contract. This depends on OUTPUT PR #105 plus its Ez Nest
-schema extension. The receiver flag and migration remain off/unapplied until
-approved. No arbitrary URL, HTTP fallback or credential-bearing redirect exists.
+The default receiver is `https://output.jeezlabs.io/api/shop/telemetry` with the
+`eznest-observation/1` contract. `EZ_NEST_OUTPUT_URL` or `shop.json` `outputUrl`
+can select another https origin; see [OUTPUT pairing](output-pairing.md).
+There is no HTTP fallback and no credential-bearing redirect.
 Requests run in an isolated transport process killed and joined after a ten-second total deadline; failures back off from 30 seconds to 15
 minutes. Idempotent UUIDv5 request IDs survive retry/restart. Only a matching
 schema/request receipt acknowledges the local event. Malformed observations are retained locally without acknowledgement and excluded from delivery; the screen reports their count. No missing or unsafe value is guessed. No network transaction

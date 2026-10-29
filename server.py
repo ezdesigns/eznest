@@ -31,7 +31,7 @@ from output_folder import OutputFolder, stage_pack
 from nesting import validate_request
 from shop_profiles import validate_profile, inspect_output
 from app_info import VERSION
-from shop_deploy import OUTPUT_NOTE, WARNING, default_hot_folder, host_name, issues_url, lan_addresses, load_shop, output_network_status, peek_latest, pull_latest, save_shop, shop_name_allowed, EZ_PRESET
+from shop_deploy import OUTPUT_NOTE, WARNING, default_hot_folder, host_name, issues_url, lan_addresses, load_shop, output_network_status, output_status, peek_latest, pull_latest, save_shop, shop_name_allowed, updates_allowed, EZ_PRESET
 
 ROOT = Path(__file__).resolve().parent
 _STATIC_CACHE = {}
@@ -128,6 +128,7 @@ def shop_status():
         'url': f'http://{name}:{PORT}/web',
         'warning': WARNING,
         'hotFolderDefault': default_hot_folder(saved['onyxPc']),
+        **output_status(WORK),
     }
 
 
@@ -328,7 +329,7 @@ class Handler(BaseHTTPRequestHandler):
                 info = peek_latest(WORK, VERSION)
             else:
                 info = {'ok': True, 'current': VERSION, 'updateAvailable': False, 'latest': VERSION, 'message': '', 'error': None}
-                if load_shop(WORK)['updates'] and os.environ.get('EZ_NEST_UPDATES', '1') != '0':
+                if updates_allowed(WORK):
                     info.update(UPDATE_CHECK)
             info.update(installer_update.local_state(WORK, installer_update.install_root()))
             import managed_update
@@ -738,7 +739,7 @@ class Handler(BaseHTTPRequestHandler):
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
                 fields = {}
-                for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder'):
+                for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl'):
                     if key in data:
                         fields[key] = data.get(key)
                 save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates, **fields)

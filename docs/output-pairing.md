@@ -23,14 +23,17 @@ the host. The stock ledger in `materials.sqlite3` is not uploaded.
 
 ## Endpoints
 
-The pair URL and the event URL are the client constants `ENDPOINT` in
-`output_pairing.py` and `telemetry_sender.py`. This build sets them to the
-OUTPUT host below. There is no Settings field and no environment variable
-that points either request at a different server. A different OUTPUT host is
-a change to those constants (and the address shown on the consent screen)
-before the app is built. Both requests are HTTPS. Redirects are not followed.
+The default service origin is `https://output.jeezlabs.io`. Pairing posts to
+`/api/shop/agent/pair`. Events post to `/api/shop/telemetry`.
 
-| Use | This build |
+Set another origin with `EZ_NEST_OUTPUT_URL` or `outputUrl` in `shop.json`
+(Settings → OUTPUT service address). The environment variable wins. The value
+must be an `https` origin with no path, query, username, or password. Invalid
+values are ignored and the default is used. Redirects are not followed. There
+is no HTTP fallback. Changing the address does not send anything; sharing stays
+off until the host pairs and agrees on screen.
+
+| Use | Default |
 | --- | --- |
 | Pair | `POST https://output.jeezlabs.io/api/shop/agent/pair` |
 | Events | `POST https://output.jeezlabs.io/api/shop/telemetry` |

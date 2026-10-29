@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import threading
 import tempfile
 import sys
@@ -66,7 +67,8 @@ class UpdateQueueTests(unittest.TestCase):
         fixture = test_web_mvp.WebMvpTests()
         fixture.setUp()
         try:
-            with patch.object(server, 'UPDATE_QUEUE', UpdateQueue()), patch.object(fixture.service, 'shutdown'):
+            with patch.object(server, 'UPDATE_QUEUE', UpdateQueue()), patch.object(fixture.service, 'shutdown'), patch.dict(os.environ, {'EZ_NEST_UPDATES': '1'}):
+                shop_deploy.save_shop(server.WORK, False, False, updates=True)
                 payload = b'MZ synthetic installer'
                 pending = installer_update.stage_file(server.WORK, '99.0.0', hashlib.sha256(payload).hexdigest(), payload, 'eznest-setup.exe')
                 request = {'ticket': 'a'*32, 'sha256': pending['sha256']}
@@ -108,7 +110,8 @@ class UpdateQueueTests(unittest.TestCase):
         fixture = test_web_mvp.WebMvpTests()
         fixture.setUp()
         try:
-            with patch.object(server, 'UPDATE_QUEUE', UpdateQueue()):
+            with patch.object(server, 'UPDATE_QUEUE', UpdateQueue()), patch.dict(os.environ, {'EZ_NEST_UPDATES': '1'}):
+                shop_deploy.save_shop(server.WORK, False, False, updates=True)
                 pending = installer_update.stage_file(server.WORK, '99.0.0', hashlib.sha256(b'MZ').hexdigest(), b'MZ', 'eznest-setup.exe')
                 data = {'ticket':'a'*32, 'sha256':pending['sha256']}
                 def post(path):

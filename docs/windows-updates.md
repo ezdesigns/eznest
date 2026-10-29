@@ -2,8 +2,11 @@
 
 ## Employee workflow
 
-1. Settings shows an available version and release notes. Checks run at startup
-   and every six hours, only while updates are enabled.
+1. Background checks are off until Settings has **Check for updates** on and
+   the host was started with `EZ_NEST_UPDATES=1`. Then Settings shows an
+   available version and release notes. Checks run at startup and every six
+   hours. A download is kept only when its SHA-256 matches, and installation
+   is still a separate click.
 2. Download the update. The app verifies the release checksum before staging it.
 3. On the server PC, choose **Install when finished** and approve the Windows
    administrator prompt. If the browser does not open the protocol handler, use
@@ -37,8 +40,8 @@ Unsigned internal pilot builds use manual installation after checksum verificati
 Do not disable the signed-update guard or distribute a test certificate to employees.
 
 Existing employees need one manual installation of the build containing this
-helper. It cannot add itself to an older installation remotely. Use a separate
-test PC; do not replace protected rc.4 or its ONYX white-gloss test setup.
+helper. It cannot add itself to an older installation remotely. Try it on a
+separate test PC before replacing a shop installation.
 
 Managed updates require the default Program Files installation, default
 `%ProgramData%\eznest` data directory, port 8765, and the existing enabled `eznest`
@@ -107,7 +110,7 @@ Before employee rollout, test two signed versions on a disposable Windows PC/VM:
 - Reboot after success and rollback. Check the retained task, installer/uninstall
   registration and the separate interruption-recovery procedure.
 
-Record actual versions, signatures, account identity and results in the draft PR.
+Record actual versions, signatures, account identity and results with the change.
 Keep the readiness checklist's real install/rollback item open until this passes.
 
 

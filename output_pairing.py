@@ -1,9 +1,9 @@
 """Exchange one OUTPUT pairing code for a scoped shop key.
 
-POST ENDPOINT. This build uses
-https://output.jeezlabs.io/api/shop/agent/pair. That URL is this module's
-ENDPOINT constant. There is no settings field or environment variable for
-another host. Redirects are not followed.
+POST the pair endpoint. The default host is https://output.jeezlabs.io.
+EZ_NEST_OUTPUT_URL overrides shop.json outputUrl, which overrides that default.
+The value must be an https origin with no path, query, user, or password.
+Redirects are not followed. Sharing stays off until on-screen consent.
 
 {"code":"7K4NP-QRX2M","requestId":"<uuid>","hostLabel":"<computer name>","hostRef":"<32 lowercase hex, optional>"}
 
@@ -30,12 +30,14 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 
 import output_credential
+import shop_deploy
 import telemetry
 import telemetry_sender
 from shop_deploy import host_name
 from telemetry_sender import NoRedirect
 
-ENDPOINT = 'https://output.jeezlabs.io/api/shop/agent/pair'
+ENDPOINT = shop_deploy.DEFAULT_OUTPUT_URL + '/api/shop/agent/pair'
+_PAIR_DIRECTORY = None
 CODE_BODY = re.compile(r'[A-Z0-9]{10}')
 UUID_RE = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 HOST_REF_RE = re.compile(r'[0-9a-f]{32}')
@@ -159,8 +161,12 @@ def interpret(status, body):
     return {'credential': token, 'shopName': shop_name}
 
 
+def pair_endpoint(directory=None):
+    return shop_deploy.output_base_url(directory) + '/api/shop/agent/pair'
+
+
 def _post(raw):
-    request = Request(ENDPOINT, data=raw, headers={'Content-Type': 'application/json', 'Accept': 'application/json'}, method='POST')
+    request = Request(pair_endpoint(_PAIR_DIRECTORY), data=raw, headers={'Content-Type': 'application/json', 'Accept': 'application/json'}, method='POST')
     try:
         with build_opener(NoRedirect()).open(request, timeout=10) as response:
             return response.status, response.read(16385)
@@ -220,7 +226,13 @@ def connect(directory, code, *, paused=False, transport=None, host=None):
     # Validate before any network use so a mistyped code is not sent.
     normalize_code(code)
     reference = host_ref(directory)
-    result = exchange(code, host_label=host if host is not None else host_name(), host_ref=reference, transport=transport)
+    global _PAIR_DIRECTORY
+    previous = _PAIR_DIRECTORY
+    _PAIR_DIRECTORY = directory
+    try:
+        result = exchange(code, host_label=host if host is not None else host_name(), host_ref=reference, transport=transport)
+    finally:
+        _PAIR_DIRECTORY = previous
     # The token is returned once. Write it before status, consent, or another request.
     try:
         output_credential.save(directory, result['credential'], result['shopName'])

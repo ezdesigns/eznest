@@ -14,7 +14,7 @@ if ((Test-Path -LiteralPath $app) -or (Test-Path -LiteralPath $data) -or
 function Assert($value, $message) { if (-not $value) { throw $message } }
 $setup = Join-Path $root 'installer\Output\eznest-setup.exe'
 $setupLog = Join-Path $env:RUNNER_TEMP 'eznest-acceptance-install.log'
-$install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/TASKS="startatboot,noupdates"',('/LOG="' + $setupLog + '"') -WindowStyle Hidden -PassThru
+$install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/TASKS="startatboot"',('/LOG="' + $setupLog + '"') -WindowStyle Hidden -PassThru
 if (-not $install.WaitForExit(180000)) { throw 'Fresh installation timed out.' }
 Get-Content -LiteralPath $setupLog -Tail 55
 if (Test-Path -LiteralPath (Join-Path $data 'shop.json')) {

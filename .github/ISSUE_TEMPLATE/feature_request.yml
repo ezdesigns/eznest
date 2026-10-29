@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a change to the shop workflow
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ez Nest prepares and nests a job, then writes the finished file to a RIP hot folder. Keep everyday use on that path.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is hard today
+      description: The shop task this would help.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: checkboxes
+    id: limits
+    attributes:
+      label: Scope
+      options:
+        - label: This request does not include customer artwork or credentials
+          required: true

@@ -36,7 +36,7 @@
     </label>
   </div>
   <div class="setup-actions">
-    <button id="setup-preset" type="button" class="link">Use EZ Designs preset</button>
+    <button id="setup-preset" type="button" class="link">Use Example shop preset</button>
     <button id="setup-save" type="button" class="primary">Start nesting</button>
   </div>
   <p id="setup-error" class="lan-note" hidden></p>
@@ -134,7 +134,11 @@
       <p>Material categories: <code>moto_regular, moto_holographic, moto_chrome, custom, unknown</code> or null. Stock-only observations have no layout ID.</p>
       <p>Event types: <span id="telemetry-kinds"></span></p>
       <p id="telemetry-bands"></p>
-      <p>Destination: <code>https://output.jeezlabs.io/api/shop/telemetry</code></p>
+      <label>OUTPUT service address
+        <input id="output-url" type="url" inputmode="url" maxlength="200" spellcheck="false" autocapitalize="none" placeholder="https://output.jeezlabs.io" aria-describedby="output-url-note">
+      </label>
+      <p id="output-url-note" class="hint">Optional. Leave blank for https://output.jeezlabs.io. EZ_NEST_OUTPUT_URL overrides this saved address. Sharing stays off until you connect and agree.</p>
+      <p>Destination: <code id="output-destination">https://output.jeezlabs.io/api/shop/telemetry</code></p>
       <details><summary>Exact JSON fields (illustrative event)</summary><pre id="telemetry-preview" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
       <p>Stopping prevents further requests after any in-flight request finishes. It does not delete records already received by OUTPUT. Re-enabling excludes all activity recorded before the new consent.</p>
       <label class="check"><input id="telemetry-agree" type="checkbox" disabled> I agree to automatically share new activity using these fields.</label>
@@ -145,7 +149,8 @@
     </details>
     <details id="settings-updates" class="settings-section">
       <summary>App updates</summary>
-    <label class="check"><input id="updates" type="checkbox" checked> Check for updates</label>
+    <label class="check"><input id="updates" type="checkbox"> Check for updates</label>
+    <p class="hint">Off during beta. To turn checks on, check this box and start Ez Nest with <code>EZ_NEST_UPDATES=1</code>. Ez Nest keeps a download only when its SHA-256 matches the published checksum. Installing that file is still a separate click.</p>
     <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
     <label class="check" hidden><input id="output-network" type="checkbox"> Join OUTPUT network</label>
     <p id="output-note" class="hint" hidden>Not available yet.</p>
@@ -231,7 +236,7 @@
     <div class="material-heading"><label for="material"><span class="step-number">2</span> Choose material</label><button id="edit-material" class="link" type="button">Edit</button></div>
     <p class="hint step-hint">Use the roll you plan to print on.</p>
     <select id="material" aria-label="Material">
-      <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Epson S80600" data-quickset="Substance Gloss GL [EZ Designs 80600] @ 720-CT" selected>Moto Regular</option>
+      <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Example printer" data-quickset="Example RIP quick set" selected>Moto Regular</option>
       <option value="holographic" data-name="Moto Holographic">Moto Holographic</option>
       <option value="chrome" data-name="Moto Chrome">Moto Chrome</option>
       <option value="custom">+ Add material</option>

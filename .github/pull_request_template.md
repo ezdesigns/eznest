@@ -15,7 +15,7 @@ must not be implied by unit tests or successful folder delivery.
 
 ## Before submitting
 
-- [ ] Contributor PR targets `cursor/shop-open-handoff-9891` unless the owner changed the target.
+- [ ] Pull request targets `main`.
 - [ ] No customer artwork, source paths, local databases, credentials or generated packs.
 - [ ] No production installation changes, release/version bump, or bypassed safety checks.
 - [ ] Draft status retained while checks or operator review are incomplete.

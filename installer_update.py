@@ -24,11 +24,7 @@ CONFIRM_TIMEOUT = 120
 
 
 def updates_enabled(data_dir=None):
-    if os.environ.get('EZ_NEST_UPDATES', '1') == '0':
-        return False
-    if data_dir is not None and not shop_deploy.load_shop(data_dir)['updates']:
-        return False
-    return True
+    return shop_deploy.updates_allowed(data_dir)
 
 
 def install_root():

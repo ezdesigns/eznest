@@ -1,14 +1,10 @@
 # Contributing
 
-Ez Nest is a local nesting tool for print shops. Read [GOALS.md](GOALS.md) before adding a feature. v1 nests files, adds cut marks, and sends them to the RIP hot folder. It does not send customer files off the shop PC.
+Ez Nest is a local nesting tool for print shops. v1 nests files, adds cut marks, and sends them to the RIP hot folder. It does not send customer files off the shop PC.
 
 ## Setup
 
-For testing with Codex and proposing an improvement, start with
-[the contributor walkthrough and prompts](CONTRIBUTOR-CODEX.md). It creates a
-separate source environment and test data without replacing a shop installation.
-
-Use 64-bit Python 3.12.
+Use 64-bit Python 3.12. A source checkout can use `python contributor.py setup` and `python contributor.py start` for an isolated `--shop-test` data folder. That does not replace a shop installation.
 
 ```powershell
 py -3.12 -m venv .local/venv
@@ -50,10 +46,14 @@ These can be set without changing code. Environment variables win. A one-line fi
 | --- | --- | --- |
 | Release API | `EZ_NEST_RELEASE_API` | `release-api` |
 | GitHub repository `owner/name` | `EZ_NEST_GITHUB_REPO` | `github-repo` |
-| Token, optional | `EZ_NEST_GITHUB_TOKEN` | `github-token` |
+| Token, optional, private-repo mirrors only | `EZ_NEST_GITHUB_TOKEN` | `github-token` |
 | Report-a-problem link | `EZ_NEST_ISSUES_URL` | `issues-url` |
+| OUTPUT service origin | `EZ_NEST_OUTPUT_URL` | `outputUrl` in `shop.json` |
+| Background update checks | `EZ_NEST_UPDATES` (`0` by default) | `updates` in `shop.json` (false by default) |
 
-A public repository needs no token. Leave the token unset. The token is sent only to `github.com` and `api.github.com`. Do not commit a token, a certificate, or a password.
+A public repository needs no token. `shop_deploy.github_token()` is optional and only for a private-repo mirror. Leave the token unset. The token is sent only to `github.com` and `api.github.com`, and only while update checks are on. Do not commit a token, a certificate, or a password.
+
+`EZ_NEST_OUTPUT_URL` and `outputUrl` must be an https origin. Sharing stays off until the host pairs and agrees. `EZ_NEST_UPDATES` defaults to `0`. Set it to `1` and turn **Check for updates** on before Ez Nest calls GitHub. Installing a checked download is still a separate click.
 
 Test channel is off until the operator turns it on. Pre-releases are listed only then.
 
@@ -68,11 +68,7 @@ The Windows installer workflow signs `eznest-setup.exe` when the `WINDOWS_CERT_B
 
 ## Pull requests
 
-Contributor PRs currently target `cursor/shop-open-handoff-9891`, the integration
-branch behind draft PR #4. Start a separate branch for each improvement. The
-owner's existing PR #4 retains its protected base; contributors must not target
-or push to that shop branch. Verify these targets before submitting; after v1
-merges, the owner will identify the next target. Do not assume `main` yet.
+Open a pull request against `main`. Start a separate branch for each improvement.
 
 Do not commit customer files, tokens, or `.local/`. Do not publish a release or change who can see the repository from a pull request.
 

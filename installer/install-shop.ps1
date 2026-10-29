@@ -9,7 +9,7 @@ param(
   [string]$OnyxPc = '0',
   [string]$Lan = '0',
   [string]$StartAtBoot = '0',
-  [string]$Updates = '1'
+  [string]$Updates = '0'
 )
 
 # An installer launched from PowerShell 7 can inherit its incompatible modules.

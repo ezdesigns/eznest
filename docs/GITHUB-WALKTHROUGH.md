@@ -12,7 +12,7 @@ Download `eznest-github-ready.zip`, right-click it in Windows, and choose **Extr
 2. Choose **File → New repository** (or **Create a New Repository on your Hard Drive**).
 3. Set **Name** to `eznest`. Description: `Simple local nesting for print shops — SVG beta`.
 4. Choose a local parent folder, for example `Documents/GitHub`. Desktop creates `Documents/GitHub/eznest` inside it.
-5. Leave **Initialize with a README** unchecked. Set **Git ignore** and **License** to **None**; the ZIP already contains the ignore rules, and the original-code license is still undecided.
+5. Leave **Initialize with a README** unchecked. Set **Git ignore** and **License** to **None**; the repository already contains the ignore rules and the Apache-2.0 LICENSE.
 6. Click **Create repository**. If `eznest` already exists on your GitHub account, clone that repository instead and add these files on a new branch; do not replace existing work blindly.
 
 These controls are described in [GitHub's Desktop guide](https://docs.github.com/en/desktop/overview/creating-your-first-repository-using-github-desktop).
@@ -29,7 +29,7 @@ GitHub's browser uploader accepts up to 100 files at once. This project has more
 
 ## 4. Publish your code
 
-Click **Publish repository**. Keep the name `eznest` and **Keep this code private** checked for the first handoff, select your account or intended organization, then click **Publish repository**. That uploads the committed source. Use **Repository → View on GitHub** to open it. [GitHub publishing instructions](https://docs.github.com/en/desktop/adding-and-cloning-repositories/adding-an-existing-project-to-github-using-github-desktop).
+Click **Publish repository**. Keep the name `eznest`. Ez Nest is Apache-2.0 and is meant to be a public repository. Do not publish customer files, tokens, or a shop data folder. Select your account or intended organization, then click **Publish repository**. That uploads the committed source. Use **Repository → View on GitHub** to open it. [GitHub publishing instructions](https://docs.github.com/en/desktop/adding-and-cloning-repositories/adding-an-existing-project-to-github-using-github-desktop).
 
 On the Code tab, confirm `README.md`, `launcher.py`, `tests/` and `.github/workflows/test.yml` are at the top level. On **Actions**, look for the **Tests** workflow and its result. Local checks have passed; the GitHub-hosted check has not run until you upload. If Actions is disabled by your account or organization, the files remain uploaded but automatic checks will not run.
 

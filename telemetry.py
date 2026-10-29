@@ -1,6 +1,6 @@
 """Local observations and a dormant, injectable atom adapter. No network client.
 
-The proposal schema is NOT Ez Ink's registered shared contract. Exact measurements
+The proposal schema is not a registered shared hub contract. Exact measurements
 stay local; the outbox contains only codes, opaque identifiers and numeric bands.
 """
 import hashlib
