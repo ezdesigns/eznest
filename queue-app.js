@@ -312,9 +312,9 @@ async function improve(automatic=false){
 
   if(!current||busy||saving||current.released)return;
 
-  clearTimeout(autoTimer);busy=true;renderQueue();$('export').disabled=true;$('improve').disabled=true;
+  clearTimeout(autoTimer);busy=true;renderQueue();$('export').disabled=true;$('improve').disabled=true;$('comparison-run').disabled=true;$('comparison-download').disabled=true;
 
-  try{await api('/api/improve',{id:current.id});if(automatic)autoAttempts++;status(automatic?`Optimizing in the background · extra search ${autoAttempts}/5. Your best layout is kept.`:'Trying another fit. Your best layout is kept.');setTimeout(poll,450);}
+  try{await api('/api/improve',{id:current.id,seconds:[5,30,90].includes(current.job.settings.seconds)?current.job.settings.seconds:undefined});if(automatic)autoAttempts++;status(automatic?`Optimizing in the background · extra search ${autoAttempts}/5. Your best layout is kept.`:'Trying another fit. Your best layout is kept.');setTimeout(poll,450);}
 
   catch(e){busy=false;renderQueue();showResult(current);status(e.message,true);}
 

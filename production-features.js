@@ -120,9 +120,7 @@ const EZNLocalEvidence=(()=>{
   const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
   const canonical=value=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])])):value;
   function comparisonPayload(state){
-    const request=structuredClone(state.requestJob||state.job);
-    delete request._progress;delete request.settings.seconds;delete request.settings.seed;
-    return canonical(request);
+    return EZNComparison.inputs(state);
   }
   function photoKind(bytes){
     if(bytes[0]===255&&bytes[1]===216&&bytes[2]===255)return 'image/jpeg';
@@ -165,17 +163,32 @@ const EZNLocalEvidence=(()=>{
     el('proof-open').disabled=!(state.released&&state.deliveryCompleted===true&&m.outputCheck?.ready===true);
     el('proof-hint').textContent=el('proof-open').disabled?'Save the ready export first to bind evidence to its exact file.':'Local draft only · no buyer notification or submission.';
     const rows=el('layout-revisions');rows.replaceChildren(text('p','Loading comparisons…'));
+    el('comparison-chart').replaceChildren();el('comparison-download').disabled=true;el('comparison-download').onclick=null;el('comparison-run').disabled=true;el('comparison-summary').textContent='Loading comparison…';el('comparison-message').textContent='';
     try{
       const key=await digest(new TextEncoder().encode(JSON.stringify(comparisonPayload(state))));
       const geometry=await digest(new TextEncoder().encode(JSON.stringify(canonical({placements:r.placements,length:r.usedLength}))));
-      const id=key+':'+geometry;
-      await write('revisions',{id,key,createdAt:Date.now(),batchId:state.id,length:r.usedLength,coverage:r.utilization,pieces:m.totalPieces,seconds:state.job.settings.seconds},true);
-      const revisions=(await read('revisions')).filter(x=>x.key===key).sort((a,b)=>b.createdAt-a.createdAt).slice(0,6);
+      const id='v2:'+key+':'+geometry;
+      const layout=EZNComparison.capture(state);
+      await write('revisions',{id,key,createdAt:Date.now(),batchId:state.id,length:r.usedLength,coverage:r.utilization,pieces:m.totalPieces,seconds:state.job.settings.seconds,layout},true);
+      const all=(await read('revisions')).filter(x=>x.key===key&&x.layout?.version===1).sort((a,b)=>a.createdAt-b.createdAt);
+      const revisions=all.slice(-6).reverse();
       if(ticket!==generation)return;
       rows.replaceChildren();
+      const before=all[0].layout,after=layout,hasComparison=all[0].id!==id||!!state.note?.startsWith('Kept');
+      const chart=el('comparison-chart'),download=el('comparison-download'),run=el('comparison-run');
+      chart.replaceChildren();download.disabled=!hasComparison;download.onclick=null;
+      run.disabled=busy||saving||!!state.released||![5,30,90].includes(layout.budget);run.onclick=()=>improve();
+      el('comparison-summary').textContent=hasComparison?EZNComparison.compare(before,after).headline:'First fit saved';
+      el('comparison-message').textContent=hasComparison?(state.note?.startsWith('Kept')?'The extra search did not replace the best layout.':'Both checked layouts are shown at the same physical scale.'):'Run another fit to compare with this baseline. An improvement is not guaranteed.';
+      if(![5,30,90].includes(layout.budget))el('comparison-message').textContent+=' Choose a 5, 30 or 90 second search in Settings to compare another fit.';
+      if(hasComparison){
+        const svg=EZNComparison.figure(before,after,key),img=document.createElement('img');
+        img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);img.alt='Before and after at the same scale: '+EZNComparison.compare(before,after).headline;chart.append(img);
+        download.onclick=()=>downloadText(svg,'eznest-before-after-'+state.id.slice(0,8)+'.svg','image/svg+xml');
+      }
       for(const entry of revisions){const row=document.createElement('div');row.className='revision-row'+(entry.id===id?' current':'');row.append(text('strong',entry.id===id?'Current':new Date(entry.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})),text('span',dimension(entry.length)),text('span',(entry.coverage*100).toFixed(1)+'%'),text('span',entry.pieces+' pcs · '+entry.seconds+' s budget'));rows.append(row);}
       if(revisions.length===1)rows.append(text('p','No earlier comparable layout saved yet. Use “Try a better fit” before exporting.'));
-    }catch(error){if(ticket===generation)rows.replaceChildren(text('p','Comparison history unavailable: '+error.message));}
+    }catch(error){if(ticket===generation){rows.replaceChildren(text('p','Comparison history unavailable: '+error.message));el('comparison-summary').textContent='Comparison unavailable';el('comparison-message').textContent='The current layout is still available. '+error.message;}}
   }
   function dataURL(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('Could not read local photo.'));reader.readAsDataURL(blob);});}
   function revoke(){photoGeneration++;el('proof-photos').replaceChildren();el('proof-preview').replaceChildren();}
