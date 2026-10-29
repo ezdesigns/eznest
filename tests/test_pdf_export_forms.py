@@ -1,5 +1,6 @@
 import io
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import pypdfium2 as pdfium
@@ -8,7 +9,7 @@ from pypdf.generic import (ArrayObject, DecodedStreamObject, DictionaryObject,
                            FloatObject, NameObject, NumberObject)
 
 from pdf_export_forms import clip_bounds, invocation_bounds, piece_form, remove_empty_groups
-from pdf_io import form_from_page
+from pdf_io import MM, export_pdf, form_from_page, read_document
 
 
 def rendered(raw):
@@ -99,6 +100,49 @@ class ExportFormsTests(unittest.TestCase):
             result = io.BytesIO(); writer.write(result); outputs.append(rendered(result.getvalue()))
         self.assertTrue(np.any(outputs[0] != 255), 'The reference must contain visible artwork.')
         self.assertTrue(np.array_equal(*outputs))
+
+    def test_type3_glyph_keeps_page_image_resources_through_export(self):
+        def dictionary(**values):
+            return DictionaryObject({NameObject('/' + key): value for key, value in values.items()})
+
+        def array(*values):
+            return ArrayObject([FloatObject(value) for value in values])
+
+        def stream(data, **values):
+            result = DecodedStreamObject(); result.set_data(data)
+            result.update(dictionary(**values))
+            return result
+
+        source = PdfWriter(); page = source.add_blank_page(60, 60)
+        image = source._add_object(stream(b'\xff\x00\x00', Type=NameObject('/XObject'),
+            Subtype=NameObject('/Image'), Width=NumberObject(1), Height=NumberObject(1),
+            ColorSpace=NameObject('/DeviceRGB'), BitsPerComponent=NumberObject(8)))
+        glyph = source._add_object(stream(b'1000 0 d0 q 1000 0 0 1000 0 0 cm /Red Do Q'))
+        # Type3 fonts may omit /Resources and resolve glyph resources from the page.
+        font = source._add_object(dictionary(Type=NameObject('/Font'), Subtype=NameObject('/Type3'),
+            FontBBox=array(0, 0, 1000, 1000), FontMatrix=array(.001, 0, 0, .001, 0, 0),
+            CharProcs=dictionary(A=glyph), Encoding=dictionary(Type=NameObject('/Encoding'),
+                Differences=ArrayObject([NumberObject(65), NameObject('/A')])),
+            FirstChar=NumberObject(65), LastChar=NumberObject(65), Widths=array(1000)))
+        tint = source._add_object(dictionary(FunctionType=NumberObject(2), Domain=array(0, 1),
+            C0=array(0, 0, 0, 0), C1=array(0, 1, 0, 0), N=NumberObject(1)))
+        page[NameObject('/Resources')] = dictionary(XObject=dictionary(Red=image), Font=dictionary(F=font),
+            ColorSpace=dictionary(Contour=ArrayObject([NameObject('/Separation'), NameObject('/CutContour'),
+                NameObject('/DeviceCMYK'), tint])))
+        page[NameObject('/Contents')] = source._add_object(stream(
+            b'BT /F 20 Tf 10 10 Td (A) Tj ET /Contour CS 1 SCN 0 0 60 60 re S'))
+        raw = io.BytesIO(); source.write(raw)
+        clean, metadata = read_document(raw.getvalue())
+        piece = metadata['pieces'][0]
+        job = {'parts': [{'id': 'a', 'documentId': 'doc', 'pdfPieceId': piece['id']}]}
+        result = {'width': 60 * MM, 'usedLength': 60 * MM,
+                  'placements': [{'id': 'a', 'x': 0, 'y': 0, 'rotation': 0}]}
+        with patch('pdf_export_forms.piece_form', lambda page, writer, *args: form_from_page(page, writer)):
+            reference = rendered(export_pdf(job, result, {'doc': (clean, metadata)}))
+        optimized = rendered(export_pdf(job, result, {'doc': (clean, metadata)}))
+        self.assertGreater(np.count_nonzero((reference[:, :, 0] > 200) &
+            (reference[:, :, 1] < 50) & (reference[:, :, 2] < 50)), 0)
+        self.assertTrue(np.array_equal(reference, optimized), 'Type3 artwork must survive import/export.')
 
     def test_curve_control_bounds_are_conservative_and_unknown_clip_falls_back(self):
         self.assertEqual(clip_bounds([('m',[1,2]),('c',[-10,50,40,-20,5,6]),('h',[])]), (-10,-20,40,50))

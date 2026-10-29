@@ -106,6 +106,11 @@ def piece_form(page, writer, analyzed, clip):
     resources = DictionaryObject(page['/Resources'])
     if '/XObject' in resources:
         original = resources['/XObject']
+        fonts = resources.get('/Font', DictionaryObject()).get_object()
+        if any(font.get_object().get('/Subtype') == '/Type3' for font in fonts.values()):
+            # Glyph streams can resolve images from the page without a top-level Do.
+            # Keep the enclosing scope when those indirect consumers may exist.
+            names = set(original)
         for name in names:
             obj = original[name]
             if obj.get('/Subtype') == '/Form':
