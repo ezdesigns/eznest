@@ -310,6 +310,8 @@ class GateTests(unittest.TestCase):
             self.assertFalse(output_gate.gate_opt_out())
             text = (marker.parent / 'Dockerfile').read_text(encoding='utf-8')
             self.assertIn(output_gate.RELEASE_MARKER, text)
+            self.assertIn('eznest_build.py', text)
+            self.assertIn('INSTALLED = True', text)
             import launcher
             with patch('sys.argv', ['eznest', '--dev', '--no-browser']):
                 with self.assertRaisesRegex(ValueError, 'source checkout'):
@@ -333,6 +335,82 @@ class GateTests(unittest.TestCase):
         state_path.write_text(json.dumps(payload), encoding='utf-8')
         self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
         self.assertNotIn(TOKEN, state_path.read_text(encoding='utf-8'))
+
+    def _write_legacy(self, last_ok):
+        output_credential.save(server.WORK, TOKEN)
+        payload = {'v': 1, 'lastOkAt': last_ok, 'lastAttemptAt': last_ok, 'reason': ''}
+        output_gate._state_path(server.WORK).write_text(json.dumps(payload) + '\n', encoding='utf-8')
+
+    def test_unsigned_current_record_is_signed_on_first_load(self):
+        last_ok = int(time.time()) - (4 * output_gate.DAY_SECONDS)
+        self._write_legacy(last_ok)
+        status = output_gate.public_status(server.WORK, True)
+        self.assertTrue(status['ok'])
+        self.assertIn('unreachable', status['banner'])
+        raw = json.loads(output_gate._state_path(server.WORK).read_text(encoding='utf-8'))
+        self.assertTrue(output_gate._mac_ok(TOKEN, raw))
+        self.assertEqual(raw['lastOkAt'], last_ok)
+        again = output_gate.public_status(server.WORK, True)
+        self.assertTrue(again['ok'])
+        self.assertEqual(again['banner'], status['banner'])
+
+    def test_unsigned_old_future_or_missing_record_stays_closed(self):
+        self._write_legacy(int(time.time()) - output_gate.CHECK_IN_MAX_AGE - 30)
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertNotIn('mac', output_gate._state_path(server.WORK).read_text(encoding='utf-8'))
+        self._write_legacy(int(time.time()) + output_gate.DAY_SECONDS)
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertNotIn('mac', output_gate._state_path(server.WORK).read_text(encoding='utf-8'))
+        output_gate._state_path(server.WORK).unlink()
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertFalse(output_gate._state_path(server.WORK).is_file())
+
+    def test_revocation_stays_in_the_signed_record_without_the_side_file(self):
+        self.pair()
+
+        def deny(_raw, token):
+            self.assertEqual(token, TOKEN)
+            return 401, b'{"error":{"code":"revoked"}}'
+
+        self.assertFalse(output_gate.check_in(server.WORK, transport=deny)['ok'])
+        output_gate._revocation_path(server.WORK).unlink()
+        os.environ['EZ_NEST_OUTPUT_UPLOADS'] = '1'
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = TOKEN
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        calls = {'n': 0}
+
+        def allow(raw, token):
+            calls['n'] += 1
+            calls['token'] = token
+            self.assertEqual(json.loads(raw), {'appVersion': VERSION})
+            return 200, b'{"outcome":"ok"}'
+
+        self.assertFalse(output_gate.check_in(server.WORK, transport=allow)['ok'])
+        self.assertEqual(calls['n'], 0)
+        other = 'osa_' + 'D' * 43
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = other
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertTrue(output_gate.check_in(server.WORK, transport=allow)['ok'])
+        self.assertEqual(calls['token'], other)
+        output_gate._revocation_path(server.WORK).unlink(missing_ok=True)
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = TOKEN
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+
+    def test_installed_module_stays_installed_without_the_release_marker(self):
+        import eznest_build
+        previous = eznest_build.INSTALLED
+        eznest_build.INSTALLED = True
+        try:
+            marker = Path(output_gate.__file__).resolve().parent / output_gate.RELEASE_MARKER
+            self.assertFalse(marker.exists())
+            os.environ['EZ_NEST_DEV'] = '1'
+            os.environ['EZ_NEST_DEV_NO_OUTPUT'] = '1'
+            os.environ['EZ_NEST_OUTPUT_GATE_OPEN'] = '1'
+            self.assertFalse(output_gate.source_checkout())
+            self.assertFalse(output_gate.dev_escape())
+            self.assertFalse(output_gate.gate_opt_out())
+        finally:
+            eznest_build.INSTALLED = previous
 
     def test_future_check_in_time_stays_closed_until_a_live_check_in(self):
         output_credential.save(server.WORK, TOKEN)

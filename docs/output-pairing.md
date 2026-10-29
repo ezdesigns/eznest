@@ -54,7 +54,11 @@ the host.
 `CHECK_IN_MAX_AGE_DAYS` is 14. After a successful pairing or check-in, Ez Nest
 keeps working when OUTPUT cannot be reached. The check-in record is bound to
 the shop credential. A missing or unreadable record stays closed until a live
-check-in succeeds. A time ahead of this computer is not a current check-in.
+check-in succeeds. A check-in record written by the previous build has no
+signature. If the credential is still present, the time is not ahead of this
+computer, and the record is under 14 days old, the first load signs it and
+the offline grace continues. Any other unsigned record stays closed. A time
+ahead of this computer is not a current check-in.
 A banner appears after 3 days offline. After 14 days without a successful
 check-in, the Connect screen returns until a check-in succeeds. If OUTPUT
 says the credential is unpaired or revoked, the gate returns immediately, the
@@ -81,13 +85,15 @@ Disconnect is host-only. It returns the computer to the Connect screen.
 The default service origin is `https://output.jeezlabs.io`. Pairing posts to
 `/api/shop/agent/pair`. Events post to `/api/shop/telemetry`.
 
-Set another origin with `EZ_NEST_OUTPUT_URL` before the process starts, or
-save `outputUrl` from the host only. The saved address must be
-`https://output.jeezlabs.io` or that same environment origin. The environment
-variable wins. The value must be an `https` origin with no path, query,
-username, or password. Any other host is rejected. Redirects are not followed.
-There is no HTTP fallback. Changing the address does not send anything;
-sharing stays off until the host pairs and agrees on screen.
+If `EZ_NEST_OUTPUT_URL` is set, that https origin becomes the allowed OUTPUT
+host and receives the shop key. Only the person who controls the process
+environment can set it. Installed builds should not set it. A saved
+`outputUrl` must be `https://output.jeezlabs.io` or that same environment
+origin. The environment variable wins. The value must be an `https` origin
+with no path, query, username, or password. Any other host is rejected.
+Redirects are not followed. There is no HTTP fallback. Changing the address
+does not send anything; sharing stays off until the host pairs and agrees
+on screen.
 
 On Windows the shop key is encrypted for the user that saved it
 (`eznest-svc` when the shop service is running), not for every account on
@@ -169,3 +175,8 @@ After a successful pairing the consent screen is shown once for that key.
 readings already recorded on the host, is what the sender can deliver. The
 shop stock ledger in `materials.sqlite3` stays on the host. Exact quantities
 are not uploaded.
+
+## Known limits
+
+- OUTPUT check-in responses are not signed receipts. This build does not
+  check a signed receipt.

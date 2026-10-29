@@ -92,7 +92,7 @@ A missing OUTPUT response does not stop a paired shop for 14 days (`CHECK_IN_MAX
 
 ### OUTPUT address and key
 
-The OUTPUT address can be changed only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL` set by an administrator before the process starts.
+The OUTPUT address can be changed only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL`. If `EZ_NEST_OUTPUT_URL` is set, that origin is the allowed OUTPUT host and receives the shop key. Only the person who controls the process environment can set it. Installed builds should not set it.
 
 On Windows the OUTPUT shop key is encrypted with DPAPI for the Windows user that saved it, not for every account on the PC. Pair while the scheduled task named `eznest` is running as the user `eznest-svc`, so that account owns the key. That task is not a Windows service. The file ACL does not grant the Users group.
 

@@ -26,6 +26,15 @@ is the `eznest-observation/1` projection from `telemetry_output.py`.
 identity for this installation. Both are derived, not random, so a retry is
 safe. The event id uses the same per-install salt as the other local hashes.
 
+OUTPUT keeps one receipt for each exact event id. An id from a build that
+did not key the id is a different id, so a line sent again is not merged
+with the earlier receipt. The connector does not replay a log from the
+start. If this install already recorded a high-water mark (the byte offset
+for a log, or the event sequence for Ez Nest), later looks send only lines
+after that mark. The first look records the end of the file or the current
+sequence and does not send older lines. Fixture replay reads from the start
+and does not use that mark.
+
 ## Bands
 
 Measurements use the bands in `docs/telemetry-contract.md`. A band is the

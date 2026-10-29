@@ -8,9 +8,11 @@ body is only the app version. The computer name and installation id are sent
 once, by pairing.
 
 The check-in record is signed with a key derived from the shop credential.
-A missing, unreadable, or mismatched record stays closed until a live
-check-in or pairing succeeds. A check-in time ahead of this computer is not
-current. A revoked credential is remembered by a one-way fingerprint.
+A record from the previous build has no signature. If it is otherwise
+current, the first load signs it and the offline grace continues. Any other
+missing, unreadable, or mismatched record stays closed until a live check-in
+or pairing succeeds. A check-in time ahead of this computer is not current.
+Revoked credentials are part of the signed record.
 
 The credential is never written here, logged, or returned to the browser.
 """
@@ -57,7 +59,7 @@ REVOKED_CODES = frozenset({
     'unpaired', 'revoked', 'invalid_credential', 'invalid_token', 'unauthorized', 'not_paired',
 })
 LOCK = threading.Lock()
-_STATE_FIELDS = ('v', 'lastOkAt', 'lastAttemptAt', 'reason', 'credential')
+_STATE_FIELDS = ('v', 'lastOkAt', 'lastAttemptAt', 'reason', 'credential', 'revoked')
 
 
 class Offline(Exception):
@@ -66,7 +68,7 @@ class Offline(Exception):
 
 def source_checkout():
     """True when this process is the repo's Python files, not an installed build."""
-    if getattr(sys, 'frozen', False) or _release_marked():
+    if getattr(sys, 'frozen', False) or _release_marked() or _installed_module():
         return False
     root = Path(__file__).resolve().parent
     return (root / 'launcher.py').is_file() and (root / 'version.json').is_file() and (root / 'server.py').is_file()
@@ -74,6 +76,15 @@ def source_checkout():
 
 def _release_marked():
     return (Path(__file__).resolve().parent / RELEASE_MARKER).is_file()
+
+
+def _installed_module():
+    """True when the image build wrote an installed-build module."""
+    try:
+        import eznest_build
+    except ImportError:
+        return False
+    return eznest_build.INSTALLED is True
 
 
 def dev_mode():
@@ -152,6 +163,16 @@ def _stamp(now):
     return int(time.time() if now is None else now)
 
 
+def _fingerprint_list(value):
+    if not isinstance(value, list):
+        return []
+    found = []
+    for item in value:
+        if isinstance(item, str) and len(item) == 64 and all(char in '0123456789abcdef' for char in item) and item not in found:
+            found.append(item)
+    return sorted(found)
+
+
 def _signed_body(payload):
     last = payload.get('lastOkAt')
     attempt = payload.get('lastAttemptAt')
@@ -163,6 +184,7 @@ def _signed_body(payload):
         'lastAttemptAt': attempt if isinstance(attempt, int) else None,
         'reason': reason,
         'credential': credential,
+        'revoked': _fingerprint_list(payload.get('revoked')),
     }
 
 
@@ -186,16 +208,73 @@ def _mac_ok(token, payload):
     return hmac.compare_digest(_mac(token, body), mac)
 
 
-def _write_signed(directory, token, *, last_ok, attempt, reason):
+def _stored_revoked(directory):
+    found = set(_read_revocations(directory))
+    raw = _read_state(directory)
+    if isinstance(raw, dict):
+        found.update(_fingerprint_list(raw.get('revoked')))
+    return found
+
+
+def _write_signed(directory, token, *, last_ok, attempt, reason, also=()):
+    revoked = _stored_revoked(directory)
+    revoked.update(also)
     body = _signed_body({
         'lastOkAt': last_ok,
         'lastAttemptAt': attempt,
         'reason': reason,
         'credential': credential_fingerprint(token),
+        'revoked': sorted(revoked),
     })
     stored = dict(body)
     stored['mac'] = _mac(token, body)
     _write_state(directory, stored)
+
+
+def _known_revoked(directory, token):
+    return bool(token) and credential_fingerprint(token) in _stored_revoked(directory)
+
+
+def _record_altered(directory, token):
+    """A signature bound to this credential that does not verify stays closed."""
+    raw = _read_state(directory)
+    if not token or not isinstance(raw, dict):
+        return False
+    mac = raw.get('mac')
+    if not isinstance(mac, str) or len(mac) != 64:
+        return False
+    if raw.get('credential') != credential_fingerprint(token):
+        return False
+    return not _mac_ok(token, raw)
+
+
+def _legacy_last_ok(raw, stamp):
+    """Previous builds stored an unsigned check-in. Only a current one is signed."""
+    if not isinstance(raw, dict):
+        return None
+    mac = raw.get('mac')
+    if isinstance(mac, str) and mac:
+        return None
+    last = raw.get('lastOkAt')
+    if isinstance(last, bool) or not isinstance(last, int) or last <= 0 or last > stamp:
+        return None
+    if stamp - last >= CHECK_IN_MAX_AGE:
+        return None
+    reason = raw.get('reason') if isinstance(raw.get('reason'), str) else ''
+    if reason in ('revoked', 'disconnected'):
+        return None
+    return last
+
+
+def _migrate_unsigned(directory, token, stamp):
+    if not token or _known_revoked(directory, token):
+        return
+    raw = _read_state(directory)
+    last = _legacy_last_ok(raw, stamp)
+    if last is None:
+        return
+    attempt = raw.get('lastAttemptAt') if isinstance(raw.get('lastAttemptAt'), int) and not isinstance(raw.get('lastAttemptAt'), bool) else last
+    _write_signed(directory, token, last_ok=last, attempt=attempt, reason='')
 
 
 def _read_revocations(directory):
@@ -211,15 +290,19 @@ def _write_revocations(directory, fingerprints):
 
 
 def _revoked(directory, token):
-    return bool(token) and credential_fingerprint(token) in _read_revocations(directory)
+    return _known_revoked(directory, token)
 
 
 def _remember_revoked(directory, token):
     if not token:
         return
+    fingerprint = credential_fingerprint(token)
     fingerprints = _read_revocations(directory)
-    fingerprints.add(credential_fingerprint(token))
+    fingerprints.add(fingerprint)
     _write_revocations(directory, fingerprints)
+    raw = _read_state(directory)
+    attempt = raw.get('lastAttemptAt') if isinstance(raw, dict) and isinstance(raw.get('lastAttemptAt'), int) else _stamp(None)
+    _write_signed(directory, token, last_ok=None, attempt=attempt, reason='revoked', also=(fingerprint,))
 
 
 def note_paired(directory, now=None):
@@ -227,7 +310,7 @@ def note_paired(directory, now=None):
     stamp = _stamp(now)
     token, _source = _token(directory)
     with LOCK:
-        if not token or _revoked(directory, token):
+        if not token or _known_revoked(directory, token) or _record_altered(directory, token):
             return
         _write_signed(directory, token, last_ok=stamp, attempt=stamp, reason='')
 
@@ -284,15 +367,14 @@ def classify(status, body):
 
 
 def _mark_revoked(directory, token, now):
-    _remember_revoked(directory, token)
+    if token:
+        _remember_revoked(directory, token)
+    else:
+        _write_state(directory, {'v': 2, 'lastOkAt': None, 'lastAttemptAt': _stamp(now), 'reason': 'revoked', 'revoked': []})
     try:
         telemetry_sender.revoke(directory)
     except Exception:
         pass
-    if token:
-        _write_signed(directory, token, last_ok=None, attempt=_stamp(now), reason='revoked')
-    else:
-        _write_state(directory, {'v': 2, 'lastOkAt': None, 'lastAttemptAt': _stamp(now), 'reason': 'revoked'})
     output_credential.clear(directory)
 
 
@@ -327,9 +409,10 @@ def _view(ok, state, message, banner, local, can_check_in):
 
 
 def _verdict(directory, token, stamp):
+    _migrate_unsigned(directory, token, stamp)
     raw = _read_state(directory)
     reason = raw.get('reason') if isinstance(raw.get('reason'), str) else ''
-    if token and _revoked(directory, token):
+    if token and (_known_revoked(directory, token) or _record_altered(directory, token)):
         return {'open': False, 'reason': 'revoked', 'state': 'revoked', 'can_check_in': False}
     if not token:
         return {'open': False, 'reason': reason, 'state': reason or 'unpaired', 'can_check_in': False}
@@ -418,7 +501,10 @@ def check_in(directory, *, transport=None, now=None, local=True):
     token, _source = _token(directory)
     if not token or dev_escape() or gate_opt_out():
         return public_status(directory, local, now=now)
-    if _revoked(directory, token):
+    if _known_revoked(directory, token) or _record_altered(directory, token):
+        if _record_altered(directory, token):
+            with LOCK:
+                _mark_revoked(directory, token, _stamp(now))
         return public_status(directory, local, now=now)
     raw = json.dumps({'appVersion': VERSION}, separators=(',', ':')).encode()
     stamp = _stamp(now)
@@ -429,12 +515,14 @@ def check_in(directory, *, transport=None, now=None, local=True):
             _touch_attempt(directory, token, stamp)
         return public_status(directory, local, now=stamp)
     kind = classify(status, body)
-    if kind == 'revoked' or _revoked(directory, token):
+    if kind == 'revoked' or _known_revoked(directory, token) or _record_altered(directory, token):
         with LOCK:
             _mark_revoked(directory, token, stamp)
     elif kind == 'ok':
         with LOCK:
-            if not _revoked(directory, token):
+            if _known_revoked(directory, token) or _record_altered(directory, token):
+                _mark_revoked(directory, token, stamp)
+            else:
                 _write_signed(directory, token, last_ok=stamp, attempt=stamp, reason='')
     else:
         with LOCK:
@@ -448,7 +536,7 @@ def run(directory, stop):
         try:
             if not gate_opt_out() and not dev_escape():
                 token, _source = _token(directory)
-                if token and not _revoked(directory, token):
+                if token and not _known_revoked(directory, token) and not _record_altered(directory, token):
                     check_in(directory)
         except Exception:
             pass
