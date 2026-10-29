@@ -39,6 +39,10 @@ def protect_path(path, *, container):
         if subprocess.run(command, capture_output=True).returncode != 0:
             raise OSError('Could not restrict the connector state folder.')
     subprocess.run(commands[2], capture_output=True)
+    # A later grant can leave inheritance on. Remove it again so the DACL stays
+    # protected and only the explicit user grant remains.
+    if subprocess.run(['icacls', str(path), '/inheritance:r'], capture_output=True).returncode != 0:
+        raise OSError('Could not restrict the connector state folder.')
 
 
 class Store:

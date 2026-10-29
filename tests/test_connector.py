@@ -641,19 +641,26 @@ $ErrorActionPreference = 'Stop'
 $acl = Get-Acl -LiteralPath '__PATH__'
 [Console]::Error.WriteLine("ACL type: $($acl.GetType().FullName); SDDL: $($acl.Sddl)")
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$sddl = ([string]$acl.Sddl) -replace [char]0, ''
 $protected = $false
-if ([string]$acl.Sddl -match 'D:([A-Z]*)') { $protected = $Matches[1].Contains('P') }
+if ($sddl -match 'D:([A-Za-z]*)') { $protected = $Matches[1].ToUpperInvariant().Contains('P') }
+try {
+  $value = $acl.GetType().GetProperty('AreAccessRulesProtected').GetValue($acl, $null)
+  if ($null -ne $value) { $protected = $protected -or [bool]$value }
+} catch {}
 $allowed = @($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Value })
 $list = (@($allowed) | ForEach-Object { '"' + $_ + '"' }) -join ','
+$shown = $sddl.Replace('\\','\\\\').Replace('"','\\"')
 if ($protected) { $flag = 'true' } else { $flag = 'false' }
-Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' + $list + ']}')
+Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' + $list + '],"sddl":"' + $shown + '"}')
 """.replace('__PATH__', literal)
                 result = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
                                         capture_output=True, text=True, timeout=15)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 acl = json.loads(result.stdout.lstrip('\ufeff'))
-                self.assertIs(acl['protected'], True, result.stderr)
-                self.assertEqual(set(acl['allowed']), {acl['current']})
+                detail = ((result.stderr or '') + '\n' + str(acl.get('sddl', ''))).strip()
+                self.assertTrue(acl['protected'], detail)
+                self.assertEqual(set(acl['allowed']), {acl['current']}, detail)
         commands = windows_acl_commands(first.directory, 'ShopUser', container=True)
         flat = [' '.join(part) for part in commands]
         self.assertIn('/inheritance:r', flat[0])
