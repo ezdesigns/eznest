@@ -18,7 +18,7 @@ The shop host is a 64-bit PC running Windows 10 or Windows 11. Each designer PC 
 
 **1.0.0-rc.5** is the shop release candidate.
 
-[Designer quick start](docs/employee-quick-start.md) · [Host updates and rollout checks](docs/windows-updates.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Contributing](CONTRIBUTING.md)
+[Shop setup walkthrough](docs/SHOP-SETUP-WALKTHROUGH.md) · [Designer quick start](docs/employee-quick-start.md) · [Host updates and rollout checks](docs/windows-updates.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md) · [Contributing](CONTRIBUTING.md)
 
 ## Install
 
