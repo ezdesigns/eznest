@@ -7,8 +7,7 @@ import time
 from pathlib import Path
 from shapely.geometry import Polygon
 from shapely.affinity import rotate, translate
-from shapely.ops import unary_union
-from shapely.prepared import prep
+from shapely.strtree import STRtree
 from engine import part_polygon, PIECE_CAP, solve, validate_job, validate_result, number
 from production import validate_identity
 
@@ -75,12 +74,18 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
     counts = [0] * len(fills)
     failed = set()
     orientations = {}
+    buffered = {}
     for fill in fills:
         for part in fill['parts']:
             orientations[part['id']] = [(angle, rotate(part_polygon(part), angle, origin=(0, 0))) for angle in angles]
 
     def find(part, occupied):
-        forbidden = prep(unary_union([p.buffer(gap + guard * 2, join_style=2) for p in occupied])) if occupied else None
+        # The same conservative buffers, indexed without rebuilding their union
+        # for every attempted piece. Exact intersection still decides each fit.
+        for polygon in occupied:
+            if polygon not in buffered:
+                buffered[polygon] = polygon.buffer(gap + guard * 2, join_style=2)
+        forbidden = STRtree([buffered[p] for p in occupied]) if occupied else None
         for angle, polygon in orientations[part['id']]:
             x0, y0, x1, y1 = polygon.bounds
             w, h = x1 - x0, y1 - y0
@@ -102,7 +107,7 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
                     if time.monotonic() >= deadline:
                         return None
                     candidate = translate(polygon, x-x0, y-y0)
-                    if forbidden is None or not forbidden.intersects(candidate):
+                    if forbidden is None or not len(forbidden.query(candidate, predicate='intersects')):
                         return candidate, {'id':part['id'], 'x':x-x0, 'y':y-y0, 'rotation':angle}
         return None
 
@@ -113,14 +118,18 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
             if index in failed or counts[index] >= fill['maxSets'] or len(placed)+per_set > copy_limit:
                 continue
             trial_shapes, trial_placements = [], []
-            for part in fill['parts']:
+            # Place the most restrictive pieces first, retaining whole-set rollback.
+            ordered = sorted(fill['parts'], key=lambda p: part_polygon(p).area, reverse=True)
+            complete = True
+            for part in ordered:
                 for _ in range(part['perSet']):
                     found = find(part, shapes + trial_shapes)
                     if found is None:
+                        complete = False
                         break
                     shape, placement = found
                     trial_shapes.append(shape); trial_placements.append(placement)
-                if len(trial_placements) < sum(p['perSet'] for p in fill['parts'][:fill['parts'].index(part)+1]):
+                if not complete:
                     break
             if len(trial_placements) != per_set:
                 failed.add(index)
@@ -149,6 +158,74 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
     validate_identity(resolved)
     return resolved, final
 
+
+def refine_fill(job, resolved, result, budget):
+    """Repack required pieces plus complete filler sets within the existing length.
+
+    A failed trial never replaces the validated incumbent. No extra material,
+    relaxed gaps, new angles, or partial sets are accepted to improve coverage.
+    """
+    limit = result['usedLength']
+    counts = {s['id']: s['sets'] for s in result['fillSummary']}
+    fills = sorted(job['fillJobs'], key=lambda f: sum(part_polygon(p).area*p['perSet'] for p in f['parts']), reverse=True)
+    deadline = time.monotonic() + budget
+    remaining = float(budget)
+    attempts = 0
+    failed = set()
+    while remaining > 0 and attempts < 3 and time.monotonic() < deadline:
+        eligible = [f for f in fills if f['source']['id'] not in failed
+                    and counts[f['source']['id']] < f['maxSets']
+                    and len(result['placements']) + sum(p['perSet'] for p in f['parts']) <= PIECE_CAP]
+        if not eligible:
+            break
+        fill = eligible[0]
+        trial_counts = {**counts, fill['source']['id']: counts[fill['source']['id']] + 1}
+        trial = copy.deepcopy(job)
+        trial.pop('fillJobs', None)
+        for f in job['fillJobs']:
+            count = trial_counts[f['source']['id']]
+            if count:
+                trial['productionJobs'].append({**f['source'], 'sets':count, 'maxSets':f['maxSets']})
+                trial['parts'].extend({**p, 'quantity':p['perSet']*count} for p in f['parts'])
+        trial['settings'].update(maxLength=limit,
+                                 seed=(int(job['settings'].get('seed',42)) + attempts + 1) % 2147483648)
+        attempts += 1
+        from local_search import repack
+        local_budget = min(1, remaining*.3, max(0,deadline-time.monotonic()))
+        remaining -= local_budget
+        additions = [p['id'] for p in fill['parts'] for _ in range(p['perSet'])]
+        try:
+            validate_identity(trial)
+            # First freeze most of the incumbent and reinsert a small local
+            # neighborhood plus the complete new set. Restart globally only
+            # when local repair fails and the remaining budget can support it.
+            candidate = repack(trial,result,local_budget,additions)
+            if candidate is result:
+                seconds = min(int(remaining), int(max(0,deadline-time.monotonic())))
+                if seconds < 1:
+                    failed.add(fill['source']['id'])
+                    continue
+                seconds = max(1, seconds // max(1, 3-attempts))
+                remaining -= seconds
+                trial['settings']['seconds'] = seconds
+                candidate = solve(trial)
+            validate_result(trial, candidate)
+        except ValueError:
+            failed.add(fill['source']['id'])
+            continue
+        candidate['usedLength'] = limit
+        candidate['utilization'] = candidate['area'] / (candidate['width'] * limit)
+        candidate['fillSummary'] = [{**s, 'sets':trial_counts[s['id']],
+                                    'pieces':trial_counts[s['id']] * sum(p['perSet'] for p in next(f for f in job['fillJobs'] if f['source']['id']==s['id'])['parts'])}
+                                   for s in result['fillSummary']]
+        candidate['fillLimited'] = True  # Bounded search, not a proof of maximal fill.
+        # Restore the operator's settings; the temporary length cap was a trial constraint.
+        trial['settings'] = copy.deepcopy(job['settings'])
+        validate_result(trial, candidate)
+        validate_identity(trial)
+        resolved, result, counts = trial, candidate, trial_counts
+    result['fillRepackAttempts'] = attempts
+    return resolved, result
 
 def _run(job):
     progress = job.pop('_progress', None)
@@ -193,9 +270,26 @@ def _run(job):
                 sheet['area']=sum(shape.area for p,shape in zip(result['placements'],shapes) if p['sheet']==sheet['index'])
             return {'ok':True,'job':merged,'result':result,'requestJob':job}
         return {'ok':True,'result':result}
-    result = solve(job, progress) if job.get('parts') else {'placements':[], 'usedLength':job['settings']['maxLength'], 'elapsed':0, 'engine':'eznest sticker fill'}
+    budget = int(job['settings']['seconds'])
+    repack_budget = max(1, budget // 3) if job.get('parts') and job.get('fillJobs') and budget >= 3 else 0
+    required = {**job, 'settings':{**job['settings'], 'seconds':budget-repack_budget}}
+    result = solve(required, progress) if job.get('parts') else {'placements':[], 'usedLength':job['settings']['maxLength'], 'elapsed':0, 'engine':'eznest sticker fill'}
     if job.get('fillJobs'):
+        # Continue a productive required-piece search before filling; when it
+        # has plateaued, spend the reserve on complete-set hole repair instead.
+        # A continuation is an independent start with a validated incumbent,
+        # not a claim that the native engine supports warm starts.
+        strategy = 'fill'
+        if repack_budget and job.get('fillArea','gaps') == 'gaps' and result.get('searchGain',0) >= .01:
+            continuation = {**required, 'settings':{**required['settings'], 'seconds':repack_budget,
+                'seed':(int(job['settings'].get('seed',42))+524287) % 2147483648}}
+            result = solve(continuation, progress, incumbent=result)
+            repack_budget = 0
+            strategy = 'required'
         resolved, result = fill_stickers(job, result)
+        if repack_budget:
+            resolved, result = refine_fill(job, resolved, result, repack_budget)
+        result['reserveStrategy'] = strategy
         return {'ok':True, 'job':resolved, 'result':result, 'requestJob':job}
     return {'ok':True, 'result':result}
 

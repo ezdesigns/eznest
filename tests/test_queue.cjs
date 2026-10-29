@@ -55,3 +55,66 @@ console.log('Prepared queue lifecycle, source grouping and physical unit convers
 const fullRoll={...automaticPreset,settings:{...automaticPreset.settings,maxLength:45720,sheetLength:1524}};
 assert.equal(importPresets({...shared,presets:[fullRoll]})[0].settings.maxLength,45720);
 assert.throws(()=>importPresets({...shared,presets:[{...fullRoll,settings:{...fullRoll.settings,maxLength:1000001}}]}),/Invalid/);
+
+// Exercise the real browser event handlers with controlled download/HTTP outcomes.
+// Dispatching a browser download (including cancellation) cannot retire jobs.
+async function testDownloadAcknowledgement(){
+  const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+  const source=fs.readFileSync(path.join(__dirname,'../queue-app.js'),'utf8');
+  const handlers=source.slice(source.indexOf("$('export').onclick=async()=>{"),source.indexOf('async function refreshOutput()'));
+  function harness(options={}){
+    const elements=new Map(),calls=[],events=[],jobs=[entry('a')];
+    const state={id:'a'.repeat(32),job:{productionJobs:[{id:'a',revision:jobs[0].revision}]},manifest:{jobs:[{id:'a',placed:2}],outputCheck:{ready:!options.working}}};
+    const context={current:state,queue:jobs,busy:false,saving:false,autoTimer:null,
+      $:id=>{if(!elements.has(id))elements.set(id,{value:''});return elements.get(id);},
+      clearTimeout(){},setTimeout(){},URL:{createObjectURL:()=> 'blob:example',revokeObjectURL(){}},
+      document:{createElement:()=>({click(){events.push('download');}})},
+      EZNSVG:{serialize:()=>'<svg/>'},artworkSVG(){},mapSVG(){},EZNQueue:require('../queue-core.js'),
+      outputIncomplete:s=>s.manifest.outputCheck.ready===false,
+      renderQueue(){},showResult(s){context.current=s;},remember(){},pathName:p=>p,
+      recordPrepared(s){if(s.deliveryCompleted===true&&!context.outputIncomplete(s))events.push('prepared');},
+      status(message){events.push(message);},
+      async fetch(){if(options.networkFailure)throw Error('Offline');return {ok:true,blob:async()=>({})};},
+      async api(route){
+        calls.push(route);
+        if(route==='/api/release')return {id:state.id,deliveryCompleted:!!options.folder,savedPath:options.folder?'/test/output':null,url:'/batch'};
+        if(route==='/api/state')return state;
+        if(route==='/api/delivery/complete'){
+          if(options.ackFailure)throw Error('Server unavailable');
+          return {ok:true};
+        }
+        throw Error('Unexpected API route');
+      }
+    };
+    vm.createContext(context);vm.runInContext(handlers,context);
+    return {context,jobs,state,calls,events,export:()=>context.$('export').onclick(),confirm:()=>context.$('confirm-download').onclick()};
+  }
+  const pending=harness();await pending.export();
+  assert.ok(pending.events.includes('download'));
+  assert.equal(pending.state.deliveryCompleted,false);
+  assert.equal(pending.jobs[0].selected,true);
+  assert.equal(isPrepared(pending.jobs[0]),false);
+  assert.ok(!pending.calls.includes('/api/delivery/complete'));
+  await pending.export(); // Retry after cancelling the first browser download.
+  assert.equal(isPrepared(pending.jobs[0]),false);
+  const reloaded=harness();Object.assign(reloaded.state,JSON.parse(JSON.stringify(pending.state)));
+  assert.equal(isPrepared(reloaded.jobs[0]),false);
+  await reloaded.confirm();
+  assert.equal(reloaded.state.deliveryCompleted,true);
+  assert.equal(isPrepared(reloaded.jobs[0]),true);
+  await reloaded.confirm();
+  assert.equal(reloaded.calls.filter(p=>p==='/api/delivery/complete').length,1);
+  const failed=harness({networkFailure:true});await failed.export();
+  assert.equal(isPrepared(failed.jobs[0]),false);
+  assert.ok(!failed.calls.includes('/api/delivery/complete'));
+  const ackOptions={ackFailure:true},ack=harness(ackOptions);await ack.export();await ack.confirm();
+  assert.equal(isPrepared(ack.jobs[0]),false);assert.equal(ack.state.deliveryCompleted,false);
+  ackOptions.ackFailure=false;await ack.confirm();assert.equal(isPrepared(ack.jobs[0]),true);
+  const folder=harness({folder:true});await folder.export();
+  assert.equal(isPrepared(folder.jobs[0]),true);assert.ok(!folder.events.includes('download'));
+  const working=harness({working:true});await working.export();await working.confirm();
+  assert.equal(working.state.deliveryCompleted,true);assert.equal(isPrepared(working.jobs[0]),false);
+  const premature=harness();await premature.confirm();assert.equal(premature.calls.length,0);
+  console.log('Browser download retry, pending reload, acknowledgement failure, folder save and working-file lifecycle passed.');
+}
+testDownloadAcknowledgement().catch(error=>{console.error(error);process.exitCode=1;});
