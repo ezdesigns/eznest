@@ -20,7 +20,7 @@ from connector.events import ENVELOPE, KINDS, SCHEMA, build_event, event_id_for,
 from connector.parsing import job_hash
 from connector.plugins import eznest, inventory, onyx_joblog, summa_joblog
 from connector.readfiles import READ_WINDOW, FileContended, complete_lines, open_shared_read, read_bytes
-from connector.store import Store, windows_acl_commands
+from connector.store import Store, protect_path, windows_acl_commands
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / 'connector' / 'fixtures'
@@ -620,6 +620,16 @@ class BoundAndHostTests(TempCase):
         self.assertNotIn('evil.example', calls[1][0])
         self.assertNotIn(b'evil.example', calls[0][2])
 
+    def test_windows_state_rejects_failed_acl_removal(self):
+        target = self.root / 'private-state'
+        results = [Mock(returncode=0), Mock(returncode=0), Mock(returncode=1)]
+        with patch('connector.store.os.name', 'nt'), \
+                patch.dict(os.environ, {'USERNAME': 'ShopUser'}), \
+                patch('connector.store.subprocess.run', side_effect=results) as run:
+            with self.assertRaisesRegex(OSError, 'Could not restrict'):
+                protect_path(target, container=True)
+        self.assertIn('/remove:g', run.call_args.args[0])
+
     def test_salt_is_random_per_install_and_state_is_private(self):
         first = self.store()
         again = Store(first.directory)
@@ -673,7 +683,7 @@ Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' 
         self.assertEqual(flat[1].count('/grant:r'), 1)
         self.assertNotIn('ShopUser', flat[2])
         self.assertIn('/remove:g', flat[2])
-        for sid in ('*S-1-1-0', '*S-1-5-32-545', '*S-1-5-11', '*S-1-5-32-544', '*S-1-5-18'):
+        for sid in ('*S-1-3-4', '*S-1-1-0', '*S-1-5-32-545', '*S-1-5-11', '*S-1-5-32-544', '*S-1-5-18'):
             self.assertIn(sid, flat[2])
         file_grant = ' '.join(windows_acl_commands(first.path, 'ShopUser', container=False)[1])
         self.assertIn('ShopUser:F', file_grant)
