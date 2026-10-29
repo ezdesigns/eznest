@@ -4,6 +4,7 @@ import io
 import json
 import os
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -271,15 +272,19 @@ class FileAccessTests(TempCase):
 
         with patch('os.open', spy):
             with open_shared_read(path) as handle:
+                self.assertFalse(handle.writable())
+                with self.assertRaises(OSError):
+                    handle.write(b'forbidden')
                 with open(path, 'ab') as writer:
                     writer.write(b'more\n')
                 handle.seek(0)
                 data = handle.read()
         self.assertIn(b'more\n', data)
-        flags = seen[0]
-        self.assertEqual(flags & os.O_ACCMODE, os.O_RDONLY)
-        for bit in (os.O_WRONLY, os.O_RDWR, os.O_APPEND, os.O_CREAT, getattr(os, 'O_TRUNC', 0)):
-            self.assertFalse(flags & bit)
+        if os.name != 'nt':  # Windows opens via CreateFileW, not os.open.
+            flags = seen[0]
+            self.assertEqual(flags & os.O_ACCMODE, os.O_RDONLY)
+            for bit in (os.O_WRONLY, os.O_RDWR, os.O_APPEND, os.O_CREAT, getattr(os, 'O_TRUNC', 0)):
+                self.assertFalse(flags & bit)
         access, share, _disposition = readfiles.windows_open_arguments()
         self.assertEqual(access, readfiles.GENERIC_READ)
         self.assertFalse(access & readfiles.GENERIC_WRITE)
@@ -622,8 +627,23 @@ class BoundAndHostTests(TempCase):
         self.assertEqual(len(first.salt()), 32)
         self.assertEqual(first.salt(), again.salt())
         self.assertNotEqual(first.salt(), other.salt())
-        self.assertEqual(first.directory.stat().st_mode & 0o077, 0)
-        self.assertEqual(first.path.stat().st_mode & 0o077, 0)
+        if os.name != 'nt':
+            self.assertEqual(first.directory.stat().st_mode & 0o077, 0)
+            self.assertEqual(first.path.stat().st_mode & 0o077, 0)
+        else:
+            # Windows privacy is an ACL property; stat's POSIX mode is synthetic.
+            for path in (first.directory, first.path):
+                literal = str(path).replace("'", "''")
+                script = (f"$acl = Get-Acl -LiteralPath '{literal}'; "
+                          "$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; "
+                          "@{protected=$acl.AreAccessRulesProtected; current=$sid; "
+                          "allowed=@($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | "
+                          "Where-Object AccessControlType -eq Allow | ForEach-Object {$_.IdentityReference.Value})} | ConvertTo-Json -Compress")
+                result = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
+                                        check=True, capture_output=True, text=True, timeout=15)
+                acl = json.loads(result.stdout)
+                self.assertTrue(acl['protected'])
+                self.assertEqual(set(acl['allowed']), {acl['current']})
         commands = windows_acl_commands(first.directory, 'ShopUser', container=True)
         flat = [' '.join(part) for part in commands]
         self.assertIn('/inheritance:r', flat[0])
