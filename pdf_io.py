@@ -668,12 +668,12 @@ def regmark_operators(width_mm, height_mm, margin_mm):
     return ' '.join(parts) + ' S'
 
 
-def form_from_page(page, writer):
-    form = DecodedStreamObject(); form.set_data(page.get_contents().get_data())
+def form_from_page(page, writer, content=None, resources=None):
+    form = DecodedStreamObject(); form.set_data(page.get_contents().get_data() if content is None else content)
     form.update({NameObject('/Type'):NameObject('/XObject'),NameObject('/Subtype'):NameObject('/Form'),
-                 NameObject('/BBox'):page.cropbox.clone(writer),NameObject('/Resources'):page['/Resources'].clone(writer)})
+                 NameObject('/BBox'):page.cropbox.clone(writer),NameObject('/Resources'):(page['/Resources'] if resources is None else resources).clone(writer)})
     if '/Group' in page: form[NameObject('/Group')]=page['/Group'].clone(writer)
-    return writer._add_object(form)
+    return writer._add_object(form.flate_encode())
 
 
 def sheet_id_operators(width_mm, height_mm, margin_mm, sheet_id):
@@ -692,7 +692,8 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
     from cut_mapping import output_mapping,OPERATIONS
     mapping=output_mapping({'cutMapping':cut_mapping} if cut_mapping else {'cutSpot':cut_spot,'cutLayer':cut_layer})
     writer=PdfWriter();writer.pdf_header='%PDF-1.7'
-    forms={};readers={};output_intents=[]
+    from pdf_export_forms import invocation_bounds, piece_form, clip_bounds
+    forms={};readers={};analyzed={};output_intents=[]
     for ident,(raw,meta) in documents.items():
         reader=PdfReader(io.BytesIO(raw));readers[ident]=reader
         if reader.pdf_header>writer.pdf_header:writer.pdf_header=reader.pdf_header
@@ -702,7 +703,7 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
             if output_intents and output_intents[0]!=profiles:raise ValueError('Source PDFs have different output profiles. Use compatible source PDFs before mixing jobs.')
             if not output_intents:
                 output_intents.append(profiles);writer.root_object[NameObject('/OutputIntents')]=intents.clone(writer)
-        for page_index,page in enumerate(reader.pages):forms[(ident,page_index)]=form_from_page(page,writer)
+        for page_index,page in enumerate(reader.pages):analyzed[(ident,page_index)]=invocation_bounds(page,reader)
     active=[op for op in OPERATIONS if any(c['operation']==op for raw,meta in documents.values() for p in meta['pieces'] for c in p['cutPaths'])]
     settings=job.get('settings') or {}
     draw_marks=settings.get('drawRegmarks') is True
@@ -740,7 +741,7 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
         resources=DictionaryObject({NameObject('/XObject'):DictionaryObject(),NameObject('/ColorSpace'):DictionaryObject(color_spaces),
             NameObject('/Properties'):DictionaryObject(properties),
             NameObject('/ExtGState'):DictionaryObject({NameObject('/EZOverprint'):DictionaryObject({NameObject('/Type'):NameObject('/ExtGState'),NameObject('/OP'):__import__('pypdf').generic.BooleanObject(True)})})})
-        page[NameObject('/Resources')]=resources;chunks=[]
+        page[NameObject('/Resources')]=resources;chunks=[];form_keys={}
         for placement in result['placements']:
             if placement.get('sheet',0)!=sheet['index']:continue
             part=parts[placement['id']];ident=part['documentId'];meta=documents[ident][1]
@@ -748,7 +749,16 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
             x0,y1=piece['anchor'];theta=math.radians(placement['rotation']);c,s=math.cos(theta),math.sin(theta)
             tx=placement['x']/MM-c*x0-s*y1
             ty=(sheet['usedLength']-(placement['y']-sheet['offset']))/MM+s*x0-c*y1
-            key=NameObject('/Art'+str(len(resources['/XObject'])+1));resources['/XObject'][key]=forms[(ident,piece['page'])]
+            form_id=(ident,piece['page'],piece['id'])
+            if form_id not in forms:
+                source_page=readers[ident].pages[piece['page']]
+                clip=clip_bounds(piece['clipCommands'])
+                forms[form_id]=(piece_form(source_page,writer,analyzed[(ident,piece['page'])],clip)
+                                if clip is not None else form_from_page(source_page,writer))
+            if form_id not in form_keys:
+                key=NameObject('/Art'+str(len(resources['/XObject'])+1))
+                form_keys[form_id]=key;resources['/XObject'][key]=forms[form_id]
+            key=form_keys[form_id]
             placement_cm=' '.join(f'{v:.9f}' for v in (c,-s,s,c,tx,ty))
             bleed=bleed_artwork_matrix(cut_bounds(piece), bleed_mm) if piece.get('cutPaths') else None
             if bleed:
@@ -770,7 +780,7 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
             resources[NameObject('/Font')]=DictionaryObject({NameObject('/EZSheetFont'):DictionaryObject({
                 NameObject('/Type'):NameObject('/Font'), NameObject('/Subtype'):NameObject('/Type1'), NameObject('/BaseFont'):NameObject('/Helvetica')})})
             chunks.append(label)
-        stream=DecodedStreamObject();stream.set_data('\n'.join(chunks).encode('ascii'));page[NameObject('/Contents')]=writer._add_object(stream)
+        stream=DecodedStreamObject();stream.set_data('\n'.join(chunks).encode('ascii'));page[NameObject('/Contents')]=writer._add_object(stream.flate_encode())
     writer.add_metadata({'/Creator':'eznest','/Title':'Nested artwork and separate cut operations — review in RIP'})
     out=io.BytesIO();writer.write(out);return out.getvalue()
 
