@@ -630,9 +630,9 @@ class OutputScreenTests(unittest.TestCase):
         from playwright.sync_api import expect, sync_playwright
         helper = test_web_mvp.WebMvpTests(methodName='runTest')
         helper.setUp()
-        shots = Path('/opt/cursor/artifacts/screenshots')
-        shots.mkdir(parents=True, exist_ok=True)
         try:
+            shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
+            shots.mkdir(parents=True, exist_ok=True)
             with patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS': '', 'EZ_NEST_OUTPUT_TOKEN': ''}), sync_playwright() as playwright:
                 browser = test_web_mvp.launch_browser(playwright)
                 try:

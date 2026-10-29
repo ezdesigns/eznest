@@ -309,7 +309,7 @@ class GateTests(unittest.TestCase):
                     expect(page.locator('#output-gate a')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
                     self.assertTrue(page.locator('#output-gate').evaluate("n => n.matches(':modal')"))
                     self.assertEqual(page.locator('#output-gate-code').input_value(), '')
-                    shots = Path('/opt/cursor/artifacts/screenshots')
+                    shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
                     shots.mkdir(parents=True, exist_ok=True)
                     page.screenshot(path=str(shots / 'output-connect-gate.png'))
                 finally:
