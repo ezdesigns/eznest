@@ -637,7 +637,9 @@ class BoundAndHostTests(TempCase):
                 # Windows PowerShell 5.1's ConvertTo-Json drops AreAccessRulesProtected.
                 # The DACL 'P' flag is the protected bit. Allow rules must be only this user's SID.
                 script = """
+$ErrorActionPreference = 'Stop'
 $acl = Get-Acl -LiteralPath '__PATH__'
+[Console]::Error.WriteLine("ACL type: $($acl.GetType().FullName); SDDL: $($acl.Sddl)")
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $protected = $false
 if ([string]$acl.Sddl -match 'D:([A-Z]*)') { $protected = $Matches[1].Contains('P') }
@@ -647,9 +649,10 @@ if ($protected) { $flag = 'true' } else { $flag = 'false' }
 Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' + $list + ']}')
 """.replace('__PATH__', literal)
                 result = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-                                        check=True, capture_output=True, text=True, timeout=15)
+                                        capture_output=True, text=True, timeout=15)
+                self.assertEqual(result.returncode, 0, result.stderr)
                 acl = json.loads(result.stdout.lstrip('\ufeff'))
-                self.assertIs(acl['protected'], True)
+                self.assertIs(acl['protected'], True, result.stderr)
                 self.assertEqual(set(acl['allowed']), {acl['current']})
         commands = windows_acl_commands(first.directory, 'ShopUser', container=True)
         flat = [' '.join(part) for part in commands]
