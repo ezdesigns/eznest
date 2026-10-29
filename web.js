@@ -51,7 +51,7 @@ function savePrefs(patch) {
 // Explain effects beside the controls, without adding instructions to the job flow.
 function installSettingsHelp() {
   const help = {
-    'nesting-effort': ['Nesting effort', 'Quick finds a layout sooner. Best fit spends longer trying arrangements and may use less material. These are search budgets; preparation and checking take extra time. Your artwork, bleed, spacing and allowed turns stay the same. Try tighter fit keeps your best valid result.'],
+    'nesting-effort': ['Search time', 'Quick finds a layout sooner. Best fit spends longer trying arrangements and may use less material. These are search budgets; preparation and checking take extra time. Your artwork, bleed, spacing and allowed turns stay the same. Try tighter fit keeps your best valid result.'],
     'cut-preset': ['Cut naming preset', 'Choose the names your print software recognizes. This changes exported cut names; it does not create missing cut lines.'],
     'thru-name': ['Through-cut name', 'The name your print software uses for a full cut. It must match your cutter setup. Changing this name does not set the blade depth.'],
     'kiss-name': ['Kiss-cut name', 'The name your print software uses to cut the sticker and leave the backing. It must match your cutter setup.'],
@@ -127,7 +127,9 @@ function installSettingsHelp() {
     input.setAttribute('aria-label', name);
     // The effort heading itself explains the select; avoid repeating its title.
     if (id === 'nesting-effort') {
-      bindHelp($('effort-help'), message);
+      const helpButton = $('effort-help');
+      if (!helpButton) continue;
+      bindHelp(helpButton, message);
       original.classList.add('effort-field');
       for (const node of [...original.childNodes]) if (node.nodeType === Node.TEXT_NODE) node.textContent = '';
       continue;
@@ -170,10 +172,7 @@ function fetchJson(path, ms) {
     clearTimeout(timer);
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      if (body.code === 'connect_required') {
-        location.reload();
-        throw Error(body.error || 'Connect to OUTPUT.');
-      }
+      if (body.code === 'connect_required') throw Error(body.error || 'Connect to OUTPUT before sending.');
       throw Error('Request failed.');
     }
     return response.json();
@@ -253,9 +252,6 @@ async function api(path, data, file) {
   });
   const body = await response.json();
   if (!response.ok) {
-    if (body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/')) {
-      location.reload();
-    }
     const error = Error(body.error || 'Request failed.');
     error.code = body.code;
     if (path === '/api/document/import' || path === '/api/document/import-file') {
@@ -598,6 +594,7 @@ function clearReadout() {
   $('length').classList.remove('over');
   $('readout').classList.add('pending');
   $('checks').textContent = '';
+  if ($('nest-use')) { $('nest-use').textContent = ''; $('nest-use').hidden = true; }
 }
 
 function setSentence(text, problem) {
@@ -629,22 +626,35 @@ function showSheetId(state) {
   node.hidden = !id;
 }
 
+function selectView(name) {
+  if (!['stock', 'nest'].includes(name)) return;
+  document.body.dataset.view = name;
+  $('view-stock').hidden = name !== 'stock';
+  $('view-nest').hidden = name !== 'nest';
+  for (const id of ['stock', 'nest']) {
+    const tab = $('tab-' + id);
+    if (tab) tab.setAttribute('aria-selected', String(id === name));
+  }
+}
+
 function showScreen(name) {
   document.body.dataset.step = name;
+  if (name !== 'drop') selectView('nest');
   const idle = name === 'drop';
   const configuring = name === 'configure';
   const empty = idle || configuring || (!current?.result && name === 'blocked');
   const confirming = name === 'confirm';
   $('drop-screen').hidden = !empty;
   $('upload-title').textContent = kits.length ? 'Files ready to nest' : 'Upload your print here';
-  $('upload-hint').textContent = kits.length ? 'Choose material and effort, then Nest. Click here to add files.' : 'Click to choose files or drop them here';
-  $('job-empty').hidden = kits.length > 0;
+  $('upload-hint').textContent = kits.length ? 'Choose a material, then Nest. Click here to add files.' : 'Click to choose files or drop them here';
+  $('job-empty').hidden = true;
   $('sheet-frame').hidden = empty;
   $('preview-tools').hidden = empty;
   $('legend').hidden = empty;
   $('piece-review').hidden = empty || name === 'nest' || !current?.result;
   $('nest-savings').hidden = empty || name === 'nest' || !(EZNResults.comparison(current)?.savedFt >= .005);
   $('readout').hidden = empty;
+  if ($('nest-use')) $('nest-use').hidden = empty || !$('nest-use').textContent;
   $('export').hidden = empty || confirming || name === 'nest';
   $('start-nesting').hidden = !!current?.result || !['drop', 'configure', 'blocked'].includes(name);
   if (empty) $('sheet-tabs').hidden = true;
@@ -676,6 +686,7 @@ function syncFiles() {
   $('files').hidden = !show;
   $('copies-summary').textContent = kits.some(entry => entry.sets !== 1) ? kits.map(entry => entry.sets + '×').join(', ') : '';
   $('start-nesting').disabled = busy || importing || saving || !!presetEditor || !kits.length || !!inputIssue();
+  $('start-nesting').textContent = kits.length ? 'Nest' : 'Add a print file to start';
   $('add-files').hidden = !show || !!illustratorHandoff || document.body.dataset.step === 'nest';
   $('stop').hidden = document.body.dataset.step !== 'nest';
   $('improve').hidden = document.body.dataset.step !== 'check' || busy || !current || current.released;
@@ -1181,6 +1192,16 @@ function renderPreview(index) {
   for (const [tabIndex, button] of [...$('sheet-tabs').children].entries()) button.setAttribute('aria-pressed', String(tabIndex === index));
 }
 
+function nestUseSentence(state) {
+  if (!state?.result || !Number.isFinite(state.result.usedLength)) return '';
+  const used = (state.result.usedLength / 304.8).toFixed(2);
+  const id = state.job?.inventoryMaterialId || $('material').value;
+  const material = shopInventory.materials.find(item => item.id === id);
+  if (!material || material.availableMm == null) return `uses ${used} ft.`;
+  const left = Math.max(0, (material.availableMm - state.result.usedLength) / 304.8).toFixed(2);
+  return `uses ${used} ft, ${left} ft left.`;
+}
+
 function showMetrics(state) {
   const result = state.result;
   const parts = new Map(state.job.parts.map(part => [part.id, part]));
@@ -1204,6 +1225,11 @@ function showMetrics(state) {
   $('readout').classList.remove('pending');
   showWidth();
   $('length').classList.toggle('over', lengthOver(state));
+  const useLine = $('nest-use');
+  if (useLine) {
+    useLine.textContent = nestUseSentence(state);
+    useLine.hidden = !useLine.textContent;
+  }
   const tabs = $('sheet-tabs');
   tabs.replaceChildren();
   tabs.hidden = sheets.length < 2;
@@ -1395,7 +1421,7 @@ async function improve() {
     busy = true;
     showScreen('nest');
     status('Trying a better fit…');
-    await api('/api/improve', {id: current.id, seconds: Number($('nesting-effort').value)});
+    await api('/api/improve', {id: current.id, seconds: 90});
     setTimeout(poll, 300);
   } catch (error) {
     busy = false;
@@ -1702,8 +1728,11 @@ function renderMaterialButtons() {
   const selected = $('material').value;
   $('material').disabled = !!illustratorHandoff || !!presetEditor || busy || saving || document.body.dataset.step === 'confirm';
   for (const option of $('material').options) {
+    if (!option.value || option.value === 'custom') continue;
     const stock = lowStock(materialProfiles[option.value]);
-    option.textContent = (option.dataset.name || option.textContent.split(' · ')[0]) + (stock ? ' · ' + stock.split(' · ')[0] : '');
+    const shared = shopInventory.materials.find(item => item.id === option.value);
+    const left = shared ? ' · ' + stockFeet(shared.availableMm) + ' left' : '';
+    option.textContent = (option.dataset.name || option.textContent.split(' · ')[0]) + left + (stock ? ' · ' + stock.split(' · ')[0] : '');
   }
   const prompt = [...$('material').options].find(option => option.value === '');
   const saved = [...$('material').options].filter(option => option.value && option.value !== 'custom');
@@ -1729,7 +1758,7 @@ function renderMaterialButtons() {
   }
   const remaining = $('available-length').value.trim();
   const shared = shopInventory.materials.find(item => item.id === selected);
-  $('material-summary').textContent = shared ? `${stockFeet(shared.availableMm)} available · ${stockFeet(shared.reservedMm)} reserved` : remaining && !stock ? `${Number(remaining)} ${$('unit').value} available · this browser only` : '';
+  $('material-summary').textContent = shared ? `${stockFeet(shared.availableMm)} left · ${stockFeet(shared.reservedMm)} reserved` : remaining && !stock ? `${Number(remaining)} ${$('unit').value} left · this browser only` : '';
 }
 
 function lowStock(values) {
@@ -2002,8 +2031,8 @@ function showOutputService(shop) {
   const note = $('output-url-note');
   if (note) {
     note.textContent = locked
-      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Activity sharing stays off until you agree. The account connection is required.'
-      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree. The account connection is required.';
+      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Activity sharing stays off until you agree in the status chip.'
+      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree in the status chip.';
   }
 }
 
@@ -2473,6 +2502,7 @@ function restoreJob(state) {
 }
 
 let outputSharing = null;
+let outputConnection = null;
 let reconnectOpen = false;
 let lastCheckInText = '';
 function renderOutputSharing(info) {
@@ -2483,22 +2513,40 @@ function renderOutputSharing(info) {
   const connected = paired || launch;
   $('output-connect-shop').hidden = !paired;
   $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
-  $('output-pair-form').hidden = ((paired && !reconnectOpen) || launch || source === 'disabled');
   $('output-disconnect').hidden = !paired;
   $('output-reconnect').hidden = !paired || info.paused;
   $('output-check-now').hidden = !connected || info.paused;
-  $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
   $('output-disconnect').disabled = !paired || info.paused;
   const connectStatus = $('output-connect-status');
   connectStatus.classList.remove('error');
   if (info.paused) connectStatus.textContent = 'Sharing is paused during installation or recovery.';
-  else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.';
+  else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A code is not used while those settings are present.';
   else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
-  else if (paired && reconnectOpen) connectStatus.textContent = 'Paste a new pairing code. This computer stays connected until that code is accepted.';
-  else if (paired) connectStatus.textContent = [lastCheckInText || 'Choose Check now to confirm the last check-in.', info.requiresConsent ? 'Review the sharing details below, then choose Enable sharing.' : ''].filter(Boolean).join(' ');
-  else connectStatus.textContent = 'This computer is not connected. Paste a pairing code from OUTPUT.';
-  $('telemetry-agree').checked = false;
+  else if (paired && reconnectOpen) connectStatus.textContent = 'Paste a new code. This computer stays connected until that code is accepted.';
+  else if (paired) connectStatus.textContent = [lastCheckInText || 'Choose Check now to confirm the last check-in.', info.requiresConsent ? 'Review what is shared, then choose Connect.' : ''].filter(Boolean).join(' ');
+  else connectStatus.textContent = 'Nesting and stock stay on this computer. Paste a code if you want check-ins and activity sharing.';
+  const canPair = !outputConnection || outputConnection.canPair !== false;
+  const launchLocked = launch || source === 'disabled';
+  $('output-pair-form').hidden = !canPair || ((paired && !reconnectOpen) || launchLocked);
+  const lan = $('output-gate-lan');
+  if (lan) {
+    lan.hidden = canPair || launchLocked;
+    if (!lan.hidden) lan.textContent = (outputConnection && outputConnection.message) || 'Ask the shop computer to connect to OUTPUT.';
+  }
+  const agreed = $('telemetry-agree').checked && !info.enabled;
+  $('telemetry-agree').checked = agreed;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
+  const shareOn = info.enabled && !reconnectOpen;
+  const shareButton = $('output-pair');
+  if (shareOn) {
+    shareButton.textContent = 'Sharing is on · Turn off';
+    shareButton.disabled = !!info.paused;
+  } else {
+    shareButton.textContent = 'Connect';
+    const codeVisible = !$('output-pair-form').hidden;
+    shareButton.disabled = !!info.paused || (!codeVisible && (!connected || !agreed));
+  }
+  renderConnectionChip();
   $('telemetry-enable').disabled = true;
   $('telemetry-stop').disabled = !info.enabled || info.paused;
   $('telemetry-kinds').textContent = info.eventTypes.join(', ');
@@ -2521,8 +2569,10 @@ async function refreshOutputSharing() {
 async function runOutputCheckIn(reportError) {
   try {
     const body = await api('/api/telemetry/output/check-in', {});
+    if (body && typeof body === 'object' && 'ok' in body) outputConnection = body;
     if (body && body.ok === false) lastCheckInText = body.message || 'Check-in did not succeed.';
     else lastCheckInText = 'Last check-in just now.';
+    renderConnectionChip();
     return body;
   } catch (error) {
     if (reportError || !lastCheckInText) {
@@ -2538,7 +2588,7 @@ async function connectOutput() {
   const status = $('output-connect-status');
   const code = input.value.trim();
   if (!code) {
-    status.textContent = 'Paste the pairing code from OUTPUT.';
+    status.textContent = 'Paste the code from OUTPUT.';
     status.classList.add('error');
     return;
   }
@@ -2569,7 +2619,7 @@ async function connectOutput() {
   }
 }
 async function disconnectOutput() {
-  if (!window.confirm('Disconnect this computer from OUTPUT? Ez Nest stops until this computer connects again.')) return;
+  if (!window.confirm('Disconnect this computer from OUTPUT? Nesting and stock stay on this computer. Check-ins and activity sharing stop.')) return;
   $('output-disconnect').disabled = true;
   try {
     await api('/api/telemetry/output/disconnect', {});
@@ -2620,13 +2670,9 @@ async function boot() {
   let session = await fetchJsonRetry('/api/session');
   token = session.token || '';
   localSave = session.localSave === true;
+  outputConnection = session.outputConnection || null;
   showOutputBanner(session);
-  if (session.outputConnection && !session.outputConnection.ok) {
-    await requireOutputConnection(session);
-    session = await fetchJsonRetry('/api/session');
-    token = session.token || '';
-    showOutputBanner(session);
-  }
+  renderConnectionChip();
   if (session.localPC && session.pinWeak) {
     await requireHostPinReset();
     session = await fetchJsonRetry('/api/session');
@@ -2666,9 +2712,12 @@ async function boot() {
       $('illustrator-load').disabled = true;
     }
   }
+  await refreshOutputSharing().catch(() => {});
+  renderConnectionChip();
   document.body.dataset.ready = '1';
   await autoLoadIllustrator();
   setInterval(() => { if (!document.hidden && !inventoryBusy) refreshInventory().catch(() => {}); }, 10000);
+  setInterval(() => { if (!document.hidden) refreshOutputSharing().catch(() => {}); }, 2000);
 }
 
 function showOutputBanner(session) {
@@ -2679,97 +2728,163 @@ function showOutputBanner(session) {
   banner.textContent = text || '';
 }
 
-function requireOutputConnection(session) {
-  const gate = $('output-gate');
-  const info = session.outputConnection || {};
-  const fields = $('output-gate-fields');
-  const lan = $('output-gate-lan');
-  const error = $('output-gate-error');
-  const check = $('output-gate-check');
-  gate.addEventListener('cancel', event => event.preventDefault());
-  error.hidden = true;
-  $('output-gate-note').textContent = info.message || 'Connect this computer to OUTPUT.';
-  if (!session.localPC) {
-    fields.hidden = true;
-    check.hidden = true;
-    lan.hidden = false;
-    lan.textContent = info.message || 'Ask the shop computer to connect to OUTPUT.';
-    gate.showModal();
-    return new Promise(() => {});
-  }
-  lan.hidden = true;
-  fields.hidden = info.canPair === false;
-  check.hidden = !info.canCheckIn;
-  gate.showModal();
-  const input = $('output-gate-code');
-  if (!fields.hidden) input.focus();
-  return new Promise(resolve => {
-    const finish = async () => {
-      input.value = '';
-      const next = await fetchJsonRetry('/api/session');
-      if (next.outputConnection && next.outputConnection.ok) {
-        gate.close();
-        resolve();
-      }
-    };
-    $('output-gate-form').onsubmit = async event => {
-      event.preventDefault();
-      const code = input.value.trim();
-      if (!code) {
-        error.hidden = false;
-        error.textContent = 'Paste the pairing code from OUTPUT.';
-        return;
-      }
-      $('output-gate-submit').disabled = true;
-      try {
-        const response = await fetch('/api/telemetry/output/pair', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-EZ-Token': token},
-          body: JSON.stringify({code})
-        });
-        const body = await response.json();
-        if (!response.ok) throw Error(body.error || 'Could not connect to OUTPUT.');
-        input.value = '';
-        const success = $('output-gate-success');
-        success.textContent = body.shopName ? 'Connected to ' + body.shopName + '.' : 'Connected to OUTPUT';
-        success.hidden = false;
-        fields.hidden = true;
-        lastCheckInText = 'Last check-in just now.';
-        const checkin = $('output-gate-checkin');
-        checkin.hidden = false;
-        checkin.textContent = lastCheckInText;
-        runOutputCheckIn().then(() => { if (checkin.isConnected) checkin.textContent = lastCheckInText; });
-        await new Promise(resolveDelay => setTimeout(resolveDelay, 1200));
-        await finish();
-        if (gate.open) {
-          success.hidden = true;
-          fields.hidden = false;
-        }
-        $('output-gate-submit').disabled = false;
-      } catch (err) {
-        input.value = '';
-        error.hidden = false;
-        error.textContent = err.message;
-        $('output-gate-submit').disabled = false;
-      }
-    };
-    check.onclick = async () => {
-      check.disabled = true;
-      try {
-        const body = await api('/api/telemetry/output/check-in', {});
-        if (body.ok) await finish();
-        else {
-          error.hidden = false;
-          error.textContent = body.message || 'OUTPUT could not be reached.';
-          check.disabled = false;
-        }
-      } catch (err) {
-        error.hidden = false;
-        error.textContent = err.message;
-        check.disabled = false;
-      }
-    };
+function renderConnectionChip() {
+  const chip = $('connect-chip');
+  if (!chip) return;
+  const state = outputConnection && outputConnection.state || '';
+  const source = outputSharing && outputSharing.connection || '';
+  const failed = ['reconnect', 'revoked', 'disconnected', 'unchecked'].includes(state);
+  const linked = source === 'paired' || source === 'environment' || source === 'environment-invalid';
+  const kind = linked && !failed ? 'on' : 'off';
+  chip.textContent = kind === 'on' ? 'Connected' : 'Not connected';
+  chip.dataset.state = kind;
+  const recent = $('recent-output');
+  if (recent) recent.hidden = kind !== 'on';
+}
+
+function setConnectPopover(open) {
+  const pop = $('connect-popover');
+  const chip = $('connect-chip');
+  if (!pop || !chip) return;
+  pop.hidden = !open;
+  chip.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) refreshOutputSharing().catch(() => {});
+}
+
+function rollLengthLabel(mm) {
+  return stockFeet(mm);
+}
+
+function renderShopLists() {
+  renderStock();
+  renderRecent();
+}
+
+function renderStock() {
+  const list = $('stock-list');
+  const empty = $('stock-empty');
+  const more = $('add-roll-more');
+  if (!list || !empty) return;
+  const rolls = [...(shopInventory.materials || [])].sort((a, b) => {
+    const lowA = lowStock(materialProfiles[a.id] || a.profile) ? 0 : 1;
+    const lowB = lowStock(materialProfiles[b.id] || b.profile) ? 0 : 1;
+    if (lowA !== lowB) return lowA - lowB;
+    return String(a.profile['preset-name'] || '').localeCompare(String(b.profile['preset-name'] || ''));
   });
+  empty.hidden = rolls.length > 0;
+  if (more) more.hidden = !rolls.length;
+  list.replaceChildren();
+  for (const item of rolls) {
+    const values = materialProfiles[item.id] || item.profile;
+    const row = document.createElement('article');
+    row.className = 'stock-row';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'stock-main';
+    const name = document.createElement('span');
+    name.className = 'stock-name';
+    name.textContent = item.profile['preset-name'] || 'Roll';
+    const warn = lowStock(values);
+    if (warn) {
+      const mark = document.createElement('span');
+      mark.className = 'low-mark';
+      const dot = document.createElement('i');
+      mark.append(dot, document.createTextNode('Low'));
+      name.append(mark);
+    }
+    const width = document.createElement('span');
+    width.className = 'stock-width';
+    width.textContent = (item.profile.width || '–') + ' ' + (item.profile.unit || '');
+    const left = document.createElement('span');
+    left.className = 'stock-left';
+    const leftLabel = document.createElement('span');
+    leftLabel.className = 'label';
+    leftLabel.textContent = 'Left';
+    const leftValue = document.createElement('strong');
+    leftValue.textContent = rollLengthLabel(item.availableMm);
+    left.append(leftLabel, leftValue);
+    open.append(name, width, left);
+    if (item.reservedMm > 0.05) {
+      const held = document.createElement('span');
+      held.className = 'stock-held';
+      held.textContent = 'Reserved ' + rollLengthLabel(item.reservedMm);
+      open.append(held);
+    }
+    open.addEventListener('click', () => openPreset(item.id));
+    const count = document.createElement('button');
+    count.type = 'button';
+    count.className = 'link';
+    count.textContent = 'Update count';
+    const form = document.createElement('form');
+    form.className = 'count-form';
+    form.hidden = true;
+    const label = document.createElement('label');
+    label.textContent = 'Length left';
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = 'any';
+    input.value = item.onHandMm == null ? '' : stockInput(item.onHandMm, item.profile.unit);
+    const unit = document.createElement('span');
+    unit.textContent = item.profile.unit || '';
+    label.append(input, unit);
+    const save = document.createElement('button');
+    save.type = 'submit';
+    save.className = 'primary';
+    save.textContent = 'Save';
+    const note = document.createElement('p');
+    note.className = 'lan-note';
+    note.hidden = true;
+    form.append(label, save, note);
+    count.addEventListener('click', () => { form.hidden = false; input.focus(); });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      save.disabled = true;
+      note.hidden = true;
+      try {
+        const profile = {...item.profile, 'available-length': input.value.trim()};
+        const updated = await api('/api/materials/save', {id: item.id, profile, revision: item.revision});
+        acceptInventory(updated);
+      } catch (error) {
+        note.hidden = false;
+        note.textContent = error.message;
+        save.disabled = false;
+      }
+    });
+    row.append(open, count, form);
+    list.append(row);
+  }
+}
+
+function renderRecent() {
+  const section = $('recent');
+  const list = $('recent-list');
+  if (!section || !list) return;
+  const names = Object.fromEntries((shopInventory.materials || []).map(item => [item.id, item.profile['preset-name'] || 'Roll']));
+  const words = {reserved: 'Reserved', sent: 'Sent', used: 'Printed', cancelled: 'Released'};
+  const rows = [...(shopInventory.reservations || [])].sort((a, b) => String(b.updated || b.created || '').localeCompare(String(a.updated || a.created || ''))).slice(0, 5);
+  section.hidden = rows.length === 0;
+  list.replaceChildren();
+  for (const row of rows) {
+    const line = document.createElement('div');
+    line.className = 'recent-line';
+    const text = document.createElement('span');
+    text.textContent = `${names[row.material] || 'Roll'} · ${stockFeet(row.length)} · ${words[row.status] || 'Reserved'}`;
+    line.append(text);
+    if (row.status === 'reserved' || row.status === 'sent') {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'link';
+      button.textContent = 'Confirm printed';
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        try { acceptInventory(await api('/api/materials/transition', {id: row.id, action: 'use'})); }
+        catch (error) { status(error.message, true); renderRecent(); }
+      });
+      line.append(button);
+    }
+    list.append(line);
+  }
 }
 
 function requireHostPinReset() {
@@ -2935,6 +3050,7 @@ function acceptInventory(data) {
   }
   renderMaterialButtons();
   renderInventory();
+  renderShopLists();
 }
 
 async function refreshInventory() {
@@ -3161,7 +3277,7 @@ function closeSettingsFolds() {
 }
 
 function syncWelcome() {
-  $('feedback-welcome').hidden = !!prefs().feedbackWelcomed || kits.length > 0 || !!current;
+  $('feedback-welcome').hidden = true;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -3181,10 +3297,31 @@ document.addEventListener('DOMContentLoaded', () => {
     $('hot-folder').focus();
   });
   $('settings-close').addEventListener('click', () => $('settings').close());
+  for (const name of ['stock', 'nest']) {
+    $('tab-' + name).addEventListener('click', () => selectView(name));
+  }
+  const openRoll = () => openPreset('custom');
+  $('add-roll').addEventListener('click', openRoll);
+  $('add-roll-more').addEventListener('click', openRoll);
+  $('connect-chip').addEventListener('click', () => setConnectPopover($('connect-popover').hidden));
+  document.addEventListener('click', event => {
+    const wrap = document.querySelector('.connect-chip-wrap');
+    if (wrap && !wrap.contains(event.target)) setConnectPopover(false);
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && $('connect-popover') && !$('connect-popover').hidden) setConnectPopover(false);
+  });
   $('settings-telemetry').addEventListener('toggle', () => { if ($('settings-telemetry').open) refreshOutputSharing(); });
   $('telemetry-refresh').addEventListener('click', refreshOutputSharing);
-  $('telemetry-agree').addEventListener('change', () => { $('telemetry-enable').disabled = !outputSharing || !outputSharing.configured || outputSharing.enabled || outputSharing.paused || !$('telemetry-agree').checked; });
-  $('output-pair').addEventListener('click', connectOutput);
+  $('telemetry-agree').addEventListener('change', () => {
+    $('telemetry-enable').disabled = !outputSharing || !outputSharing.configured || outputSharing.enabled || outputSharing.paused || !$('telemetry-agree').checked;
+    if (outputSharing && !outputSharing.enabled && $('output-pair-form').hidden) $('output-pair').disabled = outputSharing.paused || !$('telemetry-agree').checked;
+  });
+  $('output-pair').addEventListener('click', () => {
+    if (outputSharing && outputSharing.enabled && !reconnectOpen) changeOutputSharing(false);
+    else if (!$('output-pair-form').hidden) connectOutput();
+    else changeOutputSharing(true);
+  });
   $('output-disconnect').addEventListener('click', disconnectOutput);
   $('output-check-now').addEventListener('click', async () => {
     $('output-check-now').disabled = true;
@@ -3445,10 +3582,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dismissWelcome = () => { $('feedback-welcome').hidden = true; savePrefs({feedbackWelcomed: true}); };
   syncWelcome();
   $('feedback-dismiss').addEventListener('click', dismissWelcome);
-  $('in-house').addEventListener('click', () => {
-    selectOutputMode('in-house');
-    $('nesting-effort').focus();
-  });
+  $('in-house').addEventListener('click', () => selectOutputMode('in-house'));
   $('start-nesting').addEventListener('click', () => { dismissWelcome(); nest(); });
   $('feedback-open').addEventListener('click', () => {
     dismissWelcome();

@@ -1,11 +1,12 @@
-"""Require a shop host to be connected to OUTPUT.
+"""Decide when this computer may send data to OUTPUT.
 
-Nesting, sending, and stock stay closed until this computer has a shop
-credential and a current check-in. After a successful pairing or check-in,
-an unreachable OUTPUT does not stop the shop until CHECK_IN_MAX_AGE_DAYS
-have passed. A banner appears after OFFLINE_BANNER_AFTER_DAYS. The check-in
-body is only the app version. The computer name and installation id are sent
-once, by pairing.
+Nesting and stock stay on this computer when it is not paired. Check-in,
+activity delivery, and capacity sharing stay closed until there is a shop
+credential and a current check-in. Activity is still sent only after on-screen
+consent. After a successful pairing or check-in, an unreachable OUTPUT does
+not stop local work until CHECK_IN_MAX_AGE_DAYS have passed. A banner appears
+after OFFLINE_BANNER_AFTER_DAYS. The check-in body is only the app version.
+The computer name and installation id are sent once, by pairing.
 
 The check-in record is signed with a key derived from the shop credential.
 A record from the previous build has no signature. If it is otherwise
@@ -42,13 +43,13 @@ REVOCATION_NAME = 'output-revocations.json'
 RELEASE_MARKER = '.eznest-release'
 DEV_BANNER = 'DEV MODE: not connected to OUTPUT'
 
-HOST_UNPAIRED = 'Connect this computer to OUTPUT before nesting, sending, or changing stock.'
-HOST_DISCONNECTED = 'This computer is disconnected from OUTPUT. Connect again to nest, send, or change stock.'
+HOST_UNPAIRED = 'Connect this computer to OUTPUT before sending a check-in, activity, or capacity.'
+HOST_DISCONNECTED = 'This computer is disconnected from OUTPUT. Connect again before sending a check-in, activity, or capacity.'
 HOST_REVOKED = 'OUTPUT says this computer is no longer connected. Paste a new pairing code.'
 HOST_RECONNECT = (
     f'Reconnect this computer to OUTPUT. The last successful check-in was more than {CHECK_IN_MAX_AGE_DAYS} days ago.'
 )
-HOST_CHECKIN = 'This computer needs a current OUTPUT check-in before nesting, sending, or changing stock.'
+HOST_CHECKIN = 'This computer needs a current OUTPUT check-in before sending a check-in, activity, or capacity.'
 HOST_UPLOADS_OFF = (
     'This run has OUTPUT delivery turned off. Start Ez Nest without that setting, then connect with a pairing code.'
 )

@@ -7,9 +7,11 @@
   from the previous build is signed on the first load. A revoked credential
   stays in that signed record. Connector event ids use this install's salt.
   The container image is an installed build.
-- The shop computer must connect to OUTPUT before nesting, sending, or stock
-  changes. The first run is a Connect screen. Designer PCs are told to ask
-  the shop computer. A paired host keeps working for 14 days when OUTPUT is
+- Nesting and stock work when this computer is not paired. The status chip
+  shows Not connected, Connected to the shop, or Reconnect. Check-ins, activity
+  sharing, and capacity sharing stay closed until the host is paired, and
+  activity is still sent only after consent. Designer PCs are told to ask the
+  shop computer. A paired host keeps working for 14 days when OUTPUT is
   unreachable, with a banner after 3 days. Activity sharing stays opt-in.
   `EZ_NEST_DEV_NO_OUTPUT=1` applies only to a source checkout in dev mode.
 - Public preparation: internal agent notes, the tester kit, and the shop-specific

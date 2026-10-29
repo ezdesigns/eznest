@@ -84,7 +84,7 @@ A request is accepted only when the Host header is this computer's own name or o
 
 ### OUTPUT connection
 
-The shop computer must be paired with OUTPUT before nesting, sending, or stock changes. The API returns `connect_required` until then. Pairing, disconnect, and check-in are host-only. The address allowlist is unchanged: `https://output.jeezlabs.io`, or the exact origin in `EZ_NEST_OUTPUT_URL`.
+Nesting and stock stay on this computer when it is not paired. Check-in, activity delivery, and capacity sharing return `connect_required` until the host is paired and the check-in is current. Activity is still sent only after on-screen consent. Pairing, disconnect, and check-in are host-only. The address allowlist is unchanged: `https://output.jeezlabs.io`, or the exact origin in `EZ_NEST_OUTPUT_URL`.
 
 The pairing code and the shop credential are not logged, not put in source, and not returned to the browser. Check-in sends the app version only. The computer name and installation id go out once, at pairing. Customer artwork, filenames, and stock contents are not part of either request.
 

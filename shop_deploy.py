@@ -35,7 +35,7 @@ RELEASE_API = f'https://api.github.com/repos/{DEFAULT_REPO}/releases?per_page=20
 WARNING = 'Shop computers need the shop PIN before they can nest or send. Anyone on the shop LAN can Send to ONYX after that PIN. Do not share this network with guest WiFi.'
 OUTPUT_NOTE = (
     'Off. Sharing capacity and availability with the OUTPUT network is a separate opt-in. '
-    'It does not send that information. Connecting this computer to OUTPUT is required and is not this switch.'
+    'It does not send that information. It is not the account connection.'
 )
 MAX_RELEASE_BYTES = 300_000_000
 MAC_UPDATE_NOTE = 'Automatic updates are unavailable on macOS. Install an approved Mac build manually; the current app stays running.'
