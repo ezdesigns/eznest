@@ -5,8 +5,9 @@ responses, or the telemetry database. On Windows the file is a DPAPI blob
 for the Windows user that saved it, not for the whole machine. Pair while
 the eznest service is running so that user is eznest-svc. A different
 interactive user cannot decrypt that blob. The file ACL allows SYSTEM,
-Administrators, eznest-svc, and the user who wrote the file. On other
-systems the file mode is 0600. Callers must not log the return value.
+Administrators, and the user who wrote the file, plus eznest-svc when
+Windows can map that account. On other systems the file mode is 0600.
+Callers must not log the return value.
 """
 import json
 import os
@@ -94,27 +95,114 @@ def _dpapi(data, *, protect):
         kernel32.LocalFree(outgoing.pbData)
 
 
+_SERVICE_ACCOUNT = 'eznest-svc'
+_PROTECT_ERROR = 'Could not protect the saved OUTPUT credential on this computer.'
+_UNMAPPED_ACCOUNT = 1332
+_SYSTEM_GRANT = '*S-1-5-18:(M)'
+_ADMINISTRATORS_GRANT = '*S-1-5-32-544:(M)'
+
+
 def _account_grant(name):
     if not isinstance(name, str) or not name or len(name) > 64:
         return None
-    if any(ch in name for ch in '*?"<>|:\r\n'):
+    if any(ch in name for ch in '*?"<>|:\r\n\x00'):
         return None
     return name + ':(M)'
 
 
+def _use_windows_acl():
+    return os.name == 'nt'
+
+
+def _account_exists(name):
+    """True or False when Windows can decide, else None.
+
+    LookupAccountNameW is used so the account name is not passed to a shell.
+    None means the caller should try the grant and drop it if the name does
+    not map.
+    """
+    if os.name != 'nt' or _account_grant(name) is None or '\x00' in name:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        library = ctypes.WinDLL('advapi32', use_last_error=True)
+        lookup = library.LookupAccountNameW
+        lookup.argtypes = (
+            wintypes.LPCWSTR,
+            wintypes.LPCWSTR,
+            ctypes.c_void_p,
+            ctypes.POINTER(wintypes.DWORD),
+            wintypes.LPWSTR,
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.POINTER(wintypes.DWORD),
+        )
+        lookup.restype = wintypes.BOOL
+        sid_size = wintypes.DWORD(0)
+        domain_size = wintypes.DWORD(0)
+        use = wintypes.DWORD()
+        ctypes.set_last_error(0)
+        lookup(None, name, None, ctypes.byref(sid_size), None, ctypes.byref(domain_size), ctypes.byref(use))
+        error = ctypes.get_last_error()
+        insufficient = 122
+        if error == _UNMAPPED_ACCOUNT:
+            return False
+        if error != insufficient or not 0 < sid_size.value <= 256 or domain_size.value > 1024:
+            return None
+        sid = ctypes.create_string_buffer(sid_size.value)
+        domain = ctypes.create_unicode_buffer(max(domain_size.value, 1))
+        sid_size = wintypes.DWORD(len(sid))
+        domain_size = wintypes.DWORD(len(domain))
+        ctypes.set_last_error(0)
+        if lookup(None, name, sid, ctypes.byref(sid_size), domain, ctypes.byref(domain_size), ctypes.byref(use)):
+            return True
+        if ctypes.get_last_error() == _UNMAPPED_ACCOUNT:
+            return False
+    except (AttributeError, OSError, ImportError, TypeError, ValueError):
+        return None
+    return None
+
+
+def _icacls(args):
+    return subprocess.run(args, capture_output=True)
+
+
+def _unmapped_account(result):
+    if getattr(result, 'returncode', None) == _UNMAPPED_ACCOUNT:
+        return True
+    text = []
+    for stream in (getattr(result, 'stdout', None), getattr(result, 'stderr', None)):
+        if isinstance(stream, bytes):
+            text.append(stream.decode('utf-8', 'replace'))
+        elif isinstance(stream, str):
+            text.append(stream)
+    return 'No mapping' in ''.join(text)
+
+
 def _restrict_windows(target):
-    # SYSTEM and Administrators can recover the file. eznest-svc is the shop
-    # service. The current user is included because user-scoped DPAPI only
-    # decrypts for the account that protected the blob.
-    grants = ['*S-1-5-18:(M)', '*S-1-5-32-544:(M)']
-    for name in ('eznest-svc', os.environ.get('USERNAME', '')):
-        grant = _account_grant(name)
-        if grant and grant not in grants:
-            grants.append(grant)
-    if subprocess.run(['icacls', str(target), '/inheritance:r'], capture_output=True).returncode != 0:
-        raise ValueError('Could not protect the saved OUTPUT credential on this computer.')
-    if subprocess.run(['icacls', str(target), '/grant:r', *grants], capture_output=True).returncode != 0:
-        raise ValueError('Could not protect the saved OUTPUT credential on this computer.')
+    # SYSTEM, Administrators, and the current user are required. eznest-svc is
+    # the shop service account and is optional until the installer creates it.
+    # User-scoped DPAPI still decrypts only for the account that protected the blob.
+    grants = [_SYSTEM_GRANT, _ADMINISTRATORS_GRANT]
+    user = _account_grant(os.environ.get('USERNAME', ''))
+    if user and user not in grants:
+        grants.append(user)
+    service = _account_grant(_SERVICE_ACCOUNT)
+    include_service = (
+        bool(service)
+        and service not in grants
+        and _account_exists(_SERVICE_ACCOUNT) is not False
+    )
+    if include_service:
+        grants.append(service)
+    if _icacls(['icacls', str(target), '/inheritance:r']).returncode != 0:
+        raise ValueError(_PROTECT_ERROR)
+    result = _icacls(['icacls', str(target), '/grant:r', *grants])
+    if result.returncode != 0 and include_service and _unmapped_account(result):
+        required = [grant for grant in grants if grant != service]
+        result = _icacls(['icacls', str(target), '/grant:r', *required])
+    if result.returncode != 0:
+        raise ValueError(_PROTECT_ERROR)
 
 
 def _write(directory, payload, codec):
@@ -136,12 +224,12 @@ def _write(directory, payload, codec):
             os.write(fd, blob)
         finally:
             os.close(fd)
-        if os.name == 'nt':
+        if _use_windows_acl():
             _restrict_windows(temporary)
         else:
             os.chmod(temporary, 0o600)
         os.replace(temporary, target)
-        if os.name == 'nt':
+        if _use_windows_acl():
             _restrict_windows(target)
         else:
             os.chmod(target, 0o600)

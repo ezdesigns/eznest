@@ -133,6 +133,46 @@ class GateTests(unittest.TestCase):
         self.assertTrue(session.sent[0][1]['outputConnection']['ok'])
         self.assertIsNone(session.sent[0][1]['outputConnection']['banner'])
 
+    def test_paired_host_can_read_stock_when_service_account_is_unmapped(self):
+        calls = []
+
+        class Result:
+            def __init__(self, code, stdout=b'', stderr=b''):
+                self.returncode = code
+                self.stdout = stdout
+                self.stderr = stderr
+
+        def run(args, **kwargs):
+            calls.append(list(args))
+            self.assertIsNot(kwargs.get('shell'), True)
+            if args[2] == '/inheritance:r':
+                return Result(0)
+            if 'eznest-svc:(M)' in args:
+                return Result(1332, stderr=b'No mapping between account names and security IDs was done.')
+            return Result(0)
+
+        with patch.object(output_credential, '_use_windows_acl', return_value=True), \
+             patch.object(output_credential, '_account_exists', return_value=None), \
+             patch.object(output_credential.subprocess, 'run', side_effect=run), \
+             patch.dict(os.environ, {'USERNAME': 'shop-user'}):
+            self.pair()
+            stock = self.handler('/api/materials')
+            stock.do_GET()
+        self.assertEqual(stock.sent[0][0], 200)
+        self.assertNotIn('code', stock.sent[0][1])
+        self.assertTrue(output_credential.path(server.WORK).is_file())
+        self.assertEqual(output_credential.load(server.WORK), TOKEN)
+        self.assertTrue(any(call[2] == '/inheritance:r' for call in calls))
+        self.assertTrue(any('eznest-svc:(M)' in call for call in calls))
+        applied = [call for call in calls if call[2] == '/grant:r' and 'eznest-svc:(M)' not in call]
+        self.assertTrue(applied)
+        for call in applied:
+            self.assertIn('*S-1-5-18:(M)', call)
+            self.assertIn('*S-1-5-32-544:(M)', call)
+            self.assertIn('shop-user:(M)', call)
+            self.assertNotIn('Everyone', call)
+            self.assertNotIn('BUILTIN\\Users', call)
+
     def test_offline_within_grace_still_works_and_shows_a_banner_after_three_days(self):
         self.pair(output_gate.OFFLINE_BANNER_AFTER + 24 * 60 * 60)
         stock = self.handler('/api/materials')
