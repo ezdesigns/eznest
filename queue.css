@@ -273,3 +273,13 @@ textarea { font: inherit; color: inherit; width: 100%; box-sizing: border-box; p
 @media(max-width:440px) { .evidence-entry { align-items:flex-start; flex-direction:column; }.insight-metrics>div { padding:10px; }.insight-metrics strong { font-size:20px; }.proof-photos { grid-template-columns:repeat(2,minmax(0,1fr)); }.proof-drawer { padding:20px; }.proof-steps { flex-wrap:wrap; } }
 
 @media(max-width:720px) { header { height:auto; min-height:66px; flex-wrap:wrap; padding:14px 16px; } }
+
+/* Comparison stays inside the existing result card; the main preview remains unchanged. */
+.layout-comparison { border-bottom:1px solid var(--line); padding:14px 16px; }
+.layout-comparison>summary { cursor:pointer; font-size:12px; font-weight:600; }
+#comparison-summary { margin-left:10px; color:var(--accent); font-weight:500; }
+.comparison-content { margin-top:12px; }
+.comparison-content>.muted { font-size:11px; margin:8px 0; }
+#comparison-chart img { display:block; width:100%; height:auto; margin:12px 0; border:1px solid var(--line); }
+.comparison-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+@media(max-width:600px) { #comparison-chart { overflow-x:auto; } #comparison-chart img { min-width:680px; } #comparison-summary { display:block; margin:4px 0 0 14px; } .comparison-actions button { white-space:normal; } }

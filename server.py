@@ -641,6 +641,7 @@ class Handler(BaseHTTPRequestHandler):
         static.update({'/svg-io.js': ('svg-io.js', 'text/javascript'), '/sample-artwork.svg': ('sample-artwork.svg', 'image/svg+xml')})
         static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css')})
         static['/production-features.js']=('production-features.js','text/javascript')
+        static['/layout-comparison.js']=('layout-comparison.js','text/javascript')
         static['/cut-mapping.js']=('cut-mapping.js','text/javascript')
         static['/shop-profiles.js'] = ('shop-profiles.js','text/javascript')
         static['/web'] = ('web.html', 'text/html')
