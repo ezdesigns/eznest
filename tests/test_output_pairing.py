@@ -308,6 +308,27 @@ def created(shop='North Shop'):
 
 
 class ExchangeTests(unittest.TestCase):
+    def test_wire_host_label_fits_output_utf16_limit(self):
+        cases = (
+            ('SHOP PC', 'SHOP PC'),
+            ('x' * 80, 'x' * 60),
+            ('\u5e97' * 61, '\u5e97' * 60),
+            ('x' * 59 + '\U0001f680', 'x' * 59),
+            ('\U0001f680' * 31, '\U0001f680' * 30),
+            (' \t\n', 'localhost'),
+        )
+        for supplied, expected in cases:
+            with self.subTest(host_label=supplied):
+                seen = []
+                def transport(raw):
+                    seen.append(json.loads(raw))
+                    return created()
+                output_pairing.exchange(CODE, host_label=supplied, transport=transport)
+                label = seen[0]['hostLabel']
+                self.assertEqual(label, expected)
+                self.assertLessEqual(len(label.encode('utf-16-le')) // 2, 60)
+                self.assertFalse(any(0xD800 <= ord(ch) <= 0xDFFF for ch in label))
+
     def test_code_is_trimmed_uppercased_and_hyphen_optional(self):
         self.assertEqual(output_pairing.normalize_code('  7k4np-qrx2m '), CODE)
         self.assertEqual(output_pairing.normalize_code('7k4npqrx2m'), CODE)
