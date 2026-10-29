@@ -107,6 +107,7 @@ class SharedInventoryBrowserTests(unittest.TestCase):
                 b.click('#cancel-material')
                 # Open an edit, then let another screen change stock.
                 b.click('#edit-material')
+                expect(b.locator('#material-dialog')).to_be_visible()
                 row = inventory.read(server.WORK)['materials'][0]
                 changed = dict(row['profile']); changed['available-length']='900'
                 self.post('/api/materials/save', {'id':row['id'],'revision':row['revision'],'profile':changed})
