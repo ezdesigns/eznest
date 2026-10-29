@@ -82,9 +82,10 @@ function Get-LockedAcl([string]$Path) {
   & icacls.exe $work /grant '*S-1-5-18:(OI)(CI)M' 'Users:(OI)(CI)M' | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Could not prepare the ACL save folder.' }
   $save = Join-Path $work 'shop.acl'
-  return Invoke-SystemCommand "& icacls.exe '$Path' /save '$save' /Q; if (`$LASTEXITCODE -ne 0) { throw 'icacls /save could not read the shop ACL' }; Get-Content -LiteralPath '$save' -Raw"
+  return Invoke-SystemCommand "& icacls.exe '$Path' /save '$save' /Q; if (`$LASTEXITCODE -ne 0) { throw 'icacls /save could not read the shop ACL' }; Get-Content -LiteralPath '$save' -Raw -Encoding Unicode"
 }
 function Assert-LockedShopAcl([string]$Text, [string]$ServiceSid) {
+  $Text = ($Text -replace "`0", '').Trim()
   $dacl = [regex]::Match($Text, 'D:[^\r\n]*').Value
   Assert ($dacl) "Shop data ACL was not saved as SDDL.`n$Text"
   $accounts = New-Object System.Collections.Generic.List[string]
