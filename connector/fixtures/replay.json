@@ -1,0 +1,6 @@
+{
+  "path": "/tmp/eznest-connector-decoy-not-a-log.txt",
+  "sourceUrl": "https://evil.example/JobLog.txt",
+  "printers": ["FAKE-PRINTER-A"],
+  "eznestKinds": ["nest.printed"]
+}

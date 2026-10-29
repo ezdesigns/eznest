@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "plugins": {
+    "eznest": {
+      "enabled": false,
+      "source": {"type": "file", "path": ""},
+      "kinds": ["nest.printed"]
+    },
+    "onyx_joblog": {
+      "enabled": false,
+      "source": {"type": "file", "path": ""},
+      "printers": [],
+      "delimiter": ",",
+      "columns": [
+        "status", "source_filename", "title", "end_epoch", "length_px", "width_px",
+        "copies", "dpi", "printer", "media", "print_mode", "print_time_s", "quick_set",
+        "ink_c_ml", "ink_m_ml", "ink_y_ml", "ink_k_ml", "ink_lc_ml", "ink_lm_ml",
+        "ink_lk_ml", "ink_total_ml", "coverage_pct"
+      ]
+    },
+    "summa_joblog": {
+      "enabled": false,
+      "source": {"type": "file", "path": ""},
+      "delimiter": ";",
+      "dateOrder": "dmy",
+      "sizeUnit": "mm",
+      "columns": [
+        "date", "job_name", "start", "end", "material", "thickness",
+        "job_count", "job_size_x", "job_size_y", "copies", "copy_size_x", "copy_size_y"
+      ]
+    },
+    "inventory": {
+      "enabled": false,
+      "source": {"type": "file", "path": ""}
+    }
+  }
+}

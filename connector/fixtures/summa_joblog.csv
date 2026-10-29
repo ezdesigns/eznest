@@ -1,0 +1,4 @@
+Date;Job name;Start time;End time;Material name;Material thickness;Number of jobs;Job size X;Job size Y;Copies per job;Copy size X;Copy size Y
+28/10/2026;FAKE-CUSTOMER-CUT-ZEBRA jane.doe@example.invalid 555-0148 123 Fake Street $49.95 ORDER-88421;10:00:00;10:04:05;FAKE-VINYL-GLOSS;0.37;23;1372;2480;7;317;189
+28/10/2026;FAKE-CUSTOMER-CUT-ZEBRA jane.doe@example.invalid 555-0148 123 Fake Street $49.95 ORDER-88421;10:00:00;10:04:05;FAKE-VINYL-GLOSS;0.37;23;1372;2480;7;317;189
+28/10/2026;FAKE-JOB-SECOND order@example.invalid 555-0199;11:15:00;11:16:30;FAKE-CHROME-SHEET;1.25;4;800;900;2;400;500
