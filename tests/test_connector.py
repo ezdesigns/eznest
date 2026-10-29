@@ -638,6 +638,7 @@ class BoundAndHostTests(TempCase):
                 # The DACL 'P' flag is the protected bit. Allow rules must be only this user's SID.
                 script = """
 $ErrorActionPreference = 'Stop'
+$env:PSModulePath = Join-Path $PSHOME 'Modules'
 $acl = Get-Acl -LiteralPath '__PATH__'
 [Console]::Error.WriteLine("ACL type: $($acl.GetType().FullName); SDDL: $($acl.Sddl)")
 $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -654,8 +655,11 @@ $shown = $sddl.Replace('\\','\\\\').Replace('"','\\"')
 if ($protected) { $flag = 'true' } else { $flag = 'false' }
 Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' + $list + '],"sddl":"' + $shown + '"}')
 """.replace('__PATH__', literal)
+                env = os.environ.copy()
+                # The runner's PSModulePath points at PowerShell 7 and hides Get-Acl from Windows PowerShell 5.1.
+                env.pop('PSModulePath', None)
                 result = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-                                        capture_output=True, text=True, timeout=15)
+                                        capture_output=True, text=True, timeout=15, env=env)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 acl = json.loads(result.stdout.lstrip('\ufeff'))
                 detail = ((result.stderr or '') + '\n' + str(acl.get('sddl', ''))).strip()
