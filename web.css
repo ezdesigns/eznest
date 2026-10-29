@@ -528,6 +528,7 @@ body:has(#settings-support[open]) #feedback-welcome { display: none; }
 .dialog-close { flex: 0 0 32px; width: 32px; min-height: 32px; padding: 0; border: 0; background: transparent; font-size: 25px; color: var(--muted); }
 .dialog-close:focus-visible { outline: 2px solid #8d8d86; outline-offset: 2px; border-radius: 6px; }
 .section-note { font-size: 13px; color: var(--muted); margin: 0 0 16px; }
+#stock-output-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; margin: 8px 0 0; padding: 10px; border-radius: 8px; background: #f4f4f0; font-size: 12px; line-height: 1.4; }
 #settings .settings-section:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
 #settings-delivery > .setting-field { margin-top: 14px; }
 .step-hint { margin: 4px 0 8px; }

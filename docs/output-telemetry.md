@@ -42,6 +42,29 @@ stock remains on the shop host; these observations do not replace its ledger.
 Tests use synthetic tokens and injected transport. They do not verify a live
 credential, activate a receiver, or establish public end-to-end delivery.
 
+## Stock summary
+
+Share stock summary with OUTPUT is a separate host setting. It stays off until
+the host turns it on in Settings. Nothing is sent unless this computer is paired
+and that setting is on. `--shop-test` sends nothing.
+
+The summary uses `eznest-stock/1`. Each roll has an opaque key, an optional
+plain-text name, width in inches, length left in feet, reserved length in feet,
+and a low marker. Lengths are rounded to 0.1 foot and widths to 0.1 inch.
+Unknown stock has an empty length and is not marked low. At most 200 rolls are
+included, and the request stays within 32 KB. Reservations, job codes, cost,
+supplier, profile text, file names, and customer details are omitted. A name
+that looks like a path, email address, URL, or job code is sent empty. Show
+roll names in OUTPUT is on unless the host turns it off; then every name is empty.
+
+Settings shows the JSON that would be sent. Delivery is
+`PUT {output base}/api/shop/agent/stock` with the stored credential, through
+the same isolated transport as activity sharing: HTTPS only, no redirects, a
+ten-second deadline, and backoff from 30 seconds to 15 minutes. The same
+snapshot keeps the same request id. A summary is sent when the sender starts,
+about 30 seconds after stock changes, and about once an hour. Turning sharing
+off sends `DELETE` to that address. The credential is not written to logs.
+
 During installation or recovery, sharing is temporarily paused. Settings shows
 the pause and requires a refresh after the host restarts before changing consent.
 A candidate service cannot send events or invalidate consent while its data can
