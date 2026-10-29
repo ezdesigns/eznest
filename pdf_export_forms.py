@@ -106,6 +106,16 @@ def piece_form(page, writer, analyzed, clip):
     resources = DictionaryObject(page['/Resources'])
     if '/XObject' in resources:
         original = resources['/XObject']
+        for name in names:
+            obj = original[name]
+            if obj.get('/Subtype') == '/Form':
+                own = obj.get('/Resources')
+                own = own.get_object() if own is not None else None
+                # Retained child Forms can use this enclosing XObject scope.
+                # Top-level Do names alone cannot prove those resources unused.
+                if not isinstance(own, DictionaryObject) or '/XObject' not in own:
+                    names = set(original)
+                    break
         resources[NameObject('/XObject')] = DictionaryObject({name: original.raw_get(name) for name in names})
     return form_from_page(page, writer, content=content, resources=resources)
 

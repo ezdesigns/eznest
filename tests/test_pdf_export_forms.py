@@ -72,6 +72,34 @@ class ExportFormsTests(unittest.TestCase):
         empty = [([],b'q'),([0,0,10,10],b're'),([],b'W'),([],b'n'),([],b'Q')]
         self.assertEqual(remove_empty_groups(empty), [])
 
+    def test_retained_form_keeps_inherited_image_resources(self):
+        source = PdfWriter(); page = source.add_blank_page(30, 30)
+        image = DecodedStreamObject(); image.set_data(b'\xff\x00\x00')
+        image.update({NameObject('/Type'): NameObject('/XObject'), NameObject('/Subtype'): NameObject('/Image'),
+                      NameObject('/Width'): NumberObject(1), NameObject('/Height'): NumberObject(1),
+                      NameObject('/ColorSpace'): NameObject('/DeviceRGB'), NameObject('/BitsPerComponent'): NumberObject(8)})
+        # A Form without /Resources resolves /Red from its enclosing resource scope.
+        child = DecodedStreamObject(); child.set_data(b'20 0 0 20 0 0 cm /Red Do')
+        child.update({NameObject('/Type'): NameObject('/XObject'), NameObject('/Subtype'): NameObject('/Form'),
+                      NameObject('/BBox'): ArrayObject([NumberObject(v) for v in (0, 0, 20, 20)])})
+        page[NameObject('/Resources')] = DictionaryObject({NameObject('/XObject'): DictionaryObject({
+            NameObject('/Red'): source._add_object(image), NameObject('/Child'): source._add_object(child)})})
+        stream = DecodedStreamObject(); stream.set_data(b'/Child Do')
+        page[NameObject('/Contents')] = source._add_object(stream)
+        raw = io.BytesIO(); source.write(raw)
+        reader = PdfReader(io.BytesIO(raw.getvalue())); original = reader.pages[0]
+        analyzed = invocation_bounds(original, reader)
+        outputs = []
+        for optimized in (False, True):
+            writer = PdfWriter(); target = writer.add_blank_page(30, 30)
+            ref = piece_form(original, writer, analyzed, (0, 0, 25, 25)) if optimized else form_from_page(original, writer)
+            target[NameObject('/Resources')] = DictionaryObject({NameObject('/XObject'): DictionaryObject({NameObject('/Art'): ref})})
+            draw = DecodedStreamObject(); draw.set_data(b'q 0 0 25 25 re W n /Art Do Q')
+            target[NameObject('/Contents')] = writer._add_object(draw)
+            result = io.BytesIO(); writer.write(result); outputs.append(rendered(result.getvalue()))
+        self.assertTrue(np.any(outputs[0] != 255), 'The reference must contain visible artwork.')
+        self.assertTrue(np.array_equal(*outputs))
+
     def test_curve_control_bounds_are_conservative_and_unknown_clip_falls_back(self):
         self.assertEqual(clip_bounds([('m',[1,2]),('c',[-10,50,40,-20,5,6]),('h',[])]), (-10,-20,40,50))
         self.assertIsNone(clip_bounds([('unsupported',[])]))
