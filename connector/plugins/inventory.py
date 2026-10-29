@@ -47,7 +47,7 @@ def load_rows(data):
             raise PartialView('partial')
         return [_with_line(row) for row in rows]
     from connector.readfiles import complete_lines
-    lines, _offset = complete_lines(raw, 0)
+    lines, _offset, _dropped, _skipping = complete_lines(raw, 0)
     rows = []
     for line in lines:
         decoded = decode_line(line)

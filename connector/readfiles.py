@@ -7,11 +7,12 @@ copied into the connector data folder and parsed from that copy.
 """
 import errno
 import os
-import shutil
 import tempfile
 from pathlib import Path
 
 OPENED = []
+READ_WINDOW = 1024 * 1024
+MAX_LINE = 64 * 1024
 
 GENERIC_READ = 0x80000000
 GENERIC_WRITE = 0x40000000
@@ -84,29 +85,40 @@ def _is_contention(error):
     return False
 
 
-def _read_once(path, offset):
+def _read_limited(handle, offset, limit):
+    handle.seek(max(0, offset))
+    chunks = []
+    remaining = limit
+    while remaining > 0:
+        block = handle.read(min(remaining, 65536))
+        if not block:
+            break
+        chunks.append(block)
+        remaining -= len(block)
+    return b''.join(chunks)
+
+
+def _read_once(path, offset, limit):
     with open_shared_read(path) as handle:
         before = os.fstat(handle.fileno())
-        handle.seek(max(0, offset))
-        data = handle.read()
+        data = _read_limited(handle, offset, limit)
         after = os.fstat(handle.fileno())
         if after.st_size != before.st_size or after.st_mtime_ns != before.st_mtime_ns:
             raise FileContended('changed')
         return data
 
 
-def _copy_then_read(path, offset, directory):
-    """Copy bytes into our own folder, close the log, then read the copy."""
+def _copy_then_read(path, offset, directory, limit):
+    """Copy a bounded window into our own folder, close the log, then read the copy."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix='read-', dir=directory)
     os.close(fd)
     try:
         with open_shared_read(path) as src, open(name, 'wb') as dst:
-            src.seek(max(0, offset))
-            shutil.copyfileobj(src, dst, length=1024 * 1024)
+            dst.write(_read_limited(src, offset, limit))
         with open(name, 'rb') as dst:
-            return dst.read()
+            return dst.read(limit)
     finally:
         try:
             os.unlink(name)
@@ -114,14 +126,16 @@ def _copy_then_read(path, offset, directory):
             pass
 
 
-def read_bytes(path, offset, directory):
-    """Read from offset to EOF. On contention, copy then parse. The log stays put."""
+def read_bytes(path, offset, directory, limit=READ_WINDOW):
+    """Read at most `limit` bytes from offset. On contention, copy then parse. The log stays put."""
+    if not isinstance(limit, int) or limit < 1:
+        raise ValueError('limit')
     try:
-        return _read_once(path, offset)
+        return _read_once(path, offset, limit)
     except OSError as error:
         if not _is_contention(error):
             raise
-        return _copy_then_read(path, offset, directory)
+        return _copy_then_read(path, offset, directory, limit)
 
 
 def file_size(path):
@@ -130,16 +144,39 @@ def file_size(path):
         return os.fstat(handle.fileno()).st_size, os.fstat(handle.fileno())
 
 
-def complete_lines(data, offset):
-    """Return finished lines and the offset just past the last newline.
+def complete_lines(data, offset, *, max_line=MAX_LINE, skipping=False):
+    """Return finished lines, the new offset, how many oversize lines were dropped, and skip state.
 
-    Bytes after the final newline are a half-written line and are not returned.
-    The offset does not advance into them.
+    A half-written tail shorter than `max_line` is left for the next read.
+    A line longer than `max_line` is dropped and counted. If that line has not
+    ended yet, `skipping` stays true until a later read sees its newline.
     """
+    dropped = 0
     if not data:
-        return [], offset
-    last = data.rfind(b'\n')
-    if last < 0:
-        return [], offset
-    lines = [line for line in data[:last + 1].splitlines() if line.strip()]
-    return lines, offset + last + 1
+        return [], offset, dropped, skipping
+    if skipping:
+        newline = data.find(b'\n')
+        if newline < 0:
+            return [], offset + len(data), dropped, True
+        offset += newline + 1
+        data = data[newline + 1:]
+        skipping = False
+        if not data:
+            return [], offset, dropped, False
+    lines = []
+    start = 0
+    while True:
+        newline = data.find(b'\n', start)
+        if newline < 0:
+            remainder = data[start:]
+            if len(remainder) > max_line:
+                return lines, offset + len(data), dropped + 1, True
+            return lines, offset + start, dropped, False
+        raw = data[start:newline]
+        if raw.endswith(b'\r'):
+            raw = raw[:-1]
+        if len(raw) > max_line:
+            dropped += 1
+        elif raw.strip():
+            lines.append(raw)
+        start = newline + 1

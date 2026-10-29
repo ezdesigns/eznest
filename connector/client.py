@@ -22,6 +22,7 @@ from connector.events import SCHEMA, validate_event
 
 PAIR_PATH = urlparse(output_pairing.ENDPOINT).path
 EVENT_PATH = urlparse(telemetry_sender.ENDPOINT).path
+PINNED_HOST = 'output.jeezlabs.io'
 DEFAULT_BASE = 'https://output.jeezlabs.io'
 MAX_BODY = 12000
 MAX_WAIT = 900
@@ -31,38 +32,48 @@ class ClientError(ValueError):
     pass
 
 
-def base_url():
-    raw = os.environ.get('EZ_NEST_OUTPUT_URL', DEFAULT_BASE).strip()
-    parsed = urlparse(raw)
+def normalize_output_base(value=None):
+    """Https host only. The default is output.jeezlabs.io. Environment variables are ignored.
+
+    `value` must come from the config file. None or blank keeps the pinned host.
+    A path, user, query, or fragment is rejected. Redirects are not followed later.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return DEFAULT_BASE
+    if not isinstance(value, str):
+        raise ClientError('OUTPUT host must be an https URL in the config file.')
+    parsed = urlparse(value.strip())
     if parsed.scheme != 'https' or parsed.username or parsed.password:
-        raise ClientError('OUTPUT URL must be https without a user name.')
+        raise ClientError('OUTPUT host must be https without a user name.')
     if parsed.query or parsed.fragment or parsed.path not in ('', '/'):
-        raise ClientError('OUTPUT URL must be the host only.')
+        raise ClientError('OUTPUT host must be a host only, not a path.')
     if not parsed.hostname:
-        raise ClientError('OUTPUT URL is missing a host.')
+        raise ClientError('OUTPUT host is missing a host name.')
     port = f':{parsed.port}' if parsed.port else ''
     return f'https://{parsed.hostname}{port}'
 
 
-def url_for(role):
+def url_for(role, output_host=None):
     if role == 'pair':
         path = PAIR_PATH
     elif role == 'event':
         path = EVENT_PATH
     else:
         raise ClientError('The connector has one write-only event endpoint.')
-    url = base_url() + path
+    base = normalize_output_base(output_host)
+    url = base + path
     parsed = urlparse(url)
-    if parsed.scheme != 'https' or parsed.hostname != urlparse(base_url()).hostname:
+    pinned = urlparse(base)
+    if parsed.scheme != 'https' or parsed.hostname != pinned.hostname or parsed.port != pinned.port:
         raise ClientError('Refusing a request outside the configured OUTPUT host.')
     if parsed.path not in (PAIR_PATH, EVENT_PATH):
         raise ClientError('Refusing a request outside the pairing and event paths.')
     return url
 
 
-def post_json(body, token, *, role, transport=None):
+def post_json(body, token, *, role, transport=None, output_host=None):
     """POST one JSON body. There is no GET helper in this module."""
-    url = url_for(role)
+    url = url_for(role, output_host)
     raw = body if isinstance(body, (bytes, bytearray)) else json.dumps(body, separators=(',', ':')).encode()
     if len(raw) > MAX_BODY:
         return 413, {}, b''
@@ -90,20 +101,22 @@ def _https_post(url, raw, headers):
         return None, {}, b''
 
 
-def pairing_transport(raw):
-    status, _headers, body = post_json(raw, None, role='pair')
-    if status is None:
-        raise output_pairing.PairingError('offline', output_pairing.OFFLINE)
-    return status, body
+def pairing_transport_for(output_host=None):
+    def transport(raw):
+        status, _headers, body = post_json(raw, None, role='pair', output_host=output_host)
+        if status is None:
+            raise output_pairing.PairingError('offline', output_pairing.OFFLINE)
+        return status, body
+    return transport
 
 
-def pair(directory, code, *, transport=None, host_label=None, host_ref=None):
+def pair(directory, code, *, transport=None, host_label=None, host_ref=None, output_host=None):
     output_pairing._blocked_by_environment()
     result = output_pairing.exchange(
         code,
         host_label=host_label if host_label is not None else host_name(),
         host_ref=host_ref,
-        transport=transport or pairing_transport,
+        transport=transport or pairing_transport_for(output_host),
     )
     output_credential.save(directory, result['credential'], result['shopName'])
     return {'shopName': result['shopName']}
@@ -127,12 +140,12 @@ def token_for(directory):
     return info.get('token')
 
 
-def deliver(event, token, *, transport=None, sleep=time.sleep, attempts=5, now=None):
+def deliver(event, token, *, transport=None, sleep=time.sleep, attempts=5, now=None, output_host=None):
     """POST one event. Retry network failures. Honor Retry-After on 429."""
     validate_event(event)
     delay = 1
     for _attempt in range(attempts):
-        status, headers, body = post_json(event, token, role='event', transport=transport)
+        status, headers, body = post_json(event, token, role='event', transport=transport, output_host=output_host)
         if status == 200 and _accepted(body, event):
             return True
         if status == 429:

@@ -18,7 +18,8 @@ RIP or the cutter software. It is off until you turn a plug-in on.
 
 Pairing exchanges the code for a shop key and stores that key on this
 computer. Copying the code into the config file is not required. The key is
-not printed.
+not printed. That one pairing request also sends this computer's name and
+installation id. Later event posts do not send them again.
 
 To stop everything: `python -m connector disconnect`
 
@@ -76,13 +77,17 @@ not fetch logs itself.
 
 ### What leaves the shop
 
-Only two requests are ever made, both POST, both to the OUTPUT host
-(`EZ_NEST_OUTPUT_URL`, default `https://output.jeezlabs.io`):
+Only two requests are ever made, both POST. The host is pinned to
+`https://output.jeezlabs.io`. A different host is used only when the config
+file sets `outputHost` to an `https://` host with no path, user, or query.
+An environment variable cannot point delivery somewhere else. Redirects are
+not followed.
 
 1. Pairing, once: `POST /api/shop/agent/pair`
    The body is the pairing code, a request id, this computer's name, and the
-   connector's installation id when that id is 32 hex characters. This matches
-   `output_pairing.py`.
+   connector's installation id when that id is 32 hex characters. Those two
+   identity fields are sent once, with the pairing code, and are not repeated
+   on later event posts. This matches `output_pairing.py`.
 2. Events: `POST /api/shop/telemetry`
    The body is one `shop-connector-event/1` event. The shop key is sent only
    as the `Authorization: Bearer` header.
@@ -133,6 +138,9 @@ Numbers are sent as ranges (bands), not exact values. See the band table in
   copy. The copy is deleted. The log is not.
 - The first successful look at a log sets the offset to the end of the file.
   Older lines are not parsed and are not sent.
+- Each look reads at most 1 MiB. A line longer than 64 KiB is dropped and
+  counted, not parsed. The inventory view is refused when it is larger than
+  1 MiB, so a partial read cannot look like a quantity change.
 - Paths come from the config file on this computer, or from the fixture folder
   when you run `replay`. They are not taken from a log line, an event, or an
   OUTPUT reply.
@@ -163,8 +171,12 @@ is what `--shop-test` already does for Ez Nest. Turning a plug-in to
 
 The connector keeps its own folder (`EZ_NEST_CONNECTOR_DATA`, or
 `.local/connector` when you run from a checkout). That folder holds the shop
-key, the salt, the file offsets, and unsent summaries. It is not the Ez Nest
-job folder. Raw log lines are not stored there.
+key, a random per-install salt, the file offsets, and unsent summaries. The
+salt is created once and stays in that folder. It is not sent. On Linux and
+macOS the folder is private to the user (`0700`) and the database is `0600`.
+On Windows inheritance is removed and only the current user can read the
+folder and database. It is not the Ez Nest job folder. Raw log lines are not
+stored there.
 
 ## Still unconfirmed
 

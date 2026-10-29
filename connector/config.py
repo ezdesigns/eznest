@@ -21,6 +21,24 @@ class PluginSpec:
         self.options = options
 
 
+class LoadedConfig:
+    """Plug-ins, data folder, and the OUTPUT host from the config file.
+
+    Unpacking yields `(plugins, directory)` so older callers keep working.
+    `output_host` is None when the file does not set one. That pins delivery
+    to https://output.jeezlabs.io. An environment variable cannot change it.
+    """
+
+    def __init__(self, plugins, directory, output_host):
+        self.plugins = plugins
+        self.directory = directory
+        self.output_host = output_host
+
+    def __iter__(self):
+        yield self.plugins
+        yield self.directory
+
+
 class RolePaths:
     """Frozen allow-list of files this process may open. There is no add method."""
 
@@ -65,7 +83,7 @@ def data_directory(config_path=None):
 def load_settings(path):
     """Load plug-in switches and locked paths from a local JSON file."""
     if path is None:
-        return default_settings(), data_directory()
+        return LoadedConfig(default_settings(), data_directory(), None)
     target = Path(path)
     text = str(target)
     if '://' in text:
@@ -84,7 +102,19 @@ def load_settings(path):
         directory = Path(raw['dataDir'])
         if not directory.is_absolute():
             directory = (target.parent / directory).resolve()
-    return specs, directory
+    return LoadedConfig(specs, directory, _output_host(raw.get('outputHost', None)))
+
+
+def _output_host(value):
+    """None keeps the pinned OUTPUT host. A value must be https and host-only."""
+    if value is None or value == '':
+        return None
+    from connector.client import ClientError, normalize_output_base
+    try:
+        normalize_output_base(value)
+    except ClientError as error:
+        raise ConfigError(str(error)) from None
+    return value.strip()
 
 
 def roles_for(specs):

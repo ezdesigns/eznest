@@ -1,21 +1,51 @@
 """Connector state. Raw log lines, paths, and the salt are not event fields.
 
-The salt lives only in this database. The database mode is private on POSIX.
+The salt is 32 random bytes created once for this install and kept only in
+this database. On POSIX the folder is mode 0700 and the database is 0600.
+On Windows the folder and database ACL drop inheritance and grant only the
+current user.
 """
 import json
 import os
 import secrets
 import sqlite3
+import subprocess
 import uuid
 from pathlib import Path
+
+
+def windows_acl_commands(target, username, *, container):
+    """icacls commands: drop inheritance, grant only this user, remove broad principals."""
+    if not isinstance(username, str) or not username or len(username) > 64:
+        raise ValueError('username')
+    if any(ch in username for ch in '*?"<>|:\r\n'):
+        raise ValueError('username')
+    rights = '(OI)(CI)F' if container else 'F'
+    broad = ('*S-1-1-0', '*S-1-5-32-545', '*S-1-5-11', '*S-1-5-32-544', '*S-1-5-18')
+    return [
+        ['icacls', str(target), '/inheritance:r'],
+        ['icacls', str(target), '/grant:r', f'{username}:{rights}'],
+        ['icacls', str(target), '/remove:g', *broad],
+    ]
+
+
+def protect_path(path, *, container):
+    if os.name != 'nt':
+        os.chmod(path, 0o700 if container else 0o600)
+        return
+    username = os.environ.get('USERNAME', '')
+    commands = windows_acl_commands(path, username, container=container)
+    for command in commands[:2]:
+        if subprocess.run(command, capture_output=True).returncode != 0:
+            raise OSError('Could not restrict the connector state folder.')
+    subprocess.run(commands[2], capture_output=True)
 
 
 class Store:
     def __init__(self, directory):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
-        if os.name != 'nt':
-            os.chmod(self.directory, 0o700)
+        protect_path(self.directory, container=True)
         self.path = self.directory / 'connector.sqlite3'
         with self._connect() as db:
             db.executescript('''
@@ -38,12 +68,14 @@ class Store:
             db.execute("INSERT OR IGNORE INTO meta VALUES('instance_id', ?)", (uuid.uuid4().hex,))
             db.execute("INSERT OR IGNORE INTO meta VALUES('salt', ?)", (secrets.token_hex(32),))
             db.execute('INSERT OR IGNORE INTO inventory_meta VALUES(1, 0)')
+            _ensure_column(db, 'tails', 'skip_line', 'skip_line INTEGER NOT NULL DEFAULT 0')
+            _ensure_column(db, 'plugin_status', 'dropped', 'dropped INTEGER NOT NULL DEFAULT 0')
 
     def _connect(self):
         db = sqlite3.connect(self.path, timeout=2)
         db.row_factory = sqlite3.Row
-        if os.name != 'nt' and self.path.exists():
-            os.chmod(self.path, 0o600)
+        if self.path.exists():
+            protect_path(self.path, container=False)
         return _Closing(db, self.path)
 
     def instance_id(self):
@@ -59,11 +91,16 @@ class Store:
             row = db.execute('SELECT * FROM tails WHERE plugin=?', (plugin,)).fetchone()
             return None if row is None else dict(row)
 
-    def set_tail(self, plugin, offset, device, inode):
+    def set_tail(self, plugin, offset, device, inode, skip_line=False):
         with self._connect() as db:
             db.execute(
-                'INSERT OR REPLACE INTO tails VALUES(?,?,?,?,1)',
-                (plugin, int(offset), None if device is None else int(device), None if inode is None else int(inode)),
+                'INSERT OR REPLACE INTO tails(plugin, offset, device, inode, ready, skip_line) VALUES(?,?,?,?,1,?)',
+                (
+                    plugin, int(offset),
+                    None if device is None else int(device),
+                    None if inode is None else int(inode),
+                    1 if skip_line else 0,
+                ),
             )
 
     def seen(self, event_id):
@@ -100,8 +137,10 @@ class Store:
         with self._connect() as db:
             row = db.execute('SELECT * FROM plugin_status WHERE name=?', (plugin,)).fetchone()
             current = dict(row) if row else {
-                'last_event_at': None, 'last_read_at': None, 'last_error': None, 'source_state': None,
+                'last_event_at': None, 'last_read_at': None, 'last_error': None,
+                'source_state': None, 'dropped': 0,
             }
+            current['dropped'] = int(current.get('dropped') or 0)
             if last_event_at is not None:
                 current['last_event_at'] = last_event_at
             if last_read_at is not None:
@@ -110,9 +149,37 @@ class Store:
             if source_state is not None:
                 current['source_state'] = source_state
             db.execute(
-                'INSERT OR REPLACE INTO plugin_status VALUES(?,?,?,?,?)',
-                (plugin, current['last_event_at'], current['last_read_at'], current['last_error'], current['source_state']),
+                '''INSERT OR REPLACE INTO plugin_status
+                   (name, last_event_at, last_read_at, last_error, source_state, dropped)
+                   VALUES(?,?,?,?,?,?)''',
+                (
+                    plugin, current['last_event_at'], current['last_read_at'], current['last_error'],
+                    current['source_state'], current['dropped'],
+                ),
             )
+
+    def add_dropped(self, plugin, count):
+        if not isinstance(count, int) or count <= 0:
+            return
+        with self._connect() as db:
+            row = db.execute('SELECT * FROM plugin_status WHERE name=?', (plugin,)).fetchone()
+            current = dict(row) if row else {
+                'last_event_at': None, 'last_read_at': None, 'last_error': None, 'source_state': None, 'dropped': 0,
+            }
+            dropped = int(current.get('dropped') or 0) + count
+            db.execute(
+                '''INSERT OR REPLACE INTO plugin_status
+                   (name, last_event_at, last_read_at, last_error, source_state, dropped)
+                   VALUES(?,?,?,?,?,?)''',
+                (plugin, current.get('last_event_at'), current.get('last_read_at'), current.get('last_error'),
+                 current.get('source_state'), dropped),
+            )
+
+    def dropped(self, plugin):
+        row = self.status_row(plugin)
+        if not row:
+            return 0
+        return int(row.get('dropped') or 0)
 
     def status_row(self, plugin):
         with self._connect() as db:
@@ -151,6 +218,12 @@ class _Closing:
         else:
             self.db.rollback()
         self.db.close()
-        if os.name != 'nt':
-            os.chmod(self.path, 0o600)
+        if self.path.exists():
+            protect_path(self.path, container=False)
         return False
+
+
+def _ensure_column(db, table, column, declaration):
+    names = {row[1] for row in db.execute(f'PRAGMA table_info({table})')}
+    if column not in names:
+        db.execute(f'ALTER TABLE {table} ADD COLUMN {declaration}')

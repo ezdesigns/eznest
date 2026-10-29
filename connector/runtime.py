@@ -12,7 +12,7 @@ from connector import client
 from connector.config import PLUGIN_NAMES, roles_for
 from connector.events import ContractError, build_event, event_id_for
 from connector.plugins import eznest, inventory, onyx_joblog, summa_joblog
-from connector.readfiles import complete_lines, file_size, read_bytes
+from connector.readfiles import READ_WINDOW, complete_lines, file_size, read_bytes
 
 LOG_PARSERS = {'onyx_joblog': onyx_joblog, 'summa_joblog': summa_joblog}
 FIXTURE_FILES = ('onyx_joblog.txt', 'summa_joblog.csv', 'inventory.json', 'eznest_events.jsonl')
@@ -22,7 +22,7 @@ def now_z():
     return datetime.now(timezone.utc).replace(microsecond=0).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def poll(specs, store, *, stdin=None, send=False, transport=None, sleep=None, attempts=5):
+def poll(specs, store, *, stdin=None, send=False, transport=None, sleep=None, attempts=5, output_host=None):
     """One live pass. History already in a file at connect time is not parsed."""
     roles = roles_for(specs)
     token = client.token_for(store.directory)
@@ -40,7 +40,7 @@ def poll(specs, store, *, stdin=None, send=False, transport=None, sleep=None, at
         except OSError:
             store.note(name, last_error='unreadable', source_state='idle')
     if send and token:
-        _flush(store, token, transport=transport, sleep=sleep, attempts=attempts)
+        _flush(store, token, transport=transport, sleep=sleep, attempts=attempts, output_host=output_host)
     return store.outbox()
 
 
@@ -61,11 +61,15 @@ def _poll_log(spec, store, roles, token, stdin):
         if source is None:
             store.note(spec.name, last_error='missing', source_state='idle')
             return False
-        data, fresh = source.read_chunk()
+        data, fresh, dropped = source.read_chunk()
+        if dropped:
+            store.add_dropped(spec.name, dropped)
         if fresh:
             # Connect time: drop whatever is already buffered. Do not parse it.
             return True
-        lines, _offset = complete_lines(data, 0)
+        lines, _offset, dropped, _skipping = complete_lines(data, 0)
+        if dropped:
+            store.add_dropped(spec.name, dropped)
         _accept_lines(spec, parser, lines, store, token)
         return True
     if spec.path is None:
@@ -80,9 +84,13 @@ def _poll_log(spec, store, roles, token, stdin):
         return True
     if size == cursor['offset']:
         return True
-    data = read_bytes(spec.path, cursor['offset'], store.directory)
-    lines, new_offset = complete_lines(data, cursor['offset'])
-    store.set_tail(spec.name, new_offset, stat.st_dev, stat.st_ino)
+    data = read_bytes(spec.path, cursor['offset'], store.directory, READ_WINDOW)
+    lines, new_offset, dropped, skipping = complete_lines(
+        data, cursor['offset'], skipping=bool(cursor.get('skip_line')),
+    )
+    store.set_tail(spec.name, new_offset, stat.st_dev, stat.st_ino, skip_line=skipping)
+    if dropped:
+        store.add_dropped(spec.name, dropped)
     _accept_lines(spec, parser, lines, store, token)
     return True
 
@@ -111,7 +119,11 @@ def _poll_inventory(spec, store, roles, token):
         return False
     roles.open_view(spec.path).close()
     try:
-        data = read_bytes(spec.path, 0, store.directory)
+        data = read_bytes(spec.path, 0, store.directory, READ_WINDOW + 1)
+        if len(data) > READ_WINDOW:
+            store.add_dropped(spec.name, 1)
+            store.note(spec.name, last_error='oversize', source_state='idle')
+            return False
         rows = inventory.load_rows(data)
     except inventory.PartialView:
         store.note(spec.name, last_error='partial', source_state='idle')
@@ -176,11 +188,11 @@ def _enqueue(store, plugin, line, observation):
     store.note(plugin, last_event_at=event['occurredAt'])
 
 
-def _flush(store, token, *, transport, sleep, attempts):
+def _flush(store, token, *, transport, sleep, attempts, output_host=None):
     pending = store.outbox()
     if not pending or not token:
         return 0
-    kwargs = {'transport': transport, 'attempts': attempts}
+    kwargs = {'transport': transport, 'attempts': attempts, 'output_host': output_host}
     if sleep is not None:
         kwargs['sleep'] = sleep
     sent_ids = []
@@ -244,8 +256,8 @@ def _replay_lines(path, plugin, parser, options, salt, instance, seen, events):
     if not path.is_file():
         return
     _fixture(path.parent, path.name)
-    data = read_bytes(path, 0, path.parent)
-    lines, _offset = complete_lines(data, 0)
+    data = read_bytes(path, 0, path.parent, READ_WINDOW)
+    lines, _offset, _dropped, _skipping = complete_lines(data, 0)
     for raw in lines:
         event_id = event_id_for(plugin, raw)
         if event_id in seen:
@@ -267,7 +279,9 @@ def _replay_inventory(path, salt, instance, seen, events):
     if not path.is_file():
         return
     _fixture(path.parent, path.name)
-    data = read_bytes(path, 0, path.parent)
+    data = read_bytes(path, 0, path.parent, READ_WINDOW + 1)
+    if len(data) > READ_WINDOW:
+        return
     try:
         rows = inventory.load_rows(data)
     except inventory.PartialView:
@@ -292,8 +306,8 @@ def _replay_eznest(path, options, instance, seen, events):
     if not path.is_file():
         return
     _fixture(path.parent, path.name)
-    data = read_bytes(path, 0, path.parent)
-    lines, _offset = complete_lines(data, 0)
+    data = read_bytes(path, 0, path.parent, READ_WINDOW)
+    lines, _offset, _dropped, _skipping = complete_lines(data, 0)
     for raw in lines:
         event_id = event_id_for('eznest', raw)
         if event_id in seen:
@@ -339,17 +353,22 @@ def status_snapshot(specs, store):
     return {'paired': paired, 'plugins': rows}
 
 
-def format_status(specs, store):
+def format_status(specs, store, output_host=None):
     snap = status_snapshot(specs, store)
     lines = [
         'Shop Connector 0.1.0',
         'OUTPUT: ' + ('paired' if snap['paired'] else 'not paired'),
-        'Delivery: write-only POST ' + client.url_for('event'),
+        'Delivery: write-only POST ' + client.url_for('event', output_host),
         '',
     ]
     for row in snap['plugins']:
         when = row['lastEventAt'] or '—'
-        lines.append(f"{row['plugin']:<16} {row['state']:<12} last event {when}")
+        dropped = ''
+        saved = store.status_row(row['plugin']) or {}
+        count = int(saved.get('dropped') or 0)
+        if count:
+            dropped = f' ({count} oversize lines dropped)'
+        lines.append(f"{row['plugin']:<16} {row['state']:<12} last event {when}{dropped}")
     return '\n'.join(lines)
 
 
@@ -360,17 +379,19 @@ class StdinSource:
         self.stream = stream
         self.connected = False
         self.pending = b''
+        self.skipping = False
 
     def read_chunk(self):
-        chunk = self.stream.read()
+        chunk = self.stream.read(READ_WINDOW)
         if chunk:
             self.pending += chunk
         if not self.connected:
             self.connected = True
             self.pending = b''
-            return b'', True
+            self.skipping = False
+            return b'', True, 0
         data = self.pending
-        lines, offset = complete_lines(data, 0)
+        lines, offset, dropped, self.skipping = complete_lines(data, 0, skipping=self.skipping)
         self.pending = data[offset:]
-        # Return only the complete portion so the caller does not see the partial tail.
-        return data[:offset], False
+        payload = b''.join(line + b'\n' for line in lines)
+        return payload, False, dropped

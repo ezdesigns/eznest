@@ -17,8 +17,8 @@ from connector.config import ConfigError, RolePaths, load_settings
 from connector.events import ENVELOPE, KINDS, SCHEMA, build_event, event_id_for, request_id_for
 from connector.parsing import job_hash
 from connector.plugins import eznest, inventory, onyx_joblog, summa_joblog
-from connector.readfiles import FileContended, complete_lines, open_shared_read, read_bytes
-from connector.store import Store
+from connector.readfiles import READ_WINDOW, FileContended, complete_lines, open_shared_read, read_bytes
+from connector.store import Store, windows_acl_commands
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / 'connector' / 'fixtures'
@@ -288,12 +288,15 @@ class FileAccessTests(TempCase):
         self.assertEqual(list((self.root / 'data').glob('read-*')), [])
 
     def test_half_written_line_is_not_consumed(self):
-        lines, offset = complete_lines(b'full\npartial', 5)
+        lines, offset, dropped, skipping = complete_lines(b'full\npartial', 5)
         self.assertEqual(lines, [b'full'])
         self.assertEqual(offset, 10)
-        lines, offset = complete_lines(b'partial', 0)
+        self.assertEqual(dropped, 0)
+        self.assertFalse(skipping)
+        lines, offset, dropped, skipping = complete_lines(b'partial', 0)
         self.assertEqual(lines, [])
         self.assertEqual(offset, 0)
+        self.assertFalse(skipping)
 
     def test_future_only_watermark_and_unpaired_lines_are_not_stored(self):
         folder = self.root / 'FAKE-CUSTOMER-DIR'
@@ -440,6 +443,117 @@ class FileAccessTests(TempCase):
         self.assertIn('onyx_joblog', text)
         self.assertIn('idle', text)
         self.assertIn('not paired', text)
+
+
+class BoundAndHostTests(TempCase):
+    def test_read_window_and_oversize_lines_are_capped(self):
+        path = self.root / 'big.log'
+        path.write_bytes(b'x' * (READ_WINDOW + 50))
+        chunk = read_bytes(path, 0, self.root / 'data')
+        self.assertEqual(len(chunk), READ_WINDOW)
+        huge = b'A' * (64 * 1024 + 8)
+        payload = b'ok\n' + huge + b'\n' + b'next\n'
+        lines, offset, dropped, skipping = complete_lines(payload, 0)
+        self.assertEqual(lines, [b'ok', b'next'])
+        self.assertEqual(dropped, 1)
+        self.assertFalse(skipping)
+        self.assertEqual(offset, len(payload))
+        partial = b'short\n' + (b'B' * (64 * 1024 + 4))
+        lines, offset, dropped, skipping = complete_lines(partial, 0)
+        self.assertEqual(lines, [b'short'])
+        self.assertEqual(dropped, 1)
+        self.assertTrue(skipping)
+        lines, offset, dropped, skipping = complete_lines(b'garbage\nkept\n', 0, skipping=True)
+        self.assertEqual(lines, [b'kept'])
+        self.assertEqual(dropped, 0)
+        self.assertFalse(skipping)
+
+    def test_poll_drops_oversize_lines_and_bounds_inventory(self):
+        log = self.root / 'JobLog.txt'
+        log.write_bytes(b'')
+        config = self.write_config({'onyx_joblog': {
+            'enabled': True, 'source': {'type': 'file', 'path': str(log)},
+            'printers': ['FAKE-PRINTER-A'],
+        }})
+        specs, _directory = load_settings(config)
+        store = self.store()
+        output_credential.save(store.directory, TOKEN)
+        runtime.poll(specs, store, send=False)
+        huge = b'C' * (64 * 1024 + 12)
+        text = huge + b'\n' + (onyx_line('AFTER-HUGE', epoch='1712346400') + '\n').encode()
+        log.write_bytes(text)
+        runtime.poll(specs, store, send=False)
+        self.assertEqual(len(store.outbox()), 1)
+        self.assertGreaterEqual(store.dropped('onyx_joblog'), 1)
+        self.assertNotIn(b'CCCCCCC', (self.root / 'data' / 'connector.sqlite3').read_bytes())
+        view = self.root / 'stock.json'
+        view.write_bytes(b'[' + b' ' * (READ_WINDOW + 32))
+        view_config = self.write_config({'inventory': {
+            'enabled': True, 'source': {'type': 'file', 'path': str(view)},
+        }})
+        view_specs, _directory = load_settings(view_config)
+        runtime.poll(view_specs, store, send=False)
+        self.assertFalse(store.inventory_seeded())
+        self.assertGreaterEqual(store.dropped('inventory'), 1)
+
+    def test_output_host_is_pinned_unless_the_config_file_sets_https(self):
+        os.environ['EZ_NEST_OUTPUT_URL'] = 'https://evil.example/steal'
+        self.assertEqual(client.normalize_output_base(None), 'https://output.jeezlabs.io')
+        self.assertEqual(client.url_for('event'), 'https://output.jeezlabs.io/api/shop/telemetry')
+        self.assertEqual(client.url_for('pair'), 'https://output.jeezlabs.io/api/shop/agent/pair')
+        self.assertEqual(client.normalize_output_base('https://lab.example'), 'https://lab.example')
+        for bad in ('http://output.jeezlabs.io', 'https://user:secret@output.jeezlabs.io', 'https://output.jeezlabs.io/api', 'not a url'):
+            with self.assertRaises(client.ClientError):
+                client.normalize_output_base(bad)
+        plain = self.write_config({})
+        loaded = load_settings(plain)
+        self.assertIsNone(loaded.output_host)
+        self.assertTrue(client.url_for('event', loaded.output_host).startswith('https://output.jeezlabs.io/'))
+        custom = self.root / 'custom.json'
+        custom.write_text(json.dumps({'outputHost': 'https://lab.example'}), encoding='utf-8')
+        loaded = load_settings(custom)
+        self.assertEqual(client.url_for('event', loaded.output_host), 'https://lab.example/api/shop/telemetry')
+        rejected = self.root / 'bad-host.json'
+        rejected.write_text(json.dumps({'outputHost': 'http://lab.example'}), encoding='utf-8')
+        with self.assertRaises(ConfigError):
+            load_settings(rejected)
+
+    def test_salt_is_random_per_install_and_state_is_private(self):
+        first = self.store()
+        again = Store(first.directory)
+        other = Store(self.root / 'other-install')
+        self.assertEqual(len(first.salt()), 32)
+        self.assertEqual(first.salt(), again.salt())
+        self.assertNotEqual(first.salt(), other.salt())
+        self.assertEqual(first.directory.stat().st_mode & 0o077, 0)
+        self.assertEqual(first.path.stat().st_mode & 0o077, 0)
+        commands = windows_acl_commands(first.directory, 'ShopUser', container=True)
+        flat = [' '.join(part) for part in commands]
+        self.assertIn('/inheritance:r', flat[0])
+        self.assertIn('ShopUser:(OI)(CI)F', flat[1])
+        self.assertNotIn('/grant', flat[0])
+        self.assertEqual(flat[1].count('/grant:r'), 1)
+        self.assertNotIn('ShopUser', flat[2])
+        self.assertIn('/remove:g', flat[2])
+        for sid in ('*S-1-1-0', '*S-1-5-32-545', '*S-1-5-11', '*S-1-5-32-544', '*S-1-5-18'):
+            self.assertIn(sid, flat[2])
+        file_grant = ' '.join(windows_acl_commands(first.path, 'ShopUser', container=False)[1])
+        self.assertIn('ShopUser:F', file_grant)
+        self.assertNotIn('(OI)', file_grant)
+        readme = ' '.join((ROOT / 'connector' / 'README.md').read_text(encoding='utf-8').split())
+        self.assertIn("computer's name and installation id", readme)
+        self.assertIn('sent once', readme)
+
+    def test_pairing_text_says_the_name_and_install_id_are_sent_once(self):
+        ack = json.dumps({'outcome': 'created', 'result': {'token': TOKEN, 'shopName': 'North Shop'}}).encode()
+        stdout = io.StringIO()
+        with patch('sys.stdout', stdout), patch('connector.client.post_json', return_value=(200, {}, ack)):
+            code = main(['pair', '7K4NP-QRX2M'])
+        self.assertEqual(code, 0)
+        text = stdout.getvalue()
+        self.assertIn('installation id', text)
+        self.assertIn('sent once', text)
+        self.assertNotIn(TOKEN, text)
 
 
 class InventoryLiveTests(TempCase):

@@ -33,40 +33,42 @@ def main(argv=None):
     run.add_argument('--once', action='store_true', help='Poll one time and exit')
     args = parser.parse_args(argv)
     try:
-        specs, store = _open(args.config)
+        specs, store, output_host = _open(args.config)
     except ConfigError as error:
         print(error, file=sys.stderr)
         return 1
     if args.command == 'pair':
-        return _pair(args, store)
+        return _pair(args, store, output_host)
     if args.command == 'status':
-        print(runtime.format_status(specs, store))
+        print(runtime.format_status(specs, store, output_host))
         return 0
     if args.command == 'disconnect':
         return _disconnect(store)
     if args.command == 'replay':
-        return _replay(args, store)
+        return _replay(args, store, output_host)
     if args.command == 'run':
-        return _run(args, specs, store)
+        return _run(args, specs, store, output_host)
     return 1
 
 
 def _open(config):
     chosen = config or os.environ.get('EZ_NEST_CONNECTOR_CONFIG')
     if chosen:
-        specs, directory = load_settings(chosen)
-    else:
-        specs, directory = default_settings(), data_directory()
-    return specs, Store(directory)
+        loaded = load_settings(chosen)
+        return loaded.plugins, Store(loaded.directory), loaded.output_host
+    return default_settings(), Store(data_directory()), None
 
 
-def _pair(args, store):
+def _pair(args, store, output_host):
     try:
-        result = client.pair(store.directory, args.code, host_ref=store.instance_id())
+        result = client.pair(
+            store.directory, args.code, host_ref=store.instance_id(), output_host=output_host,
+        )
     except output_pairing.PairingError as error:
         print(error, file=sys.stderr)
         return 1
     print('Connected to OUTPUT.')
+    print('This computer\'s name and installation id were sent once with the pairing code.')
     if result.get('shopName'):
         print(result['shopName'])
     return 0
@@ -86,7 +88,7 @@ def _disconnect(store):
     return 0
 
 
-def _replay(args, store):
+def _replay(args, store, output_host):
     fixtures = Path(args.fixtures)
     if not fixtures.is_dir():
         print('The fixture folder was not found.', file=sys.stderr)
@@ -104,17 +106,17 @@ def _replay(args, store):
     if not token:
         print('Pair this computer before sending.', file=sys.stderr)
         return 1
-    sent = client.send_many(events, token)
+    sent = client.send_many(events, token, output_host=output_host)
     print(f'sent {sent} of {len(events)}', file=sys.stderr)
     return 0 if sent == len(events) else 1
 
 
-def _run(args, specs, store):
+def _run(args, specs, store, output_host):
     stream = None
     if any(spec.enabled and spec.source_type == 'stdin' for spec in specs.values()):
         stream = runtime.StdinSource(sys.stdin.buffer)
     while True:
-        runtime.poll(specs, store, stdin=stream, send=True)
+        runtime.poll(specs, store, stdin=stream, send=True, output_host=output_host)
         if args.once:
             return 0
         time.sleep(30)
