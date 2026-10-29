@@ -1997,6 +1997,14 @@ function applyShop(shop) {
   $('update').hidden = !$('updates').checked;
   $('test-channel').checked = shop.channel === 'test';
   $('output-network').checked = shop.outputNetwork === true;
+  const shareStock = $('share-stock-summary');
+  const showNames = $('show-roll-names');
+  if (shareStock && showNames) {
+    shareStock.checked = shop.shareStockSummary === true;
+    showNames.checked = shop.showRollNames !== false;
+    shareStock.disabled = !hostComputer;
+    showNames.disabled = !hostComputer;
+  }
   if (shop.outputNote) $('output-note').textContent = shop.outputNote;
   if (shop.printer) $('printer').value = shop.printer;
   if (shop.setupComplete && !prefs().thru && shop.thru) $('thru-name').value = shop.thru;
@@ -2096,7 +2104,9 @@ function shopPayload(extra) {
     onyxPc: $('onyx-pc').checked,
     updates: $('updates').checked,
     channel: $('test-channel').checked ? 'test' : 'stable',
-    outputNetwork: $('output-network').checked
+    outputNetwork: $('output-network').checked,
+    shareStockSummary: $('share-stock-summary') ? $('share-stock-summary').checked : false,
+    showRollNames: $('show-roll-names') ? $('show-roll-names').checked : true
   }, extra || {});
   const outputUrl = outputUrlField();
   if (outputUrl !== null) payload.outputUrl = outputUrl;
@@ -2142,6 +2152,7 @@ async function saveSettings() {
     cutMapping();
     if (!await saveHotFolder()) throw Error($('hot-error').textContent);
     await saveDeploy();
+    await refreshStockPreview();
     if (!saveShop() || !savePrefs({undo: $('allow-undo').checked})) throw Error('This browser could not save your preferences.');
     note.textContent = 'Saved.';
   } catch (error) {
@@ -2452,6 +2463,7 @@ function restoreJob(state) {
 }
 
 let outputSharing = null;
+let hostComputer = false;
 function renderOutputSharing(info) {
   outputSharing = info;
   const source = info.connection;
@@ -2537,6 +2549,25 @@ async function disconnectOutput() {
     refreshOutputSharing().catch(() => {});
   }
 }
+async function refreshStockPreview() {
+  const preview = $('stock-output-preview');
+  if (!preview) return;
+  const names = $('show-roll-names') && $('show-roll-names').checked ? '1' : '0';
+  try {
+    const info = await fetchJson('/api/stock/output?names=' + names, 5000);
+    preview.textContent = JSON.stringify(info.preview, null, 2);
+    const note = $('stock-output-note');
+    if (!note) return;
+    if (!hostComputer) note.textContent = 'Change this on the shop computer.';
+    else if (!$('share-stock-summary').checked) note.textContent = 'Sharing is off. Nothing is sent until you turn it on and this computer is paired.';
+    else if (!info.paired) note.textContent = 'Sharing is on. Nothing is sent until this computer is paired.';
+    else note.textContent = 'This is the stock summary sent to OUTPUT.';
+  } catch {
+    preview.textContent = '';
+    if ($('stock-output-note')) $('stock-output-note').textContent = 'The preview is unavailable.';
+  }
+}
+
 async function changeOutputSharing(enable) {
   if (enable && (!outputSharing || outputSharing.paused || !$('telemetry-agree').checked)) return;
   $('telemetry-enable').disabled = $('telemetry-stop').disabled = true;
@@ -2575,6 +2606,7 @@ async function boot() {
   await ensureLibraries();
   await ensureStyles();
   let session = await fetchJsonRetry('/api/session');
+  hostComputer = session.localPC === true;
   token = session.token || '';
   localSave = session.localSave === true;
   renderOutputLink(session.outputLink, session.localPC);
@@ -3046,7 +3078,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const dialog = $('settings');
     if (!dialog.open) dialog.showModal();
     $('hot-folder').focus();
+    refreshStockPreview();
   });
+  $('settings-stock-share').addEventListener('toggle', () => { if ($('settings-stock-share').open) refreshStockPreview(); });
+  $('show-roll-names').addEventListener('change', refreshStockPreview);
+  $('share-stock-summary').addEventListener('change', refreshStockPreview);
   $('settings-close').addEventListener('click', () => $('settings').close());
   $('settings-telemetry').addEventListener('toggle', () => { if ($('settings-telemetry').open) refreshOutputSharing(); });
   $('telemetry-refresh').addEventListener('click', refreshOutputSharing);

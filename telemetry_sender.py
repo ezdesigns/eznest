@@ -200,23 +200,61 @@ def worker_command():
     return [sys.executable, str(Path(__file__).resolve()), '--telemetry-worker']
 
 
-def emit(payload, token):
+def _emit_stock(url, payload, token, method):
+    """PUT or DELETE the stock summary. HTTPS only, no redirects, no HTTP fallback."""
+    if method not in ('PUT', 'DELETE'):
+        return False
+    if not shop_deploy.allowed_output_request(url) or urlparse(url).path != '/api/shop/agent/stock':
+        return False
+    if method == 'DELETE':
+        raw = None
+        if payload not in (None, {}):
+            return False
+    else:
+        if not isinstance(payload, dict):
+            return False
+        raw = json.dumps(payload, separators=(',', ':'), allow_nan=False).encode()
+        if len(raw) > 32768:
+            return False
+    headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/json'}
+    if raw is not None:
+        headers['Content-Type'] = 'application/json'
+    request = Request(url, data=raw, headers=headers, method=method)
+    try:
+        with build_opener(NoRedirect()).open(request, timeout=10) as response:
+            body = response.read(16385)
+            if response.status not in (200, 204) or len(body) > 16384:
+                return False
+    except (OSError, URLError, HTTPError, ValueError):
+        return False
+    return True
+
+
+def emit(payload, token, method='POST', url=None):
     # A socket timeout only bounds inactivity, not slow headers/body or DNS.
     # An isolated child gives the entire operation a deadline. subprocess.run
     # kills and waits for that child on timeout, before releasing the consent
     # lock; no abandoned request can later resume after revocation.
+    if method not in ('POST', 'PUT', 'DELETE'):
+        return False
     env = {key: os.environ[key] for key in
            ('PATH', 'HOME', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP', 'TMPDIR') if key in os.environ}
-    target = _EMIT_ENDPOINT or ENDPOINT
+    target = url or (_EMIT_ENDPOINT or ENDPOINT)
     if not shop_deploy.allowed_output_request(target):
+        return False
+    if url is not None and urlparse(url).path != ('/api/shop/telemetry' if method == 'POST' else '/api/shop/agent/stock'):
         return False
     parsed = urlparse(target)
     if parsed.scheme == 'https' and parsed.hostname and not parsed.username and not parsed.password:
         origin = f'https://{parsed.hostname}' + (f':{parsed.port}' if parsed.port else '')
         if shop_deploy.output_url_allowed(origin):
             env['EZ_NEST_OUTPUT_URL'] = origin
+    if method == 'POST' and url is None:
+        message = {'payload': payload, 'token': token}
+    else:
+        message = {'payload': payload, 'token': token, 'method': method, 'url': target}
     try:
-        result = subprocess.run(worker_command(), input=json.dumps({'payload':payload, 'token':token}).encode(),
+        result = subprocess.run(worker_command(), input=json.dumps(message).encode(),
                                 capture_output=True, timeout=10, env=env)
         return result.returncode == 0 and result.stdout.strip() == b'true'
     except (OSError, subprocess.TimeoutExpired):
@@ -225,13 +263,22 @@ def emit(payload, token):
 
 def worker():
     try:
-        raw = sys.stdin.buffer.read(16385)
-        if len(raw) > 16384:
+        raw = sys.stdin.buffer.read(40001)
+        if len(raw) > 40000:
             raise ValueError('Request too large')
         request = json.loads(raw)
-        if set(request) != {'payload', 'token'} or not isinstance(request['token'],str) or not re.fullmatch(r'osa_[A-Za-z0-9_-]{43}',request['token']):
+        token = request.get('token')
+        if not isinstance(token, str) or not re.fullmatch(r'osa_[A-Za-z0-9_-]{43}', token):
             raise ValueError('Invalid request')
-        accepted = _emit_https(request['payload'], request['token'])
+        keys = set(request)
+        if keys == {'payload', 'token'}:
+            if len(raw) > 16384:
+                raise ValueError('Request too large')
+            accepted = _emit_https(request['payload'], token)
+        elif keys == {'payload', 'token', 'method', 'url'}:
+            accepted = _emit_stock(request['url'], request['payload'], token, request['method'])
+        else:
+            raise ValueError('Invalid request')
     except Exception:
         accepted = False
     print('true' if accepted else 'false')
