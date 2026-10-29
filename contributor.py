@@ -62,7 +62,7 @@ def setup(paths, test_tools=False):
 
 
 def start_command(paths, port=8765, no_browser=False):
-    command = [str(paths['python']), str(paths['root'] / 'launcher.py'), '--shop-test',
+    command = [str(paths['python']), str(paths['root'] / 'launcher.py'), '--dev', '--shop-test',
                '--data-dir', str(paths['data']), '--port', str(port)]
     if no_browser:
         command.append('--no-browser')
@@ -110,6 +110,9 @@ def main():
         else:
             if not 1024 <= args.port <= 65535:
                 raise ValueError('Choose a local port from 1024 to 65535.')
+            # A labeled source trial. Installed builds ignore both variables.
+            os.environ['EZ_NEST_DEV'] = '1'
+            os.environ['EZ_NEST_DEV_NO_OUTPUT'] = '1'
             return subprocess.call(start_command(paths, args.port, args.no_browser), cwd=paths['root'])
     return 0
 

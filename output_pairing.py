@@ -240,6 +240,8 @@ def connect(directory, code, *, paused=False, transport=None, host=None):
         raise
     except (OSError, ValueError):
         raise PairingError('unexpected', STORE_FAILED) from None
+    import output_gate
+    output_gate.note_paired(directory)
     return telemetry_sender.status(directory)
 
 
@@ -253,4 +255,6 @@ def disconnect(directory, *, paused=False):
         raise PairingError('rejected', 'This computer is not connected with a pairing code.')
     telemetry_sender.revoke(directory)
     output_credential.clear(directory)
+    import output_gate
+    output_gate.note_disconnected(directory)
     return telemetry_sender.status(directory)

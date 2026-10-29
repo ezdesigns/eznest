@@ -8,6 +8,12 @@ eznest.exe opens the full workspace at http://127.0.0.1:8765/.
 Keep _internal beside the exe. No separate Python installation or account is needed.
 Stop an older version on that port first. See README, "Run eznest in the shop".
 
+CONNECT
+On the shop computer, the first page is Connect to OUTPUT.
+Paste a pairing code from https://output.jeezlabs.io/outpost/ez-nest.
+Designer PCs cannot do this. They are told to ask the shop computer.
+Artwork, filenames, customers, and stock are not sent for that connection.
+
 NEST
 1. Drop PDF, PDF-compatible AI, or SVG files.
 2. PDF/AI needs mapped cut strokes with a closed outer boundary for each piece.

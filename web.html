@@ -22,6 +22,24 @@
     <p id="pin-error" class="lan-note" hidden></p>
   </form>
 </dialog>
+<dialog id="output-gate" aria-labelledby="output-gate-title">
+  <form id="output-gate-form">
+    <h2 id="output-gate-title">Connect to OUTPUT</h2>
+    <p id="output-gate-note" class="hint"></p>
+    <p id="output-gate-lan" class="hint" hidden>Ask the shop computer to connect to OUTPUT.</p>
+    <div id="output-gate-fields">
+      <label>Pairing code
+        <input id="output-gate-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="characters" inputmode="text">
+      </label>
+      <button id="output-gate-submit" class="primary" type="submit">Connect</button>
+      <button id="output-gate-check" class="link" type="button" hidden>Check connection</button>
+      <p class="hint"><a href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Get a pairing code</a></p>
+      <p class="hint">Connecting sends this computer's name and installation id once. Later check-ins send the app version. Artwork, filenames, customers, and stock stay on this computer.</p>
+    </div>
+    <p id="output-gate-error" class="lan-note" hidden></p>
+  </form>
+</dialog>
+<p id="output-banner" class="lan-note" hidden></p>
 <section id="setup" hidden>
   <h2>Ready to nest</h2>
   <p class="hint">Check your cut line names. Printer and default folder are optional; you can choose where to save each finished file.</p>
@@ -144,16 +162,20 @@
         <button id="output-disconnect" type="button" hidden>Disconnect</button>
         <p id="output-connect-status" role="status" aria-live="polite"></p>
       </div>
-      <p>Off by default. Connect this computer with a pairing code, or leave launch settings in place if they are already there. Connecting sends this computer's name and installation id to OUTPUT. After you agree, new local activity is sent automatically to OUTPUT, linked to the shop assigned to this host's credential. Earlier activity is excluded. A failed delivery is retried with the same event ID. Measured stock readings already recorded on this host are included. The shop stock ledger stays here.</p>
-      <p>Shared: a stable installation ID, opaque layout and request IDs, exact event time, app version, event type, standard material category, and the measurement ranges below. IDs allow OUTPUT to link events from the same installation and layout. OUTPUT also receives this host's IP address and shop credential over HTTPS.</p>
-      <p>Never shared: artwork, files or filenames, customer names or contacts, job codes, roll IDs, custom material names, or exact dimensions, quantities, stock and search time. These are local observations; “printed” means an explicit operator confirmation, not independent proof of physical printing.</p>
+      <h3>What OUTPUT sees</h3>
+      <p>This computer has to be connected to OUTPUT before the shop can nest, send, or change stock. That connection is separate from sharing activity.</p>
+      <p>Sent when you connect: this computer's name and this installation id, once, in the pairing request. Later check-ins send the app version. The shop credential authenticates those HTTPS requests. OUTPUT also sees this computer's IP address on those requests.</p>
+      <p>Sent only after <strong>Enable sharing</strong>, and only for new activity: a stable installation id, opaque layout and request ids, the exact event time, the app version, the event type, a standard material category, and the measurement ranges below. Measured stock readings already on this host can be included. Earlier activity is excluded. A failed delivery is retried with the same event id. The shop stock ledger stays here.</p>
+      <p>Never sent: artwork, files or filenames, customer names or contacts, job codes, roll ids, custom material names, exact dimensions, quantities, stock contents, or search time. These are local observations; “printed” means an explicit operator confirmation, not independent proof of physical printing.</p>
+      <p>Sharing capacity and availability with the OUTPUT network is a separate opt-in. It stays off until you turn it on. It is not this connection, and it is not Enable sharing.</p>
+      <p>OUTPUT is pre-revenue. Where that product moves money, the money is Solana devnet test tokens. Ez Nest does not send a price.</p>
       <p>Material categories: <code>moto_regular, moto_holographic, moto_chrome, custom, unknown</code> or null. Stock-only observations have no layout ID.</p>
       <p>Event types: <span id="telemetry-kinds"></span></p>
       <p id="telemetry-bands"></p>
       <label>OUTPUT service address
         <input id="output-url" type="url" inputmode="url" maxlength="200" spellcheck="false" autocapitalize="none" placeholder="https://output.jeezlabs.io" aria-describedby="output-url-note">
       </label>
-      <p id="output-url-note" class="hint">Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Sharing stays off until you connect and agree.</p>
+      <p id="output-url-note" class="hint">Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree here. The account connection itself is required.</p>
       <p>Destination: <code id="output-destination">https://output.jeezlabs.io/api/shop/telemetry</code></p>
       <details><summary>Exact JSON fields (illustrative event)</summary><pre id="telemetry-preview" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
       <p>Stopping prevents further requests after any in-flight request finishes. It does not delete records already received by OUTPUT. Re-enabling excludes all activity recorded before the new consent.</p>
@@ -168,8 +190,8 @@
     <label class="check"><input id="updates" type="checkbox"> Check for updates</label>
     <p class="hint">Off during beta. To turn checks on, check this box and start Ez Nest with <code>EZ_NEST_UPDATES=1</code>. Ez Nest keeps a download only when its SHA-256 matches the published checksum. Installing that file is still a separate click.</p>
     <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
-    <label class="check" hidden><input id="output-network" type="checkbox"> Join OUTPUT network</label>
-    <p id="output-note" class="hint" hidden>Not available yet.</p>
+    <label class="check" hidden><input id="output-network" type="checkbox"> Share capacity with the OUTPUT network</label>
+    <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Connecting this computer to OUTPUT is required and is not this switch.</p>
     <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
     <p id="update-note" class="hint" hidden></p>
     <button id="update-cancel" type="button" class="link" hidden>Cancel waiting update</button>
@@ -280,9 +302,9 @@
     <h2><span class="step-number">3</span> Where will you print?</h2>
     <div class="output-modes" aria-label="Where to print">
       <button id="in-house" class="nest-mode" type="button" aria-pressed="true">In-house</button>
-      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Still get paid. Learn about OUTPUT">
+      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Learn about OUTPUT">
         <strong>Don't print</strong>
-        <span class="paid-badge">Still get paid <span class="paid-emoji">🤑</span></span>
+        <span class="paid-badge">Devnet sandbox</span>
       </button>
     </div>
     <div class="effort-heading"><button id="effort-help" class="help-label" type="button">Nesting effort</button><span class="hint">More time may find a tighter fit.</span></div>
@@ -333,8 +355,8 @@
 </main>
 <dialog id="max-output-dialog" aria-labelledby="max-output-title">
   <div class="dialog-heading"><h2 id="max-output-title">Don't print it. Let another shop do it.</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
-  <p class="output-lead">OUTPUT routes the job to the best-fit nearby shop. You still get paid.</p>
-  <p class="paid-line">Still get paid <span class="paid-emoji">🤑</span></p>
+  <p class="output-lead">OUTPUT can match this job with another shop. The sandbox does not take payment.</p>
+  <p class="paid-line">Devnet sandbox. No payment.</p>
   <h3 class="output-when">Use it when</h3>
   <ul class="output-points">
     <li>The queue is backed up and this job would miss its date</li>

@@ -108,7 +108,7 @@ def bundle_spec(root, out, arch, version, *, service_edition=False):
 from PyInstaller.utils.hooks import collect_all, copy_metadata
 datas = {data!r}
 binaries = []
-hiddenimports = ['launcher', 'installer_update']
+hiddenimports = ['launcher', 'installer_update', 'output_gate']
 for module in ('spyrrow', 'pypdfium2', 'pypdfium2_raw'):
     module_data, module_binaries, module_imports = collect_all(module)
     datas += module_data

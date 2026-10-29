@@ -42,8 +42,14 @@ browser after they say the host is back.
 
 ## Privacy
 
-Nothing leaves the shop unless the owner turns on OUTPUT sharing on the host.
-Your artwork stays on that computer.
+The shop computer has to be connected to OUTPUT. If this page says to ask the
+shop computer to connect to OUTPUT, tell the person at that PC. They paste a
+pairing code there. You do not.
+
+Your artwork, filenames, customer names, and stock stay on the host. Connecting
+sends the host computer's name, an installation id, and later the app version.
+Activity sharing is a separate choice on the host and stays off until they
+turn it on.
 
 ## For the admin
 
@@ -51,10 +57,11 @@ Designer PCs only open `http://SHOP-HOST:8765/web`. Install Ez Nest on the
 host. Set a shop PIN before other PCs connect:
 
 1. On the host, open `http://127.0.0.1:8765/web`.
-2. Open **Settings**, then **Shop PIN**.
-3. Type 8 to 12 digits, or a passphrase of at least 10 characters with a letter, and choose **Save shop PIN**. Tell the designers that PIN. Do not write it in a file in the data folder. If Settings says the saved PIN is old, replace it.
-4. Optional and recommended: pass `-TlsCert` and `-TlsKey` together so the shop page is HTTPS. Leave both empty to keep HTTP. On HTTP, someone who can watch the shop network can copy a signed-in browser's session. See [Security](../SECURITY.md).
-5. Turn on Shop network and start the host again. Shop network does not open until the PIN is saved.
+2. Choose **Connect** and paste a pairing code from <https://output.jeezlabs.io/outpost/ez-nest>. The shop cannot nest until this computer is connected. Designer PCs cannot do this step.
+3. Open **Settings**, then **Shop PIN**.
+4. Type 8 to 12 digits, or a passphrase of at least 10 characters with a letter, and choose **Save shop PIN**. Tell the designers that PIN. Do not write it in a file in the data folder. If Settings says the saved PIN is old, replace it.
+5. Optional and recommended: pass `-TlsCert` and `-TlsKey` together so the shop page is HTTPS. Leave both empty to keep HTTP. On HTTP, someone who can watch the shop network can copy a signed-in browser's session. See [Security](../SECURITY.md).
+6. Turn on Shop network and start the host again. Shop network does not open until the PIN is saved.
 
 Shop network has to be on or other PCs cannot open the page. See
 [Security](../SECURITY.md).

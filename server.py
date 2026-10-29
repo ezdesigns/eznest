@@ -14,6 +14,7 @@ import socket
 import sqlite3
 import ssl
 import workload
+import output_gate
 import output_pairing
 import telemetry
 import telemetry_sender
@@ -387,6 +388,34 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return self.cookie_ok()
 
+    def reject_output_gate(self, *, discard=False):
+        path = urlparse(self.path).path
+        if path in ('/api/session', '/api/health', '/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
+            return False
+        decision = output_gate.public_status(WORK, self.loopback_client())
+        if decision['ok']:
+            return False
+        if discard:
+            self._discard_request_body()
+        self.send(403, {'error': decision['message'], 'code': 'connect_required'})
+        return True
+
+    def _discard_request_body(self):
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+        except (TypeError, ValueError):
+            return
+        if size <= 0:
+            return
+        if size > 1_048_576:
+            size = 1_048_576
+        remaining = size
+        while remaining:
+            chunk = self.rfile.read(min(65536, remaining))
+            if not chunk:
+                return
+            remaining -= len(chunk)
+
     def origin_ok(self, origin):
         scheme = 'https://' if TLS else 'http://'
         if not isinstance(origin, str) or not origin.startswith(scheme):
@@ -430,6 +459,7 @@ class Handler(BaseHTTPRequestHandler):
             'pinConfigured': shop_auth.pin_configured(WORK),
             'pinWeak': shop_auth.pin_is_weak(WORK),
             'tls': TLS,
+            'outputConnection': output_gate.public_status(WORK, local),
         }
         if local:
             body['token'] = TOKEN
@@ -447,6 +477,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(403, {'error': 'Invalid session'})
             return self.send(200, self.session_body())
         if path.startswith('/api/'):
+            if path == '/api/health':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Open health on the shop computer.'})
+                return self.send(200, {'ok': True, 'app': 'eznest'})
+            if path != '/api/session' and self.reject_output_gate():
+                return
             if not self.loopback_client() and not self.authenticated():
                 return self.send(403, {'error': 'Enter the shop PIN on this computer.'})
             if not self.loopback_client() and (path == '/api/shop' or path == '/api/folder' or path.startswith('/api/folder/')):
@@ -707,6 +743,9 @@ class Handler(BaseHTTPRequestHandler):
         global PROCESS
         if not self.allowed() or not self.browser_site_ok():
             return self.send(403, {'error': 'Invalid session'})
+        if self.path not in ('/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
+            if self.reject_output_gate(discard=True):
+                return
         if self.path == '/api/login':
             return self._login()
         if self.path == '/api/logout':
@@ -772,6 +811,10 @@ class Handler(BaseHTTPRequestHandler):
                     if data:
                         raise ValueError('Disconnect takes no additional data.')
                     return self.send(200, output_pairing.disconnect(WORK, paused=telemetry_paused()))
+                if self.path == '/api/telemetry/output/check-in':
+                    if data:
+                        raise ValueError('Check-in takes no additional data.')
+                    return self.send(200, output_gate.check_in(WORK, local=True))
                 with LOCK:
                     if self.path == '/api/telemetry/link':
                         if set(data) - {'id', 'jobCodes', 'rollId'}:
@@ -1225,6 +1268,7 @@ def serve(open_browser=False, page='/'):
     update_stop = threading.Event()
     sender_thread = threading.Thread(target=telemetry_sender.run, args=(WORK, update_stop, telemetry_paused), daemon=True)
     sender_thread.start()
+    threading.Thread(target=output_gate.run, args=(WORK, update_stop), daemon=True).start()
     threading.Thread(target=check_updates, args=(update_stop,), daemon=True).start()
     if open_browser:
         import webbrowser

@@ -82,6 +82,14 @@ Setup removes inherited permissions on `C:\ProgramData\eznest` and grants SYSTEM
 
 A request is accepted only when the Host header is this computer's own name or one of its own addresses (`localhost`, loopback, or `lan_addresses()`), on the shop port. Another private IP is rejected. State-changing requests and `GET /api/session` also need a matching `Origin` or `Sec-Fetch-Site: same-origin`. A cross-site page is rejected. Loopback programs that send neither header (the launcher, Illustrator, the update helper) still work on this computer.
 
+### OUTPUT connection
+
+The shop computer must be paired with OUTPUT before nesting, sending, or stock changes. The API returns `connect_required` until then. Pairing, disconnect, and check-in are host-only. The address allowlist is unchanged: `https://output.jeezlabs.io`, or the exact origin in `EZ_NEST_OUTPUT_URL`.
+
+The pairing code and the shop credential are not logged, not put in source, and not returned to the browser. Check-in sends the app version only. The computer name and installation id go out once, at pairing. Customer artwork, filenames, and stock contents are not part of either request.
+
+A missing OUTPUT response does not stop a paired shop for 14 days (`CHECK_IN_MAX_AGE_DAYS`). OUTPUT saying the credential is revoked does. `EZ_NEST_DEV_NO_OUTPUT=1` is ignored unless the process is a source checkout in dev mode (`--dev`). Installed builds drop that variable. Forks may remove the requirement under Apache-2.0. Official builds enforce it.
+
 ### OUTPUT address and key
 
 The OUTPUT address can be changed only on the shop computer. It must be `https://output.jeezlabs.io`, or the exact https origin in `EZ_NEST_OUTPUT_URL` set by an administrator before the process starts.

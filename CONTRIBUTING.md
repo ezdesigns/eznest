@@ -49,11 +49,13 @@ These can be set without changing code. Environment variables win. A one-line fi
 | Token, optional, private-repo mirrors only | `EZ_NEST_GITHUB_TOKEN`, or Windows credential `eznest/github-token` | not stored |
 | Report-a-problem link | `EZ_NEST_ISSUES_URL` | `issues-url` |
 | OUTPUT service origin | `EZ_NEST_OUTPUT_URL` | `outputUrl` in `shop.json` |
+| Dev mode label (source checkout only) | `EZ_NEST_DEV=1` or `--dev` | not stored |
+| Skip OUTPUT on a source checkout | `EZ_NEST_DEV_NO_OUTPUT=1` together with dev mode | not stored |
 | Background update checks | `EZ_NEST_UPDATES` (`0` by default) | `updates` in `shop.json` (false by default) |
 
 A public repository needs no token. `shop_deploy.github_token()` is optional and only for a private-repo mirror. Leave the token unset. Do not put it in `shop.json` or a `github-token` file; those are ignored. The token is sent only to `github.com` and `api.github.com`, and only while update checks are on. Do not commit a token, a certificate, or a password.
 
-`EZ_NEST_OUTPUT_URL` is set by an administrator when the process starts. A saved `outputUrl` must be `https://output.jeezlabs.io` or that same https origin, and it can be changed only on the host. Sharing stays off until the host pairs and agrees. `EZ_NEST_UPDATES` defaults to `0`. Set it to `1` and turn **Check for updates** on before Ez Nest calls GitHub. Installing a checked download is still a separate click.
+`EZ_NEST_OUTPUT_URL` is set by an administrator when the process starts. A saved `outputUrl` must be `https://output.jeezlabs.io` or that same https origin, and it can be changed only on the host. The account connection is required on official builds. Activity sharing stays off until the host agrees. `EZ_NEST_DEV_NO_OUTPUT=1` is ignored unless `--dev` (or `EZ_NEST_DEV=1`) is also set on a source checkout. Installed builds ignore it. The page then shows `DEV MODE: not connected to OUTPUT`. Forks may remove the connection requirement. `contributor.py start` sets both variables for a local trial. `EZ_NEST_UPDATES` defaults to `0`. Set it to `1` and turn **Check for updates** on before Ez Nest calls GitHub. Installing a checked download is still a separate click.
 
 Check pinned dependencies when you change `requirements.txt`. Actions billing may be blocked, so run this locally:
 

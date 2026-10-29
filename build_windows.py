@@ -96,7 +96,7 @@ def main():
         pinned_distribution(name, version)
     out.mkdir(parents=True,exist_ok=True)
     if (out/'dist'/'eznest').exists():raise ValueError('The output already contains a build. Choose a new directory.')
-    command=[sys.executable,'-m','PyInstaller','--noconfirm','--onedir','--windowed','--name','eznest','--icon',str(ROOT/'assets'/'eznest.ico'),'--distpath',str(out/'dist'),'--workpath',str(out/'work'),'--specpath',str(out),'--collect-all','spyrrow','--collect-all','pypdfium2','--collect-all','pypdfium2_raw','--hidden-import','installer_update','--hidden-import','output_pairing','--hidden-import','output_credential','--exclude-module','tkinter']
+    command=[sys.executable,'-m','PyInstaller','--noconfirm','--onedir','--windowed','--name','eznest','--icon',str(ROOT/'assets'/'eznest.ico'),'--distpath',str(out/'dist'),'--workpath',str(out/'work'),'--specpath',str(out),'--collect-all','spyrrow','--collect-all','pypdfium2','--collect-all','pypdfium2_raw','--hidden-import','installer_update','--hidden-import','output_pairing','--hidden-import','output_credential','--hidden-import','output_gate','--exclude-module','tkinter']
     for name in STATIC:command+=['--add-data',f'{ROOT/name}{os.pathsep}.']
     command+=['--add-data',f'{ROOT/"fonts"}{os.pathsep}fonts']
     for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer','defusedxml']:command+=['--copy-metadata',name]
