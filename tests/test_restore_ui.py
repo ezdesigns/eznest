@@ -495,7 +495,7 @@ class InventoryShelfTests(unittest.TestCase):
                     self.assert_panel_hides_nothing(page)
                     name = tapped.locator('.stock-name')
                     self.assertTrue(name.get_attribute('title').startswith(name.text_content()))
-                    self.assertRegex(tapped.locator('.stock-size').text_content(), r'^\d+(\.\d+)? in wide$')
+                    self.assertRegex(tapped.locator('.stock-size').text_content(), r'^\d+(\.\d+)? in$')
                     page.keyboard.press('Escape')
                     last = page.locator('.stock-slot').last
                     last_name = last.locator('.stock-name').get_attribute('title')
@@ -660,6 +660,11 @@ class InventoryShelfTests(unittest.TestCase):
                     self.assertEqual(name.get_attribute('title'), 'Backlit film 54 in with a very long name for the shelf')
                     self.assertIn('Backlit film 54 in with a very long name for the shelf', low.get_attribute('aria-label'))
                     self.assertLessEqual(name.evaluate("n => Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight))"), 2)
+                    # Rows with only one-line names close up; a row with a long name keeps two lines.
+                    expect(page.locator('.stock-slot[data-id="x6"]')).to_have_class(re.compile('one-line'))
+                    expect(long).not_to_have_class(re.compile('one-line'))
+                    gap = page.locator('.stock-slot[data-id="x6"]').evaluate("s => s.querySelector('.stock-size').getBoundingClientRect().top - s.querySelector('.stock-name').getBoundingClientRect().bottom")
+                    self.assertLess(gap, 6)
                     self.snap(page, '12-rolls', width)
                     cases = {
                         'fits': r'^Fits this job: needs about 100 ft, 150 ft left$',
@@ -742,7 +747,8 @@ class InventoryShelfTests(unittest.TestCase):
                     gloss = page.locator('.stock-slot[data-id="gloss"]')
                     expect(gloss.locator('.stock-name')).to_have_text('Gloss vinyl')
                     expect(gloss.locator('.stock-name')).to_have_attribute('title', 'Gloss vinyl 54 in')
-                    expect(gloss.locator('.stock-size')).to_have_text('54 in wide')
+                    expect(gloss.locator('.stock-size')).to_have_text('54 in')
+                    self.assertIn('54 inches wide', gloss.get_attribute('aria-label'))
                     self.assertIn('Gloss vinyl 54 in', gloss.get_attribute('aria-label'))
                     expect(page.locator('.stock-slot[data-id="banner"] .stock-name')).to_have_text('Banner')
                     expect(page.locator('.stock-slot[data-id="plain"] .stock-name')).to_have_text('Clear laminate')

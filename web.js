@@ -3548,7 +3548,7 @@ function shelfMark(svg, check) {
 }
 function shelfLeftText(m) { return m.left == null ? 'Not measured' : shelfFmt(m.left) + ' ft'; }
 function shelfAria(m) {
-  const parts = [m.name, `${shelfFmt(m.w)} inch roll`, m.left == null ? 'length left not measured' : `${shelfFmt(m.left)} feet${m.full ? ' of ' + shelfFmt(m.full) + ' feet' : ''} left`];
+  const parts = [m.name, `${shelfFmt(m.w)} inches wide`, m.left == null ? 'length left not measured' : `${shelfFmt(m.left)} feet${m.full ? ' of ' + shelfFmt(m.full) + ' feet' : ''} left`];
   if (m.low) parts.push('low stock');
   if (m.id === $('material').value) parts.push('selected for this job');
   const status = rollJobStatus(m.item);
@@ -3570,7 +3570,7 @@ function shelfLabel(label, m) {
   const full = m.name || 'New roll';
   const name = shelfNode('span', 'stock-name', shelfShortName(full, m.w) || full, label);
   name.title = full;
-  shelfNode('span', 'stock-size', m.w > 0 ? `${shelfFmt(m.w)} in wide` : '\u00a0', label);
+  shelfNode('span', 'stock-size', m.w > 0 ? `${shelfFmt(m.w)} in` : '\u00a0', label);
 }
 function shelfNode(tag, cls, text, parent) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; if (parent) parent.append(e); return e; }
 function renderStock() {
@@ -3611,7 +3611,29 @@ function renderStock() {
     if (!draft) slot.addEventListener('click', () => { if (!stockForm) selectRoll(stockSel === m.id ? null : m.id); });
   });
   if (!stockForm) renderRollPanel();
+  fitShelfLabels();
 }
+// A shelf row whose names all fit on one line drops the second name line, so the width sits
+// right under the name; rows with a two-line name keep both lines so widths still line up.
+function fitShelfLabels() {
+  const rows = new Map();
+  for (const slot of $('stock-list').children) {
+    slot.classList.remove('one-line');
+    const top = slot.offsetTop;
+    if (!rows.has(top)) rows.set(top, []);
+    rows.get(top).push(slot);
+  }
+  for (const slots of rows.values()) {
+    const wraps = slots.some(slot => {
+      const name = slot.querySelector('.stock-name');
+      if (!name) return false;
+      const range = document.createRange(); range.selectNodeContents(name);
+      return new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size > 1;
+    });
+    if (!wraps) slots.forEach(slot => slot.classList.add('one-line'));
+  }
+}
+new ResizeObserver(() => fitShelfLabels()).observe($('stock-list'));
 function selectRoll(id, focus) {
   stockSel = id;
   for (const slot of $('stock-list').children) slot.setAttribute('aria-selected', String(slot.dataset.id === id));

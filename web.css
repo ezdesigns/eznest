@@ -664,6 +664,7 @@ body[data-step="sent"] #inventory-open { display: block; }
 .stock-label { display: flex; flex-direction: column; align-items: center; }
 /* Name: up to two lines, always the space of two, so every size line in a row sits at the same height. */
 .stock-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; width: 100%; height: 2.4em; font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--ink); overflow: hidden; overflow-wrap: anywhere; }
+.stock-slot.one-line .stock-name { height: 1.2em; -webkit-line-clamp: 1; }
 .stock-size { margin-top: 2px; font-size: 11px; line-height: 14px; color: var(--muted); white-space: nowrap; }
 .stock-qty b.unknown { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: -.01em; }
 .stock-slot.low .stock-qty b { color: #b42318; }
