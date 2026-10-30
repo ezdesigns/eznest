@@ -171,6 +171,11 @@ function fetchJson(path, ms) {
   return fetch(path, {signal: controller.signal}).then(async response => {
     clearTimeout(timer);
     if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      if (body.code === 'connect_required') {
+        showOutputRequired(true);
+        throw Error('Connect to OUTPUT to start nesting.');
+      }
       throw Error('Request failed.');
     }
     return response.json();
@@ -250,7 +255,9 @@ async function api(path, data, file) {
   });
   const body = await response.json();
   if (!response.ok) {
-    const error = Error(body.error || 'Request failed.');
+    const gated = body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/');
+    if (gated) showOutputRequired(true);
+    const error = Error(gated ? 'Connect to OUTPUT to start nesting.' : body.error || 'Request failed.');
     error.code = body.code;
     if (path === '/api/document/import' || path === '/api/document/import-file') {
       error.guideReview = body.guideReview; error.cutReview = body.cutReview;
@@ -2571,6 +2578,7 @@ async function boot() {
   token = session.token || '';
   localSave = session.localSave === true;
   renderOutputLink(session.outputLink, session.localPC);
+  renderOutputRequired(session);
   if (session.localPC && session.pinWeak) {
     await requireHostPinReset();
     session = await fetchJsonRetry('/api/session');
@@ -2583,6 +2591,11 @@ async function boot() {
     $('logout').hidden = false;
   } else if (!session.localPC) {
     $('logout').hidden = false;
+  }
+  if (outputRequired) {
+    showScreen('drop'); status(''); renderActions();
+    document.body.dataset.ready = '1';
+    return;
   }
   await refreshInventory().catch(() => {});
   if (inventoryReady && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
@@ -2615,6 +2628,20 @@ async function boot() {
   setInterval(() => { if (!document.hidden && !inventoryBusy && !stockForm && !document.querySelector('dialog[open]')) refreshInventory().catch(() => {}); }, 10000);
 }
 
+let outputRequired = false;
+let outputRequiredLocal = true;
+function renderOutputRequired(session) {
+  outputRequiredLocal = session?.localPC !== false;
+  showOutputRequired(session?.outputConnection?.ok === false);
+  showOutputBanner(session);
+}
+function showOutputRequired(required) {
+  outputRequired = required === true;
+  $('output-required').hidden = !outputRequired;
+  $('output-required-note').textContent = outputRequiredLocal ? '' : 'Ask the shop computer to connect to OUTPUT.';
+  $('output-required-connect').hidden = !outputRequiredLocal;
+  document.body.classList.toggle('output-required-on', outputRequired);
+}
 function showOutputBanner(session) {
   const banner = $('output-banner');
   if (!banner) return;
@@ -3354,7 +3381,10 @@ function renderOutputLink(info, local) {
 }
 async function refreshOutputLink() {
   const session = await fetchJson('/api/session', 5000);
+  const wasRequired = outputRequired;
   renderOutputLink(session.outputLink, session.localPC);
+  renderOutputRequired(session);
+  if (wasRequired && !outputRequired) location.reload();
 }
 function closeOutputLinkMenu() {
   $('output-link-menu').hidden = true;
@@ -3420,6 +3450,7 @@ async function disconnectOutputLink() {
 }
 $('output-link-connect').addEventListener('click', openOutputLinkForm);
 $('output-link-reconnect').addEventListener('click', openOutputLinkForm);
+$('output-required-connect').addEventListener('click', openOutputLinkForm);
 $('output-link-cancel').addEventListener('click', closeOutputLinkForm);
 $('output-link-form').addEventListener('submit', submitOutputLink);
 $('output-link-check').addEventListener('click', checkOutputLink);
