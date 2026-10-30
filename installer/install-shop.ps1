@@ -262,7 +262,7 @@ if ($lanEnabled) {
   if (Test-Path -LiteralPath $pinFile -PathType Leaf) {
     try {
       $pinData = Get-Content -LiteralPath $pinFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-      $pinReadable = [bool]($pinData -and $pinData.salt -and $pinData.hash)
+      $pinReadable = [bool]($pinData -and $pinData.salt -and $pinData.hash -and ([string]$pinData.salt -match '^([0-9a-fA-F]{2})+$') -and ([string]$pinData.hash -match '^([0-9a-fA-F]{2})+$') -and ([int]$pinData.n -ge 4096) -and ([int]$pinData.n -le 32768) -and ([int]$pinData.r -eq 8) -and ([int]$pinData.p -eq 1))
     } catch { $pinReadable = $false }
     if (-not $pinReadable) {
       Write-Warning 'The shop PIN file is empty or damaged. eznest stays on this computer only until you set a new PIN at http://127.0.0.1:8765/web and restart it.'
