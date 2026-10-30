@@ -548,6 +548,7 @@ class InventoryShelfTests(unittest.TestCase):
                 expect(page.locator('.stock-slot').first).to_have_attribute('aria-selected', 'true')
                 expect(page.locator('#stock-panel .stock-selected, #stock-panel button:has-text("Use for this job")')).to_have_count(1)
                 expect(page.locator('#stock-legend')).to_have_text('Tap a roll to see it. Taller roll = wider material. Fatter roll = more left.')
+                expect(page.locator('#stock .dialog-heading .hint')).to_have_text('Rolls in stock in the shop')
                 small = page.evaluate("""() => [...document.querySelectorAll('#stock .dialog-close, #stock .stock-x, #stock .stock-len, #stock button.link, #stock .stock-row-actions button')]
                     .filter(n => n.offsetParent).map(n => { const r = n.getBoundingClientRect(); return [n.className || n.id, Math.round(r.width), Math.round(r.height)]; })
                     .filter(([, w, h]) => w < 44 || h < 44)""")
