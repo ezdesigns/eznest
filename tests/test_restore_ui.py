@@ -375,7 +375,24 @@ class InventoryShelfTests(unittest.TestCase):
     url = test_web_mvp.WebMvpTests.url
     wait_ready = test_web_mvp.WebMvpTests.wait_ready
     page = RestoreUiTests.page
-    fresh = RestoreUiTests.fresh
+
+    def setUp(self):
+        test_web_mvp.WebMvpTests.setUp(self)
+        self.output = FakeOutput()
+        sender = patch.object(output_gate, '_post', lambda directory, raw, token: self.output.check_in(raw, token))
+        sender.start()
+        self.addCleanup(sender.stop)
+        self.pair_shop()
+
+    def fresh(self):
+        RestoreUiTests.fresh(self)
+        self.pair_shop()
+
+    def pair_shop(self):
+        # The shelf needs a connected shop: unpaired shops are asked to connect first.
+        with without_gate_env():
+            output_pairing.connect(server.WORK, CODE, transport=self.output.pair, host='Shop PC',
+                                   check_in_transport=self.output.check_in)
 
     def snap(self, page, name, width):
         target = os.environ.get('EZ_NEST_SHELF_SHOTS')
