@@ -393,9 +393,8 @@ class Handler(BaseHTTPRequestHandler):
             return False
 
     def cookie_ok(self):
-        if not shop_auth.pin_configured(WORK):
-            # The PIN was removed while running: no shop-network session stays valid.
-            shop_auth.clear_sessions()
+        if not shop_auth.lan_sessions_allowed(WORK):
+            # PIN removed, damaged or replaced while running: no shop-network session stays valid.
             return False
         header = self.headers.get('Cookie') if self.headers else None
         return shop_auth.session_valid(shop_auth.read_cookie(header), self.client_ip())

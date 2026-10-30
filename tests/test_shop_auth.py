@@ -120,6 +120,50 @@ class ShopAuthTests(unittest.TestCase):
             gone.do_GET()
             self.assertEqual(gone.sent[0][0], 403)
 
+    def test_pin_file_replaced_outside_the_app_ends_lan_sessions(self):
+        shop_auth.set_pin(server.WORK, '48151623')
+        pin_file = server.WORK / 'shop-pin.json'
+        sid = shop_auth.issue_session('192.168.1.50')
+        cookie = {'Cookie': shop_auth.cookie_header(sid).split(';')[0]}
+        self.assertTrue(self.handler('/api/state', headers=cookie).cookie_ok())
+        other = tempfile.TemporaryDirectory(); self.addCleanup(other.cleanup)
+        shop_auth.set_pin(other.name, '99887766')
+        replacement = (Path(other.name) / 'shop-pin.json').read_bytes()
+        # set_pin on the other folder must not have touched this folder's sessions record.
+        sid = shop_auth.issue_session('192.168.1.50')
+        cookie = {'Cookie': shop_auth.cookie_header(sid).split(';')[0]}
+        self.assertTrue(self.handler('/api/state', headers=cookie).cookie_ok())
+        pin_file.write_bytes(replacement)
+        os.utime(pin_file, ns=(1, 1))
+        self.assertFalse(self.handler('/api/state', headers=cookie).cookie_ok())
+
+    def test_a_pin_file_that_cannot_be_read_for_a_moment_keeps_sessions(self):
+        shop_auth.set_pin(server.WORK, '48151623')
+        sid = shop_auth.issue_session('192.168.1.50')
+        cookie = {'Cookie': shop_auth.cookie_header(sid).split(';')[0]}
+        self.assertTrue(self.handler('/api/state', headers=cookie).cookie_ok())
+        pin_file = server.WORK / 'shop-pin.json'
+        os.utime(pin_file, ns=(5, 5))  # force a re-read
+        with patch.object(Path, 'read_bytes', side_effect=PermissionError('locked by another program')):
+            self.assertTrue(self.handler('/api/state', headers=cookie).cookie_ok())
+        self.assertTrue(self.handler('/api/state', headers=cookie).cookie_ok())
+        pin_file.write_text('{"salt": "zz"}', encoding='utf-8')
+        self.assertFalse(self.handler('/api/state', headers=cookie).cookie_ok())
+
+    def test_pin_file_is_read_again_only_when_it_changes(self):
+        shop_auth.set_pin(server.WORK, '48151623')
+        self.assertEqual(shop_auth.pin_status(server.WORK), 'ok')
+        with patch.object(Path, 'read_bytes', side_effect=AssertionError('read again')):
+            for _ in range(50):
+                self.assertEqual(shop_auth.pin_status(server.WORK), 'ok')
+
+    def test_installer_checks_pin_scrypt_settings(self):
+        script = (Path(__file__).resolve().parent.parent / 'installer' / 'install-shop.ps1').read_text(encoding='utf-8')
+        for piece in ('[int]$pinData.n -ge 4096', '[int]$pinData.n -le 32768', '[int]$pinData.r -eq 8', '[int]$pinData.p -eq 1'):
+            self.assertIn(piece, script)
+        self.assertEqual((shop_auth.SCRYPT_R, shop_auth.SCRYPT_P), (8, 1))
+        self.assertTrue(4096 <= shop_auth.SCRYPT_N <= shop_auth._MAX_N == 32768)
+
     def test_loopback_host_name_must_use_this_port(self):
         item = server.Handler.__new__(server.Handler)
         self.assertTrue(item.local_name('localhost:8765'))
