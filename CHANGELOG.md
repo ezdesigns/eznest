@@ -7,17 +7,18 @@
   from the previous build is signed on the first load. A revoked credential
   stays in that signed record. Connector event ids use this install's salt.
   The container image is an installed build.
-- The shop computer must connect to OUTPUT before nesting, sending, or stock
-  changes. The first run is a Connect screen. Designer PCs are told to ask
-  the shop computer. A paired host keeps working for 14 days when OUTPUT is
+- The API no longer requires OUTPUT before nesting, sending, or stock
+  changes. Connection status remains in `/api/session`, and the browser still
+  shows a Connect screen on page load. Designer PCs are told to ask the shop
+  computer. A paired browser workspace stays open for 14 days when OUTPUT is
   unreachable, with a banner after 3 days. Activity sharing stays opt-in.
   `EZ_NEST_DEV_NO_OUTPUT=1` applies only to a source checkout in dev mode.
 - Public preparation: internal agent notes, the tester kit, and the shop-specific
   preset are removed. The example shop preset uses placeholder printer and
   hot-folder paths. OUTPUT's service origin is `EZ_NEST_OUTPUT_URL` or
   `outputUrl` in `shop.json`, defaulting to https://output.jeezlabs.io.
-  Activity sharing stays opt-in and off. The OUTPUT account connection is
-  required on official builds. Background update checks default off
+  Activity sharing stays opt-in and off. The browser still requires the OUTPUT
+  account connection; the API does not. Background update checks default off
   (`EZ_NEST_UPDATES` defaults to `0`, and `shop.json` `updates` defaults to
   false). Turn them on from Settings and that environment variable. Downloads
   still require a matching SHA-256, and installation stays a separate click.

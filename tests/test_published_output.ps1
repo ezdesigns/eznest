@@ -129,8 +129,8 @@ try {
     Assert ($task.Actions[0].Arguments -notmatch '--lan') 'Installer enabled LAN.'
     Assert (Wait-ShopHealthy $version (Join-Path $app 'eznest.exe') 120) 'Installed limited service did not become healthy.'
     $session = Session
-    Assert (-not $session.outputConnection.ok -and -not $session.outputConnection.devMode) 'Fresh installed gate was bypassed.'
-    Assert ((Api '/api/state').Status -eq 403) 'Fresh installed workspace was not gated.'
+    Assert (-not $session.outputConnection.ok -and -not $session.outputConnection.devMode) 'Fresh installed connection status should be unpaired.'
+    Assert ((Api '/api/state').Status -eq 200) 'Unpaired installed workspace was blocked.'
     $paired = Api '/api/telemetry/output/pair' @{code=$env:EZ_NEST_ACCEPTANCE_CODE}
     Assert ($paired.Status -eq 200 -and $paired.Json.configured -and -not $paired.Json.enabled) 'Installed host did not pair with sharing off.'
     $receipt.paired = $true; Save-Receipt $receipt
@@ -179,10 +179,10 @@ try {
       if ($attempt -lt 3) { Start-Sleep -Seconds 120 }
     }
     Assert ($check.Status -eq 200 -and $check.Json.state -eq 'revoked' -and -not $check.Json.ok) 'Owner revocation was not observed within the bounded check-in budget.'
-    Assert ((Api '/api/state').Status -eq 403) 'Revoked installed workspace stayed open.'
-    Assert ((Api '/api/solve' @{}).Status -eq 403) 'Revoked installed host still accepted nesting.'
+    Assert ((Api '/api/state').Status -eq 200) 'Revoked OUTPUT connection blocked the installed workspace.'
+    Assert ((Api '/api/solve' @{}).Status -eq 400) 'Revoked installed host did not validate the empty nesting request.'
     $receipt.revoked = $true; Save-Receipt $receipt
-    Write-Output 'REVOCATION_PASS: production revocation closed the installed host gate.'
+    Write-Output 'REVOCATION_PASS: production revocation was reported; the installed API remains accessible.'
   }
 } catch {
   # Never emit exception/request/session bodies; they can contain credentials.
