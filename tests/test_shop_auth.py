@@ -8,6 +8,7 @@ import shutil
 import ssl
 import subprocess
 import tempfile
+import time
 import threading
 import unittest
 from pathlib import Path
@@ -156,6 +157,62 @@ class ShopAuthTests(unittest.TestCase):
         with patch.object(Path, 'read_bytes', side_effect=AssertionError('read again')):
             for _ in range(50):
                 self.assertEqual(shop_auth.pin_status(server.WORK), 'ok')
+
+    def test_same_size_same_time_replacement_is_noticed(self):
+        shop_auth.set_pin(server.WORK, '48151623')
+        pin_file = server.WORK / 'shop-pin.json'
+        sid = shop_auth.issue_session('192.168.1.50')
+        cookie = {'Cookie': shop_auth.cookie_header(sid).split(';')[0]}
+        self.assertTrue(self.handler('/api/state', headers=cookie).cookie_ok())
+        before = pin_file.stat()
+        other = tempfile.TemporaryDirectory(); self.addCleanup(other.cleanup)
+        shop_auth.set_pin(other.name, '99887766')
+        replacement = (Path(other.name) / 'shop-pin.json').read_bytes()
+        self.assertEqual(len(replacement), before.st_size)
+        pin_file.write_bytes(replacement)
+        os.utime(pin_file, ns=(before.st_atime_ns, before.st_mtime_ns))
+        self.assertFalse(self.handler('/api/state', headers=cookie).cookie_ok())
+
+    def test_pin_file_contents_are_checked_again_every_few_seconds(self):
+        shop_auth.set_pin(server.WORK, '48151623')
+        base = time.monotonic() + 10
+        self.assertEqual(shop_auth.pin_status(server.WORK, now=base), 'ok')
+        real = Path.read_bytes
+        reads = []
+        def counted(path):
+            reads.append(path)
+            return real(path)
+        with patch.object(Path, 'read_bytes', counted):
+            shop_auth.pin_status(server.WORK, now=base + shop_auth.PIN_REHASH_SECONDS - 1)
+            self.assertEqual(reads, [])
+            shop_auth.pin_status(server.WORK, now=base + shop_auth.PIN_REHASH_SECONDS + 1)
+            self.assertEqual(len(reads), 1)
+
+    def test_an_unreadable_pin_file_ends_lan_sessions_after_a_minute(self):
+        shop_auth.set_pin(server.WORK, '48151623')
+        base = time.monotonic() + 100
+        self.assertTrue(shop_auth.lan_sessions_allowed(server.WORK, now=base))
+        sid = shop_auth.issue_session('192.168.1.50')
+        with patch.object(Path, 'read_bytes', side_effect=PermissionError('locked by another program')):
+            self.assertTrue(shop_auth.lan_sessions_allowed(server.WORK, now=base + 10))
+            self.assertIn(sid, shop_auth._sessions)
+            self.assertTrue(shop_auth.lan_sessions_allowed(server.WORK, now=base + 10 + shop_auth.PIN_UNREADABLE_SECONDS))
+            self.assertFalse(shop_auth.lan_sessions_allowed(server.WORK, now=base + 11 + shop_auth.PIN_UNREADABLE_SECONDS))
+        self.assertNotIn(sid, shop_auth._sessions)
+        # Readable again: new logins work, the old session stays ended.
+        self.assertTrue(shop_auth.lan_sessions_allowed(server.WORK, now=base + 200))
+        self.assertNotIn(sid, shop_auth._sessions)
+
+    def test_login_says_when_the_pin_file_cannot_be_read(self):
+        shop_auth.set_pin(server.WORK, '48151623')
+        os.utime(server.WORK / 'shop-pin.json', ns=(7, 7))  # changed since the last check
+        with patch.object(Path, 'read_bytes', side_effect=PermissionError('locked by another program')):
+            item = self.handler('/api/login', body=b'{"pin":"48151623"}')
+            item._login()
+        status, data, _ = item.sent[-1]
+        self.assertEqual(status, 503)
+        self.assertIn("can't be read", data['error'])
+        self.assertNotIn('not set', data['error'])
 
     def test_installer_checks_pin_scrypt_settings(self):
         script = (Path(__file__).resolve().parent.parent / 'installer' / 'install-shop.ps1').read_text(encoding='utf-8')

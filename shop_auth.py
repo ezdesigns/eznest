@@ -124,52 +124,76 @@ def _parse_record(raw):
     return {'salt': salt, 'hash': digest, 'n': n, 'r': r, 'p': p, 'policy': 2 if data.get('policy') == 2 else 0}
 
 
-def pin_status(directory):
-    """'ok', 'missing' or 'invalid' for the PIN file, or 'unknown' when it could not be read
-    right now (for example a backup tool or antivirus holding it). Cached by mtime and size.
+PIN_REHASH_SECONDS = 5      # the PIN file's contents are re-checked at least this often
+PIN_UNREADABLE_SECONDS = 60  # how long sessions survive a PIN file that can't be read
 
+
+def pin_status(directory, now=None):
+    """'ok', 'missing' or 'invalid' for the PIN file, or 'unknown' when it could not be read
+    right now (for example a backup tool or antivirus holding it).
+
+    The file is re-read when its size, times or file id change, and at least every few
+    seconds anyway, so a replacement with the same size and time is still noticed.
     A PIN file that changes outside the app (restored, copied in, edited) ends every
     shop-network session, the same as setting a new PIN in the app."""
+    now = _now(now)
     path = _pin_path(directory)
     try:
         info = path.stat()
     except (FileNotFoundError, NotADirectoryError):
-        return _remember(path, None, 'missing', None)
+        return _remember(path, None, 'missing', None, now)
     except OSError:
-        return 'unknown'
+        return _unreadable(path, now)
     if not path.is_file():
-        return _remember(path, None, 'invalid', None)
-    key = (str(path), info.st_mtime_ns, info.st_size)
+        return _remember(path, None, 'invalid', None, now)
+    key = (str(path), info.st_mtime_ns, info.st_ctime_ns, info.st_ino, info.st_dev, info.st_size)
     with _guard:
-        if _pin_seen.get('key') == key:
+        if _pin_seen.get('key') == key and now - _pin_seen.get('read_at', now) < PIN_REHASH_SECONDS:
             return _pin_seen['status']
     try:
         raw = path.read_bytes()
     except (FileNotFoundError, NotADirectoryError):
-        return _remember(path, None, 'missing', None)
+        return _remember(path, None, 'missing', None, now)
     except OSError:
-        return 'unknown'
+        return _unreadable(path, now)
     if _parse_record(raw) is None:
-        return _remember(path, key, 'invalid', None)
-    return _remember(path, key, 'ok', hashlib.sha256(raw).hexdigest())
+        return _remember(path, key, 'invalid', None, now)
+    return _remember(path, key, 'ok', hashlib.sha256(raw).hexdigest(), now)
 
 
-def _remember(path, key, status, fingerprint):
+def _unreadable(path, now):
+    with _guard:
+        if _pin_seen.get('path') != str(path) or _pin_seen.get('unreadable_since') is None:
+            _pin_seen['unreadable_since'] = now
+        _pin_seen['key'] = None
+    return 'unknown'
+
+
+def _remember(path, key, status, fingerprint, now):
     with _guard:
         before = _pin_seen.get('fingerprint') if _pin_seen.get('path') == str(path) else None
         if status != 'ok' or (before is not None and before != fingerprint):
             _sessions.clear()
-        _pin_seen.update(path=str(path), key=key, status=status, fingerprint=fingerprint)
+        _pin_seen.update(path=str(path), key=key, status=status, fingerprint=fingerprint,
+                         read_at=now, unreadable_since=None)
     return status
 
 
-def lan_sessions_allowed(directory):
+def lan_sessions_allowed(directory, now=None):
     """False ends shop-network sessions. A read that fails for a moment keeps the last
-    known answer instead of logging every shop computer out."""
-    status = pin_status(directory)
+    known answer instead of logging every shop computer out; after a minute of failed
+    reads, sessions end."""
+    now = _now(now)
+    status = pin_status(directory, now)
     if status == 'unknown':
         with _guard:
-            status = _pin_seen.get('status') if _pin_seen.get('path') == str(_pin_path(directory)) else None
+            same = _pin_seen.get('path') == str(_pin_path(directory))
+            since = _pin_seen.get('unreadable_since')
+            if same and since is not None and now - since <= PIN_UNREADABLE_SECONDS:
+                status = _pin_seen.get('status')
+            else:
+                _sessions.clear()
+                status = None
     return status == 'ok'
 
 
@@ -250,13 +274,15 @@ def acknowledge_alert():
 
 
 def login_attempt(directory, ip, pin, now=None):
-    """Return ok, missing, locked, or denied.
+    """Return ok, missing, unreadable, locked, or denied.
 
     One address waits longer after each lock. A global counter only warns the
     host, so a different address is not locked out by someone else's tries.
     """
-    pin_status(directory)  # note the PIN file this session is based on
     now = _now(now)
+    # Note the PIN file this session is based on.
+    if pin_status(directory, now) == 'unknown':
+        return 'unreadable'
     ip = normalize_ip(ip)
     if not pin_configured(directory):
         return 'missing'

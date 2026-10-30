@@ -729,6 +729,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {'error': 'Could not sign in.'})
         pin = data.get('pin') if isinstance(data, dict) else ''
         result = shop_auth.login_attempt(WORK, self.client_ip(), pin if isinstance(pin, str) else '')
+        if result == 'unreadable':
+            return self.send(503, {'error': "The shop PIN file can't be read right now. Check the shop computer, then try again."})
         if result == 'missing':
             return self.send(403, {'error': 'The shop PIN is not set. Set it on the shop computer.'})
         if result == 'locked':
