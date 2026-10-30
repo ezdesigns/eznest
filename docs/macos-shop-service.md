@@ -82,6 +82,10 @@ root command runner. Power-loss recovery still requires clean-Mac validation.
 
 ## Packaging preparation
 
+The opt-in signed build and notarization sequence is documented in
+[Signed Mac release procedure](macos-release.md). These instructions do not waive
+the installation and OUTPUT acceptance gates below.
+
 `build_macos.py --service-edition --out /new/dedicated/build` creates an ad-hoc
 service-edition bundle for inspection. It does not sign with a real identity or
 install anything. A release engineer must separately sign the complete bundle
