@@ -8,6 +8,7 @@ import json
 import math
 import re
 import sqlite3
+import unicodedata
 from datetime import datetime, timezone
 
 FIELDS = set(('preset-name unit width roll gap margin sheet mark-margin rotations '
@@ -21,25 +22,51 @@ def ident(value):
     return value
 
 
+# Plain names for error messages; raw field keys are never shown to people.
+LABELS = {
+    'width': ('Width you can print on', '54'), 'roll': ('Roll width', '54'),
+    'gap': ('Gap between pieces', '0.25'), 'margin': ('Margin', '0.5'),
+    'mark-margin': ('Cut-mark margin', '0.5'), 'bleed': ('Bleed', '0.125'),
+    'cost': ('Material cost', '1.25'), 'roll-length': ('Length of a new roll', '150'),
+    'roll-cost': ('Roll price', '8.50'), 'available-length': ('Length left on roll', '75'),
+    'low-stock': ('Low-stock warning', '10'), 'sheet': ('Sheet length', '24'),
+}
+MAX_NUMBER = 100_000_000
+
+
 def number(value, label, minimum=0):
+    name, example = LABELS.get(label, (label, '8.50'))
+    problem = ValueError(f'{name} looks wrong. Enter a number like {example}.')
     if isinstance(value, bool):
-        raise ValueError(label + ' must be a number.')
+        raise problem
     try:
         result = float(value)
     except (TypeError, ValueError):
-        raise ValueError(label + ' must be a number.') from None
-    if not math.isfinite(result) or result < minimum or result > 100_000_000:
-        raise ValueError(label + ' is outside the supported range.')
+        raise problem from None
+    if not math.isfinite(result) or result < minimum or result > MAX_NUMBER:
+        raise problem
     return result
+
+
+def clean_name(value):
+    """Same-looking names become the same text: NFKC, no invisible or direction-changing
+    characters, single spaces."""
+    text = unicodedata.normalize('NFKC', str(value))
+    text = ''.join(c for c in text if unicodedata.category(c) not in ('Cc', 'Cf', 'Cs', 'Co', 'Cn') or c in ' \t\n')
+    return ' '.join(text.split())
+
+
+def name_key(value):
+    return clean_name(value).casefold()
 
 
 def profile(values):
     if not isinstance(values, dict) or values.get('unit') not in FACTORS:
         raise ValueError('Choose material units.')
     clean = {key: str(values.get(key, '')) for key in FIELDS}
+    clean['preset-name'] = clean_name(clean['preset-name'])
     if any(len(v) > 120 or any(ord(c) < 32 for c in v) for v in clean.values()):
         raise ValueError('Material settings contain invalid text.')
-    clean['preset-name'] = clean['preset-name'].strip()
     if not clean['preset-name']:
         raise ValueError('Enter a material name.')
     if clean['rotations'] not in ('free', '0', '0,180', '0,90,180,270'):
@@ -55,8 +82,8 @@ def profile(values):
             number(clean[key], key)
     clean['drawMarks'] = values.get('drawMarks') is True
     factor = FACTORS[clean['unit']]
-    stock = number(clean['available-length'], 'Stock') * factor if clean['available-length'].strip() else None
-    full = number(clean['roll-length'], 'Roll length') * factor if clean['roll-length'].strip() else None
+    stock = number(clean['available-length'], 'available-length') * factor if clean['available-length'].strip() else None
+    full = number(clean['roll-length'], 'roll-length') * factor if clean['roll-length'].strip() else None
     if stock is not None and full is not None and stock > full:
         raise ValueError('Stock cannot exceed the full roll length.')
     if clean['roll-cost'].strip() and not full:
@@ -122,7 +149,7 @@ def save(directory, key, values, revision):
         if type(revision) is not int or revision != expected:
             raise ValueError('This material changed on another screen. Close and reopen Edit to use the latest stock.')
         for other in db.execute('SELECT id, profile FROM materials WHERE id!=?', (key,)):
-            if json.loads(other['profile'])['preset-name'].casefold() == values['preset-name'].casefold():
+            if name_key(json.loads(other['profile'])['preset-name']) == name_key(values['preset-name']):
                 raise ValueError('A material with this name already exists.')
         held = reserved(db, key)
         if held and (stock is None or stock + 1e-6 < held):

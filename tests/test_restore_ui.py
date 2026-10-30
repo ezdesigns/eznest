@@ -413,6 +413,8 @@ class InventoryShelfTests(unittest.TestCase):
                     self.assertGreater(thick, thin)
                     expect(page.locator('#roll-preview-cap')).to_contain_text('150 ft')
                     expect(page.locator('.stock-slot.draft')).to_contain_text('150 ft')
+                    expect(page.locator('#roll-f-left + [data-len-unit]')).to_have_text('in')
+                    expect(page.locator('#roll-f-full + [data-len-unit]')).to_have_text('in')
                     self.snap(page, 'add-typing', width)
                     page.click('.roll-units button[data-unit="in"]')
                     expect(page.locator('#roll-f-left')).to_have_value('1800')
@@ -431,6 +433,7 @@ class InventoryShelfTests(unittest.TestCase):
                     page.fill('#roll-f-full', '100')
                     page.keyboard.press('Enter')
                     expect(page.locator('.stock-slot')).to_have_count(2)
+                    page.wait_for_function("() => shopInventory.materials.some(m => m.profile['preset-name'] === 'Gloss vinyl')")
                     saved = page.evaluate("() => shopInventory.materials.find(m => m.profile['preset-name'] === 'Gloss vinyl').profile")
                     self.assertEqual((saved['available-length'], saved['roll-length'], saved['unit']), ('1800', '1800', 'in'))
                     low = page.locator('.stock-slot', has_text='Matte vinyl 30 in')
@@ -462,6 +465,95 @@ class InventoryShelfTests(unittest.TestCase):
                     expect(page.locator('#stock-panel')).to_be_visible()
                     expect(page.locator('#stock-panel .stock-sub').first).to_have_text(re.compile(r'^\d+(\.\d+)? in wide roll · prints \d+(\.\d+)? in$'))
                     self.snap(page, 'detail', width)
+                    expect(page.locator('#stock-panel h3')).to_have_text(page.locator('.stock-slot').nth(1).locator('.stock-label span').get_attribute('title'))
+                    # The tapped roll stays visible above the details card.
+                    tapped = page.locator('.stock-slot[aria-selected="true"]')
+                    page.wait_for_function('''() => { const s = document.querySelector('.stock-slot[aria-selected="true"] svg').getBoundingClientRect();
+                        const p = document.getElementById('stock-panel').getBoundingClientRect(); return s.bottom <= p.top + 1 && s.top >= 0; }''')
+                    name = tapped.locator('.stock-label span')
+                    self.assertEqual(name.get_attribute('title'), name.text_content())
+                    page.keyboard.press('Escape')
+                    last = page.locator('.stock-slot').last
+                    last_name = last.locator('.stock-label span').get_attribute('title')
+                    last.click()
+                    page.wait_for_function('''() => { const s = document.querySelector('.stock-slot[aria-selected="true"] svg').getBoundingClientRect();
+                        const p = document.getElementById('stock-panel').getBoundingClientRect(); return s.bottom <= p.top + 1; }''')
+                    expect(page.locator('#stock-panel h3')).to_have_text(last_name)
                     self.assertEqual(violations, [])
                 finally:
                     browser.close()
+
+    def test_inventory_answers_numbers_and_touch_in_plain_terms(self):
+        from playwright.sync_api import sync_playwright, expect
+        with without_gate_env(), sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            try:
+                context = browser.new_context(viewport={'width': 390, 'height': 844}, has_touch=True, is_mobile=True)
+                local = self.url()
+                context.route(lambda url: not url.startswith(local), lambda route: route.fulfill(status=200, content_type='text/html', body='<p>stub</p>'))
+                page = context.new_page()
+                page.goto(local + '/web', wait_until='domcontentloaded')
+                self.wait_ready(page)
+                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                parsed = page.evaluate("""() => ({
+                    huge: parseLength('99999999999999999999', 'ft').bad === true,
+                    tiny: parseLength('0.0000001', 'ft').bad === true,
+                    exp: parsePrice('1e308').bad === true,
+                    feet: parseLength('150ft', 'in').ft,
+                    inches: parseLength('1800 in', 'ft').ft,
+                    zero: parseLength('0', 'ft').ft,
+                    dollars: parsePrice('$8.50').value,
+                    wide: parseInches('9999'),
+                    names: rollNameKey('Gloss\u200b  vinyl\u202e') === rollNameKey('gloss vinyl'),
+                })""")
+                self.assertEqual(parsed, {'huge': True, 'tiny': True, 'exp': True, 'feet': 150, 'inches': 150, 'zero': 0, 'dollars': 8.5, 'wide': None, 'names': True})
+                page.click('#stock-open')
+                page.click('#stock-add')
+                page.fill('#roll-f-name', 'Gloss vinyl')
+                page.fill('#roll-f-roll', '54')
+                page.fill('#roll-f-left', '150')
+                page.fill('#roll-f-cost', '1e308')
+                page.click('#stock-panel button[type=submit]')
+                expect(page.locator('#stock-panel')).to_contain_text('Roll price looks wrong. Enter a number like 8.50.')
+                self.assertNotIn('roll-cost', page.locator('#stock-panel').inner_text())
+                for label in ('Roll width', 'Width you can print on', 'Length left on roll', 'Length of a new roll', 'Price you paid for a new roll'):
+                    expect(page.locator('#stock-panel .roll-label', has_text=label)).to_have_count(1)
+                page.fill('#roll-f-cost', '8.50')
+                page.fill('#roll-f-full', '150')
+                page.click('#stock-panel button[type=submit]')
+                expect(page.locator('.stock-slot')).to_have_count(1)
+                expect(page.locator('.stock-slot').first).to_have_attribute('aria-selected', 'true')
+                expect(page.locator('#stock-panel .stock-selected, #stock-panel button:has-text("Use for this job")')).to_have_count(1)
+                expect(page.locator('#stock-legend')).to_have_text('Tap a roll to see it. Wider roll = wider material. Fatter roll = more left.')
+                small = page.evaluate("""() => [...document.querySelectorAll('#stock .dialog-close, #stock .stock-x, #stock .stock-len, #stock button.link, #stock .stock-row-actions button')]
+                    .filter(n => n.offsetParent).map(n => { const r = n.getBoundingClientRect(); return [n.className || n.id, Math.round(r.width), Math.round(r.height)]; })
+                    .filter(([, w, h]) => w < 44 || h < 44)""")
+                self.assertEqual(small, [])
+                # Server side: a name that only looks different is the same name.
+                error = page.evaluate("""async () => { try { await api('/api/materials/save', {id: 'material-twin', profile: {...shopInventory.materials[0].profile, 'preset-name': 'GLOSS\u200b  vinyl'}, revision: 0}); return ''; } catch (e) { return e.message; } }""")
+                self.assertIn('already exists', error)
+            finally:
+                browser.close()
+
+    def test_an_older_poll_answer_never_undoes_a_save(self):
+        from playwright.sync_api import sync_playwright, expect
+        with without_gate_env(), sync_playwright() as playwright:
+            browser, context, page = self.page(playwright, 1280)
+            try:
+                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                page.evaluate("""async () => {
+                    const real = window.fetch; let release; const gate = new Promise(r => { release = r; });
+                    window.fetch = async (...args) => { const answer = await real(...args); if (String(args[0]).endsWith('/api/materials')) await gate; return answer; };
+                    window.__slow = refreshInventory().catch(() => {});
+                    await new Promise(r => setTimeout(r, 200));
+                    window.fetch = real;
+                    await mutateInventory('/api/materials/save', {id: 'material-race', profile: {...materialValues(), unit: 'in', 'preset-name': 'Race roll', roll: '54', width: '54', 'available-length': '1200', 'low-stock': ''}, revision: 0});
+                    release();
+                    await window.__slow;
+                }""")
+                page.wait_for_function("() => shopInventory.materials.some(m => m.id === 'material-race')")
+                self.assertTrue(page.evaluate("() => shopInventory.materials.some(m => m.id === 'material-race')"))
+                page.click('#stock-open')
+                expect(page.locator('.stock-slot')).to_have_count(1)
+            finally:
+                browser.close()

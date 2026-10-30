@@ -28,6 +28,7 @@ let materialProfiles = {};
 let shopInventory = {materials: [], reservations: []};
 let inventoryReady = false;
 let inventoryBusy = false;
+let inventoryGen = 0; // bumped on every inventory change so an older poll answer is ignored
 let presetEditor = null;
 let activeMaterial = 'white-gloss';
 const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'print-layout', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
@@ -1842,8 +1843,7 @@ async function saveMaterial() {
     const values = validateMaterial(entered);
     const id = presetEditor.id === 'custom' ? 'material-' + crypto.randomUUID() : presetEditor.id;
     if (Object.entries(materialProfiles).some(([key, item]) => key !== id && item['preset-name'].toLowerCase() === values['preset-name'].toLowerCase())) throw Error('A preset with that name already exists. Choose another name.');
-    const updated = await api('/api/materials/save', {id, profile: values, revision: presetEditor.revision});
-    acceptInventory(updated);
+    await mutateInventory('/api/materials/save', {id, profile: values, revision: presetEditor.revision});
     savePrefs({material: id, nestWidth: String(Number(values.width) * EZNQueue.unitScale(values.unit) / 25.4)});
     presetEditor = null;
     $('preset-editor').hidden = true;
@@ -2612,7 +2612,7 @@ async function boot() {
   }
   document.body.dataset.ready = '1';
   await autoLoadIllustrator();
-  setInterval(() => { if (!document.hidden && !inventoryBusy) refreshInventory().catch(() => {}); }, 10000);
+  setInterval(() => { if (!document.hidden && !inventoryBusy && !stockForm && !document.querySelector('dialog[open]')) refreshInventory().catch(() => {}); }, 10000);
 }
 
 function showOutputBanner(session) {
@@ -2737,8 +2737,24 @@ function acceptInventory(data) {
   if (changed && $('stock')?.open) renderStock();
 }
 
+async function mutateInventory(path, payload) {
+  inventoryGen++;
+  try {
+    const data = await api(path, payload);
+    inventoryGen++;
+    acceptInventory(data);
+    return data;
+  } catch (error) { inventoryGen++; throw error; }
+}
+
 async function refreshInventory() {
-  try { acceptInventory(await fetchJson('/api/materials', 5000)); }
+  const gen = inventoryGen;
+  try {
+    const data = await fetchJson('/api/materials', 5000);
+    // A save or remove happened after this request started: its answer is newer.
+    if (gen !== inventoryGen) return;
+    acceptInventory(data);
+  }
   catch (error) {
     inventoryReady = false;
     $('inventory-status').textContent = 'Shop stock is unavailable. Reconnect before reserving or confirming usage.';
@@ -2796,7 +2812,7 @@ async function inventoryAction(path, payload) {
   if (inventoryBusy || !presetEditor || materialStockDirty()) return;
   inventoryBusy = true; $('save-material').disabled = true; renderInventory();
   try {
-    acceptInventory(await api(path, payload));
+    await mutateInventory(path, payload);
     const updated = shopInventory.materials.find(item => item.id === presetEditor.id);
     if (updated) {
       presetEditor.revision = updated.revision;
@@ -3420,9 +3436,9 @@ function rollJobCheck(item) {
   const rollIn = String(Math.round(printable / 25.4 * 10) / 10);
   if (printable + 0.01 < result.width) return {ok: false, lines: [`Too narrow: job is ${jobIn} in wide, this roll prints ${rollIn} in`]};
   lines.push(`Width fits: job ${jobIn} in on ${rollIn} in printable`);
-  if (item.availableMm == null) lines.push('Length left unknown. Update the count to check.');
+  if (item.availableMm == null) lines.push('Length left unknown. Enter how much is left to check.');
   else if (item.availableMm + 0.5 >= result.usedLength) lines.push('Enough for this job · ' + stockFeet(result.usedLength) + ' needed');
-  else { ok = false; lines.push('Short by ' + stockFeet(result.usedLength - item.availableMm)); }
+  else { ok = false; lines.push('Not enough. Need ' + stockFeet(result.usedLength - item.availableMm) + ' more'); }
   return {ok, lines};
 }
 // Shelf view: each roll stands upright. Taller = wider material, thicker = more length left.
@@ -3492,7 +3508,7 @@ function shelfMark(svg, check) {
 function shelfLeftText(m) { return m.left == null ? 'Not measured' : shelfFmt(m.left) + ' ft'; }
 function shelfJobLine(check) {
   if (!check) return null;
-  const line = !check.ok ? check.lines.find(text => /Too narrow|Short by/.test(text)) || check.lines[0] : check.lines[check.lines.length - 1];
+  const line = !check.ok ? check.lines.find(text => /Too narrow|Not enough/.test(text)) || check.lines[0] : check.lines[check.lines.length - 1];
   return {ok: check.ok && !/unknown/.test(line), warn: check.ok && /unknown/.test(line), text: line};
 }
 function shelfAria(m) {
@@ -3534,7 +3550,8 @@ function renderStock() {
     if (!draft) shelfMark(svg, rollJobCheck(m.item));
     const label = shelfNode('div', 'stock-label', null, slot);
     shelfNode('b', m.left == null && !(draft && !(m.w > 0)) ? 'unknown' : null, draft && !(m.w > 0) ? 'New roll' : shelfLeftText(m), label);
-    shelfNode('span', null, m.name || 'New roll', label);
+    const nameLine = shelfNode('span', null, m.name || 'New roll', label);
+    if (m.name) nameLine.title = m.name;
     if (!draft) slot.addEventListener('click', () => { if (!stockForm) selectRoll(stockSel === m.id ? null : m.id); });
   });
   if (!stockForm) renderRollPanel();
@@ -3543,7 +3560,14 @@ function selectRoll(id, focus) {
   stockSel = id;
   for (const slot of $('stock-list').children) slot.setAttribute('aria-selected', String(slot.dataset.id === id));
   renderRollPanel();
-  if (focus && id) $('stock-list').querySelector(`[data-id="${id}"]`)?.focus();
+  const slot = id ? $('stock-list').querySelector(`[data-id="${id}"]`) : null;
+  if (focus && slot) slot.focus({preventScroll: true});
+  if (slot) {
+    // The details card sits at the bottom of the dialog; keep the tapped roll above it.
+    slot.style.scrollMarginBottom = ($('stock-panel').offsetHeight + 16) + 'px';
+    slot.style.scrollMarginTop = '16px';
+    slot.scrollIntoView({block: 'nearest'});
+  }
 }
 function stockColumns() { const list = $('stock-list'), first = list.firstElementChild; return first ? Math.max(1, Math.round(list.clientWidth / first.getBoundingClientRect().width)) : 1; }
 $('stock-list').addEventListener('keydown', event => {
@@ -3593,7 +3617,7 @@ function renderRollPanel() {
   const line = shelfJobLine(rollJobCheck(item));
   if (line) shelfNode('p', 'stock-check', line.text, panel).dataset.ok = line.ok ? '1' : line.warn ? 'warn' : '0';
   const actions = shelfNode('div', 'stock-row-actions', null, panel);
-  if (item.id === $('material').value) shelfNode('span', 'stock-selected', 'In use for this job', actions);
+  if (item.id === $('material').value) shelfNode('span', 'stock-selected', 'This job uses this roll', actions);
   else {
     const use = shelfNode('button', null, 'Use for this job', actions); use.type = 'button'; use.disabled = inventoryBusy;
     use.addEventListener('click', () => { $('stock').close(); chooseMaterial(item.id); });
@@ -3601,26 +3625,50 @@ function renderRollPanel() {
   const edit = shelfNode('button', 'link', 'Edit', actions); edit.type = 'button';
   edit.addEventListener('click', () => openRollForm('edit', item, 'roll-f-name'));
 }
-// Lengths: feet by default; "150 ft", "1800 in", 12' and 6" all work.
-function parseLength(text, unit) {
+// One parser for every Inventory number. Plain digits with an optional decimal point and
+// unit; no exponents, no commas. Limits sit inside the shop computer's own limits.
+// Same rule as the shop computer: names that only look different count as the same name.
+function rollNameKey(text) {
+  return String(text || '').normalize('NFKC').replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+const ROLL_LIMITS = {inches: [0.4, 196], feet: [0, 100000], price: [0, 1000000]};
+function parseRollNumber(text, units) {
   const value = String(text || '').trim().toLowerCase();
   if (!value) return {empty: true};
-  const match = value.match(/^(\d*\.?\d+)\s*(ft|feet|foot|'|in|inch|inches|")?$/);
+  const match = value.match(/^(\d{1,9}(?:\.\d{0,4})?|\.\d{1,4})\s*([a-z'"]+)?$/);
   if (!match) return {bad: true};
-  const given = match[2] ? (/^(in|inch|inches|")$/.test(match[2]) ? 'in' : 'ft') : unit;
-  return {ft: Number(match[1]) / (given === 'in' ? 12 : 1)};
+  const number = Number(match[1]);
+  if (!Number.isFinite(number)) return {bad: true};
+  let unit = null;
+  if (match[2]) { unit = units?.[match[2]]; if (!unit) return {bad: true}; }
+  return {number, unit};
+}
+const LENGTH_UNITS = {ft: 'ft', feet: 'ft', foot: 'ft', "'": 'ft', in: 'in', inch: 'in', inches: 'in', '"': 'in'};
+// Lengths: feet by default; "150 ft", "1800 in", 12' and 6" all work.
+function parseLength(text, unit) {
+  const read = parseRollNumber(text, LENGTH_UNITS);
+  if (read.empty || read.bad) return read;
+  const given = read.unit || unit, ft = read.number / (given === 'in' ? 12 : 1);
+  if (ft > ROLL_LIMITS.feet[1] || (ft > 0 && ft < 0.01)) return {bad: true};
+  return {ft, given, typed: !!read.unit};
 }
 function parseInches(text) {
-  const match = String(text || '').trim().toLowerCase().match(/^(\d*\.?\d+)\s*(in|inch|inches|")?$/);
-  return match ? Number(match[1]) : null;
+  const read = parseRollNumber(text, {in: 'in', inch: 'in', inches: 'in', '"': 'in'});
+  if (read.empty || read.bad || read.number < ROLL_LIMITS.inches[0] || read.number > ROLL_LIMITS.inches[1]) return null;
+  return read.number;
+}
+function parsePrice(text) {
+  const read = parseRollNumber(String(text || '').trim().replace(/^\$\s*/, ''), null);
+  if (read.empty || read.bad) return read;
+  return read.number > ROLL_LIMITS.price[1] ? {bad: true} : {value: read.number};
 }
 const ROLL_FIELDS = [
   ['roll-f-name', 'Material', 'name', null, 'For example: Gloss vinyl'],
   ['roll-f-roll', 'Roll width', 'roll', 'in', 'Measure across the roll.'],
-  ['roll-f-width', 'Printable width', 'width', 'in', 'How wide the printer can print on it.'],
-  ['roll-f-left', 'Length left', 'left', 'len', 'Leave blank if you have not measured it.'],
-  ['roll-f-full', 'Full roll length', 'full', 'len', 'Optional. Length of a brand-new roll.'],
-  ['roll-f-cost', 'Full roll cost ($)', 'cost', null, 'Optional. Shows cost per square foot.'],
+  ['roll-f-width', 'Width you can print on', 'width', 'in', 'How wide the printer can print on it.'],
+  ['roll-f-left', 'Length left on roll', 'left', 'len', 'Leave blank if you have not measured it.'],
+  ['roll-f-full', 'Length of a new roll', 'full', 'len', 'Optional. How long a brand-new roll is.'],
+  ['roll-f-cost', 'Price you paid for a new roll ($)', 'cost', null, 'Optional. Shows cost per square foot.'],
 ];
 function openRollForm(mode, item, focus) {
   const m = item ? shelfRoll(item) : null;
@@ -3709,6 +3757,11 @@ function rollFormInput(key, value, input) {
   if (key === 'full') form.touched.full = true;
   if (key === 'roll' && !form.touched.width) { form.values.width = value; $('roll-f-width').value = value; }
   if (key === 'left' && !form.touched.full && form.mode === 'add') { form.values.full = value; $('roll-f-full').value = value; }
+  // "1800 in" typed while the form is in feet: the suffix shows what was typed.
+  for (const field of ['left', 'full']) {
+    const read = parseLength(form.values[field], stockLenUnit), span = $('roll-f-' + field)?.parentElement.querySelector('[data-len-unit]');
+    if (span) span.textContent = read.typed ? read.given : stockLenUnit;
+  }
   if (key === 'name' && form.mode === 'add') {
     const known = Object.values(materialProfiles).find(p => p['preset-name'].toLowerCase() === value.trim().toLowerCase());
     if (known && !form.values.roll) {
@@ -3729,21 +3782,23 @@ function rollFormLive() {
     slot.querySelector('.stock-label b').textContent = !(m.w > 0) && stockForm.mode === 'add' ? 'New roll' : shelfLeftText(m);
     slot.querySelector('.stock-label span').textContent = m.name || 'New roll';
   }
-  const cost = Number(stockForm.values.cost), costHint = $('roll-f-cost-hint');
-  if (costHint) costHint.textContent = stockForm.values.cost.trim() && cost >= 0 && m.full > 0 && m.w > 0 ? `= $${(cost / (m.w / 12 * m.full)).toFixed(2)} per sq ft` : ROLL_FIELDS[5][4];
+  const cost = parsePrice(stockForm.values.cost).value, costHint = $('roll-f-cost-hint');
+  if (costHint) costHint.textContent = cost != null && m.full > 0 && m.w > 0 ? `= $${(cost / (m.w / 12 * m.full)).toFixed(2)} per sq ft` : ROLL_FIELDS[5][4];
 }
 function rollFormErrors() {
   const v = stockForm.values, e = {};
   const roll = parseInches(v.roll), width = parseInches(v.width), left = parseLength(v.left, stockLenUnit), full = parseLength(v.full, stockLenUnit);
+  const price = parsePrice(v.cost);
   if (!v.name.trim()) e.name = 'Enter a material name.';
-  else if (Object.entries(materialProfiles).some(([key, p]) => key !== stockForm.id && p['preset-name'].toLowerCase() === v.name.trim().toLowerCase())) e.name = 'A preset with that name already exists. Choose another name.';
-  if (!(roll * 25.4 >= 10 && roll * 25.4 <= 5000)) e.roll = 'Enter the roll width in inches, for example 54.';
-  if (!(width * 25.4 >= 10 && width * 25.4 <= 5000)) e.width = 'Enter the printable width in inches, for example 51.5.';
-  else if (!e.roll && width > roll) e.width = 'Printable width cannot be wider than the roll.';
-  if (left.bad) e.left = 'Enter a length like 150 or 150 ft, or leave it blank.';
-  if (full.bad || full.ft === 0) e.full = 'Enter a positive full roll length or leave it blank.';
-  if (v.cost.trim() && (!(Number(v.cost) >= 0) || !(full.ft > 0))) e.cost = 'Enter a full roll length and a cost of zero or more to estimate savings.';
-  if (!e.left && !e.full && left.ft != null && full.ft != null && left.ft > full.ft + 1e-9) e.left = 'Material left cannot exceed the full roll length.';
+  else if (Object.entries(materialProfiles).some(([key, p]) => key !== stockForm.id && rollNameKey(p['preset-name']) === rollNameKey(v.name))) e.name = 'A preset with that name already exists. Choose another name.';
+  if (roll == null) e.roll = 'Roll width looks wrong. Enter inches, like 54.';
+  if (width == null) e.width = 'Width you can print on looks wrong. Enter inches, like 51.5.';
+  else if (!e.roll && width > roll) e.width = 'This can\'t be wider than the roll itself.';
+  if (left.bad) e.left = 'Length left looks wrong. Enter a number like 150, or leave it blank.';
+  if (full.bad || full.ft === 0) e.full = 'Length of a new roll looks wrong. Enter a number like 150, or leave it blank.';
+  if (price.bad) e.cost = 'Roll price looks wrong. Enter a number like 8.50.';
+  else if (!price.empty && !(full.ft > 0)) e.cost = 'Enter the length of a new roll too, so the price per square foot can be worked out.';
+  if (!e.left && !e.full && left.ft != null && full.ft != null && left.ft > full.ft + 1e-9) e.left = 'There can\'t be more left than a new roll holds.';
   return {e, roll, width, left, full};
 }
 async function saveRollForm(another) {
@@ -3755,14 +3810,14 @@ async function saveRollForm(another) {
   const add = stockForm.mode === 'add', item = stockForm.item;
   const base = add ? {...materialValues(), unit: 'in', 'low-stock': ''} : {...item.profile};
   const per = 25.4 / EZNQueue.unitScale(base.unit), round = n => String(Number(n.toFixed(4)));
-  const values = {...base, 'preset-name': stockForm.values.name.trim(), roll: round(roll * per), width: round(width * per),
-    'available-length': left.ft == null ? '' : round(left.ft * 12 * per), 'roll-length': full.ft == null ? '' : round(full.ft * 12 * per), 'roll-cost': stockForm.values.cost.trim()};
+  const values = {...base, 'preset-name': stockForm.values.name.normalize('NFKC').replace(/\s+/g, ' ').trim(), roll: round(roll * per), width: round(width * per),
+    'available-length': left.ft == null ? '' : round(left.ft * 12 * per), 'roll-length': full.ft == null ? '' : round(full.ft * 12 * per), 'roll-cost': stockForm.values.cost.trim() ? String(parsePrice(stockForm.values.cost).value) : ''};
   if (!add && values['low-stock'] && values['roll-length'] && Number(values['low-stock']) > Number(values['roll-length'])) values['low-stock'] = '';
   inventoryBusy = true;
   try {
     const clean = validateMaterial(values);
     const id = add ? 'material-' + crypto.randomUUID() : item.id;
-    acceptInventory(await api('/api/materials/save', {id, profile: clean, revision: add ? 0 : item.revision}));
+    await mutateInventory('/api/materials/save', {id, profile: clean, revision: add ? 0 : item.revision});
     if (id === $('material').value) applyMaterial(true);
     const saved = shopInventory.materials.find(entry => entry.id === id);
     const m = saved ? shelfRoll(saved) : null;
@@ -3790,7 +3845,7 @@ async function removeRoll(item) {
   if (!window.confirm(`Remove ${item.profile['preset-name']} from inventory? Its usage history is removed too.`)) return;
   inventoryBusy = true;
   try {
-    acceptInventory(await api('/api/materials/remove', {id: item.id, revision: item.revision}));
+    await mutateInventory('/api/materials/remove', {id: item.id, revision: item.revision});
     const option = [...$('material').options].find(entry => entry.value === item.id);
     const wasSelected = $('material').value === item.id;
     if (option) option.remove();

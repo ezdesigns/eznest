@@ -649,7 +649,7 @@ body[data-step="sent"] #inventory-open { display: block; }
 .stock-job p { font-size: 13px; }
 .stock-empty { padding: 28px 16px; border: 1px dashed #cfcfc8; border-radius: 10px; text-align: center; color: var(--muted); }
 .stock-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
-.stock-shelf { --slot: 88px; --rowh: 194px; --lab: 46px; list-style: none; margin: 0; padding: 4px 0 6px; display: grid; grid-template-columns: repeat(auto-fill, var(--slot)); grid-auto-rows: var(--rowh); justify-content: start;
+.stock-shelf { --slot: 88px; --rowh: 202px; --lab: 54px; list-style: none; margin: 0; padding: 4px 0 6px; display: grid; grid-template-columns: repeat(auto-fill, var(--slot)); grid-auto-rows: var(--rowh); justify-content: start;
   background-image: linear-gradient(to bottom, transparent calc(var(--rowh) - var(--lab) - 4px), #8d8d86 calc(var(--rowh) - var(--lab) - 4px), #8d8d86 calc(var(--rowh) - var(--lab) - 1px), #e3e3dc calc(var(--rowh) - var(--lab) - 1px), #e3e3dc calc(var(--rowh) - var(--lab) + 1px), transparent calc(var(--rowh) - var(--lab) + 1px));
   background-size: 100% var(--rowh); background-position: 0 4px; }
 .stock-shelf:empty { display: none; }
@@ -659,7 +659,7 @@ body[data-step="sent"] #inventory-open { display: block; }
 .stock-slot:focus-visible { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1d4f91; }
 .stock-label { height: var(--lab); width: 100%; padding: 6px 4px 0; text-align: center; line-height: 1.2; }
 .stock-label b { display: block; font-size: 14px; white-space: nowrap; }
-.stock-label span { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stock-label span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 12px; line-height: 1.2; color: var(--muted); overflow: hidden; overflow-wrap: anywhere; }
 .stock-label b.unknown { font-size: 12px; color: var(--muted); letter-spacing: -.01em; }
 .stock-slot.low .stock-label b { color: #b42318; }
 .stock-slot[aria-selected="true"] .stock-label b { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 2px; }
@@ -706,7 +706,7 @@ body[data-step="sent"] #inventory-open { display: block; }
 .roll-actions .quiet { color: var(--muted); font-weight: 400; }
 .roll-actions .roll-remove { margin-left: auto; color: #971b12; }
 @media (max-width: 600px) {
-  .stock-shelf { --slot: 72px; --rowh: 176px; }
+  .stock-shelf { --slot: 72px; --rowh: 184px; }
   .roll-form { grid-template-columns: 1fr; }
   .stock-panel { margin: 4px -8px 0; border-radius: 14px 14px 0 0; }
 }
@@ -744,3 +744,12 @@ body[data-step="sent"] #inventory-open { display: block; }
 .job-panel #start-over-idle:disabled { color: #929ba7; background: #f7f7f4; opacity: 1; }
 /* The status circle is the only visible OUTPUT control; the old buttons stay as hidden click targets. */
 #output-link-connect, #output-link-status { display: none !important; }
+
+/* Inventory on touch screens: every control is at least 44 x 44 to tap, the look stays the same. */
+@media (pointer: coarse) {
+  #stock .dialog-close { flex-basis: 44px; width: 44px; min-height: 44px; }
+  .stock-x { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; margin: -10px -10px 0 0; }
+  .stock-len { min-height: 44px; min-width: 44px; padding: 0 4px; }
+  #stock button.link, .stock-row-actions button { min-height: 44px; min-width: 44px; }
+  .roll-units button { min-height: 44px; min-width: 44px; }
+}
