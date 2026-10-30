@@ -258,7 +258,16 @@ if ($lanEnabled) {
     }
   } catch {}
   $pinFile = Join-Path $DataDir 'shop-pin.json'
-  if (-not (Test-Path -LiteralPath $pinFile)) {
+  $pinReadable = $false
+  if (Test-Path -LiteralPath $pinFile -PathType Leaf) {
+    try {
+      $pinData = Get-Content -LiteralPath $pinFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+      $pinReadable = [bool]($pinData -and $pinData.salt -and $pinData.hash)
+    } catch { $pinReadable = $false }
+    if (-not $pinReadable) {
+      Write-Warning 'The shop PIN file is empty or damaged. eznest stays on this computer only until you set a new PIN at http://127.0.0.1:8765/web and restart it.'
+    }
+  } else {
     Write-Warning 'No shop PIN is set yet. eznest stays on this computer only until you set a PIN at http://127.0.0.1:8765/web and restart it.'
   }
 }

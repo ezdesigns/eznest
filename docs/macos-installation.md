@@ -1,5 +1,9 @@
 # macOS packaging: internal pilot
 
+For the explicit Developer ID build option and signed shop release gates, see
+[Signed Mac release procedure](macos-release.md). The default build below remains
+an ad-hoc local pilot; a signed build alone is not notarized or publicly released.
+
 `build_macos.py` builds an architecture-specific `eznest.app` and ZIP with a
 SHA-256 sidecar. It uses the same dependency pins, runtime, static pages, fonts,
 version and license notices as the Windows app. It requires macOS and 64-bit
