@@ -2620,6 +2620,77 @@ function showOutputBanner(session) {
   banner.textContent = text || '';
 }
 
+// "Set up your shop": the owner approves this computer in the browser. No code to type.
+function setupShopPollDelay(attempt) {
+  return [2000, 3000, 5000, 8000][Math.min(3, attempt)];
+}
+
+function setupShop(finish, error) {
+  const button = $('output-gate-setup-button');
+  const waiting = $('output-gate-waiting');
+  const note = $('output-gate-wait-note');
+  let timer = 0;
+  let run = 0;
+  const stop = message => {
+    run += 1;
+    window.clearTimeout(timer);
+    waiting.hidden = true;
+    button.hidden = false;
+    button.disabled = false;
+    if (message) {
+      error.hidden = false;
+      error.textContent = message;
+    }
+  };
+  const poll = (mine, attempt) => {
+    timer = window.setTimeout(async () => {
+      if (mine !== run) return;
+      try {
+        const body = await api('/api/telemetry/output/link/check', {});
+        if (mine !== run) return;
+        if (body.state === 'connected') {
+          note.textContent = 'Connected. Opening Ez Nest…';
+          await finish();
+          return;
+        }
+        if (body.state === 'pending') return poll(mine, attempt + 1);
+        stop(body.message || 'Click Set up your shop to try again.');
+      } catch (err) {
+        if (mine === run) stop(err.message);
+      }
+    }, setupShopPollDelay(attempt));
+  };
+  button.onclick = async () => {
+    error.hidden = true;
+    button.disabled = true;
+    // Open the window during the click so the browser does not block it.
+    const popup = window.open('', '_blank');
+    try {
+      const body = await api('/api/telemetry/output/link/start', {});
+      $('output-gate-match').textContent = body.userCode;
+      $('output-gate-reopen').href = body.approveUrl;
+      note.textContent = 'Waiting for you to approve…';
+      if (popup) {
+        popup.opener = null;
+        popup.location.href = body.approveUrl;
+      } else {
+        window.open(body.approveUrl, '_blank', 'noopener');
+      }
+      button.hidden = true;
+      waiting.hidden = false;
+      run += 1;
+      poll(run, 0);
+    } catch (err) {
+      if (popup) popup.close();
+      stop(err.message);
+    }
+  };
+  $('output-gate-cancel').onclick = async () => {
+    stop('');
+    try { await api('/api/telemetry/output/link/cancel', {}); } catch (_) { /* expires on its own */ }
+  };
+}
+
 function requireOutputConnection(session) {
   const gate = $('output-gate');
   const info = session.outputConnection || {};
@@ -2632,6 +2703,8 @@ function requireOutputConnection(session) {
   $('output-gate-note').textContent = info.message || 'Connect this computer to OUTPUT.';
   if (!session.localPC) {
     fields.hidden = true;
+    $('output-gate-setup').hidden = true;
+    $('output-gate-code-option').hidden = true;
     check.hidden = true;
     lan.hidden = false;
     lan.textContent = info.message || 'Ask the shop computer to connect to OUTPUT.';
@@ -2640,10 +2713,12 @@ function requireOutputConnection(session) {
   }
   lan.hidden = true;
   fields.hidden = info.canPair === false;
+  $('output-gate-setup').hidden = fields.hidden;
+  $('output-gate-code-option').hidden = fields.hidden;
   check.hidden = !info.canCheckIn;
   gate.showModal();
   const input = $('output-gate-code');
-  if (!fields.hidden) input.focus();
+  if (!fields.hidden) $('output-gate-setup-button').focus();
   return new Promise(resolve => {
     const finish = async () => {
       input.value = '';
@@ -2680,6 +2755,7 @@ function requireOutputConnection(session) {
         $('output-gate-submit').disabled = false;
       }
     };
+    setupShop(finish, error);
     check.onclick = async () => {
       check.disabled = true;
       try {

@@ -16,6 +16,7 @@ import ssl
 import workload
 import output_gate
 import output_pairing
+import output_link
 import telemetry
 import telemetry_sender
 import material_inventory
@@ -395,7 +396,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.cookie_ok()
 
     def reject_output_gate(self, path, *, discard=False):
-        if path in ('/api/session', '/api/health', '/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
+        if path in ('/api/session', '/api/health', '/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in', '/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel'):
             return False
         decision = output_gate.public_status(WORK, self.loopback_client())
         if decision['ok']:
@@ -748,7 +749,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed() or not self.browser_site_ok():
             return self.send(403, {'error': 'Invalid session'})
         path = self.route_path()
-        if path not in ('/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
+        if path not in ('/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in', '/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel'):
             if self.reject_output_gate(path, discard=True):
                 return
         if path == '/api/login':
@@ -811,6 +812,18 @@ class Handler(BaseHTTPRequestHandler):
                     try:
                         return self.send(200, output_pairing.connect(WORK, data.get('code'), paused=telemetry_paused()))
                     except output_pairing.PairingError as error:
+                        return self.send(400, {'error': str(error), 'reason': error.reason})
+                if path in ('/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel'):
+                    if data:
+                        raise ValueError('Shop setup takes no additional data.')
+                    # Network IO. Do not hold the job lock. The code, hash, and shop key are never returned.
+                    try:
+                        if path.endswith('/start'):
+                            return self.send(200, output_link.start(WORK, paused=telemetry_paused()))
+                        if path.endswith('/cancel'):
+                            return self.send(200, output_link.cancel(WORK))
+                        return self.send(200, output_link.check(WORK, paused=telemetry_paused()))
+                    except output_link.LinkError as error:
                         return self.send(400, {'error': str(error), 'reason': error.reason})
                 if path == '/api/telemetry/output/disconnect':
                     if data:

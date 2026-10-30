@@ -306,7 +306,7 @@ class GateTests(unittest.TestCase):
                     expect(page.locator('#output-gate')).to_be_visible()
                     expect(page.locator('#output-gate-title')).to_have_text('Connect to OUTPUT')
                     expect(page.locator('#output-gate-note')).to_contain_text('Connect this computer to OUTPUT')
-                    expect(page.locator('#output-gate a')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
+                    expect(page.locator('#output-gate-fields a')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
                     self.assertTrue(page.locator('#output-gate').evaluate("n => n.matches(':modal')"))
                     self.assertEqual(page.locator('#output-gate-code').input_value(), '')
                     shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
