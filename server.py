@@ -394,17 +394,6 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return self.cookie_ok()
 
-    def reject_output_gate(self, path, *, discard=False):
-        if path in ('/api/session', '/api/health', '/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
-            return False
-        decision = output_gate.public_status(WORK, self.loopback_client())
-        if decision['ok']:
-            return False
-        if discard:
-            self._discard_request_body()
-        self.send(403, {'error': decision['message'], 'code': 'connect_required'})
-        return True
-
     def _discard_request_body(self):
         try:
             size = int(self.headers.get('Content-Length', '0'))
@@ -465,6 +454,7 @@ class Handler(BaseHTTPRequestHandler):
             'pinWeak': shop_auth.pin_is_weak(WORK),
             'tls': TLS,
             'outputConnection': output_gate.public_status(WORK, local),
+            'outputLink': output_gate.link_status(WORK, local),
         }
         if local:
             body['token'] = TOKEN
@@ -484,8 +474,6 @@ class Handler(BaseHTTPRequestHandler):
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Open health on the shop computer.'})
                 return self.send(200, {'ok': True, 'app': 'eznest'})
-            if path != '/api/session' and self.reject_output_gate(path):
-                return
             if not self.loopback_client() and not self.authenticated():
                 return self.send(403, {'error': 'Enter the shop PIN on this computer.'})
             if not self.loopback_client() and (path == '/api/shop' or path == '/api/folder' or path.startswith('/api/folder/')):
@@ -748,9 +736,6 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed() or not self.browser_site_ok():
             return self.send(403, {'error': 'Invalid session'})
         path = self.route_path()
-        if path not in ('/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in'):
-            if self.reject_output_gate(path, discard=True):
-                return
         if path == '/api/login':
             return self._login()
         if path == '/api/logout':
@@ -980,6 +965,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, shop_status())
             if path == '/api/materials/save':
                 return self.send(200, material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision')))
+            if path == '/api/materials/remove':
+                return self.send(200, material_inventory.remove(WORK, data.get('id'), data.get('revision')))
             if path == '/api/materials/reserve':
                 with LOCK:
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):

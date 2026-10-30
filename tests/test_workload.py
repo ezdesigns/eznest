@@ -27,9 +27,8 @@ class WorkloadTests(unittest.TestCase):
                         page = browser.new_page(viewport={'width': 1440, 'height': 1000})
                         page.goto(fixture.url() + '/web')
                         fixture.wait_ready(page)
-                        page.fill('#setup-hot', str(hot))
-                        page.fill('#setup-printer', 'Pilot printer')
-                        page.click('#setup-save')
+                        # First run has no setup card; the same fields live in Settings.
+                        page.evaluate('''([hot, printer]) => { $('setup-hot').value = hot; $('setup-printer').value = printer; return saveSetup({}); }''', [str(hot), 'Pilot printer'])
                         page.wait_for_function("() => document.querySelector('#setup').hidden")
                         page.set_input_files('#file', str(Path(__file__).parents[1] / 'sample-artwork.svg'))
                         page.click('#start-nesting')

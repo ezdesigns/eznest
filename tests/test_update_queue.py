@@ -161,9 +161,8 @@ class UpdateQueueTests(unittest.TestCase):
                     self.assertIn('PC running eznest', shown['note'])
                     hot = server.WORK/'update-preview-hot'
                     hot.mkdir()
-                    page.fill('#setup-hot', str(hot))
-                    page.fill('#setup-printer', 'Test printer')
-                    page.click('#setup-save')
+                    # First run has no setup card; the same fields live in Settings.
+                    page.evaluate('''([hot, printer]) => { $('setup-hot').value = hot; $('setup-printer').value = printer; return saveSetup({}); }''', [str(hot), 'Test printer'])
                     page.wait_for_function("() => document.querySelector('#setup').hidden")
                     page.click('#settings-open')
                     render({**info, 'message':'Update ready. Choose Install when finished and approve the Windows prompt.'})

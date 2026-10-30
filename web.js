@@ -170,11 +170,6 @@ function fetchJson(path, ms) {
   return fetch(path, {signal: controller.signal}).then(async response => {
     clearTimeout(timer);
     if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      if (body.code === 'connect_required') {
-        location.reload();
-        throw Error(body.error || 'Connect to OUTPUT.');
-      }
       throw Error('Request failed.');
     }
     return response.json();
@@ -254,9 +249,6 @@ async function api(path, data, file) {
   });
   const body = await response.json();
   if (!response.ok) {
-    if (body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/')) {
-      location.reload();
-    }
     const error = Error(body.error || 'Request failed.');
     error.code = body.code;
     if (path === '/api/document/import' || path === '/api/document/import-file') {
@@ -646,9 +638,11 @@ function showScreen(name) {
   $('readout').hidden = empty;
   $('export').hidden = empty || confirming || name === 'nest';
   $('start-nesting').hidden = !!current?.result || !['drop', 'configure', 'blocked'].includes(name);
+  $('nest-row').hidden = $('start-nesting').hidden;
+  $('start-over-idle').disabled = kits.length === 0;
   if (empty) $('sheet-tabs').hidden = true;
   $('confirm').hidden = !confirming;
-  $('start-over').hidden = idle || confirming;
+  $('start-over').hidden = idle || confirming || !$('nest-row').hidden;
   $('delivery-receipt').hidden = name !== 'sent';
   $('saved-heading').hidden = name !== 'sent';
   $('start-over').textContent = name === 'sent' ? 'Next job' : 'Start over';
@@ -1966,8 +1960,8 @@ function showOutputService(shop) {
   const note = $('output-url-note');
   if (note) {
     note.textContent = locked
-      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Activity sharing stays off until you agree. The account connection is required.'
-      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree. The account connection is required.';
+      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Activity sharing stays off until you agree. Connecting to OUTPUT is optional.'
+      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree. Connecting to OUTPUT is optional.';
   }
 }
 
@@ -2004,6 +1998,7 @@ function applyShop(shop) {
   showRestart(shop);
   showHotDefault(shop.hotFolderDefault);
   showSetup(shop);
+  renderCutLineNote();
   reportLink(shop);
 }
 
@@ -2023,13 +2018,22 @@ function showSetup(shop) {
     panel.hidden = true;
     return;
   }
-  panel.hidden = false;
+  // First run: no setup card. Save the prefilled defaults; every field stays in Settings.
+  panel.hidden = true;
   if (!$('setup-thru').value) $('setup-thru').value = $('thru-name').value;
   if (!$('setup-kiss').value) $('setup-kiss').value = $('kiss-name').value;
   $('setup-units').value = $('unit').value || 'in';
   if (shop.hotFolder && !$('setup-hot').value) $('setup-hot').value = shop.hotFolder;
   if (shop.printer && !$('setup-printer').value) $('setup-printer').value = shop.printer;
   $('setup-onyx').checked = $('onyx-pc').checked;
+  if (shop.localPC === false || setupSaving) return;
+  setupSaving = true;
+  saveSetup(shop).catch(() => {}).finally(() => { setupSaving = false; renderCutLineNote(); });
+}
+let setupSaving = false;
+function renderCutLineNote() {
+  const short = name => String(name || '').replace(/^CutContour_/i, '') || 'not set';
+  $('cut-line-names').textContent = short($('thru-name').value) + ', ' + short($('kiss-name').value);
 }
 
 function applyEzPreset(shop) {
@@ -2069,9 +2073,8 @@ async function saveSetup(shop) {
     $('setup').hidden = true;
     $('setup-error').hidden = true;
   } else {
-    $('setup-error').hidden = false;
-    $('setup-error').textContent = $('hot-error').textContent;
-    $('setup').hidden = false;
+    // A bad saved folder is reported in Settings; it never blocks nesting.
+    $('setup').hidden = true;
   }
 }
 
@@ -2455,7 +2458,7 @@ function renderOutputSharing(info) {
   else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
   else if (paired && info.requiresConsent) connectStatus.textContent = 'Review the sharing details below, then choose Enable sharing.';
   else if (paired) connectStatus.textContent = '';
-  else connectStatus.textContent = 'This computer is connected. Paste a new pairing code only when you need to connect again.';
+  else connectStatus.textContent = 'Not connected. Nesting, saving, and stock work without OUTPUT.';
   $('telemetry-agree').checked = false;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
   $('telemetry-enable').disabled = true;
@@ -2501,6 +2504,7 @@ async function connectOutput() {
     }
     input.value = '';
     renderOutputSharing(body);
+    refreshOutputLink().catch(() => {});
     if (body.requiresConsent && !$('telemetry-agree').disabled) $('telemetry-agree').focus();
   } catch (error) {
     if (['invalid_code', 'expired', 'consumed', 'limit', 'replay', 'unexpected', 'rejected'].includes(error.reason)) input.value = '';
@@ -2510,11 +2514,11 @@ async function connectOutput() {
   }
 }
 async function disconnectOutput() {
-  if (!window.confirm('Disconnect this computer from OUTPUT? Ez Nest stops until this computer connects again.')) return;
+  if (!window.confirm('Disconnect this computer from OUTPUT? Nesting, saving, and stock keep working on this computer.')) return;
   $('output-disconnect').disabled = true;
   try {
-    await api('/api/telemetry/output/disconnect', {});
-    location.reload();
+    renderOutputSharing(await api('/api/telemetry/output/disconnect', {}));
+    await refreshOutputLink();
   } catch (error) {
     $('output-connect-status').textContent = error.message;
     $('output-connect-status').classList.add('error');
@@ -2561,13 +2565,7 @@ async function boot() {
   let session = await fetchJsonRetry('/api/session');
   token = session.token || '';
   localSave = session.localSave === true;
-  showOutputBanner(session);
-  if (session.outputConnection && !session.outputConnection.ok) {
-    await requireOutputConnection(session);
-    session = await fetchJsonRetry('/api/session');
-    token = session.token || '';
-    showOutputBanner(session);
-  }
+  renderOutputLink(session.outputLink, session.localPC);
   if (session.localPC && session.pinWeak) {
     await requireHostPinReset();
     session = await fetchJsonRetry('/api/session');
@@ -2618,85 +2616,6 @@ function showOutputBanner(session) {
   const text = session && session.outputConnection && session.outputConnection.banner;
   banner.hidden = !text;
   banner.textContent = text || '';
-}
-
-function requireOutputConnection(session) {
-  const gate = $('output-gate');
-  const info = session.outputConnection || {};
-  const fields = $('output-gate-fields');
-  const lan = $('output-gate-lan');
-  const error = $('output-gate-error');
-  const check = $('output-gate-check');
-  gate.addEventListener('cancel', event => event.preventDefault());
-  error.hidden = true;
-  $('output-gate-note').textContent = info.message || 'Connect this computer to OUTPUT.';
-  if (!session.localPC) {
-    fields.hidden = true;
-    check.hidden = true;
-    lan.hidden = false;
-    lan.textContent = info.message || 'Ask the shop computer to connect to OUTPUT.';
-    gate.showModal();
-    return new Promise(() => {});
-  }
-  lan.hidden = true;
-  fields.hidden = info.canPair === false;
-  check.hidden = !info.canCheckIn;
-  gate.showModal();
-  const input = $('output-gate-code');
-  if (!fields.hidden) input.focus();
-  return new Promise(resolve => {
-    const finish = async () => {
-      input.value = '';
-      const next = await fetchJsonRetry('/api/session');
-      if (next.outputConnection && next.outputConnection.ok) {
-        gate.close();
-        resolve();
-      }
-    };
-    $('output-gate-form').onsubmit = async event => {
-      event.preventDefault();
-      const code = input.value.trim();
-      if (!code) {
-        error.hidden = false;
-        error.textContent = 'Paste the pairing code from OUTPUT.';
-        return;
-      }
-      $('output-gate-submit').disabled = true;
-      try {
-        const response = await fetch('/api/telemetry/output/pair', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-EZ-Token': token},
-          body: JSON.stringify({code})
-        });
-        const body = await response.json();
-        if (!response.ok) throw Error(body.error || 'Could not connect to OUTPUT.');
-        input.value = '';
-        await finish();
-        $('output-gate-submit').disabled = false;
-      } catch (err) {
-        input.value = '';
-        error.hidden = false;
-        error.textContent = err.message;
-        $('output-gate-submit').disabled = false;
-      }
-    };
-    check.onclick = async () => {
-      check.disabled = true;
-      try {
-        const body = await api('/api/telemetry/output/check-in', {});
-        if (body.ok) await finish();
-        else {
-          error.hidden = false;
-          error.textContent = body.message || 'OUTPUT could not be reached.';
-          check.disabled = false;
-        }
-      } catch (err) {
-        error.hidden = false;
-        error.textContent = err.message;
-        check.disabled = false;
-      }
-    };
-  });
 }
 
 function requireHostPinReset() {
@@ -2800,7 +2719,8 @@ function stockInput(mm, unit) { return String(Number((mm / EZNQueue.unitScale(un
 function stockFeet(mm) { return mm == null ? 'unknown' : (mm / 304.8).toFixed(2) + ' ft'; }
 
 function acceptInventory(data) {
-  if (JSON.stringify(data) !== JSON.stringify(shopInventory)) $('inventory-status').textContent = '';
+  const changed = JSON.stringify(data) !== JSON.stringify(shopInventory);
+  if (changed) $('inventory-status').textContent = '';
   shopInventory = data;
   inventoryReady = true;
   for (const item of data.materials) {
@@ -2809,6 +2729,7 @@ function acceptInventory(data) {
   }
   renderMaterialButtons();
   renderInventory();
+  if (changed && $('stock')?.open) renderStock();
 }
 
 async function refreshInventory() {
@@ -2909,7 +2830,6 @@ async function openIllustrator() {
 
 async function loadIllustrator() {
   if (busy || saving) throw Error('Finish the current operation first.');
-  if (!$('setup').hidden) throw Error('Finish shop setup first.');
   if ((kits.length || current) && !confirm('Replace the current preview with this Illustrator selection?')) return;
   const id = new URLSearchParams(location.search).get('illustrator');
   const response = await fetch('/api/illustrator/' + encodeURIComponent(id));
@@ -3277,6 +3197,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('choose-kiss').addEventListener('click', () => selectCut('kiss'));
   $('choose-confirm').addEventListener('click', confirmCut);
   $('start-over').addEventListener('click', startOver);
+  $('start-over-idle').addEventListener('click', startOver);
   $('more').addEventListener('change', async event => {
     try { await importFiles(event.target.files); }
     catch (error) { showImportError(error); }
@@ -3333,7 +3254,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if ($('settings').open || $('max-output-dialog').open || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
+    if ($('settings').open || $('stock').open || $('max-output-dialog').open || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #top-actions, #stock, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }
@@ -3343,3 +3264,270 @@ document.addEventListener('DOMContentLoaded', () => {
   boot().catch(error => status(error.message, true));
 });
 
+
+// --- OUTPUT link control (header). Connecting is optional; nothing here blocks nesting.
+let outputLink = null;
+let outputLinkLocal = true;
+function agoText(seconds) {
+  if (seconds == null) return '';
+  if (seconds < 90) return 'just now';
+  if (seconds < 5400) return Math.round(seconds / 60) + ' min ago';
+  if (seconds < 172800) return Math.round(seconds / 3600) + ' h ago';
+  return Math.round(seconds / 86400) + ' days ago';
+}
+function renderOutputLink(info, local) {
+  outputLink = info || null;
+  if (local !== undefined) outputLinkLocal = local !== false;
+  const root = $('output-link');
+  if (!root) return;
+  const state = info?.state || 'unpaired';
+  const paired = state === 'connected' || state === 'stale';
+  root.dataset.state = state;
+  root.hidden = !info;
+  if (info?.connectUrl) $('output-link-open').href = info.connectUrl;
+  $('output-link-connect').hidden = paired || !$('output-link-form').hidden;
+  $('output-link-connect').textContent = state === 'revoked' ? 'Reconnect to OUTPUT' : 'Connect to OUTPUT';
+  $('output-link-connect').disabled = !info?.canPair;
+  $('output-link-connect').title = info?.canPair ? '' : 'Connect from the shop computer.';
+  $('output-link-status').hidden = !paired;
+  const name = info?.shopName ? ' · ' + info.shopName : '';
+  $('output-link-label').textContent = state === 'stale' ? 'Last seen ' + (agoText(info.secondsSinceCheckIn) || 'not yet') : 'Connected' + name;
+  $('output-link-detail').textContent = state === 'stale'
+    ? (info.secondsSinceCheckIn == null ? 'OUTPUT has not heard from this computer yet.' : 'Last check-in ' + agoText(info.secondsSinceCheckIn) + '. Nesting keeps working.')
+    : 'Connected' + name + '. Last check-in ' + (agoText(info?.secondsSinceCheckIn) || 'not yet') + '.';
+  for (const id of ['output-link-reconnect', 'output-link-disconnect']) $(id).disabled = !info?.canPair;
+  const dot = $('output-dot');
+  if (dot) {
+    const live = state === 'connected' && info?.secondsSinceCheckIn != null;
+    dot.classList.toggle('connected', live);
+    const label = live ? 'Connected to OUTPUT' + name : paired ? $('output-link-label').textContent : 'Connect to OUTPUT';
+    dot.title = label; dot.setAttribute('aria-label', label);
+  }
+}
+async function refreshOutputLink() {
+  const session = await fetchJson('/api/session', 5000);
+  renderOutputLink(session.outputLink, session.localPC);
+}
+function closeOutputLinkMenu() {
+  $('output-link-menu').hidden = true;
+  $('output-link-status').setAttribute('aria-expanded', 'false');
+}
+function openOutputLinkForm() {
+  closeOutputLinkMenu();
+  const url = outputLink?.connectUrl;
+  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  $('output-link-form').hidden = false;
+  $('output-link-connect').hidden = true;
+  $('output-link-error').hidden = true;
+  $('output-link-code').value = '';
+  $('output-link-code').focus();
+}
+function closeOutputLinkForm() {
+  $('output-link-form').hidden = true;
+  $('output-link-code').value = '';
+  renderOutputLink(outputLink);
+}
+async function submitOutputLink(event) {
+  event.preventDefault();
+  const code = $('output-link-code').value.trim();
+  const error = $('output-link-error');
+  if (!code) { error.textContent = 'Paste the pairing code from OUTPUT.'; error.hidden = false; return; }
+  $('output-link-submit').disabled = true;
+  try {
+    const body = await api('/api/telemetry/output/pair', {code});
+    $('output-link-code').value = '';
+    $('output-link-form').hidden = true;
+    renderOutputSharing(body);
+    await refreshOutputLink();
+  } catch (failure) {
+    $('output-link-code').value = '';
+    error.textContent = failure.message;
+    error.hidden = false;
+  } finally {
+    $('output-link-submit').disabled = false;
+  }
+}
+async function checkOutputLink() {
+  $('output-link-check').disabled = true;
+  $('output-link-detail').textContent = 'Checking…';
+  try {
+    await api('/api/telemetry/output/check-in', {});
+    await refreshOutputLink();
+    if (outputLink?.state === 'stale') $('output-link-detail').textContent = 'OUTPUT did not answer. Nesting keeps working. Try again later.';
+  } catch (failure) {
+    $('output-link-detail').textContent = failure.message;
+  } finally {
+    $('output-link-check').disabled = false;
+  }
+}
+async function disconnectOutputLink() {
+  closeOutputLinkMenu();
+  if (!window.confirm('Disconnect this computer from OUTPUT? Nesting, saving, and stock keep working on this computer.')) return;
+  try {
+    renderOutputSharing(await api('/api/telemetry/output/disconnect', {}));
+  } catch (failure) {
+    status(failure.message, true);
+  }
+  await refreshOutputLink().catch(() => {});
+}
+$('output-link-connect').addEventListener('click', openOutputLinkForm);
+$('output-link-reconnect').addEventListener('click', openOutputLinkForm);
+$('output-link-cancel').addEventListener('click', closeOutputLinkForm);
+$('output-link-form').addEventListener('submit', submitOutputLink);
+$('output-link-check').addEventListener('click', checkOutputLink);
+$('output-link-disconnect').addEventListener('click', disconnectOutputLink);
+$('output-link-status').addEventListener('click', () => {
+  const open = $('output-link-menu').hidden;
+  $('output-link-menu').hidden = !open;
+  $('output-link-status').setAttribute('aria-expanded', String(open));
+  if (open) $('output-link-check').focus();
+});
+document.addEventListener('click', event => { if (!event.target.closest('#output-link')) closeOutputLinkMenu(); });
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  if (!$('output-link-menu').hidden) { closeOutputLinkMenu(); $('output-link-status').focus(); }
+  else if (!$('output-link-form').hidden && event.target.closest('#output-link-form')) closeOutputLinkForm();
+});
+
+// --- Inventory (Stock) dialog. Reads and writes the shared shop inventory.
+function rollWidthText(item) {
+  const p = item.profile;
+  return `${Number(p.roll)} ${p.unit} roll · ${Number(p.width)} ${p.unit} printable`;
+}
+function rollLowText(item) {
+  return lowStock({...item.profile, 'available-length': item.availableMm == null ? '' : String(item.availableMm / EZNQueue.unitScale(item.profile.unit))});
+}
+function rollCostPerSqFt(item) {
+  const p = item.profile;
+  const cost = Number(p['roll-cost']), length = Number(p['roll-length']), roll = Number(p.roll);
+  if (!String(p['roll-cost'] || '').trim() || !(cost > 0) || !(length > 0) || !(roll > 0)) return '';
+  const scale = EZNQueue.unitScale(p.unit) / 304.8;
+  return '$' + (cost / (roll * scale * length * scale)).toFixed(2) + ' per sq ft';
+}
+function rollJobCheck(item) {
+  const result = current?.result;
+  if (!result || !(result.width > 0)) return null;
+  const p = item.profile;
+  const printable = Number(p.width) * EZNQueue.unitScale(p.unit);
+  const jobIn = String(Math.round(result.width / 25.4 * 10) / 10);
+  const lines = [];
+  let ok = true;
+  const rollIn = String(Math.round(printable / 25.4 * 10) / 10);
+  if (printable + 0.01 < result.width) return {ok: false, lines: [`Too narrow: job is ${jobIn} in wide, this roll prints ${rollIn} in`]};
+  lines.push(`Width fits: job ${jobIn} in on ${rollIn} in printable`);
+  if (item.availableMm == null) lines.push('Length left unknown. Update the count to check.');
+  else if (item.availableMm + 0.5 >= result.usedLength) lines.push('Enough for this job · ' + stockFeet(result.usedLength) + ' needed');
+  else { ok = false; lines.push('Short by ' + stockFeet(result.usedLength - item.availableMm)); }
+  return {ok, lines};
+}
+function renderStock() {
+  const list = $('stock-list');
+  list.replaceChildren();
+  const materials = shopInventory.materials;
+  $('stock-empty').hidden = !inventoryReady || materials.length > 0;
+  $('stock-status').textContent = inventoryReady ? '' : 'Shop stock is unavailable. Check that the shop computer is running.';
+  const result = current?.result;
+  $('stock-job').hidden = !result;
+  if (result) $('stock-job-text').textContent = `Nest needs ${stockFeet(result.usedLength)} of roll at ${Math.round(result.width / 25.4 * 10) / 10} in wide.`;
+  for (const item of materials) {
+    const row = document.createElement('li');
+    row.className = 'stock-row';
+    row.dataset.id = item.id;
+    const head = document.createElement('div'); head.className = 'stock-head';
+    const name = document.createElement('strong'); name.textContent = item.profile['preset-name'];
+    head.append(name);
+    const low = rollLowText(item);
+    if (low) { const tag = document.createElement('span'); tag.className = 'stock-low'; tag.textContent = low.split(' · ')[0]; head.append(tag); }
+    if (item.id === $('material').value) { const tag = document.createElement('span'); tag.className = 'stock-selected'; tag.textContent = 'Selected'; head.append(tag); }
+    const facts = document.createElement('dl'); facts.className = 'stock-facts';
+    const add = (label, value) => { const d = document.createElement('div'); const t = document.createElement('dt'); t.textContent = label; const v = document.createElement('dd'); v.textContent = value; d.append(t, v); facts.append(d); };
+    add('Width', rollWidthText(item));
+    add('Length left', item.onHandMm == null ? 'Not counted' : stockFeet(item.onHandMm));
+    if (item.reservedMm > 0) add('Reserved', stockFeet(item.reservedMm));
+    const cost = rollCostPerSqFt(item);
+    if (cost) add('Cost', cost);
+    row.append(head, facts);
+    const check = rollJobCheck(item);
+    if (check) {
+      const box = document.createElement('p'); box.className = 'stock-check'; box.dataset.ok = check.ok ? '1' : '0';
+      box.textContent = check.lines.join(' · ');
+      row.append(box);
+    }
+    const actions = document.createElement('div'); actions.className = 'stock-row-actions';
+    const button = (label, handler, cls) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; if (cls) b.className = cls; b.disabled = inventoryBusy; b.addEventListener('click', handler); actions.append(b); return b; };
+    if (item.id !== $('material').value) button('Use for this job', () => { $('stock').close(); chooseMaterial(item.id); });
+    button('Update count', () => showCountEditor(row, item));
+    button('Edit', () => { $('stock').close(); openPreset(item.id); }, 'link');
+    button('Remove', () => removeRoll(item), 'link danger');
+    row.append(actions);
+    list.append(row);
+  }
+}
+function showCountEditor(row, item) {
+  if (row.querySelector('.stock-count')) return;
+  const form = document.createElement('form'); form.className = 'stock-count';
+  const label = document.createElement('label');
+  const unit = item.profile.unit;
+  label.textContent = `Length left (${unit})`;
+  const input = document.createElement('input');
+  Object.assign(input, {type: 'number', min: '0', step: 'any', inputMode: 'decimal', required: true});
+  input.value = item.onHandMm == null ? '' : String(Math.round(item.onHandMm / EZNQueue.unitScale(unit) * 100) / 100);
+  label.append(input);
+  const save = document.createElement('button'); save.type = 'submit'; save.className = 'primary'; save.textContent = 'Save count';
+  const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'link'; cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => form.remove());
+  form.append(label, save, cancel);
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (inventoryBusy) return;
+    inventoryBusy = true; save.disabled = true;
+    try {
+      const profile = {...item.profile, 'available-length': input.value.trim()};
+      acceptInventory(await api('/api/materials/save', {id: item.id, profile, revision: item.revision}));
+      if (item.id === $('material').value) applyMaterial(true);
+      $('stock-status').textContent = 'Count saved.';
+    } catch (error) {
+      await refreshInventory().catch(() => {});
+      $('stock-status').textContent = error.message;
+    } finally {
+      inventoryBusy = false; renderStock();
+    }
+  });
+  row.append(form);
+  input.focus();
+}
+async function removeRoll(item) {
+  if (inventoryBusy) return;
+  if (!window.confirm(`Remove ${item.profile['preset-name']} from inventory? Its usage history is removed too.`)) return;
+  inventoryBusy = true;
+  try {
+    acceptInventory(await api('/api/materials/remove', {id: item.id, revision: item.revision}));
+    const option = [...$('material').options].find(entry => entry.value === item.id);
+    const wasSelected = $('material').value === item.id;
+    if (option) option.remove();
+    delete materialProfiles[item.id];
+    if (wasSelected) { $('material').selectedIndex = 0; applyMaterial(true); }
+    renderMaterialButtons();
+    $('stock-status').textContent = 'Roll removed.';
+  } catch (error) {
+    await refreshInventory().catch(() => {});
+    $('stock-status').textContent = error.message;
+  } finally {
+    inventoryBusy = false; renderStock();
+  }
+}
+async function openStock() {
+  await refreshInventory().catch(() => {});
+  renderStock();
+  if (!$('stock').open) $('stock').showModal();
+  $('stock-close').focus();
+}
+$('stock-open').addEventListener('click', openStock);
+$('stock-close').addEventListener('click', () => $('stock').close());
+$('stock-add').addEventListener('click', () => { $('stock').close(); openPreset('custom'); });
+
+for (const id of ['thru-name', 'kiss-name']) $(id).addEventListener('input', renderCutLineNote);
+renderCutLineNote();
+
+// Header status circle: click reuses the existing connect flow (or the connected menu).
+$('output-dot')?.addEventListener('click', event => { event.stopPropagation(); ($('output-link-status').hidden ? $('output-link-connect') : $('output-link-status')).click(); });

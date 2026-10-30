@@ -182,3 +182,23 @@ def transition(directory, run, action):
         db.execute('UPDATE reservations SET status=?, updated=? WHERE id=?', (target, datetime.now(timezone.utc).isoformat(), run))
         db.execute('UPDATE materials SET revision=revision+1 WHERE id=?', (row['material'],))
         return snapshot(db)
+
+
+def remove(directory, key, revision):
+    """Delete one roll. Outstanding reservations must be released first.
+
+    Finished usage rows for the roll are deleted with it; they only make sense
+    against that roll.
+    """
+    key = ident(key)
+    with database(directory) as db:
+        row = db.execute('SELECT revision FROM materials WHERE id=?', (key,)).fetchone()
+        if not row:
+            raise ValueError('This roll was already removed.')
+        if type(revision) is not int or revision != row['revision']:
+            raise ValueError('This material changed on another screen. Close and reopen Inventory to use the latest stock.')
+        if reserved(db, key):
+            raise ValueError('Release reserved jobs on this roll before removing it.')
+        db.execute('DELETE FROM reservations WHERE material=?', (key,))
+        db.execute('DELETE FROM materials WHERE id=?', (key,))
+        return snapshot(db)

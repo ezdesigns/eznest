@@ -22,24 +22,6 @@
     <p id="pin-error" class="lan-note" hidden></p>
   </form>
 </dialog>
-<dialog id="output-gate" aria-labelledby="output-gate-title">
-  <form id="output-gate-form">
-    <h2 id="output-gate-title">Connect to OUTPUT</h2>
-    <p id="output-gate-note" class="hint"></p>
-    <p id="output-gate-lan" class="hint" hidden>Ask the shop computer to connect to OUTPUT.</p>
-    <div id="output-gate-fields">
-      <label>Pairing code
-        <input id="output-gate-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="characters" inputmode="text">
-      </label>
-      <button id="output-gate-submit" class="primary" type="submit">Connect</button>
-      <button id="output-gate-check" class="link" type="button" hidden>Check connection</button>
-      <p class="hint"><a href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Get a pairing code</a></p>
-      <p class="hint">Connecting sends this computer's name and installation id once. Later check-ins send the app version. Artwork, filenames, customers, and stock stay on this computer.</p>
-    </div>
-    <p id="output-gate-error" class="lan-note" hidden></p>
-  </form>
-</dialog>
-<p id="output-banner" class="lan-note" hidden></p>
 <section id="setup" hidden>
   <h2>Ready to nest</h2>
   <p class="hint">Check your cut line names. Printer and default folder are optional; you can choose where to save each finished file.</p>
@@ -71,7 +53,37 @@
   </div>
   <p id="setup-error" class="lan-note" hidden></p>
 </section>
-<button id="settings-open" type="button" aria-label="Settings" aria-haspopup="dialog">
+<div id="top-actions" class="top-actions">
+<div id="output-link" class="output-link">
+<button id="output-dot" type="button" class="top-button output-dot" title="Connect to OUTPUT" aria-label="Connect to OUTPUT"><span class="status-circle" aria-hidden="true"></span></button>
+  <button id="output-link-connect" type="button" class="top-button">Connect to OUTPUT</button>
+  <button id="output-link-status" type="button" class="top-button" aria-haspopup="menu" aria-expanded="false" aria-controls="output-link-menu" hidden><span class="link-dot" aria-hidden="true"></span><span id="output-link-label">Connected</span></button>
+  <div id="output-link-menu" class="output-link-menu" role="menu" hidden>
+    <p id="output-link-detail" class="hint"></p>
+    <button id="output-link-check" type="button" role="menuitem">Check now</button>
+    <button id="output-link-reconnect" type="button" role="menuitem">Reconnect (new code)</button>
+    <button id="output-link-disconnect" type="button" role="menuitem">Disconnect</button>
+  </div>
+  <form id="output-link-form" class="output-link-form" hidden>
+    <label for="output-link-code">Pairing code from OUTPUT</label>
+    <div class="output-link-row">
+      <input id="output-link-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="XXXXX-XXXXX">
+      <button id="output-link-submit" class="primary" type="submit">Connect</button>
+    </div>
+    <p id="output-link-error" class="lan-note" role="alert" hidden></p>
+    <p class="hint"><a id="output-link-open" href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Open OUTPUT to get a code</a> · <button id="output-link-cancel" type="button" class="link">Cancel</button></p>
+  </form>
+</div>
+<button id="stock-open" type="button" class="top-button" aria-label="Inventory" aria-haspopup="dialog">
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 7.5 12 3.5l8.5 4v9L12 20.5l-8.5-4Z"/>
+      <path d="M3.5 7.5 12 11.5l8.5-4M12 11.5v9M7.8 5.5l8.4 4v3"/>
+    </g>
+  </svg>
+  <span>Inventory</span>
+</button>
+<button id="settings-open" type="button" class="top-button" aria-label="Settings" aria-haspopup="dialog">
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
       <g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9.5 3h5l.5 2.5 1.6.9 2.4-.8 2.5 4.3-1.9 1.7v1.8l1.9 1.7-2.5 4.3-2.4-.8-1.6.9-.5 2.5h-5L9 19.5l-1.6-.9-2.4.8-2.5-4.3 1.9-1.7v-1.8L2.5 9.9 5 5.6l2.4.8L9 5.5Z"/>
@@ -80,6 +92,7 @@
     </svg>
   <span>Settings</span>
 </button>
+</div>
 <dialog id="settings" aria-labelledby="settings-title">
   <div class="panel">
     <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title">Settings</h2><p class="hint">Set up once. Your material choices stay with the job.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
@@ -104,8 +117,8 @@
       </div>
     </section>
     <details id="settings-cuts" class="settings-section">
-      <summary>Cut lines · how your cutter recognizes them</summary>
-      <p class="section-note">Match the cut names your print software expects. Leave these as they are if your cuts already work.</p>
+      <summary>Cutter setup</summary>
+      <p id="cut-line-note" class="section-note">Your cutter uses these names to tell a through-cut from a kiss-cut. Now: <span id="cut-line-names"></span>. Leave them if your cuts already work.</p>
       <div class="fields">
       <label class="wide">Cut spot names
         <select id="cut-preset">
@@ -163,19 +176,19 @@
         <p id="output-connect-status" role="status" aria-live="polite"></p>
       </div>
       <h3>What OUTPUT sees</h3>
-      <p>This computer has to be connected to OUTPUT before the shop can nest, send, or change stock. That connection is separate from sharing activity.</p>
+      <p>Connecting to OUTPUT is optional. Nesting, saving, and stock work without it. The connection is separate from sharing activity.</p>
       <p>Sent when you connect: this computer's name and this installation id, once, in the pairing request. Later check-ins send the app version. The shop credential authenticates those HTTPS requests. OUTPUT also sees this computer's IP address on those requests.</p>
       <p>Sent only after <strong>Enable sharing</strong>, and only for new activity: a stable installation id, opaque layout and request ids, the exact event time, the app version, the event type, a standard material category, and the measurement ranges below. Measured stock readings already on this host can be included. Earlier activity is excluded. A failed delivery is retried with the same event id. The shop stock ledger stays here.</p>
       <p>Never sent: artwork, files or filenames, customer names or contacts, job codes, roll ids, custom material names, exact dimensions, quantities, stock contents, or search time. These are local observations; “printed” means an explicit operator confirmation, not independent proof of physical printing.</p>
       <p>Sharing capacity and availability with the OUTPUT network is a separate opt-in. It stays off until you turn it on. It is not this connection, and it is not Enable sharing.</p>
-      <p>OUTPUT is pre-revenue. Where that product moves money, the money is Solana devnet test tokens. Ez Nest does not send a price.</p>
+      <p>Ez Nest does not send a price.</p>
       <p>Material categories: <code>moto_regular, moto_holographic, moto_chrome, custom, unknown</code> or null. Stock-only observations have no layout ID.</p>
       <p>Event types: <span id="telemetry-kinds"></span></p>
       <p id="telemetry-bands"></p>
       <label>OUTPUT service address
         <input id="output-url" type="url" inputmode="url" maxlength="200" spellcheck="false" autocapitalize="none" placeholder="https://output.jeezlabs.io" aria-describedby="output-url-note">
       </label>
-      <p id="output-url-note" class="hint">Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree here. The account connection itself is required.</p>
+      <p id="output-url-note" class="hint">Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree here. Connecting to OUTPUT is optional.</p>
       <p>Destination: <code id="output-destination">https://output.jeezlabs.io/api/shop/telemetry</code></p>
       <details><summary>Exact JSON fields (illustrative event)</summary><pre id="telemetry-preview" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
       <p>Stopping prevents further requests after any in-flight request finishes. It does not delete records already received by OUTPUT. Re-enabling excludes all activity recorded before the new consent.</p>
@@ -191,7 +204,7 @@
     <p class="hint">Off during beta. To turn checks on, check this box and start Ez Nest with <code>EZ_NEST_UPDATES=1</code>. Ez Nest keeps a download only when its SHA-256 matches the published checksum. Installing that file is still a separate click.</p>
     <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
     <label class="check" hidden><input id="output-network" type="checkbox"> Share capacity with the OUTPUT network</label>
-    <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Connecting this computer to OUTPUT is required and is not this switch.</p>
+    <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Connecting this computer to OUTPUT is optional and is not this switch.</p>
     <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
     <p id="update-note" class="hint" hidden></p>
     <button id="update-cancel" type="button" class="link" hidden>Cancel waiting update</button>
@@ -211,6 +224,19 @@
       <p id="shop-pin-error" class="lan-note" hidden></p>
     </details>
     <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
+  </div>
+</dialog>
+<dialog id="stock" aria-labelledby="stock-title">
+  <div class="panel">
+    <div class="dialog-heading"><div><h2 id="stock-title" class="settings-title">Inventory</h2><p class="hint">Rolls in stock on this shop computer. Shared with every PC connected to it.</p></div><button id="stock-close" class="dialog-close" type="button" aria-label="Close inventory">×</button></div>
+    <section id="stock-job" class="stock-job" aria-label="Current job" hidden>
+      <h3>This job</h3>
+      <p id="stock-job-text"></p>
+    </section>
+    <p id="stock-empty" class="stock-empty" hidden>No materials yet. Add your first roll.</p>
+    <ul id="stock-list" class="stock-list" aria-label="Rolls in stock"></ul>
+    <p id="stock-status" role="status" aria-live="polite" class="hint"></p>
+    <div class="stock-actions"><button id="stock-add" class="primary" type="button">Add roll</button></div>
   </div>
 </dialog>
 <main>
@@ -302,9 +328,9 @@
     <h2><span class="step-number">3</span> Where will you print?</h2>
     <div class="output-modes" aria-label="Where to print">
       <button id="in-house" class="nest-mode" type="button" aria-pressed="true">In-house</button>
-      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Learn about OUTPUT">
+      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Still get paid. Learn about OUTPUT">
         <strong>Don't print</strong>
-        <span class="paid-badge">Devnet sandbox</span>
+        <span class="paid-badge">Still get paid <span class="paid-emoji">🤑</span></span>
       </button>
     </div>
     <div class="effort-heading"><button id="effort-help" class="help-label" type="button">Nesting effort</button><span class="hint">More time may find a tighter fit.</span></div>
@@ -317,7 +343,10 @@
       </select>
     </label>
   </section>
+  <div id="nest-row" class="nest-row">
   <button id="start-nesting" class="primary" type="button" disabled>Nest</button>
+  <button id="start-over-idle" class="link" type="button" disabled>Start over</button>
+  </div>
   <p id="gate" class="gate" hidden><span id="checks"></span></p>
   <div id="choice" class="choice" hidden>
     <button id="choose-thru" type="button" aria-pressed="false">THRU</button>
@@ -354,18 +383,18 @@
 
 </main>
 <dialog id="max-output-dialog" aria-labelledby="max-output-title">
-  <div class="dialog-heading"><h2 id="max-output-title">Don't print it. Let another shop do it.</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
-  <p class="output-lead">OUTPUT can match this job with another shop. The sandbox does not take payment.</p>
-  <p class="paid-line">Devnet sandbox. No payment.</p>
-  <h3 class="output-when">Use it when</h3>
+  <div class="dialog-heading"><h2 id="max-output-title">Don't print</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <p>OUTPUT routes the job to the best-fit print shop near you, based on what each shop can make.</p>
+  <p>You still get paid.</p>
+  <p class="output-when">Use it when</p>
   <ul class="output-points">
-    <li>The queue is backed up and this job would miss its date</li>
-    <li>The material is not in stock</li>
-    <li>The job is outside what your machines can run</li>
+    <li>You don't have the material or roll width</li>
+    <li>Your customer is too far away</li>
+    <li>You're too busy to finish on time</li>
   </ul>
   <div class="output-actions">
-    <a id="max-output-waitlist" class="primary-link" href="https://output.jeezlabs.io/waitlist" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Join the waitlist</a>
-    <a id="max-output-learn" class="primary-link" href="https://output.jeezlabs.io/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Learn more</a>
+    <a id="max-output-waitlist" class="primary-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Join the waitlist</a>
+    <a id="max-output-learn" class="output-learn" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Learn more</a>
   </div>
 </dialog>
 <dialog id="cut-review" aria-labelledby="cut-review-title" aria-describedby="cut-review-summary">

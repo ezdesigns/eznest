@@ -512,24 +512,11 @@ body:has(#settings-support[open]) #feedback-welcome { display: none; }
 }
 .effort-heading { margin: 16px 0 8px; font-size: 13px; font-weight: 700; }
 .effort-heading .hint { display: block; margin-top: 4px; font-size: 12px; }
-#max-output-dialog { width: min(440px, calc(100vw - 32px)); max-height: 90dvh; overflow: auto; padding: 28px 28px 24px; border: 1px solid #ddd; border-radius: 16px; text-align: left; color: #111; }
-#max-output-dialog .dialog-heading { align-items: center; margin-bottom: 16px; }
-#max-output-dialog .dialog-heading h2 { font-size: 24px; line-height: 1.2; letter-spacing: -.02em; overflow-wrap: anywhere; }
-#max-output-dialog p { margin: 0 0 14px; font-size: 15px; line-height: 1.45; }
-#max-output-dialog .output-lead { margin: 0 0 14px; }
-#max-output-dialog .paid-line { display: inline-flex; align-items: center; margin: 0 0 20px; padding: 4px 10px; border-radius: 999px; background: #15803D; color: #fff; font-size: 13px; font-weight: 700; line-height: 1.3; }
-#max-output-dialog .output-when { margin: 0 0 10px; font-size: 13px; font-weight: 700; line-height: 1.3; }
-#max-output-dialog .output-points { margin: 0 0 22px; padding: 0; list-style: none; display: grid; gap: 10px; font-size: 14px; line-height: 1.35; }
-#max-output-dialog .output-points li { display: flex; align-items: flex-start; gap: 10px; margin: 0; }
-#max-output-dialog .output-points li::before { content: "✓"; flex: 0 0 16px; color: #111; font-weight: 700; line-height: 1.35; }
-#max-output-dialog .output-actions { display: flex; align-items: center; gap: 12px; justify-content: stretch; }
-#max-output-dialog .primary-link { flex: 1; width: auto; }
-@media (max-width: 640px) {
-  #max-output-dialog { padding: 24px 20px 20px; }
-  #max-output-dialog .dialog-heading h2 { font-size: 22px; }
-  #max-output-dialog .output-actions { flex-direction: column; align-items: stretch; }
-  #max-output-dialog .primary-link { width: 100%; }
-}
+#max-output-dialog { width: min(420px, calc(100vw - 32px)); max-height: 90dvh; overflow: auto; padding: 24px; border: 1px solid #ddd; border-radius: 14px; }
+#max-output-dialog p { margin: 0 0 14px; font-size: 14px; }
+#max-output-dialog .output-when { margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--muted); }
+#max-output-dialog .output-points { margin: 0 0 18px; padding: 0; list-style: none; font-size: 14px; }
+#max-output-dialog .output-points li { margin: 4px 0; }
 #output-connect { display: grid; gap: 8px; margin: 4px 0 16px; padding-bottom: 12px; border-bottom: 1px solid #e7e7e1; }
 #output-connect h3 { margin: 0; font-size: 15px; }
 #output-connect label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
@@ -628,3 +615,86 @@ body[data-step="sent"] #inventory-open { display: block; }
 #inventory-status { font-size: 13px; margin: 10px 0; }
 #material-usage { margin-top: 12px; }
 #material-usage summary { cursor: pointer; font-size: 13px; }
+
+/* Header actions: OUTPUT link, Inventory, Settings. Same button look as Settings. */
+.top-actions { position: fixed; top: 18px; right: 18px; z-index: 3; display: flex; align-items: center; gap: 8px; }
+.top-actions #settings-open { position: static; padding: 0 10px; }
+.top-button { display: flex; align-items: center; gap: 8px; border: 0; padding: 0 10px; height: 36px; box-sizing: border-box; background: #f7f7f4; border-radius: 8px; font-size: 12px; min-height: 36px; color: var(--ink); white-space: nowrap; }
+.top-button:hover { background: #eceeea; }
+.top-button:focus-visible { outline: 2px solid #111; outline-offset: 2px; }
+.top-button:disabled { cursor: default; color: var(--muted); background: #f7f7f4; }
+.top-button svg { display: block; flex-shrink: 0; }
+.shop-header { padding-right: 430px; }
+.output-link { position: relative; }
+#output-link-connect { border: 1px solid #d8d8d2; background: #fff; font-weight: 700; }
+#output-link-connect:hover { background: #f3f3ef; }
+.link-dot { width: 8px; height: 8px; border-radius: 50%; background: #15803D; flex-shrink: 0; }
+.output-link[data-state="stale"] .link-dot { background: #b58d30; }
+.output-link-menu, .output-link-form { position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; width: 280px; padding: 14px; border: 1px solid #ddd; border-radius: 12px; background: #fff; box-shadow: 0 10px 28px #1c243824; display: grid; gap: 8px; text-align: left; }
+.output-link-menu button { width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid #e2e2dc; border-radius: 8px; background: #fafaf7; font-size: 13px; text-align: left; }
+.output-link-menu button:hover { background: #f0f0ec; }
+#output-link-disconnect { color: #971b12; }
+.output-link-form label { font-size: 13px; font-weight: 700; }
+.output-link-row { display: flex; gap: 8px; }
+.output-link-row input { flex: 1; min-width: 0; min-height: 38px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 8px; font-family: ui-monospace, "Cascadia Mono", monospace; letter-spacing: .04em; }
+.output-link-row button { min-height: 38px; padding: 6px 14px; }
+.output-link-form .hint { font-size: 12px; }
+
+/* Inventory dialog: same frame as Settings. */
+#stock { width: min(620px, calc(100vw - 32px)); max-height: 90dvh; padding: 24px; border: 1px solid #ddd; border-radius: 14px; color: var(--ink); }
+#stock::backdrop { background: #1c243855; }
+#stock .panel { text-align: left; }
+.stock-job { margin-bottom: 14px; padding: 12px 14px; border: 1px solid #d6e3f2; border-radius: 10px; background: #f3f7fc; }
+.stock-job h3 { margin: 0 0 4px; font-size: 13px; }
+.stock-job p { font-size: 13px; }
+.stock-empty { padding: 28px 16px; border: 1px dashed #cfcfc8; border-radius: 10px; text-align: center; color: var(--muted); }
+.stock-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.stock-row { padding: 14px; border: 1px solid #e2e2dc; border-radius: 10px; background: #fff; display: grid; gap: 8px; }
+.stock-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stock-head strong { font-size: 15px; }
+.stock-low { padding: 2px 8px; border-radius: 999px; background: #fde8e3; color: #971b12; font-size: 11px; font-weight: 700; }
+.stock-selected { padding: 2px 8px; border-radius: 999px; background: #e8f0fa; color: #1d4f91; font-size: 11px; font-weight: 700; }
+.stock-facts { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px 14px; }
+.stock-facts dt { font-size: 11px; color: var(--muted); }
+.stock-facts dd { margin: 0; font-size: 13px; font-weight: 600; }
+.stock-check { font-size: 13px; padding: 8px 10px; border-radius: 8px; background: #edf5ee; color: #225a37; }
+.stock-check[data-ok="0"] { background: #fdf1ee; color: #971b12; }
+.stock-row-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.stock-row-actions button { min-height: 34px; padding: 4px 12px; font-size: 13px; }
+.stock-row-actions .danger { color: #971b12; }
+.stock-count { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.stock-count label { display: grid; gap: 4px; font-size: 12px; font-weight: 700; }
+.stock-count input { width: 140px; min-height: 36px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 8px; }
+.stock-actions { margin-top: 14px; display: flex; justify-content: flex-end; }
+#stock-status:empty { display: none; }
+#stock-status { margin-top: 10px; }
+@media (max-width: 720px) {
+  .top-actions { top: 12px; right: 12px; gap: 6px; }
+  .top-button { padding: 6px 8px; }
+  #stock-open span, #settings-open span { display: none; }
+  .shop-header { padding-right: 0; flex-wrap: wrap; }
+  .shop-header strong { line-height: 36px; }
+  .output-link-menu, .output-link-form { position: fixed; top: 58px; left: 12px; right: 12px; width: auto; }
+}
+/* Inventory and Settings share one size and baseline. */
+.top-actions .top-button, .top-actions #settings-open { position: static; box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 10px; margin: 0; line-height: 1; vertical-align: middle; }
+.top-actions .top-button span { line-height: 1; }
+.cut-line-note { margin-top: 6px; font-size: 12px; }
+.cut-line-note .link { font-size: 12px; padding: 0; min-height: 0; }
+@media (max-width: 720px) {
+  .top-actions #stock-open, .top-actions #settings-open { width: 36px; padding: 0; justify-content: center; }
+}
+
+/* Nest + Start over pair under Nesting effort (pre-launch row). */
+.nest-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.nest-row[hidden] { display: none; }
+.nest-row #start-nesting { width: 100%; }
+.job-panel #start-over-idle { min-height: 40px; padding: 0 6px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.job-panel #start-over-idle:disabled { opacity: .5; cursor: not-allowed; }
+.output-dot { width: 36px; justify-content: center; padding: 0; }
+.output-dot .status-circle { width: 10px; height: 10px; border-radius: 50%; background: #9ca3af; box-shadow: 0 0 0 2px #fff; }
+.output-dot.connected .status-circle { background: #15803D; }
+.job-panel #start-over-idle { align-self: stretch; height: auto; min-height: 0; padding: 0 16px; border: 1px solid #d6d9de; border-radius: 10px; background: #fff; color: var(--ink); font-size: 14px; font-weight: 600; text-decoration: none; }
+.job-panel #start-over-idle:disabled { color: #929ba7; background: #f7f7f4; opacity: 1; }
+/* The status circle is the only visible OUTPUT control; the old buttons stay as hidden click targets. */
+#output-link-connect, #output-link-status { display: none !important; }

@@ -224,7 +224,7 @@ def _blocked_by_environment():
         raise PairingError('rejected', 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.')
 
 
-def connect(directory, code, *, paused=False, transport=None, host=None):
+def connect(directory, code, *, paused=False, transport=None, host=None, check_in_transport=None):
     if paused:
         raise PairingError('disabled', 'Sharing is paused during installation or recovery. Refresh after the host restarts.')
     _blocked_by_environment()
@@ -247,6 +247,15 @@ def connect(directory, code, *, paused=False, transport=None, host=None):
         raise PairingError('unexpected', STORE_FAILED) from None
     import output_gate
     output_gate.note_paired(directory)
+    # Pairing is not a check-in on OUTPUT. Check in once now so OUTPUT shows
+    # this computer as seen. A failed check-in keeps the new pairing.
+    # A caller that injects a pairing transport (tests) must also inject the
+    # check-in transport, so tests never reach the real OUTPUT.
+    if transport is None or check_in_transport is not None:
+        try:
+            output_gate.check_in(directory, transport=check_in_transport)
+        except (OSError, ValueError):
+            pass
     return telemetry_sender.status(directory)
 
 
