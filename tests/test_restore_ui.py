@@ -326,13 +326,17 @@ class RestoreUiTests(unittest.TestCase):
         expect(page.locator('#roll-f-left')).to_be_focused()
         page.fill('#roll-f-left', '75')
         page.click('#stock-panel button[type=submit]')
+        # The shelf draws 75 ft while the form is still open; wait until the save is done
+        # and the form has closed before picking another roll.
+        expect(page.locator('#roll-f-left')).to_have_count(0, timeout=15000)
         expect(clear).to_contain_text('75 ft')
         matte.click()
+        expect(page.locator('#stock-panel')).to_have_attribute('aria-label', re.compile('Matte vinyl 30'))
         page.click('#stock-panel button:has-text("Edit")')
         page.once('dialog', lambda d: d.accept())
         page.click('#stock-panel .roll-remove')
         expect(page.locator('.stock-slot')).to_have_count(2)
-        self.assertEqual(page.locator('#material option[value="matte-30"]').count(), 0)
+        expect(page.locator('#material option[value="matte-30"]')).to_have_count(0, timeout=15000)
         page.click('#stock-close')
         page.click('#output-dot')
         expect(page.locator('#output-link-menu')).to_be_visible()
