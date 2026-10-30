@@ -103,6 +103,56 @@ class ShopAuthTests(unittest.TestCase):
             self.assertEqual(foreign.sent[0][0], 403)
             self.assertNotIn('token', json.dumps(foreign.sent[0][1]))
 
+    def test_removing_the_pin_while_running_ends_lan_sessions(self):
+        shop_auth.set_pin(server.WORK, '48151623')
+        sid = shop_auth.issue_session('192.168.1.50')
+        cookie = {'Cookie': shop_auth.cookie_header(sid).split(';')[0]}
+        with patch('shop_deploy.lan_addresses', return_value=['192.168.1.50']):
+            shop_deploy.clear_name_cache()
+            self.assertTrue(self.handler('/api/state', headers=cookie).cookie_ok())
+            (server.WORK / 'shop-pin.json').unlink()
+            self.assertFalse(self.handler('/api/state', headers=cookie).cookie_ok())
+            shop_auth.set_pin(server.WORK, '48151623')
+            # The old session does not come back when a PIN is set again.
+            self.assertFalse(self.handler('/api/state', headers=cookie).cookie_ok())
+            gone = self.handler('/api/state', headers=cookie)
+            (server.WORK / 'shop-pin.json').unlink()
+            gone.do_GET()
+            self.assertEqual(gone.sent[0][0], 403)
+
+    def test_loopback_host_name_must_use_this_port(self):
+        item = server.Handler.__new__(server.Handler)
+        self.assertTrue(item.local_name('localhost:8765'))
+        self.assertTrue(item.local_name('127.0.0.1:8765'))
+        self.assertFalse(item.local_name('localhost:9999'))
+        self.assertFalse(item.local_name('127.0.0.1:80'))
+        self.assertFalse(item.local_name('localhost'))
+
+    def test_security_headers_on_every_response_including_head(self):
+        from http.client import HTTPConnection
+        from http.server import ThreadingHTTPServer
+        httpd = ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+        server.PORT = httpd.server_address[1]
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        for method, path in (('HEAD', '/'), ('GET', '/api/health'), ('GET', '/no-such-page'), ('BREW', '/')):
+            conn = HTTPConnection('127.0.0.1', server.PORT, timeout=5)
+            conn.request(method, path)
+            response = conn.getresponse()
+            response.read()
+            conn.close()
+            self.assertIn("default-src 'self'", response.getheader('Content-Security-Policy') or '', method + ' ' + path)
+            self.assertEqual(response.getheader('X-Content-Type-Options'), 'nosniff', method + ' ' + path)
+            self.assertEqual(len(response.headers.get_all('Content-Security-Policy')), 1)
+
+    def test_installer_warns_about_an_empty_or_damaged_pin_file(self):
+        script = (Path(__file__).resolve().parent.parent / 'installer' / 'install-shop.ps1').read_text(encoding='utf-8')
+        self.assertIn('ConvertFrom-Json', script)
+        self.assertIn('The shop PIN file is empty or damaged.', script)
+        self.assertIn('No shop PIN is set yet.', script)
+
     def test_loopback_session_still_returns_the_token(self):
         item = self.handler('/api/session', ip='127.0.0.1', host='127.0.0.1:8765', headers={'Origin': None})
         item.do_GET()
