@@ -199,8 +199,9 @@ class ShopDeployTests(unittest.TestCase):
             self.assertTrue(handler.local_name('127.0.0.1:8765'))
             self.assertFalse(handler.local_name('127.0.0.1:9999'))
             server.HOST = '0.0.0.0'
-            self.assertTrue(handler.local_name('127.0.0.1:9999'))
-            self.assertTrue(handler.local_name('localhost:80'))
+            self.assertFalse(handler.local_name('127.0.0.1:9999'))
+            self.assertFalse(handler.local_name('localhost:80'))
+            self.assertTrue(handler.local_name('localhost:8765'))
             self.assertFalse(handler.local_name('shop-pc:8765'))
             server.LAN = True
             host = socket.gethostname()

@@ -178,6 +178,7 @@ def shop_status():
         'issuesUrl': issues_url(WORK),
         'runningLan': running,
         'restart': saved['lan'] != running,
+        'lanWaiting': os.environ.get('EZ_NEST_LAN_WAITING') == 'pin' and not running,
         'port': PORT,
         'name': name,
         'addresses': lan_addresses(),
@@ -333,24 +334,31 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', mime)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
-        self.send_header('X-Content-Type-Options', 'nosniff')
         if filename:
             self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
-        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
         for key, value in extra_headers or ():
             self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
         self.wfile.flush()
 
+    SECURITY_HEADERS = (
+        ('X-Content-Type-Options', 'nosniff'),
+        ('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"),
+    )
+
+    def end_headers(self):
+        # Every response, including errors the base class writes itself (HEAD, bad requests).
+        for key, value in self.SECURITY_HEADERS:
+            self.send_header(key, value)
+        super().end_headers()
+
     def local_name(self, value):
         name, separator, port = (value or '').partition(':')
         if not separator:
             return False
         if name in ('127.0.0.1', 'localhost'):
-            # The desktop app only accepts its own port. A container published on
-            # another host port still sends a loopback Host name.
-            return True if HOST != '127.0.0.1' else port == str(PORT)
+            return port == str(PORT)
         if not LAN or port != str(PORT):
             return False
         return shop_name_allowed(name)
@@ -385,6 +393,9 @@ class Handler(BaseHTTPRequestHandler):
             return False
 
     def cookie_ok(self):
+        if not shop_auth.lan_sessions_allowed(WORK):
+            # PIN removed, damaged or replaced while running: no shop-network session stays valid.
+            return False
         header = self.headers.get('Cookie') if self.headers else None
         return shop_auth.session_valid(shop_auth.read_cookie(header), self.client_ip())
 
@@ -731,6 +742,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {'error': 'Could not sign in.'})
         pin = data.get('pin') if isinstance(data, dict) else ''
         result = shop_auth.login_attempt(WORK, self.client_ip(), pin if isinstance(pin, str) else '')
+        if result == 'unreadable':
+            return self.send(503, {'error': "The shop PIN file can't be read right now. Check the shop computer, then try again."})
         if result == 'missing':
             return self.send(403, {'error': 'The shop PIN is not set. Set it on the shop computer.'})
         if result == 'locked':

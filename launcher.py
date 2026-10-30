@@ -122,11 +122,18 @@ def main():
     saved = load_shop(data)
     if args.lan:
         import shop_auth
-        if not shop_auth.pin_configured(data):
-            raise ValueError('Set a shop PIN on this computer before opening the shop network.')
-        host, lan = '0.0.0.0', True
+        if shop_auth.pin_configured(data):
+            host, lan = '0.0.0.0', True
+            os.environ.pop('EZ_NEST_LAN_WAITING', None)
+        else:
+            # Fail closed but keep running: a startup task with --lan and no PIN
+            # used to exit, leaving no page on which to set the PIN.
+            host, lan = '127.0.0.1', False
+            os.environ['EZ_NEST_LAN_WAITING'] = 'pin'
+            print('Shop network stays closed until a shop PIN is set on this computer. Set it, then restart eznest.', file=sys.stderr)
     else:
         host, lan = '127.0.0.1', False
+        os.environ.pop('EZ_NEST_LAN_WAITING', None)
     data.mkdir(parents=True, exist_ok=True)
     os.environ['EZ_NEST_DATA'] = str(data.resolve())
     os.environ['EZ_NEST_PORT'] = str(args.port)
