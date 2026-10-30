@@ -660,11 +660,6 @@ class InventoryShelfTests(unittest.TestCase):
                     self.assertEqual(name.get_attribute('title'), 'Backlit film 54 in with a very long name for the shelf')
                     self.assertIn('Backlit film 54 in with a very long name for the shelf', low.get_attribute('aria-label'))
                     self.assertLessEqual(name.evaluate("n => Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight))"), 2)
-                    # Rows with only one-line names close up; a row with a long name keeps two lines.
-                    expect(page.locator('.stock-slot[data-id="x6"]')).to_have_class(re.compile('one-line'))
-                    expect(long).not_to_have_class(re.compile('one-line'))
-                    gap = page.locator('.stock-slot[data-id="x6"]').evaluate("s => s.querySelector('.stock-size').getBoundingClientRect().top - s.querySelector('.stock-name').getBoundingClientRect().bottom")
-                    self.assertLess(gap, 6)
                     self.snap(page, '12-rolls', width)
                     cases = {
                         'fits': r'^Fits this job: needs about 100 ft, 150 ft left$',
@@ -778,6 +773,11 @@ class InventoryShelfTests(unittest.TestCase):
                     self.assertTrue(clipped)
                     self.assert_label_rows_line_up(page)
                     self.assert_labels_clear_of_rolls(page)
+                    # Rows with only one-line names close up; a row with a long name keeps two lines.
+                    expect(page.locator('.stock-slot[data-id="x6"]')).to_have_class(re.compile('one-line'))
+                    expect(long).not_to_have_class(re.compile('one-line'))
+                    gap = page.locator('.stock-slot[data-id="x6"]').evaluate("s => s.querySelector('.stock-size').getBoundingClientRect().top - s.querySelector('.stock-name').getBoundingClientRect().bottom")
+                    self.assertLess(gap, 6)
                     self.snap(page, '12-rolls', width)
                     long.scroll_into_view_if_needed()
                     self.snap(page, 'long-names', width)
