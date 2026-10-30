@@ -2739,7 +2739,7 @@ function acceptInventory(data) {
 
 // Every inventory request gets a number when it starts. An answer older than the last one
 // shown is dropped, so a slow poll can never put back an older picture of the shelf.
-let inventorySeq = 0, inventoryShown = 0;
+let inventorySeq = 0, inventoryShown = 0, inventoryPending = 0, inventoryRefetch = false;
 function showInventory(seq, data) {
   if (seq < inventoryShown) return false;
   inventoryShown = seq;
@@ -2747,25 +2747,39 @@ function showInventory(seq, data) {
   return true;
 }
 
+// While a save or remove is on its way, a plain refresh may read the shelf from before it
+// landed. Such a refresh is never shown; once every change has finished, the shelf is read again.
+function settleInventory() {
+  if (--inventoryPending > 0 || !inventoryRefetch) return;
+  inventoryRefetch = false;
+  refreshInventory().catch(() => {});
+}
+
 async function mutateInventory(path, payload) {
   inventoryGen++;
+  inventoryPending++;
   const seq = ++inventorySeq;
   try {
     const data = await api(path, payload);
     inventoryGen++;
     // A change the server made is always newer than any snapshot that started before it.
     inventoryShown = Math.max(inventoryShown, seq - 1);
-    showInventory(seq, data);
+    if (!showInventory(seq, data)) inventoryRefetch = true;
     return data;
-  } catch (error) { inventoryGen++; throw error; }
+  } catch (error) { inventoryGen++; inventoryRefetch = true; throw error; }
+  finally { settleInventory(); }
 }
 
 async function refreshInventory() {
-  const gen = inventoryGen, seq = ++inventorySeq;
+  const gen = inventoryGen, seq = ++inventorySeq, overlapped = inventoryPending > 0;
   try {
     const data = await fetchJson('/api/materials', 5000);
-    // A save or remove happened after this request started: its answer is newer.
-    if (gen !== inventoryGen) return;
+    // A save or remove started or finished while this was in flight: its answer wins, and the
+    // shelf is read again after it settles.
+    if (overlapped || gen !== inventoryGen || inventoryPending > 0) {
+      if (inventoryPending > 0) inventoryRefetch = true;
+      return;
+    }
     showInventory(seq, data);
   }
   catch (error) {

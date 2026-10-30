@@ -602,6 +602,33 @@ class InventoryShelfTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_a_refresh_during_a_slow_save_does_not_hide_the_saved_roll(self):
+        from playwright.sync_api import sync_playwright
+        with without_gate_env(), sync_playwright() as playwright:
+            browser, context, page = self.page(playwright, 1280)
+            try:
+                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                shown = page.evaluate("""async () => {
+                    const real = window.fetch;
+                    // The save takes 600 ms to reach the server; a refresh started after it answers first.
+                    window.fetch = async (...args) => {
+                        if (String(args[0]).endsWith('/api/materials/save')) await new Promise(r => setTimeout(r, 600));
+                        return real(...args); };
+                    const save = mutateInventory('/api/materials/save', {id: 'material-slow',
+                        profile: {...materialValues(), unit: 'in', 'preset-name': 'Slow save roll', roll: '54', width: '54', 'available-length': '600', 'low-stock': ''}, revision: 0});
+                    await new Promise(r => setTimeout(r, 50));
+                    await refreshInventory().catch(() => {});
+                    await save;
+                    const right = shopInventory.materials.map(m => m.id);
+                    await new Promise(r => setTimeout(r, 300));
+                    window.fetch = real;
+                    return [right, shopInventory.materials.map(m => m.id)];
+                }""")
+                self.assertIn('material-slow', shown[0])
+                self.assertIn('material-slow', shown[1])
+            finally:
+                browser.close()
+
     def test_inventory_controls_are_44px_with_a_mouse(self):
         from playwright.sync_api import sync_playwright, expect
         with without_gate_env(), sync_playwright() as playwright:
