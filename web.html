@@ -36,41 +36,12 @@
       <p class="hint"><a href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Get a pairing code</a></p>
       <p class="hint">Connecting sends this computer's name and installation id once. Later check-ins send the app version. Artwork, filenames, customers, and stock stay on this computer.</p>
     </div>
+    <p id="output-gate-success" class="connect-success" role="status" hidden></p>
+    <p id="output-gate-checkin" class="hint" hidden></p>
     <p id="output-gate-error" class="lan-note" hidden></p>
   </form>
 </dialog>
 <p id="output-banner" class="lan-note" hidden></p>
-<section id="setup" hidden>
-  <h2>Ready to nest</h2>
-  <p class="hint">Check your cut line names. Printer and default folder are optional; you can choose where to save each finished file.</p>
-  <div class="fields">
-    <label class="wide">Hot folder
-      <input id="setup-hot" type="text" maxlength="400" placeholder="Optional — choose where to save later" autocomplete="off" spellcheck="false">
-    </label>
-    <label class="check wide"><input id="setup-onyx" type="checkbox"> This PC holds the hot folder</label>
-    <label class="wide">Printer
-      <input id="setup-printer" type="text" maxlength="80" autocomplete="off">
-    </label>
-    <label>Thru spot
-      <input id="setup-thru" type="text" maxlength="80" spellcheck="false" autocomplete="off">
-    </label>
-    <label>Kiss spot
-      <input id="setup-kiss" type="text" maxlength="80" spellcheck="false" autocomplete="off">
-    </label>
-    <label>Units
-      <select id="setup-units">
-        <option value="in">Inches</option>
-        <option value="mm">Millimeters</option>
-        <option value="cm">Centimeters</option>
-      </select>
-    </label>
-  </div>
-  <div class="setup-actions">
-    <button id="setup-preset" type="button" class="link">Use Example shop preset</button>
-    <button id="setup-save" type="button" class="primary">Start nesting</button>
-  </div>
-  <p id="setup-error" class="lan-note" hidden></p>
-</section>
 <button id="settings-open" type="button" aria-label="Settings" aria-haspopup="dialog">
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
       <g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
@@ -152,15 +123,19 @@
       <summary>Share activity with OUTPUT</summary>
       <div id="output-connect">
         <h3>Connect to OUTPUT</h3>
-        <p id="output-connect-shop" hidden></p>
+        <p id="output-connect-shop" class="connect-success" role="status" hidden></p>
+        <div class="connect-status-row">
+          <p id="output-connect-status" role="status" aria-live="polite"></p>
+          <button id="output-check-now" class="link" type="button" hidden>Check now</button>
+        </div>
+        <button id="output-reconnect" class="link" type="button" hidden>Reconnect with a new code</button>
         <div id="output-pair-form">
           <label>Pairing code
             <input id="output-pair-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="text" aria-describedby="output-connect-status">
           </label>
-          <button id="output-pair" type="button" disabled>Connect</button>
+          <button id="output-pair" class="primary" type="button" disabled>Connect</button>
         </div>
-        <button id="output-disconnect" type="button" hidden>Disconnect</button>
-        <p id="output-connect-status" role="status" aria-live="polite"></p>
+        <button id="output-disconnect" class="link" type="button" hidden>Disconnect</button>
       </div>
       <h3>What OUTPUT sees</h3>
       <p>This computer has to be connected to OUTPUT before the shop can nest, send, or change stock. That connection is separate from sharing activity.</p>
@@ -216,6 +191,47 @@
 <main>
   <div class="workspace-grid">
   <section class="canvas-area" aria-label="Layout">
+  <section id="setup" hidden>
+    <div class="setup-heading">
+      <div>
+        <h2>Set up this PC</h2>
+        <p class="hint">One-time setup for this computer. Check these, then click Start.</p>
+      </div>
+      <button id="setup-dismiss" type="button" class="dialog-close" aria-label="Dismiss setup">×</button>
+    </div>
+    <div class="fields">
+      <label class="wide">Where finished files are saved
+        <input id="setup-hot" type="text" maxlength="400" placeholder="Optional — choose a folder later" autocomplete="off" spellcheck="false">
+        <span class="hint">This is the folder used when you save. You can pick a different folder for each job.</span>
+      </label>
+      <label class="check wide"><input id="setup-onyx" type="checkbox"> This PC runs ONYX</label>
+      <p class="hint setup-note">Turn this on only if ONYX is installed on this computer. It changes the suggested folder.</p>
+      <label class="wide">Printer label (optional)
+        <input id="setup-printer" type="text" maxlength="80" autocomplete="off">
+        <span class="hint">A name for your notes. It does not connect a printer.</span>
+      </label>
+      <label>Through-cut name
+        <input id="setup-thru" type="text" maxlength="80" spellcheck="false" autocomplete="off">
+      </label>
+      <label>Kiss-cut name
+        <input id="setup-kiss" type="text" maxlength="80" spellcheck="false" autocomplete="off">
+      </label>
+      <p class="hint setup-note">Type these exactly as your design software names the through-cut and kiss-cut lines.</p>
+      <label>Units
+        <select id="setup-units">
+          <option value="in">Inches</option>
+          <option value="mm">Millimeters</option>
+          <option value="cm">Centimeters</option>
+        </select>
+        <span class="hint">Inches or metric.</span>
+      </label>
+    </div>
+    <div class="setup-actions">
+      <button id="setup-preset" type="button" class="link">Use Example shop preset</button>
+      <button id="setup-save" type="button" class="primary">Start</button>
+    </div>
+    <p id="setup-error" class="lan-note" hidden></p>
+  </section>
 
   <section id="illustrator-handoff" class="handoff" hidden>
     <strong>Nest in eznest · Illustrator · Regular</strong>
@@ -280,12 +296,10 @@
 
 
   <section class="material-area" aria-label="Job material">
-    <div class="material-heading"><label for="material"><span class="step-number">2</span> Choose material</label><button id="edit-material" class="link" type="button">Edit</button></div>
-    <p class="hint step-hint">Use the roll you plan to print on.</p>
+    <div class="material-heading"><label for="material"><span class="step-number">2</span> Choose material</label><button id="edit-material" class="link" type="button">Add</button></div>
+    <p class="hint step-hint">Add a name, width, and optional cost or quantity on hand.</p>
     <select id="material" aria-label="Material">
-      <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Example printer" data-quickset="Example RIP quick set" selected>Moto Regular</option>
-      <option value="holographic" data-name="Moto Holographic">Moto Holographic</option>
-      <option value="chrome" data-name="Moto Chrome">Moto Chrome</option>
+      <option value="" selected>Add your first material</option>
       <option value="custom">+ Add material</option>
     </select>
     <div id="materials" aria-live="polite"></div>
@@ -303,7 +317,7 @@
     <div class="output-modes" aria-label="Where to print">
       <button id="in-house" class="nest-mode" type="button" aria-pressed="true">In-house</button>
       <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Learn about OUTPUT">
-        <strong>Don't print</strong>
+        <strong>Don't print 🤑</strong>
         <span class="paid-badge">Devnet sandbox</span>
       </button>
     </div>
@@ -391,7 +405,7 @@
       <div class="dialog-heading"><h2 id="preset-title">New preset</h2><button id="material-close" class="dialog-close" type="button" aria-label="Close material editor">×</button></div>
       <div class="fields">
       <label>Material name
-        <input id="preset-name" type="text" maxlength="80" value="Moto Regular">
+        <input id="preset-name" type="text" maxlength="80" value="">
       </label>
       <label>Units
         <select id="unit" data-current="in">

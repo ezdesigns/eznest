@@ -169,6 +169,7 @@ def shop_status():
         'outputNote': OUTPUT_NOTE,
         'outputShare': output_network_status(saved),
         'setupComplete': saved['setupComplete'],
+        'setupDismissed': saved['setupDismissed'],
         'printer': saved['printer'],
         'units': saved['units'],
         'thru': saved['thru'],
@@ -452,6 +453,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def session_body(self):
         local = self.loopback_client()
+        shop = load_shop(WORK)
         body = {
             'app': 'eznest',
             'version': VERSION,
@@ -462,6 +464,8 @@ class Handler(BaseHTTPRequestHandler):
             'localPC': local,
             'authenticated': bool(local or self.authenticated()),
             'pinConfigured': shop_auth.pin_configured(WORK),
+            'setupComplete': shop['setupComplete'],
+            'setupDismissed': shop['setupDismissed'],
             'pinWeak': shop_auth.pin_is_weak(WORK),
             'tls': TLS,
             'outputConnection': output_gate.public_status(WORK, local),
@@ -813,11 +817,11 @@ class Handler(BaseHTTPRequestHandler):
                     except output_pairing.PairingError as error:
                         return self.send(400, {'error': str(error), 'reason': error.reason})
                 if path == '/api/telemetry/output/disconnect':
-                    if data:
+                    if set(data):
                         raise ValueError('Disconnect takes no additional data.')
                     return self.send(200, output_pairing.disconnect(WORK, paused=telemetry_paused()))
                 if path == '/api/telemetry/output/check-in':
-                    if data:
+                    if set(data):
                         raise ValueError('Check-in takes no additional data.')
                     return self.send(200, output_gate.check_in(WORK, local=True))
                 with LOCK:
@@ -971,7 +975,7 @@ class Handler(BaseHTTPRequestHandler):
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
                 fields = {}
-                for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl'):
+                for key in ('channel', 'outputNetwork', 'setupComplete', 'setupDismissed', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl'):
                     if key in data:
                         fields[key] = data.get(key)
                 save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates, **fields)
