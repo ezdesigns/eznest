@@ -1,0 +1,79 @@
+name: Published Windows OUTPUT acceptance
+
+# No production credential is read on pull requests. The application binary is
+# downloaded from the pinned public release, never built by this workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      live_output_acceptance:
+        description: 'Use an owner-approved test-shop code; owner must revoke the disposable host during the run'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - '.github/workflows/windows-output-acceptance.yml'
+      - 'tests/test_published_output.ps1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-output-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  acceptance-script:
+    name: Validate live acceptance script
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - shell: pwsh
+        run: |
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $pwd 'tests/test_published_output.ps1'), [ref]$null, [ref]$parseErrors)
+          if ($parseErrors.Count) { throw 'Live acceptance script has PowerShell syntax errors.' }
+
+  live-output:
+    name: Published Windows to OUTPUT
+    needs: acceptance-script
+    if: github.repository == 'ezdesigns/eznest' && github.event_name == 'workflow_dispatch' && inputs.live_output_acceptance
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      # Set this short-lived secret only after an owner approves a disposable
+      # test-shop host. Delete it after pairing. Never use a workflow input for it.
+      - name: Install public bytes, pair and restart
+        shell: pwsh
+        env:
+          EZ_NEST_ACCEPTANCE_CODE: ${{ secrets.EZ_NEST_ACCEPTANCE_CODE }}
+        run: ./tests/test_published_output.ps1 -Phase Connect
+      - name: Expose only the host name and acceptance booleans
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-output-connected-${{ github.run_id }}
+          path: ${{ runner.temp }}/eznest-output-acceptance.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Wait for owner revocation and verify closed gate
+        shell: pwsh
+        run: ./tests/test_published_output.ps1 -Phase VerifyRevoked
+      - name: Stop and uninstall the disposable host
+        if: always()
+        shell: pwsh
+        run: ./tests/test_published_output.ps1 -Phase Cleanup
+      - name: Upload sanitized final receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-output-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/eznest-output-acceptance.json
+          retention-days: 7
+          if-no-files-found: warn
