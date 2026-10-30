@@ -84,11 +84,11 @@ A request is accepted only when the Host header is this computer's own name or o
 
 ### OUTPUT connection
 
-The shop computer must be paired with OUTPUT before nesting, sending, or stock changes. The API returns `connect_required` until then. Pairing, disconnect, and check-in are host-only. The address allowlist is unchanged: `https://output.jeezlabs.io`, or the exact origin in `EZ_NEST_OUTPUT_URL`.
+The API does not require OUTPUT pairing for nesting, sending, or stock changes. Connection status is still computed by `output_gate.public_status` and returned in `/api/session`; the browser still shows the Connect screen when that status is not ready. Host, session, PIN, and host-only checks still apply. Pairing, disconnect, and check-in are host-only. The address allowlist is unchanged: `https://output.jeezlabs.io`, or the exact origin in `EZ_NEST_OUTPUT_URL`.
 
 The pairing code and the shop credential are not logged, not put in source, and not returned to the browser. Check-in sends the app version only. The computer name and installation id go out once, at pairing. Customer artwork, filenames, and stock contents are not part of either request.
 
-A missing OUTPUT response does not stop a paired shop for 14 days (`CHECK_IN_MAX_AGE_DAYS`). The check-in record is bound to the shop credential. A missing or unreadable record stays closed until a live check-in succeeds. A time ahead of this computer is not a current check-in. OUTPUT saying the credential is revoked closes the gate and that credential stays closed. `EZ_NEST_DEV_NO_OUTPUT=1` and `EZ_NEST_OUTPUT_GATE_OPEN=1` are ignored unless the process is a source checkout in dev mode (`--dev`). Installed builds and the container image drop those variables. Forks may remove the requirement under Apache-2.0. Official builds enforce it.
+The browser connection status allows 14 days without an OUTPUT response (`CHECK_IN_MAX_AGE_DAYS`). The check-in record is bound to the shop credential. A missing or unreadable record requires a live check-in for ready status. A time ahead of this computer is not a current check-in. OUTPUT saying the credential is revoked shows the Connect screen on the next page load and that credential stays revoked. These states do not block the API. `EZ_NEST_DEV_NO_OUTPUT=1` and `EZ_NEST_OUTPUT_GATE_OPEN=1` are ignored unless the process is a source checkout in dev mode (`--dev`). Installed builds and the container image drop those variables. The browser connection screen also applies to installed builds.
 
 ### OUTPUT address and key
 
