@@ -281,27 +281,35 @@ class RestoreUiTests(unittest.TestCase):
         self.start_nesting(page)
         page.wait_for_function("() => ['check','blocked'].includes(document.body.dataset.step)", timeout=90000)
         page.click('#stock-open')
-        expect(page.locator('.stock-row')).to_have_count(3)
+        expect(page.locator('.stock-slot')).to_have_count(3)
         expect(page.locator('#stock-job')).to_be_visible()
-        gloss = page.locator('.stock-row[data-id="gloss-54"]')
-        expect(gloss).to_contain_text('Enough for this job')
-        expect(gloss).to_contain_text('per sq ft')
-        matte = page.locator('.stock-row[data-id="matte-30"]')
-        expect(matte.locator('.stock-low')).to_be_visible()
-        expect(matte).to_contain_text('Too narrow')
-        clear = page.locator('.stock-row[data-id="clear-54"]')
-        expect(clear).to_contain_text('Length left unknown')
-        expect(clear).not_to_contain_text('per sq ft')
+        gloss = page.locator('.stock-slot[data-id="gloss-54"]')
+        expect(gloss).to_have_attribute('aria-label', re.compile('Enough for this job'))
+        gloss.click()
+        expect(page.locator('#stock-panel')).to_contain_text('Enough for this job')
+        expect(page.locator('#stock-panel')).to_contain_text('per sq ft')
+        matte = page.locator('.stock-slot[data-id="matte-30"]')
+        expect(matte).to_have_class(re.compile('low'))
+        matte.click()
+        expect(page.locator('#stock-panel .stock-low')).to_be_visible()
+        expect(page.locator('#stock-panel')).to_contain_text('Too narrow')
+        clear = page.locator('.stock-slot[data-id="clear-54"]')
+        clear.click()
+        expect(page.locator('#stock-panel')).to_contain_text('Length left unknown')
+        expect(page.locator('#stock-panel')).not_to_contain_text('per sq ft')
         expect(page.locator('#stock')).not_to_contain_text('Reserved')
         self.shot(page, f'after-inventory-crosscheck-{width}.png')
         self.final(page, 'inventory-job-check', width)
-        clear.locator('button', has_text='Update count').click()
-        clear.locator('.stock-count input').fill('900')
-        clear.locator('.stock-count button[type=submit]').click()
-        expect(clear).to_contain_text('75')
+        page.click('#stock-panel .stock-len')
+        expect(page.locator('#roll-f-left')).to_be_focused()
+        page.fill('#roll-f-left', '75')
+        page.click('#stock-panel button[type=submit]')
+        expect(clear).to_contain_text('75 ft')
+        matte.click()
+        page.click('#stock-panel button:has-text("Edit")')
         page.once('dialog', lambda d: d.accept())
-        matte.locator('button', has_text='Remove').click()
-        expect(page.locator('.stock-row')).to_have_count(2)
+        page.click('#stock-panel .roll-remove')
+        expect(page.locator('.stock-slot')).to_have_count(2)
         self.assertEqual(page.locator('#material option[value="matte-30"]').count(), 0)
         page.click('#stock-close')
         with context.expect_page() as tab:
@@ -347,3 +355,113 @@ class RestoreUiTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class InventoryShelfTests(unittest.TestCase):
+    """Inventory shelf: rolls drawn upright, tap for details, add a roll with a live drawing."""
+    setUp = test_web_mvp.WebMvpTests.setUp
+    start = test_web_mvp.WebMvpTests.start
+    stop = test_web_mvp.WebMvpTests.stop
+    tearDown = test_web_mvp.WebMvpTests.tearDown
+    url = test_web_mvp.WebMvpTests.url
+    wait_ready = test_web_mvp.WebMvpTests.wait_ready
+    page = RestoreUiTests.page
+    fresh = RestoreUiTests.fresh
+
+    def snap(self, page, name, width):
+        target = os.environ.get('EZ_NEST_SHELF_SHOTS')
+        if target:
+            Path(target).mkdir(parents=True, exist_ok=True)
+            page.locator('#stock').screenshot(path=str(Path(target) / f'after-{name}-{width}.png'))
+
+    def save_rolls(self, page, rolls):
+        page.evaluate('''async rolls => { for (const [id, p] of rolls) await api('/api/materials/save', {id, profile: p, revision: 0}); await refreshInventory(); }''', rolls)
+
+    def test_shelf_add_flow_detail_and_keyboard(self):
+        from playwright.sync_api import sync_playwright, expect
+        names = ['Gloss vinyl', 'Matte vinyl', 'Clear laminate', 'Window film', 'Magnet', 'Paper', 'Chrome', 'Holographic',
+                 'Canvas', 'Banner', 'Reflective', 'Wall decal']
+        many = [[f'roll-{i}', roll(f'{n} 54 in', left=str(1800 - i * 140) if i != 4 else '', **{'roll-length': '1800', 'roll-cost': '200' if i % 3 == 0 else ''})]
+                for i, n in enumerate(names)]
+        with without_gate_env(), sync_playwright() as playwright:
+            for width in (1280, 390):
+                if width == 390:
+                    self.fresh()
+                browser, context, page = self.page(playwright, width)
+                violations = []
+                page.on('console', lambda m: violations.append(m.text) if 'Content Security Policy' in m.text else None)
+                try:
+                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    page.click('#stock-open')
+                    expect(page.locator('#stock-empty')).to_be_visible()
+                    self.snap(page, 'empty', width)
+                    page.click('#stock-add')
+                    expect(page.locator('#roll-f-name')).to_be_focused()
+                    page.click('#stock-panel button[type=submit]')
+                    expect(page.locator('#roll-f-name')).to_have_attribute('aria-invalid', 'true')
+                    expect(page.locator('#roll-f-name')).to_be_focused()
+                    expect(page.locator('#stock-panel')).to_contain_text('Enter a material name.')
+                    page.locator('#roll-f-name').press_sequentially('Gloss vinyl')
+                    page.locator('#roll-f-roll').press_sequentially('54')
+                    expect(page.locator('#roll-f-width')).to_have_value('54')
+                    page.fill('#roll-f-width', '51.5')
+                    page.locator('#roll-f-left').press_sequentially('40')
+                    thin = page.evaluate("() => document.querySelector('#roll-preview-svg .roll-body path').getBBox().width")
+                    page.fill('#roll-f-left', '')
+                    page.locator('#roll-f-left').press_sequentially('1800 in')
+                    thick = page.evaluate("() => document.querySelector('#roll-preview-svg .roll-body path').getBBox().width")
+                    self.assertGreater(thick, thin)
+                    expect(page.locator('#roll-preview-cap')).to_contain_text('150 ft')
+                    expect(page.locator('.stock-slot.draft')).to_contain_text('150 ft')
+                    self.snap(page, 'add-typing', width)
+                    page.click('.roll-units button[data-unit="in"]')
+                    expect(page.locator('#roll-f-left')).to_have_value('1800')
+                    page.click('.roll-units button[data-unit="ft"]')
+                    expect(page.locator('#roll-f-left')).to_have_value('150')
+                    page.fill('#roll-f-cost', '180')
+                    expect(page.locator('#roll-f-cost-hint')).to_contain_text('per sq ft')
+                    page.click('#stock-panel button:has-text("Save and add another")')
+                    expect(page.locator('#roll-f-name')).to_be_focused()
+                    page.fill('#roll-f-name', 'Gloss vinyl')
+                    page.fill('#roll-f-roll', '30')
+                    page.click('#stock-panel button[type=submit]')
+                    expect(page.locator('#stock-panel')).to_contain_text('already exists')
+                    page.fill('#roll-f-name', 'Matte vinyl 30 in')
+                    page.fill('#roll-f-left', '6')
+                    page.fill('#roll-f-full', '100')
+                    page.keyboard.press('Enter')
+                    expect(page.locator('.stock-slot')).to_have_count(2)
+                    saved = page.evaluate("() => shopInventory.materials.find(m => m.profile['preset-name'] === 'Gloss vinyl').profile")
+                    self.assertEqual((saved['available-length'], saved['roll-length'], saved['unit']), ('1800', '1800', 'in'))
+                    low = page.locator('.stock-slot', has_text='Matte vinyl 30 in')
+                    expect(low).to_have_class(re.compile('low'))
+                    page.locator('#stock-add').click()
+                    page.fill('#roll-f-name', 'Clear laminate')
+                    page.fill('#roll-f-roll', '54')
+                    page.keyboard.press('Enter')
+                    expect(page.locator('.stock-slot')).to_have_count(3)
+                    page.click('#stock-panel .stock-x')
+                    self.snap(page, 'three-rolls', width)
+                    low.click()
+                    expect(page.locator('#stock-panel .stock-low')).to_have_text('Low stock')
+                    expect(page.locator('#stock-panel')).to_contain_text('6 ft')
+                    self.snap(page, 'low-stock', width)
+                    page.keyboard.press('Escape')
+                    expect(page.locator('#stock-panel')).to_be_hidden()
+                    expect(page.locator('#stock')).to_be_visible()
+                    page.click('#stock-close')
+                    self.save_rolls(page, many)
+                    page.click('#stock-open')
+                    expect(page.locator('.stock-slot')).to_have_count(15)
+                    self.snap(page, 'many-rolls', width)
+                    first = page.locator('.stock-slot').first
+                    first.focus()
+                    page.keyboard.press('ArrowRight')
+                    expect(page.locator('.stock-slot').nth(1)).to_be_focused()
+                    page.keyboard.press('Enter')
+                    expect(page.locator('#stock-panel')).to_be_visible()
+                    expect(page.locator('#stock-panel .stock-sub').first).to_have_text(re.compile(r'^\d+(\.\d+)? in wide roll · prints \d+(\.\d+)? in$'))
+                    self.snap(page, 'detail', width)
+                    self.assertEqual(violations, [])
+                finally:
+                    browser.close()
