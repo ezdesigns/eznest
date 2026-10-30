@@ -1967,6 +1967,11 @@ function showOutputService(shop) {
 
 function showRestart(shop) {
   const note = $('lan-restart');
+  if (shop && shop.lanWaiting) {
+    note.hidden = false;
+    note.textContent = 'Shop network is waiting for a shop PIN. Set the PIN on this computer, then restart eznest.';
+    return;
+  }
   if (!shop || !shop.restart) {
     note.hidden = true;
     note.textContent = '';

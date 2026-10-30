@@ -93,9 +93,20 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(host, '0.0.0.0')
         self.assertEqual(lan, '1')
 
-    def test_lan_flag_without_a_pin_does_not_bind(self):
-        with self.assertRaisesRegex(ValueError, 'shop PIN'):
-            self._launch(['--lan', '--no-browser'])
+    def test_lan_flag_without_a_pin_stays_on_loopback_and_waits(self):
+        try:
+            host, lan = self._launch(['--lan', '--no-browser'])
+            self.assertEqual(host, '127.0.0.1')
+            self.assertEqual(lan, '0')
+            self.assertEqual(os.environ.get('EZ_NEST_LAN_WAITING'), 'pin')
+        finally:
+            os.environ.pop('EZ_NEST_LAN_WAITING', None)
+
+    def test_lan_flag_with_a_pin_clears_waiting(self):
+        os.environ['EZ_NEST_LAN_WAITING'] = 'pin'
+        host, lan = self._launch(['--lan', '--no-browser'], pin='12345678')
+        self.assertEqual(host, '0.0.0.0')
+        self.assertNotIn('EZ_NEST_LAN_WAITING', os.environ)
 
     def test_saved_shop_network_cannot_open_without_lan_flag(self):
         host, lan = self._launch(['--no-browser'], {'onyxPc': False, 'lan': True})

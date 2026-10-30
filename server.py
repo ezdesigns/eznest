@@ -178,6 +178,7 @@ def shop_status():
         'issuesUrl': issues_url(WORK),
         'runningLan': running,
         'restart': saved['lan'] != running,
+        'lanWaiting': os.environ.get('EZ_NEST_LAN_WAITING') == 'pin' and not running,
         'port': PORT,
         'name': name,
         'addresses': lan_addresses(),

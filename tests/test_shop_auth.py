@@ -165,9 +165,16 @@ class ShopAuthTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'shop PIN'):
             server.serve()
         argv = ['eznest', '--lan', '--no-browser', '--data-dir', str(server.WORK), '--port', '18765']
-        with patch('sys.argv', argv):
-            with self.assertRaisesRegex(ValueError, 'shop PIN'):
-                launcher.main()
+        # Without a PIN, --lan starts on loopback only and waits for the PIN.
+        with patch('sys.argv', argv), patch('launcher.urlopen', side_effect=OSError('down')), patch('server.serve') as serve:
+            try:
+                self.assertEqual(launcher.main(), 0)
+                serve.assert_called_once()
+                self.assertEqual(os.environ['EZ_NEST_HOST'], '127.0.0.1')
+                self.assertEqual(os.environ['EZ_NEST_LAN'], '0')
+                self.assertEqual(os.environ.get('EZ_NEST_LAN_WAITING'), 'pin')
+            finally:
+                os.environ.pop('EZ_NEST_LAN_WAITING', None)
         shop_auth.set_pin(server.WORK, '12345678')
         self.assertTrue(shop_auth.pin_configured(server.WORK))
 

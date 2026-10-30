@@ -249,6 +249,18 @@ if ($lanEnabled) {
   # Private profile only. remoteip defaults to this subnet, or the designer PCs passed in -LanPeers.
   & netsh.exe advfirewall firewall add rule name=eznest dir=in action=allow protocol=TCP localport=8765 profile=private "remoteip=$LanPeers"
   if ($LASTEXITCODE -ne 0) { throw 'Could not open the shop-network port.' }
+  # The rule is Private-profile only. On a network Windows marks Public, other
+  # PCs stay blocked; say so instead of changing the profile for the user.
+  try {
+    $public = @(Get-NetConnectionProfile -ErrorAction Stop | Where-Object { $_.NetworkCategory -eq 'Public' })
+    if ($public.Count -gt 0) {
+      Write-Warning ('This PC is on a network Windows marks Public (' + (($public | ForEach-Object { $_.Name }) -join ', ') + '). Other shop computers cannot reach eznest until an administrator sets the shop network to Private.')
+    }
+  } catch {}
+  $pinFile = Join-Path $DataDir 'shop-pin.json'
+  if (-not (Test-Path -LiteralPath $pinFile)) {
+    Write-Warning 'No shop PIN is set yet. eznest stays on this computer only until you set a PIN at http://127.0.0.1:8765/web and restart it.'
+  }
 }
 if ($boot) {
   $started = $false
