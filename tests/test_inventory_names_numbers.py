@@ -1,10 +1,14 @@
 """Inventory names and numbers: same-looking names are one name, numbers follow the browser's rule."""
 import json
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 import material_inventory as inventory
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def values(stock='1000', name='Test roll'):
@@ -79,3 +83,33 @@ class NameAndNumberTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+GREEK_AND_CYRILLIC = [
+    ('\u0397ot', 'Not', False),        # capital Eta looks like H, not N
+    ('\u039catte', 'Matte', True),     # capital Mu
+    ('\u039cATTE', 'MATTE', True),
+    ('\u041catte', 'Matte', True),     # Cyrillic capital Em
+    ('\u0441lear', 'clear', True),     # Cyrillic small es
+    ('\u0397ot', 'Hot', True),
+    ('\u03bcatte', 'uatte', False),    # small mu is not a u
+    ('\u03b7ot', 'not', False),        # small eta is not an n
+]
+
+
+class GreekCapitalTests(unittest.TestCase):
+    def test_capitals_fold_to_the_latin_letter_they_look_like(self):
+        for a, b, same in GREEK_AND_CYRILLIC:
+            with self.subTest(a=a, b=b):
+                self.assertEqual(inventory.name_key(a) == inventory.name_key(b), same)
+
+    @unittest.skipUnless(shutil.which('node'), 'node not installed')
+    def test_browser_and_server_fold_names_the_same_way(self):
+        source = (ROOT / 'web.js').read_text(encoding='utf-8')
+        start = source.index('const ROLL_LOOK_ALIKE_CAPITALS')
+        end = source.index('const ROLL_LIMITS')
+        samples = [a for a, _, _ in GREEK_AND_CYRILLIC] + [b for _, b, _ in GREEK_AND_CYRILLIC] + [
+            'Stra\u00dfe', 'D\u0131\u015fl\u0131k', '\u0130nk', 'Gloss\u00a0vinyl', '\uff27loss', 'A\u200bB', 'Glo\u0455s']
+        script = source[start:end] + '\nconsole.log(JSON.stringify(JSON.parse(process.argv[1]).map(rollNameKey)));'
+        out = subprocess.run(['node', '-e', script, json.dumps(samples)], capture_output=True, text=True, check=True).stdout
+        self.assertEqual(json.loads(out), [inventory.name_key(s) for s in samples])

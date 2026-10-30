@@ -3662,13 +3662,13 @@ function renderRollPanel() {
 // One parser for every Inventory number. Plain digits with an optional decimal point and
 // unit; no exponents, no commas. Limits sit inside the shop computer's own limits.
 // Same rule as the shop computer: names that only look different count as the same name.
-const ROLL_LOOK_ALIKES = {'а': 'a', 'в': 'b', 'е': 'e', 'ё': 'e', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p', 'с': 'c',
-  'т': 't', 'у': 'y', 'х': 'x', 'і': 'i', 'ї': 'i', 'ј': 'j', 'ѕ': 's', 'ԁ': 'd', 'ӏ': 'l', 'ԛ': 'q', 'ԝ': 'w',
-  'α': 'a', 'β': 'b', 'ε': 'e', 'η': 'n', 'ι': 'i', 'κ': 'k', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't',
-  'υ': 'u', 'χ': 'x', 'ζ': 'z', 'μ': 'u', 'ς': 'σ', 'ı': 'i', 'ß': 'ss', 'ẞ': 'ss', '\u0307': ''};
+// Same look-alike tables as material_inventory.py: capitals first, then lowercase.
+const ROLL_LOOK_ALIKE_CAPITALS = {'А': 'a', 'В': 'b', 'Е': 'e', 'Ё': 'e', 'К': 'k', 'М': 'm', 'Н': 'h', 'О': 'o', 'Р': 'p', 'С': 'c', 'Т': 't', 'У': 'y', 'Х': 'x', 'І': 'i', 'Ї': 'i', 'Ј': 'j', 'Ѕ': 's', 'Ԁ': 'd', 'Ԛ': 'q', 'Ԝ': 'w', 'Ӏ': 'l', 'Α': 'a', 'Β': 'b', 'Ε': 'e', 'Ζ': 'z', 'Η': 'h', 'Ι': 'i', 'Κ': 'k', 'Μ': 'm', 'Ν': 'n', 'Ο': 'o', 'Ρ': 'p', 'Τ': 't', 'Υ': 'y', 'Χ': 'x', 'İ': 'i'};
+const ROLL_LOOK_ALIKES = {'а': 'a', 'в': 'b', 'е': 'e', 'ё': 'e', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p', 'с': 'c', 'т': 't', 'у': 'y', 'х': 'x', 'і': 'i', 'ї': 'i', 'ј': 'j', 'ѕ': 's', 'ԁ': 'd', 'ӏ': 'l', 'ԛ': 'q', 'ԝ': 'w', 'α': 'a', 'ι': 'i', 'κ': 'k', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't', 'υ': 'u', 'χ': 'x', 'ı': 'i', '\u0307': '', 'ς': 'σ', 'ſ': 's', 'ß': 'ss', 'ẞ': 'ss'};
 function rollNameKey(text) {
   const clean = String(text || '').normalize('NFKC').replace(/[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}]/gu, ch => /\s/.test(ch) ? ' ' : '').replace(/\s+/g, ' ').trim();
-  return [...clean.toLowerCase()].map(ch => ROLL_LOOK_ALIKES[ch] ?? ch).join('');
+  const upper = [...clean].map(ch => ROLL_LOOK_ALIKE_CAPITALS[ch] ?? ch).join('');
+  return [...upper.toLowerCase()].map(ch => ROLL_LOOK_ALIKES[ch] ?? ch).join('');
 }
 const ROLL_LIMITS = {inches: [0.4, 196], feet: [0, 100000], price: [0, 1000000]};
 function parseRollNumber(text, units) {

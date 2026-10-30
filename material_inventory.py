@@ -63,17 +63,15 @@ def clean_name(value):
 
 
 # Letters from other alphabets that look the same as Latin ones, plus Turkish i forms.
-# Used only for the duplicate check; the name people see is not changed.
-LOOK_ALIKES = str.maketrans({
-    'а': 'a', 'в': 'b', 'е': 'e', 'ё': 'e', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p', 'с': 'c',
-    'т': 't', 'у': 'y', 'х': 'x', 'і': 'i', 'ї': 'i', 'ј': 'j', 'ѕ': 's', 'ԁ': 'd', 'ӏ': 'l', 'ԛ': 'q', 'ԝ': 'w',
-    'α': 'a', 'β': 'b', 'ε': 'e', 'η': 'n', 'ι': 'i', 'κ': 'k', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't',
-    'υ': 'u', 'χ': 'x', 'ζ': 'z', 'μ': 'u', 'ı': 'i', '\u0307': None,
-})
+# Used only for the duplicate check; the name people see is not changed. Capitals are mapped
+# before lowercasing, because a Greek or Cyrillic capital can look like a different Latin
+# letter than its own lowercase form does (capital Eta looks like H, small eta does not).
+LOOK_ALIKE_CAPITALS = str.maketrans({'А': 'a', 'В': 'b', 'Е': 'e', 'Ё': 'e', 'К': 'k', 'М': 'm', 'Н': 'h', 'О': 'o', 'Р': 'p', 'С': 'c', 'Т': 't', 'У': 'y', 'Х': 'x', 'І': 'i', 'Ї': 'i', 'Ј': 'j', 'Ѕ': 's', 'Ԁ': 'd', 'Ԛ': 'q', 'Ԝ': 'w', 'Ӏ': 'l', 'Α': 'a', 'Β': 'b', 'Ε': 'e', 'Ζ': 'z', 'Η': 'h', 'Ι': 'i', 'Κ': 'k', 'Μ': 'm', 'Ν': 'n', 'Ο': 'o', 'Ρ': 'p', 'Τ': 't', 'Υ': 'y', 'Χ': 'x', 'İ': 'i'})
+LOOK_ALIKES = str.maketrans({'а': 'a', 'в': 'b', 'е': 'e', 'ё': 'e', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p', 'с': 'c', 'т': 't', 'у': 'y', 'х': 'x', 'і': 'i', 'ї': 'i', 'ј': 'j', 'ѕ': 's', 'ԁ': 'd', 'ӏ': 'l', 'ԛ': 'q', 'ԝ': 'w', 'α': 'a', 'ι': 'i', 'κ': 'k', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't', 'υ': 'u', 'χ': 'x', 'ı': 'i', '\u0307': None})
 
 
 def name_key(value):
-    return clean_name(value).casefold().translate(LOOK_ALIKES)
+    return clean_name(value).translate(LOOK_ALIKE_CAPITALS).casefold().translate(LOOK_ALIKES)
 
 
 def profile(values):
