@@ -2649,12 +2649,12 @@ function setupShop(finish, error) {
         const body = await api('/api/telemetry/output/link/check', {});
         if (mine !== run) return;
         if (body.state === 'connected') {
-          note.textContent = 'Connected. Opening Ez Nest…';
+          note.textContent = 'Connected.';
           await finish();
           return;
         }
         if (body.state === 'pending') return poll(mine, attempt + 1);
-        stop(body.message || 'Click Set up your shop to try again.');
+        stop(body.message || 'Click Connect to try again.');
       } catch (err) {
         if (mine === run) stop(err.message);
       }
@@ -2669,7 +2669,7 @@ function setupShop(finish, error) {
       const body = await api('/api/telemetry/output/link/start', {});
       $('output-gate-match').textContent = body.userCode;
       $('output-gate-reopen').href = body.approveUrl;
-      note.textContent = 'Waiting for you to approve…';
+      note.textContent = 'Waiting…';
       if (popup) {
         popup.opener = null;
         popup.location.href = body.approveUrl;
@@ -2691,6 +2691,14 @@ function setupShop(finish, error) {
   };
 }
 
+// Short, plain note for the connect popup. Other server messages pass through unchanged.
+function gateNote(message) {
+  const text = message || '';
+  if (!text || text.startsWith('Connect this computer to OUTPUT before')) return 'Connect this computer to OUTPUT to start nesting.';
+  if (text.startsWith('This computer is disconnected from OUTPUT')) return 'This computer was disconnected. Connect again to keep nesting.';
+  return text;
+}
+
 function requireOutputConnection(session) {
   const gate = $('output-gate');
   const info = session.outputConnection || {};
@@ -2700,7 +2708,7 @@ function requireOutputConnection(session) {
   const check = $('output-gate-check');
   gate.addEventListener('cancel', event => event.preventDefault());
   error.hidden = true;
-  $('output-gate-note').textContent = info.message || 'Connect this computer to OUTPUT.';
+  $('output-gate-note').textContent = gateNote(info.message);
   if (!session.localPC) {
     fields.hidden = true;
     $('output-gate-setup').hidden = true;

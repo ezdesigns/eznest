@@ -30,9 +30,9 @@ LIFETIME_SECONDS = 10 * 60
 USER_CODE_CHARS = set(ALPHABET + '-')
 
 START_FAILED = 'Shop setup could not start. Check the internet connection and try again.'
-EXPIRED = 'This setup request timed out. Click Set up your shop again.'
-DENIED = 'The request was turned down in OUTPUT. Click Set up your shop to try again.'
-NOT_STARTED = 'Click Set up your shop first.'
+EXPIRED = 'This setup request timed out. Click Connect to try again.'
+DENIED = 'The request was turned down in OUTPUT. Click Connect to try again.'
+NOT_STARTED = 'Click Connect first.'
 
 _LOCK = threading.Lock()
 _PENDING = {}

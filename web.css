@@ -630,10 +630,12 @@ body[data-step="sent"] #inventory-open { display: block; }
 #material-usage summary { cursor: pointer; font-size: 13px; }
 /* Set up your shop: first card in the connect gate. */
 #output-gate .setup-shop { display: grid; gap: 10px; }
-#output-gate .setup-shop-button { display: grid; gap: 2px; width: 100%; min-height: 56px; font-size: 16px; }
-#output-gate .setup-shop-button small { font-size: 12px; font-weight: 400; opacity: .8; }
+#output-gate .setup-shop-button { width: 100%; min-height: 48px; font-size: 16px; }
 #output-gate .setup-shop-waiting { display: grid; gap: 6px; text-align: center; }
 #output-gate .setup-shop-waiting p { margin: 0; }
 #output-gate .setup-shop-code { font: 700 30px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
 #output-gate details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
 #output-gate details[open] #output-gate-fields { display: grid; gap: 12px; margin-top: 10px; }
+#output-gate details { font-size: 13px; }
+#output-gate details p { margin: 6px 0 0; }
+#output-gate #output-gate-note { margin: 0; }

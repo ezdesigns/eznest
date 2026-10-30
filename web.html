@@ -24,20 +24,20 @@
 </dialog>
 <dialog id="output-gate" aria-labelledby="output-gate-title">
   <form id="output-gate-form">
-    <h2 id="output-gate-title">Connect to OUTPUT</h2>
+    <h2 id="output-gate-title">Set up your shop</h2>
     <p id="output-gate-note" class="hint"></p>
     <p id="output-gate-lan" class="hint" hidden>Ask the shop computer to connect to OUTPUT.</p>
     <div id="output-gate-setup" class="setup-shop">
-      <button id="output-gate-setup-button" class="primary setup-shop-button" type="button">Set up your shop<small>Connects to OUTPUT</small></button>
+      <button id="output-gate-setup-button" class="primary setup-shop-button" type="button">Connect</button>
       <div id="output-gate-waiting" class="setup-shop-waiting" hidden>
-        <p class="hint">Finish in the browser window that just opened. Check that it shows this code:</p>
+        <p class="hint">Approve in your browser. The code there should match:</p>
         <p id="output-gate-match" class="setup-shop-code" aria-live="polite"></p>
-        <p id="output-gate-wait-note" class="hint" role="status">Waiting for you to approve…</p>
-        <p class="hint"><a id="output-gate-reopen" href="#" target="_blank" rel="noopener noreferrer">Open the page again</a> · <button id="output-gate-cancel" class="link" type="button">Cancel</button></p>
+        <p id="output-gate-wait-note" class="hint" role="status">Waiting…</p>
+        <p class="hint"><a id="output-gate-reopen" href="#" target="_blank" rel="noopener noreferrer">Open again</a> · <button id="output-gate-cancel" class="link" type="button">Cancel</button></p>
       </div>
     </div>
     <details id="output-gate-code-option">
-      <summary>Have a pairing code instead?</summary>
+      <summary>Have a pairing code?</summary>
     <div id="output-gate-fields">
       <label>Pairing code
         <input id="output-gate-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="characters" inputmode="text">
@@ -47,7 +47,10 @@
       <p class="hint"><a href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Get a pairing code</a></p>
     </div>
     </details>
-    <p class="hint">Connecting sends this computer's name and installation id once. Later check-ins send the app version. Artwork, filenames, customers, and stock stay on this computer.</p>
+    <details id="output-gate-shared" class="setup-shop-shared">
+      <summary>What's shared?</summary>
+      <p class="hint">Only this computer's name, a random install ID, and the Ez Nest version. Artwork, customers, and stock stay here.</p>
+    </details>
     <p id="output-gate-error" class="lan-note" hidden></p>
   </form>
 </dialog>

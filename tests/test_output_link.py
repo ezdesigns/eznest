@@ -153,8 +153,11 @@ class SetupCardCopyTests(unittest.TestCase):
     def test_card_wording_is_plain(self):
         html = (ROOT / 'web.html').read_text(encoding='utf-8')
         gate = html.split('id="output-gate"', 1)[1].split('</dialog>', 1)[0]
-        self.assertIn('Set up your shop<small>Connects to OUTPUT</small>', gate)
-        self.assertIn('Have a pairing code instead?', gate)
+        self.assertIn('<h2 id="output-gate-title">Set up your shop</h2>', gate)
+        self.assertIn('type="button">Connect</button>', gate)
+        self.assertIn('Have a pairing code?', gate)
+        self.assertIn("Artwork, customers, and stock stay here.", gate)
+        self.assertNotIn('Later check-ins', gate)
         self.assertLess(gate.index('output-gate-setup-button'), gate.index('output-gate-code'))
         script = (ROOT / 'web.js').read_text(encoding='utf-8')
         self.assertIn("'/api/telemetry/output/link/start'", script)
