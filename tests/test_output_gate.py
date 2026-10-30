@@ -303,12 +303,18 @@ class GateTests(unittest.TestCase):
                 try:
                     page = browser.new_page(viewport={'width': 1280, 'height': 800})
                     page.goto(helper.url() + '/web')
-                    expect(page.locator('#output-gate')).to_be_visible()
-                    expect(page.locator('#output-gate-title')).to_have_text('Connect to OUTPUT')
-                    expect(page.locator('#output-gate-note')).to_contain_text('Connect this computer to OUTPUT')
-                    expect(page.locator('#output-gate a')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
-                    self.assertTrue(page.locator('#output-gate').evaluate("n => n.matches(':modal')"))
-                    self.assertEqual(page.locator('#output-gate-code').input_value(), '')
+                    # Unpaired: a plain message and one Connect action; nesting waits.
+                    page.wait_for_function("() => document.body.dataset.ready === '1'")
+                    expect(page.locator('#output-required')).to_be_visible()
+                    expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT to start nesting')
+                    expect(page.locator('#output-required-connect')).to_have_text('Connect')
+                    expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
+                    with page.context.expect_page() as opened:
+                        page.click('#output-required-connect')
+                    opened.value.close()
+                    expect(page.locator('#output-link-form')).to_be_visible()
+                    expect(page.locator('#output-link-code')).to_be_focused()
+                    self.assertEqual(page.locator('#output-link-code').input_value(), '')
                     shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
                     shots.mkdir(parents=True, exist_ok=True)
                     page.screenshot(path=str(shots / 'output-connect-gate.png'))

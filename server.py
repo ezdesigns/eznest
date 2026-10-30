@@ -465,6 +465,7 @@ class Handler(BaseHTTPRequestHandler):
             'pinWeak': shop_auth.pin_is_weak(WORK),
             'tls': TLS,
             'outputConnection': output_gate.public_status(WORK, local),
+            'outputLink': output_gate.link_status(WORK, local),
         }
         if local:
             body['token'] = TOKEN
@@ -980,6 +981,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, shop_status())
             if path == '/api/materials/save':
                 return self.send(200, material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision')))
+            if path == '/api/materials/remove':
+                return self.send(200, material_inventory.remove(WORK, data.get('id'), data.get('revision')))
             if path == '/api/materials/reserve':
                 with LOCK:
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
