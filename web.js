@@ -3555,6 +3555,23 @@ function shelfAria(m) {
   if (status) parts.push(status.text);
   return parts.join(', ');
 }
+// Shelf label: the material name on top, the roll width under it in smaller grey text.
+// A name that already ends with the roll width ("Gloss vinyl 54 in") drops it from the
+// name line so the width is not shown twice; the full name stays in the tooltip.
+function shelfShortName(name, w) {
+  const text = String(name || '').trim();
+  if (!(w > 0)) return text;
+  const match = text.match(/^(.*?\S)[\s,·\-–—]*(\d+(?:\.\d+)?)\s*(?:in|inch|inches|"|”|'')?\.?$/i);
+  if (!match || Math.abs(Number(match[2]) - w) > 0.05) return text;
+  return match[1].replace(/[\s,·\-–—]+$/, '') || text;
+}
+function shelfLabel(label, m) {
+  label.replaceChildren();
+  const full = m.name || 'New roll';
+  const name = shelfNode('span', 'stock-name', shelfShortName(full, m.w) || full, label);
+  name.title = full;
+  shelfNode('span', 'stock-size', m.w > 0 ? `${shelfFmt(m.w)} in wide` : '\u00a0', label);
+}
 function shelfNode(tag, cls, text, parent) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; if (parent) parent.append(e); return e; }
 function renderStock() {
   const host = $('stock-list');
@@ -3590,8 +3607,7 @@ function renderStock() {
     if (!draft) shelfMark(svg, rollJobCheck(m.item));
     const label = shelfNode('div', 'stock-label', null, slot);
     label.setAttribute('aria-hidden', 'true');
-    const nameLine = shelfNode('span', null, m.name || 'New roll', label);
-    if (m.name) nameLine.title = m.name;
+    shelfLabel(label, m);
     if (!draft) slot.addEventListener('click', () => { if (!stockForm) selectRoll(stockSel === m.id ? null : m.id); });
   });
   if (!stockForm) renderRollPanel();
@@ -3842,7 +3858,7 @@ function rollFormLive() {
   if (slot) {
     drawRoll(slot.querySelector('svg'), m, false, refFt);
     slot.querySelector('.stock-qty b').textContent = !(m.w > 0) && stockForm.mode === 'add' ? 'New roll' : shelfLeftText(m);
-    slot.querySelector('.stock-label span').textContent = m.name || 'New roll';
+    shelfLabel(slot.querySelector('.stock-label'), m);
   }
   const cost = parsePrice(stockForm.values.cost).value, costHint = $('roll-f-cost-hint');
   if (costHint) costHint.textContent = cost != null && m.full > 0 && m.w > 0 ? `= $${(cost / (m.w / 12 * m.full)).toFixed(2)} per sq ft` : ROLL_FIELDS[5][4];

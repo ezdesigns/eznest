@@ -489,15 +489,15 @@ class InventoryShelfTests(unittest.TestCase):
                     expect(page.locator('#stock-panel')).to_be_visible()
                     expect(page.locator('#stock-panel .stock-sub').first).to_have_text(re.compile(r'^\d+(\.\d+)? in wide roll · prints \d+(\.\d+)? in$'))
                     self.snap(page, 'detail', width)
-                    expect(page.locator('#stock-panel h3')).to_have_text(page.locator('.stock-slot').nth(1).locator('.stock-label span').get_attribute('title'))
+                    expect(page.locator('#stock-panel h3')).to_have_text(page.locator('.stock-slot').nth(1).locator('.stock-name').get_attribute('title'))
                     # The tapped roll stays visible above the details card.
                     tapped = page.locator('.stock-slot[aria-selected="true"]')
                     self.assert_panel_hides_nothing(page)
-                    name = tapped.locator('.stock-label span')
+                    name = tapped.locator('.stock-name')
                     self.assertEqual(name.get_attribute('title'), name.text_content())
                     page.keyboard.press('Escape')
                     last = page.locator('.stock-slot').last
-                    last_name = last.locator('.stock-label span').get_attribute('title')
+                    last_name = last.locator('.stock-name').get_attribute('title')
                     last.click()
                     self.assert_panel_hides_nothing(page)
                     expect(page.locator('#stock-panel h3')).to_have_text(last_name)
@@ -655,7 +655,7 @@ class InventoryShelfTests(unittest.TestCase):
                     expect(qty).to_have_text('Not measured')
                     low = page.locator('.stock-slot[data-id="low"]')
                     expect(low.locator('.stock-qty b')).to_have_css('color', 'rgb(180, 35, 24)')
-                    name = low.locator('.stock-label span')
+                    name = low.locator('.stock-name')
                     self.assertEqual(name.get_attribute('title'), 'Backlit film 54 in with a very long name for the shelf')
                     self.assertIn('Backlit film 54 in with a very long name for the shelf', low.get_attribute('aria-label'))
                     self.assertLessEqual(name.evaluate("n => Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight))"), 2)
@@ -693,6 +693,93 @@ class InventoryShelfTests(unittest.TestCase):
                     expect(page.locator('#stock-panel .stock-selected')).to_have_text('This job uses this roll')
                     page.locator('#stock-panel button', has_text='Use a different roll').click()
                     expect(page.locator('#stock-panel')).to_be_hidden()
+                finally:
+                    browser.close()
+
+    def assert_label_rows_line_up(self, page):
+        # In every shelf row the names start at one height and the size lines sit at one height.
+        rows = page.evaluate("""() => {
+            const rows = {};
+            for (const slot of document.querySelectorAll('.stock-slot')) {
+                const top = Math.round(slot.getBoundingClientRect().top);
+                const name = slot.querySelector('.stock-name'), size = slot.querySelector('.stock-size');
+                const lines = Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight));
+                (rows[top] = rows[top] || []).push([Math.round(name.getBoundingClientRect().top), Math.round(size.getBoundingClientRect().bottom), lines]);
+            }
+            return Object.values(rows);
+        }""")
+        for row in rows:
+            self.assertEqual(len({r[0] for r in row}), 1, row)
+            self.assertEqual(len({r[1] for r in row}), 1, row)
+            self.assertTrue(all(r[2] <= 2 for r in row), row)
+
+    def test_shelf_names_and_widths(self):
+        from playwright.sync_api import sync_playwright, expect
+        long_name = 'Premium removable matte wall graphic film with low-tack adhesive 54 in'
+        base = [
+            ['gloss', roll('Gloss vinyl 54 in', width='51.5', roll_width='54', left='1800', **{'roll-length': '1800'})],
+            ['banner', roll('Banner 64', width='63', roll_width='64', left='1200', **{'roll-length': '1800'})],
+            ['plain', roll('Clear laminate', width='54', roll_width='54', left='240', **{'roll-length': '1800', 'low-stock': '600'})],
+        ]
+        more = [['long', roll(long_name, width='54', roll_width='54', left='900', **{'roll-length': '1800'})],
+                ['long2', roll('Supercalifragilisticexpialidocious-reflective-sheeting', width='30', roll_width='30', left='600', **{'roll-length': '1800'})]]
+        more += [[f'x{i}', roll(f'Material {i} 54 in', width='54', roll_width='54', left=str(300 + i * 60), **{'roll-length': '1800'})] for i in range(7)]
+        many = [[f'y{i}', roll(f'Extra roll {i}', width='24', roll_width='24', left=str(400 + i * 30), **{'roll-length': '1800'})] for i in range(18)]
+        with without_gate_env(), sync_playwright() as playwright:
+            for width in (1280, 390):
+                if width == 390:
+                    self.fresh()
+                browser, context, page = self.page(playwright, width)
+                try:
+                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    cases = page.evaluate("""() => [shelfShortName('Gloss vinyl 54 in', 54), shelfShortName('Banner 64', 64), shelfShortName('Clear laminate', 54),
+                        shelfShortName('Vinyl - 54"', 54), shelfShortName('Gloss vinyl 54 in', 30), shelfShortName('54 in', 54), shelfShortName('Film 51.5 in', 51.5)]""")
+                    self.assertEqual(cases, ['Gloss vinyl', 'Banner', 'Clear laminate', 'Vinyl', 'Gloss vinyl 54 in', '54 in', 'Film'])
+                    self.save_rolls(page, base)
+                    page.click('#stock-open')
+                    expect(page.locator('.stock-slot')).to_have_count(3)
+                    gloss = page.locator('.stock-slot[data-id="gloss"]')
+                    expect(gloss.locator('.stock-name')).to_have_text('Gloss vinyl')
+                    expect(gloss.locator('.stock-name')).to_have_attribute('title', 'Gloss vinyl 54 in')
+                    expect(gloss.locator('.stock-size')).to_have_text('54 in wide')
+                    self.assertIn('Gloss vinyl 54 in', gloss.get_attribute('aria-label'))
+                    expect(page.locator('.stock-slot[data-id="banner"] .stock-name')).to_have_text('Banner')
+                    expect(page.locator('.stock-slot[data-id="plain"] .stock-name')).to_have_text('Clear laminate')
+                    self.assertNotIn('prints', page.locator('#stock-list').inner_text())
+                    self.assert_label_rows_line_up(page)
+                    self.assert_labels_clear_of_rolls(page)
+                    self.snap(page, '3-rolls', width)
+                    page.locator('.stock-slot[data-id="plain"]').click()
+                    expect(page.locator('#stock-panel .stock-low')).to_be_visible()
+                    self.snap(page, 'low-stock', width)
+                    page.keyboard.press('Escape')
+                    page.locator('.stock-slot[data-id="gloss"]').click()
+                    expect(page.locator('#stock-panel h3')).to_have_text('Gloss vinyl 54 in')
+                    expect(page.locator('#stock-panel .stock-sub').first).to_have_text('54 in wide roll · prints 51.5 in')
+                    self.snap(page, 'detail', width)
+                    page.keyboard.press('Escape')
+                    page.click('#stock-close')
+                    self.save_rolls(page, more)
+                    page.click('#stock-open')
+                    expect(page.locator('.stock-slot')).to_have_count(12)
+                    per_row = page.evaluate("() => { const tops = [...document.querySelectorAll('.stock-slot')].map(n => Math.round(n.getBoundingClientRect().top)); return tops.filter(t => t === tops[0]).length; }")
+                    self.assertEqual(per_row, 6 if width == 1280 else 4)
+                    long = page.locator('.stock-slot[data-id="long"]')
+                    expect(long.locator('.stock-name')).to_have_attribute('title', long_name)
+                    self.assertIn(long_name, long.get_attribute('aria-label'))
+                    clipped = long.locator('.stock-name').evaluate('n => n.scrollHeight > n.clientHeight + 1')
+                    self.assertTrue(clipped)
+                    self.assert_label_rows_line_up(page)
+                    self.assert_labels_clear_of_rolls(page)
+                    self.snap(page, '12-rolls', width)
+                    long.scroll_into_view_if_needed()
+                    self.snap(page, 'long-names', width)
+                    page.click('#stock-close')
+                    self.save_rolls(page, many)
+                    page.click('#stock-open')
+                    expect(page.locator('.stock-slot')).to_have_count(30)
+                    self.assert_label_rows_line_up(page)
+                    self.snap(page, '30-rolls', width)
                 finally:
                     browser.close()
 
