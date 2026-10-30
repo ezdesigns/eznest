@@ -460,7 +460,7 @@ class InventoryShelfTests(unittest.TestCase):
                     page.wait_for_function("() => shopInventory.materials.some(m => m.profile['preset-name'] === 'Gloss vinyl')")
                     saved = page.evaluate("() => shopInventory.materials.find(m => m.profile['preset-name'] === 'Gloss vinyl').profile")
                     self.assertEqual((saved['available-length'], saved['roll-length'], saved['unit']), ('1800', '1800', 'in'))
-                    low = page.locator('.stock-slot', has_text='Matte vinyl 30 in')
+                    low = page.locator('.stock-slot', has=page.locator('.stock-name[title="Matte vinyl 30 in"]'))
                     expect(low).to_have_class(re.compile('low'))
                     page.locator('#stock-add').click()
                     page.fill('#roll-f-name', 'Clear laminate')
@@ -494,7 +494,8 @@ class InventoryShelfTests(unittest.TestCase):
                     tapped = page.locator('.stock-slot[aria-selected="true"]')
                     self.assert_panel_hides_nothing(page)
                     name = tapped.locator('.stock-name')
-                    self.assertEqual(name.get_attribute('title'), name.text_content())
+                    self.assertTrue(name.get_attribute('title').startswith(name.text_content()))
+                    self.assertRegex(tapped.locator('.stock-size').text_content(), r'^\d+(\.\d+)? in wide$')
                     page.keyboard.press('Escape')
                     last = page.locator('.stock-slot').last
                     last_name = last.locator('.stock-name').get_attribute('title')
