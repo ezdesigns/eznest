@@ -39,9 +39,15 @@ def number(value, label, minimum=0):
     problem = ValueError(f'{name} looks wrong. Enter a number like {example}.')
     if isinstance(value, bool):
         raise problem
+    text = value if isinstance(value, str) else str(value) if isinstance(value, (int, float)) else None
+    # Same rule as the browser: plain 0-9 digits with one optional point. No other scripts'
+    # digits, no underscores, no exponents.
+    if text is None or not re.fullmatch(r'\s*\+?(?:\d+(?:\.\d*)?|\.\d+)\s*', text, re.ASCII):
+        if not (isinstance(value, (int, float)) and not isinstance(value, bool)):
+            raise problem
     try:
         result = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise problem from None
     if not math.isfinite(result) or result < minimum or result > MAX_NUMBER:
         raise problem
@@ -56,8 +62,18 @@ def clean_name(value):
     return ' '.join(text.split())
 
 
+# Letters from other alphabets that look the same as Latin ones, plus Turkish i forms.
+# Used only for the duplicate check; the name people see is not changed.
+LOOK_ALIKES = str.maketrans({
+    'а': 'a', 'в': 'b', 'е': 'e', 'ё': 'e', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p', 'с': 'c',
+    'т': 't', 'у': 'y', 'х': 'x', 'і': 'i', 'ї': 'i', 'ј': 'j', 'ѕ': 's', 'ԁ': 'd', 'ӏ': 'l', 'ԛ': 'q', 'ԝ': 'w',
+    'α': 'a', 'β': 'b', 'ε': 'e', 'η': 'n', 'ι': 'i', 'κ': 'k', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't',
+    'υ': 'u', 'χ': 'x', 'ζ': 'z', 'μ': 'u', 'ı': 'i', '\u0307': None,
+})
+
+
 def name_key(value):
-    return clean_name(value).casefold()
+    return clean_name(value).casefold().translate(LOOK_ALIKES)
 
 
 def profile(values):
@@ -148,9 +164,14 @@ def save(directory, key, values, revision):
         expected = previous['revision'] if previous else 0
         if type(revision) is not int or revision != expected:
             raise ValueError('This material changed on another screen. Close and reopen Edit to use the latest stock.')
-        for other in db.execute('SELECT id, profile FROM materials WHERE id!=?', (key,)):
-            if name_key(json.loads(other['profile'])['preset-name']) == name_key(values['preset-name']):
-                raise ValueError('A material with this name already exists.')
+        wanted = name_key(values['preset-name'])
+        # A roll saved before this check existed keeps its name when edited; a new or renamed
+        # roll may not look the same as another one.
+        kept = previous is not None and name_key(json.loads(previous['profile'])['preset-name']) == wanted
+        if not kept:
+            for other in db.execute('SELECT id, profile FROM materials WHERE id!=?', (key,)):
+                if name_key(json.loads(other['profile'])['preset-name']) == wanted:
+                    raise ValueError('A material with this name already exists.')
         held = reserved(db, key)
         if held and (stock is None or stock + 1e-6 < held):
             raise ValueError('Release outstanding reservations before reducing stock below the reserved amount.')

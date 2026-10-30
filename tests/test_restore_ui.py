@@ -374,14 +374,35 @@ class InventoryShelfTests(unittest.TestCase):
             Path(target).mkdir(parents=True, exist_ok=True)
             page.locator('#stock').screenshot(path=str(Path(target) / f'after-{name}-{width}.png'))
 
+    def assert_panel_hides_nothing(self, page):
+        # The details card is docked below the shelf: no roll or label is under it, and the
+        # tapped roll is fully visible in the shelf area.
+        page.wait_for_function('''() => {
+            const list = document.getElementById('stock-list').getBoundingClientRect();
+            const panel = document.getElementById('stock-panel').getBoundingClientRect();
+            const slot = document.querySelector('.stock-slot[aria-selected="true"]').getBoundingClientRect();
+            const slots = [...document.querySelectorAll('.stock-slot')].map(n => n.getBoundingClientRect());
+            const visible = slots.filter(r => r.bottom > list.top && r.top < list.bottom);
+            return panel.top >= list.bottom - 0.5 && slot.top >= list.top - 0.5 && slot.bottom <= list.bottom + 0.5
+                && visible.every(r => {
+                    // The shelf clips its own rows; only the part inside the shelf area can show.
+                    const top = Math.max(r.top, list.top), bottom = Math.min(r.bottom, list.bottom);
+                    return bottom <= panel.top + 0.5 || top >= panel.bottom;
+                });
+        }''')
+
     def save_rolls(self, page, rolls):
-        page.evaluate('''async rolls => { for (const [id, p] of rolls) await api('/api/materials/save', {id, profile: p, revision: 0}); await refreshInventory(); }''', rolls)
+        # Through the app's own change path, then wait for the state rather than a one-shot read.
+        page.evaluate('''async rolls => { for (const [id, p] of rolls) await mutateInventory('/api/materials/save', {id, profile: p, revision: 0}); }''', rolls)
+        page.wait_for_function('ids => ids.every(id => shopInventory.materials.some(m => m.id === id))', arg=[r[0] for r in rolls])
 
     def test_shelf_add_flow_detail_and_keyboard(self):
         from playwright.sync_api import sync_playwright, expect
         names = ['Gloss vinyl', 'Matte vinyl', 'Clear laminate', 'Window film', 'Magnet', 'Paper', 'Chrome', 'Holographic',
-                 'Canvas', 'Banner', 'Reflective', 'Wall decal']
-        many = [[f'roll-{i}', roll(f'{n} 54 in', left=str(1800 - i * 140) if i != 4 else '', **{'roll-length': '1800', 'roll-cost': '200' if i % 3 == 0 else ''})]
+                 'Canvas', 'Banner', 'Reflective', 'Wall decal', 'Floor graphic', 'Static cling', 'Perforated', 'Backlit film',
+                 'Satin vinyl', 'Carbon wrap', 'Brushed metal', 'Glitter', 'Kraft paper', 'Photo paper', 'Mesh banner',
+                 'Blockout', 'Textile', 'Heat transfer', 'Metallic gold']
+        many = [[f'roll-{i}', roll(f'{n} 54 in', left=str(1800 - i * 60) if i != 4 else '', **{'roll-length': '1800', 'roll-cost': '200' if i % 3 == 0 else ''})]
                 for i, n in enumerate(names)]
         with without_gate_env(), sync_playwright() as playwright:
             for width in (1280, 390):
@@ -455,8 +476,8 @@ class InventoryShelfTests(unittest.TestCase):
                     page.click('#stock-close')
                     self.save_rolls(page, many)
                     page.click('#stock-open')
-                    expect(page.locator('.stock-slot')).to_have_count(15)
-                    self.snap(page, 'many-rolls', width)
+                    expect(page.locator('.stock-slot')).to_have_count(30)
+                    self.snap(page, '30-rolls', width)
                     first = page.locator('.stock-slot').first
                     first.focus()
                     page.keyboard.press('ArrowRight')
@@ -468,16 +489,14 @@ class InventoryShelfTests(unittest.TestCase):
                     expect(page.locator('#stock-panel h3')).to_have_text(page.locator('.stock-slot').nth(1).locator('.stock-label span').get_attribute('title'))
                     # The tapped roll stays visible above the details card.
                     tapped = page.locator('.stock-slot[aria-selected="true"]')
-                    page.wait_for_function('''() => { const s = document.querySelector('.stock-slot[aria-selected="true"] svg').getBoundingClientRect();
-                        const p = document.getElementById('stock-panel').getBoundingClientRect(); return s.bottom <= p.top + 1 && s.top >= 0; }''')
+                    self.assert_panel_hides_nothing(page)
                     name = tapped.locator('.stock-label span')
                     self.assertEqual(name.get_attribute('title'), name.text_content())
                     page.keyboard.press('Escape')
                     last = page.locator('.stock-slot').last
                     last_name = last.locator('.stock-label span').get_attribute('title')
                     last.click()
-                    page.wait_for_function('''() => { const s = document.querySelector('.stock-slot[aria-selected="true"] svg').getBoundingClientRect();
-                        const p = document.getElementById('stock-panel').getBoundingClientRect(); return s.bottom <= p.top + 1; }''')
+                    self.assert_panel_hides_nothing(page)
                     expect(page.locator('#stock-panel h3')).to_have_text(last_name)
                     self.assertEqual(violations, [])
                 finally:
@@ -524,7 +543,7 @@ class InventoryShelfTests(unittest.TestCase):
                 expect(page.locator('.stock-slot')).to_have_count(1)
                 expect(page.locator('.stock-slot').first).to_have_attribute('aria-selected', 'true')
                 expect(page.locator('#stock-panel .stock-selected, #stock-panel button:has-text("Use for this job")')).to_have_count(1)
-                expect(page.locator('#stock-legend')).to_have_text('Tap a roll to see it. Wider roll = wider material. Fatter roll = more left.')
+                expect(page.locator('#stock-legend')).to_have_text('Tap a roll to see it. Taller roll = wider material. Fatter roll = more left.')
                 small = page.evaluate("""() => [...document.querySelectorAll('#stock .dialog-close, #stock .stock-x, #stock .stock-len, #stock button.link, #stock .stock-row-actions button')]
                     .filter(n => n.offsetParent).map(n => { const r = n.getBoundingClientRect(); return [n.className || n.id, Math.round(r.width), Math.round(r.height)]; })
                     .filter(([, w, h]) => w < 44 || h < 44)""")
@@ -557,3 +576,48 @@ class InventoryShelfTests(unittest.TestCase):
                 expect(page.locator('.stock-slot')).to_have_count(1)
             finally:
                 browser.close()
+
+    def test_an_older_refresh_never_replaces_a_newer_one(self):
+        from playwright.sync_api import sync_playwright
+        with without_gate_env(), sync_playwright() as playwright:
+            browser, context, page = self.page(playwright, 1280)
+            try:
+                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                shown = page.evaluate("""async () => {
+                    const real = window.fetch; let release; const gate = new Promise(r => { release = r; });
+                    let first = true;
+                    window.fetch = async (...args) => { const answer = await real(...args);
+                        if (String(args[0]).endsWith('/api/materials') && first) { first = false; await gate; } return answer; };
+                    const slow = refreshInventory().catch(() => {});        // older request, held back
+                    await new Promise(r => setTimeout(r, 150));
+                    // Another screen adds a roll; this computer only sees it through a refresh.
+                    await real('/api/materials/save', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-EZ-Token': (await (await real('/api/session')).json()).token},
+                        body: JSON.stringify({id: 'material-other', profile: {...materialValues(), unit: 'in', 'preset-name': 'Other screen roll', roll: '54', width: '54', 'available-length': '600', 'low-stock': ''}, revision: 0})});
+                    await refreshInventory();                                // newer request, lands first
+                    release(); await slow;                                   // older answer lands last
+                    window.fetch = real;
+                    return shopInventory.materials.map(m => m.id);
+                }""")
+                self.assertIn('material-other', shown)
+            finally:
+                browser.close()
+
+    def test_inventory_controls_are_44px_with_a_mouse(self):
+        from playwright.sync_api import sync_playwright, expect
+        with without_gate_env(), sync_playwright() as playwright:
+            for width in (1280, 390):
+                if width == 390:
+                    self.fresh()
+                browser, context, page = self.page(playwright, width)
+                try:
+                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    self.save_rolls(page, [['material-a', roll('Gloss vinyl 54 in', left='600', **{'roll-length': '1800'})]])
+                    page.click('#stock-open')
+                    page.locator('.stock-slot').first.click()
+                    expect(page.locator('#stock-panel')).to_be_visible()
+                    small = page.evaluate("""() => [...document.querySelectorAll('#stock .dialog-close, #stock .stock-x, #stock .stock-len, #stock button.link, #stock .stock-row-actions button')]
+                        .filter(n => n.offsetParent).map(n => { const r = n.getBoundingClientRect(); return [n.className || n.id, Math.round(r.width), Math.round(r.height)]; })
+                        .filter(([, w, h]) => w < 44 || h < 44)""")
+                    self.assertEqual(small, [])
+                finally:
+                    browser.close()

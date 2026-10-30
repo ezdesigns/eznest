@@ -745,11 +745,18 @@ body[data-step="sent"] #inventory-open { display: block; }
 /* The status circle is the only visible OUTPUT control; the old buttons stay as hidden click targets. */
 #output-link-connect, #output-link-status { display: none !important; }
 
-/* Inventory on touch screens: every control is at least 44 x 44 to tap, the look stays the same. */
-@media (pointer: coarse) {
-  #stock .dialog-close { flex-basis: 44px; width: 44px; min-height: 44px; }
-  .stock-x { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; margin: -10px -10px 0 0; }
-  .stock-len { min-height: 44px; min-width: 44px; padding: 0 4px; }
-  #stock button.link, .stock-row-actions button { min-height: 44px; min-width: 44px; }
-  .roll-units button { min-height: 44px; min-width: 44px; }
-}
+/* Inventory: every control is at least 44 x 44 to click or tap; the look stays the same. */
+#stock .dialog-close { flex-basis: 44px; width: 44px; min-height: 44px; margin: -6px -10px 0 0; }
+.stock-x { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; margin: -10px -12px -6px 0; }
+.stock-len { min-height: 44px; min-width: 44px; padding: 0 4px; margin-left: -4px; }
+#stock button.link, .stock-row-actions button, .roll-units button { min-height: 44px; min-width: 44px; }
+.roll-actions { align-items: center; }
+
+/* The shelf scrolls in its own area and the details card is docked under it, so the card
+   never sits on top of a roll or its label. */
+#stock[open] { display: flex; flex-direction: column; overflow: hidden; }
+#stock .panel { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
+#stock .panel > * { flex: none; }
+#stock .panel > .stock-shelf { flex: 0 1 auto; min-height: 150px; overflow-y: auto; overscroll-behavior: contain; background-attachment: local; }
+#stock .panel > .stock-shelf:empty { min-height: 0; }
+#stock .panel > .stock-panel { position: static; max-height: 62%; overflow-y: auto; box-shadow: none; }

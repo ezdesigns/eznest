@@ -1842,7 +1842,7 @@ async function saveMaterial() {
     }
     const values = validateMaterial(entered);
     const id = presetEditor.id === 'custom' ? 'material-' + crypto.randomUUID() : presetEditor.id;
-    if (Object.entries(materialProfiles).some(([key, item]) => key !== id && item['preset-name'].toLowerCase() === values['preset-name'].toLowerCase())) throw Error('A preset with that name already exists. Choose another name.');
+    if (!(materialProfiles[id] && rollNameKey(materialProfiles[id]['preset-name']) === rollNameKey(values['preset-name'])) && Object.entries(materialProfiles).some(([key, item]) => key !== id && rollNameKey(item['preset-name']) === rollNameKey(values['preset-name']))) throw Error('A material with this name already exists.');
     await mutateInventory('/api/materials/save', {id, profile: values, revision: presetEditor.revision});
     savePrefs({material: id, nestWidth: String(Number(values.width) * EZNQueue.unitScale(values.unit) / 25.4)});
     presetEditor = null;
@@ -2737,23 +2737,36 @@ function acceptInventory(data) {
   if (changed && $('stock')?.open) renderStock();
 }
 
+// Every inventory request gets a number when it starts. An answer older than the last one
+// shown is dropped, so a slow poll can never put back an older picture of the shelf.
+let inventorySeq = 0, inventoryShown = 0;
+function showInventory(seq, data) {
+  if (seq < inventoryShown) return false;
+  inventoryShown = seq;
+  acceptInventory(data);
+  return true;
+}
+
 async function mutateInventory(path, payload) {
   inventoryGen++;
+  const seq = ++inventorySeq;
   try {
     const data = await api(path, payload);
     inventoryGen++;
-    acceptInventory(data);
+    // A change the server made is always newer than any snapshot that started before it.
+    inventoryShown = Math.max(inventoryShown, seq - 1);
+    showInventory(seq, data);
     return data;
   } catch (error) { inventoryGen++; throw error; }
 }
 
 async function refreshInventory() {
-  const gen = inventoryGen;
+  const gen = inventoryGen, seq = ++inventorySeq;
   try {
     const data = await fetchJson('/api/materials', 5000);
     // A save or remove happened after this request started: its answer is newer.
     if (gen !== inventoryGen) return;
-    acceptInventory(data);
+    showInventory(seq, data);
   }
   catch (error) {
     inventoryReady = false;
@@ -3563,11 +3576,18 @@ function selectRoll(id, focus) {
   const slot = id ? $('stock-list').querySelector(`[data-id="${id}"]`) : null;
   if (focus && slot) slot.focus({preventScroll: true});
   if (slot) {
-    // The details card sits at the bottom of the dialog; keep the tapped roll above it.
-    slot.style.scrollMarginBottom = ($('stock-panel').offsetHeight + 16) + 'px';
-    slot.style.scrollMarginTop = '16px';
-    slot.scrollIntoView({block: 'nearest'});
+    // The shelf has its own scroll area above the docked details card: bring the roll into it.
+    revealRoll(id);
+    requestAnimationFrame(() => revealRoll(id));
   }
+}
+function revealRoll(id) {
+  const slot = id && stockSel === id ? $('stock-list').querySelector(`[data-id="${id}"]`) : null;
+  const shelf = slot && slot.closest('.stock-shelf');
+  if (!shelf) return;
+  const box = shelf.getBoundingClientRect(), r = slot.getBoundingClientRect();
+  if (r.top < box.top) shelf.scrollTop -= box.top - r.top;
+  else if (r.bottom > box.bottom) shelf.scrollTop += Math.min(r.bottom - box.bottom, r.top - box.top);
 }
 function stockColumns() { const list = $('stock-list'), first = list.firstElementChild; return first ? Math.max(1, Math.round(list.clientWidth / first.getBoundingClientRect().width)) : 1; }
 $('stock-list').addEventListener('keydown', event => {
@@ -3628,8 +3648,13 @@ function renderRollPanel() {
 // One parser for every Inventory number. Plain digits with an optional decimal point and
 // unit; no exponents, no commas. Limits sit inside the shop computer's own limits.
 // Same rule as the shop computer: names that only look different count as the same name.
+const ROLL_LOOK_ALIKES = {'а': 'a', 'в': 'b', 'е': 'e', 'ё': 'e', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p', 'с': 'c',
+  'т': 't', 'у': 'y', 'х': 'x', 'і': 'i', 'ї': 'i', 'ј': 'j', 'ѕ': 's', 'ԁ': 'd', 'ӏ': 'l', 'ԛ': 'q', 'ԝ': 'w',
+  'α': 'a', 'β': 'b', 'ε': 'e', 'η': 'n', 'ι': 'i', 'κ': 'k', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't',
+  'υ': 'u', 'χ': 'x', 'ζ': 'z', 'μ': 'u', 'ς': 'σ', 'ı': 'i', 'ß': 'ss', 'ẞ': 'ss', '\u0307': ''};
 function rollNameKey(text) {
-  return String(text || '').normalize('NFKC').replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const clean = String(text || '').normalize('NFKC').replace(/[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}]/gu, ch => /\s/.test(ch) ? ' ' : '').replace(/\s+/g, ' ').trim();
+  return [...clean.toLowerCase()].map(ch => ROLL_LOOK_ALIKES[ch] ?? ch).join('');
 }
 const ROLL_LIMITS = {inches: [0.4, 196], feet: [0, 100000], price: [0, 1000000]};
 function parseRollNumber(text, units) {
@@ -3790,7 +3815,7 @@ function rollFormErrors() {
   const roll = parseInches(v.roll), width = parseInches(v.width), left = parseLength(v.left, stockLenUnit), full = parseLength(v.full, stockLenUnit);
   const price = parsePrice(v.cost);
   if (!v.name.trim()) e.name = 'Enter a material name.';
-  else if (Object.entries(materialProfiles).some(([key, p]) => key !== stockForm.id && rollNameKey(p['preset-name']) === rollNameKey(v.name))) e.name = 'A preset with that name already exists. Choose another name.';
+  else if (!(stockForm.item && rollNameKey(stockForm.item.profile['preset-name']) === rollNameKey(v.name)) && Object.entries(materialProfiles).some(([key, p]) => key !== stockForm.id && rollNameKey(p['preset-name']) === rollNameKey(v.name))) e.name = 'A material with this name already exists.';
   if (roll == null) e.roll = 'Roll width looks wrong. Enter inches, like 54.';
   if (width == null) e.width = 'Width you can print on looks wrong. Enter inches, like 51.5.';
   else if (!e.roll && width > roll) e.width = 'This can\'t be wider than the roll itself.';
