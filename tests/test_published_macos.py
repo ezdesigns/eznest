@@ -6,6 +6,7 @@ product uninstaller. It refuses to race a timed-out Apple Installer transaction.
 """
 import argparse
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -21,9 +22,10 @@ import sys
 import tempfile
 import time
 from urllib.error import HTTPError
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from xml.etree import ElementTree
+from zipfile import ZipFile
 
 VERSION = '1.0.0-rc.5'
 TEAM = 'JC6858UYM9'
@@ -197,20 +199,25 @@ class LocalAPI:
         self.token = None
         self.http = build_opener(ProxyHandler({}), NoRedirect())
 
-    def request(self, path, body=None):
-        headers = {'Content-Type': 'application/json'}
+    def exchange(self, path, data=None, headers=None):
+        require(re.fullmatch(r'/api/[A-Za-z0-9/_-]+', path), 'Invalid local API path.')
+        headers = dict(headers or {})
         if self.token:
             headers['X-EZ-Token'] = self.token
-        request = Request('http://127.0.0.1:8765' + path,
-                          data=None if body is None else json.dumps(body).encode(), headers=headers)
+        request = Request('http://127.0.0.1:8765' + path, data=data, headers=headers)
         try:
-            response = self.http.open(request, timeout=30)
+            response = self.http.open(request, timeout=90)
         except HTTPError as error:
             response = error
         with response:
-            raw = response.read(2_000_001)
-            require(len(raw) <= 2_000_000, 'Unexpected local API response size.')
-            return response.status, json.loads(raw)
+            raw = response.read(10_000_001)
+            require(len(raw) <= 10_000_000, 'Unexpected local API response size.')
+            return response.status, raw
+
+    def request(self, path, body=None):
+        status, raw = self.exchange(path, None if body is None else json.dumps(body).encode(),
+                                    {'Content-Type': 'application/json'})
+        return status, json.loads(raw)
 
     def session(self):
         status, value = self.request('/api/session')
@@ -335,6 +342,129 @@ def install(root, expected):
     print('INSTALL_PASS: signed downloaded package installed as a limited, unpaired service.')
 
 
+def synthetic_pdf():
+    """Two 20 mm squares, colored artwork, and named through-cut spot paths."""
+    stream = (b'q 1 0 0 0 k 20 20 56.692913 56.692913 re f '
+              b'/Contour CS 1 SCN 0.25 w 20 20 56.692913 56.692913 re S Q\n'
+              b'q 0 0 1 0 k 150 20 56.692913 56.692913 re f '
+              b'/Contour CS 1 SCN 0.25 w 150 20 56.692913 56.692913 re S Q')
+    objects = [b'<< /Type /Catalog /Pages 2 0 R >>',
+        b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 150] /Contents 4 0 R '
+        b'/Resources << /ColorSpace << /Contour [/Separation /CutContour_Thru-cut /DeviceCMYK 5 0 R] >> >> >>',
+        b'<< /Length ' + str(len(stream)).encode() + b' >>\nstream\n' + stream + b'\nendstream',
+        b'<< /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [0 1 0 0] /N 1 >>']
+    data = b'%PDF-1.4\n'; offsets = [0]
+    for index, obj in enumerate(objects, 1):
+        offsets.append(len(data))
+        data += str(index).encode() + b' 0 obj\n' + obj + b'\nendobj\n'
+    xref = len(data)
+    data += b'xref\n0 6\n0000000000 65535 f \n'
+    data += b''.join(f'{offset:010} 00000 n \n'.encode() for offset in offsets[1:])
+    return data + f'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n'.encode()
+
+
+def validate_export(content, kind, batch_id):
+    require(kind in ('pdf', 'svg') and 0 < len(content) <= 10_000_000,
+            'Invalid print-pack format or size.')
+    with ZipFile(io.BytesIO(content)) as archive:
+        entries = archive.infolist(); names = [entry.filename for entry in entries]
+        require(len(names) == len(set(names)) and len(names) <= 20
+                and sum(entry.file_size for entry in entries) <= 10_000_000,
+                'Print pack contains duplicate files or exceeds its bound.')
+        require(archive.testzip() is None and {'batch.json', 'artwork.' + kind,
+                'sheet-map.svg', 'piece-checklist.csv'}.issubset(names), 'Print pack is incomplete.')
+        manifest = json.loads(archive.read('batch.json'))
+        require(manifest.get('batchId') == batch_id and manifest.get('complete') is True
+                and manifest.get('totalPieces') == 2 and len(manifest.get('pieces', [])) == 2
+                and manifest.get('printFiles') == ['artwork.' + kind]
+                and manifest.get('outputCheck', {}).get('ready') is not False,
+                'Print pack does not match the complete two-piece batch.')
+        artwork = archive.read('artwork.' + kind)
+        if kind == 'pdf':
+            require(artwork.startswith(b'%PDF-') and artwork.rstrip().endswith(b'%%EOF')
+                    and b'CutContour_Thru-cut' in artwork, 'PDF artwork or cut spot is missing.')
+        else:
+            root = ElementTree.fromstring(artwork)
+            groups = [root.find("{http://www.w3.org/2000/svg}g[@id='ez-part-" + str(i) + "']")
+                      for i in (1, 2)]
+            require(root.tag == '{http://www.w3.org/2000/svg}svg'
+                    and all(group is not None and any(node.tag == '{http://www.w3.org/2000/svg}rect'
+                            for node in group.iter()) for group in groups),
+                    'SVG artwork lost a placed piece or its geometry.')
+    return hashlib.sha256(content).hexdigest()
+
+
+def completed_state(api):
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        status, state = api.request('/api/state')
+        if state.get('status') != 'running':
+            require(status == 200 and state.get('status') == 'ready'
+                    and len(state.get('result', {}).get('placements', [])) == 2,
+                    'Imported two-piece nesting did not finish.')
+            return state
+        time.sleep(1)
+    raise AcceptanceError('Imported nesting timed out.')
+
+
+def pdf_file_flow(api):
+    source = synthetic_pdf()
+    status, raw = api.exchange('/api/document/import-file', source,
+        {'Content-Type': 'application/pdf', 'X-EZ-Import': quote(json.dumps(
+            {'name':'synthetic.pdf', 'preserveArtwork':True, 'bleedMm':0}))})
+    parsed = json.loads(raw)
+    require(status == 200 and parsed.get('format') == 'pdf' and parsed.get('artworkPreserved') is True
+            and parsed.get('sourcePieceCount') == 2 and len(parsed.get('parts', [])) == 2,
+            'Installed PDF file import did not preserve two artwork pieces.')
+    parts = [{**part, 'id':'pdf:' + part['id'], 'sourceJobId':'pdf', 'perSet':1}
+             for part in parsed['parts']]
+    job = {'materialId':'test', 'materialName':'Synthetic preview stock',
+           'settings':{'width':100,'maxLength':None,'gap':2,'margin':2,'seconds':1,
+                       'rotations':[0,90,180,270]}, 'parts':parts,
+           'productionJobs':[{'id':'pdf','code':'A','name':'synthetic.pdf',
+                'revision':hashlib.sha256(source).hexdigest(),'sets':1,'materialId':'test',
+                'partIds':[part['id'] for part in parts]}],
+           'documentSources':{'pdf':{'documentId':parsed['documentId'],'reviewed':True,
+                'bleedMm':0,'artworkPreserved':True}},
+           'outputProfile':{'name':'PDF','rip':'Synthetic preview','format':'pdf',
+                'acceptedFormats':['pdf','ai'],'colorMode':'preserve','iccProfile':'','bleedMm':0,
+                'cutSpot':'CutContour','cutLayer':'CutContour','registrationOwner':'rip',
+                'finishingSoftware':'','mediaOwner':'rip','jobLogOwner':'rip'}}
+    require(api.request('/api/solve', job)[0] == 200, 'Imported PDF nesting did not start.')
+    state = completed_state(api)
+    sheet_map = '<svg xmlns="http://www.w3.org/2000/svg"><text x="2" y="10">Synthetic two-piece PDF test</text></svg>'
+    status, release = api.request('/api/release', {'id':state['id'], 'map':sheet_map,'downloadOnly':True})
+    require(status == 200 and release.get('ok') is True and release.get('id') == state['id'],
+            'Installed PDF export failed.')
+    status, content = api.exchange('/api/batch/' + state['id'])
+    require(status == 200 and validate_export(content, 'pdf', state['id']) == release.get('sha256'),
+            'Downloaded PDF pack does not match its released hash.')
+    return {'format':'pdf','id':state['id'],'sha256':release['sha256'],'bytes':content}
+
+
+def verify_persistence(api, exports):
+    status, state = api.request('/api/state')
+    require(status == 200 and state.get('status') == 'ready' and state.get('released') is True
+            and state.get('id') == exports[-1]['id']
+            and state.get('sha256') == exports[-1]['sha256'], 'Released workspace did not survive restart.')
+    for item in exports:
+        status, content = api.exchange('/api/batch/' + item['id'])
+        require(status == 200 and content == item['bytes']
+                and validate_export(content, item['format'], item['id']) == item['sha256'],
+                'An exported print pack changed after service restart.')
+
+
+def preview_settings(api):
+    status, shop = api.request('/api/shop')
+    require(status == 200 and shop.get('updates') is False and shop.get('lan') is False,
+            'Preview requires updates and LAN sharing to remain off.')
+    listeners = command(['/usr/bin/sudo', '-n', '/usr/sbin/lsof', '-nP', '-a',
+                         '-p', str(job_pid()), '-iTCP:8765', '-sTCP:LISTEN', '-Fn']).stdout
+    require([line for line in listeners.splitlines() if line.startswith('n')] == ['n127.0.0.1:8765'],
+            'Installed service is not listening exclusively on IPv4 loopback.')
+
+
 def connect(root):
     code = os.environ.pop('EZ_NEST_MACOS_ACCEPTANCE_CODE', '')
     require(re.fullmatch('[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}', code),
@@ -353,36 +483,34 @@ def connect(root):
     require(status == 400 and value.get('reason') == 'consumed', 'Consumed pairing code was not rejected.')
     paired = last_ok(); time.sleep(2)
     receipt['checkedInAt'] = fresh_checkin(api, paired)
+    status, sharing = api.request('/api/telemetry/output')
+    require(status == 200 and sharing.get('configured') is True and sharing.get('enabled') is False,
+            'Activity sharing unexpectedly enabled.')
+    receipt['sharingOff'] = True
+    preview_settings(api)
+    exports = [pdf_file_flow(api)]
+    require(api.request('/api/work/discard', {})[0] == 200, 'Could not start the SVG test job.')
+    from macos_svg_acceptance import svg_file_flow
+    exports.append(svg_file_flow(api, root))
     before = api.session()['pid']; time.sleep(2)
     command(['/usr/bin/sudo', '-n', '/bin/launchctl', 'kickstart', '-k', 'system/' + LABEL])
     session = api.healthy()
     require(session['pid'] != before, 'The service process did not restart.')
     receipt['restartCheckedInAt'] = fresh_checkin(api, receipt['checkedInAt'])
-    receipt['restarted'] = True
-    status, sharing = api.request('/api/telemetry/output')
-    require(status == 200 and sharing.get('configured') is True and sharing.get('enabled') is False,
-            'Activity sharing unexpectedly enabled.')
-    receipt['sharingOff'] = True
-    job = {'parts': [{'id': 'synthetic-square', 'quantity': 2,
-                     'points': [[0,0],[20,0],[20,20],[0,20]]}],
-           'settings': {'width':100,'gap':2,'margin':2,'seconds':1,'rotations':[0],'seed':42}}
-    require(api.request('/api/solve', job)[0] == 200, 'Synthetic nesting did not start.')
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        time.sleep(1)
-        status, state = api.request('/api/state')
-        if state.get('status') != 'running':
-            break
-    require(status == 200 and state.get('status') == 'ready'
-            and len(state['result']['placements']) == 2, 'Synthetic two-piece nesting did not finish.')
-    receipt['nested'] = True
+    verify_persistence(api, exports)
+    preview_settings(api)
+    receipt.update(restarted=True, nested=True, fileFlowsPassed=True, persistenceVerified=True,
+                   updatesOff=True, loopbackOnly=True,
+                   fileFlows=[{'format':item['format'], 'pieces':2, 'sha256':item['sha256'],
+                               'restartIdentical':True} for item in exports])
     write_json(root / 'eznest-macos-acceptance.json', receipt)
     print('CONNECT_PASS: owner must now revoke the exact host in the sanitized receipt.')
 
 
 def verify_revoked(root):
     receipt = json.loads((root / 'eznest-macos-acceptance.json').read_text())
-    require(all(receipt[key] for key in ('paired', 'restarted', 'nested', 'sharingOff')),
+    require(all(receipt.get(key) for key in ('paired', 'restarted', 'nested', 'sharingOff',
+                'fileFlowsPassed', 'persistenceVerified', 'updatesOff', 'loopbackOnly')),
             'Connection evidence is incomplete.')
     api = LocalAPI(); api.session()
     time.sleep(60)

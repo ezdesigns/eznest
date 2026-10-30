@@ -22,6 +22,7 @@ on:
       - '.github/workflows/macos-output-acceptance.yml'
       - 'tests/test_published_macos.py'
       - 'tests/test_macos_acceptance.py'
+      - 'tests/macos_svg_acceptance.py'
 
 permissions:
   contents: read
@@ -44,7 +45,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m unittest discover -s tests -p test_macos_acceptance.py
-      - run: python -m py_compile tests/test_published_macos.py
+      - run: python -m py_compile tests/test_published_macos.py tests/macos_svg_acceptance.py
 
   installed-mac:
     name: Signed Mac package to OUTPUT
@@ -69,7 +70,11 @@ jobs:
         env:
           EZ_NEST_PACKAGE_SHA256: ${{ inputs.package_sha256 }}
         run: python tests/test_published_macos.py Install
-      - name: Pair and restart using the owner-approved one-time code
+      - name: Prepare isolated SVG browser regression dependencies
+        if: inputs.live_output_acceptance
+        # Use the runner's installed Chrome; no account profile or browser download.
+        run: python -m pip install --disable-pip-version-check 'playwright==1.64.1'
+      - name: Pair, import SVG and PDF, export, and verify restart persistence
         if: inputs.live_output_acceptance
         env:
           EZ_NEST_MACOS_ACCEPTANCE_CODE: ${{ secrets.EZ_NEST_MACOS_ACCEPTANCE_CODE }}

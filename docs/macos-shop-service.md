@@ -1,4 +1,4 @@
-# macOS shared shop host: implementation draft
+# macOS shared shop host: implementation and rollout gates
 
 The shop service edition is designed for one designated Mac that owns the shared
 inventory and job workspace. Other computers use that host's browser address.
@@ -7,10 +7,14 @@ The Mac must remain powered on and awake; this installer does not change sleep,
 firewall or network settings. LAN access requires the explicit package `--lan`
 option on first installation. Updates preserve the installed choice.
 
-This implementation has **not been installed on a clean Mac**. The current
-local pilot remains ad-hoc signed. It cannot pass the service installer's
-Developer ID/notarization checks. Do not install it on a shop Mac, change its
-accounts, or disable Gatekeeper to test this draft.
+The Developer ID signed/notarized arm64 candidate passed installation, OUTPUT
+pairing, restart, owner revocation and isolated cleanup on a disposable macOS 26
+runner on 2026-10-30 ([acceptance run](https://github.com/ezdesigns/eznest/actions/runs/40986286467)).
+That does not establish the broader service/update gates below or normal product
+uninstallation. The owner-approved experimental preview scope and its remaining
+mandatory checks are in [Signed Mac release procedure](macos-release.md).
+The default local build remains ad-hoc signed and cannot pass the service
+installer's trust checks. Never disable Gatekeeper to install it.
 
 ## Runtime and permissions
 

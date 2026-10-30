@@ -80,6 +80,32 @@ separately.
 
 ## Download-to-install acceptance and publication
 
+### Approved experimental preview scope (2026-10-30)
+
+The owner explicitly approved a narrower public preview contract for
+`1.0.0-rc.5`: Apple Silicon, macOS 26, new test installations only. Keep update
+checks off, use the default loopback listener and synthetic files, and do not
+use this preview for production shop work. No existing installation or shop data
+may be adopted. The installed background service persists after closing the
+browser; this limitation must be visible in the download instructions.
+
+This preview still requires the exact signed/notarized/stapled package digest,
+required current-head CI, independent review, actual limited-account installation,
+OUTPUT pairing and fresh check-ins before/after restart, installed SVG/PDF
+import/nest/export with restart persistence, sharing and updates off, owner
+revocation closing access, and isolated runner cleanup. None of those gates is
+waived by the preview scope.
+
+The owner knowingly deferred reboot/logout longevity, two-version signed upgrade,
+failed-start rollback and interruption recovery, native updater/Installer handoff,
+multi-PC stock operations, and normal end-user uninstallation. These remain
+unverified and must be disclosed in the release notes. Runner cleanup is not a
+product uninstall test. Intel, earlier macOS versions, production RIP/cutting and
+inventory synchronization are not supported claims. The full rollout gates below
+remain required before broadening beyond this experimental preview.
+
+### Full shop rollout
+
 On the intended architecture, download the exact candidate from a private/draft
 release, check its digest and Gatekeeper assessment, and run Apple's Installer.
 Do not overwrite an unrelated application or adopt existing user data. Confirm
