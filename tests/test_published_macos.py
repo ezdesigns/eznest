@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 from urllib.error import HTTPError
+from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from xml.etree import ElementTree
 
@@ -152,6 +153,43 @@ def preflight():
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *_args, **_kwargs):
         raise AcceptanceError('The installed local API must not redirect.')
+
+
+def download(root):
+    # A short-lived URL grants only this draft asset, not repository write access.
+    # Never print its signed query or include it in an artifact.
+    url = os.environ.pop('EZ_NEST_MACOS_CANDIDATE_URL', '')
+    parsed = urlsplit(url)
+    require(parsed.scheme == 'https' and parsed.netloc == 'release-assets.githubusercontent.com'
+            and not parsed.fragment and bool(parsed.query), 'A scoped GitHub candidate download URL is required.')
+    package = root / PACKAGE_NAME
+    http = build_opener(ProxyHandler({}), NoRedirect())
+    owned = False
+    try:
+        with http.open(Request(url), timeout=30) as response:
+            require(response.status == 200, 'Candidate download did not succeed.')
+            length = response.headers.get('Content-Length')
+            require(length is not None and length.isdigit() and 0 < int(length) <= 300_000_000,
+                    'Candidate download size is missing or exceeds the package bound.')
+            expected = int(length)
+            with package.open('xb') as target:
+                owned = True
+                count = 0
+                deadline = time.monotonic() + 120
+                while True:
+                    require(time.monotonic() < deadline, 'Candidate download timed out.')
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    count += len(chunk)
+                    require(count <= expected, 'Candidate download exceeded its declared size.')
+                    target.write(chunk)
+                require(count == expected, 'Candidate download was incomplete.')
+    except Exception:
+        if owned:
+            package.unlink(missing_ok=True)
+        raise
+    print('DOWNLOAD_PASS: private candidate fetched; signature and hash checks still required.')
 
 
 class LocalAPI:
@@ -431,11 +469,13 @@ def cleanup(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase', choices=('Install', 'Connect', 'VerifyRevoked', 'Cleanup'))
+    parser.add_argument('phase', choices=('Download', 'Install', 'Connect', 'VerifyRevoked', 'Cleanup'))
     args = parser.parse_args()
     try:
         root = runner_guard()
-        if args.phase == 'Install':
+        if args.phase == 'Download':
+            download(root)
+        elif args.phase == 'Install':
             install(root, valid_hash(os.environ.get('EZ_NEST_PACKAGE_SHA256')))
         elif args.phase == 'Connect':
             connect(root)

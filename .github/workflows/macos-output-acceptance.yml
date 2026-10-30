@@ -63,10 +63,8 @@ jobs:
           architecture: arm64
       - name: Download the private candidate without publishing it
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release download macos-1.0.0-rc.5-20261030 --repo ezdesigns/eznest
-          --pattern eznest-shop-arm64-1.0.0-rc.5.pkg --dir "$RUNNER_TEMP"
+          EZ_NEST_MACOS_CANDIDATE_URL: ${{ secrets.EZ_NEST_MACOS_CANDIDATE_URL }}
+        run: python tests/test_published_macos.py Download
       - name: Verify signed package and install the isolated shop service
         env:
           EZ_NEST_PACKAGE_SHA256: ${{ inputs.package_sha256 }}

@@ -25,6 +25,19 @@ class MacAcceptanceVerifierTests(unittest.TestCase):
                 with self.assertRaises(acceptance.AcceptanceError):
                     acceptance.runner_guard()
 
+    def test_candidate_url_never_sends_access_to_another_host(self):
+        for url in ('http://release-assets.githubusercontent.com/a?sig=x',
+                    'https://attacker.example/a?sig=x',
+                    'https://user@release-assets.githubusercontent.com/a?sig=x',
+                    'https://release-assets.githubusercontent.com/a?sig=x#fragment', ''):
+            with self.subTest(url=url), tempfile.TemporaryDirectory() as folder, \
+                    patch.dict(os.environ, {'EZ_NEST_MACOS_CANDIDATE_URL':url}), \
+                    patch.object(acceptance, 'build_opener') as opener:
+                with self.assertRaises(acceptance.AcceptanceError):
+                    acceptance.download(Path(folder))
+                opener.assert_not_called()
+                self.assertNotIn('EZ_NEST_MACOS_CANDIDATE_URL', os.environ)
+
     def test_mismatched_download_is_never_assessed_or_installed(self):
         with tempfile.TemporaryDirectory() as folder:
             package = Path(folder) / 'test.pkg'; package.write_bytes(b'reviewed package bytes')
