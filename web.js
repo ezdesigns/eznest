@@ -3468,6 +3468,20 @@ function rollJobCheck(item) {
   else { ok = false; lines.push('Not enough. Need ' + stockFeet(result.usedLength - item.availableMm) + ' more'); }
   return {ok, lines};
 }
+// The same checks as rollJobCheck, as one plain sentence for the details card.
+// kind: fits, narrow, short or unmeasured; null when no job is open.
+function rollJobStatus(item) {
+  const result = current?.result;
+  if (!result || !(result.width > 0)) return null;
+  const p = item.profile;
+  const printable = Number(p.width) * EZNQueue.unitScale(p.unit);
+  const inches = mm => shelfFmt(Math.round(mm / 25.4 * 10) / 10);
+  const feet = mm => shelfFmt(Math.round(mm / 304.8 * 10) / 10);
+  if (printable + 0.01 < result.width) return {kind: 'narrow', text: `Too narrow for this job (needs ${inches(result.width)} in, roll is ${inches(printable)} in)`};
+  if (item.availableMm == null) return {kind: 'unmeasured', text: 'Enter how much is left to check'};
+  if (item.availableMm + 0.5 >= result.usedLength) return {kind: 'fits', text: `Fits this job: needs about ${feet(result.usedLength)} ft, ${feet(item.availableMm)} ft left`};
+  return {kind: 'short', text: `Not enough on this roll. Need ${feet(result.usedLength - item.availableMm)} more ft`};
+}
 // Shelf view: each roll stands upright. Taller = wider material, thicker = more length left.
 // Drawing sizes are a picture only, not a measurement. Geometry goes through setAttribute/CSSOM (CSP safe).
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -3533,17 +3547,12 @@ function shelfMark(svg, check) {
     fill: 'none', stroke: kind === 'bad' ? '#fff' : color, 'stroke-width': 1.7, 'stroke-linecap': 'round'}, svg);
 }
 function shelfLeftText(m) { return m.left == null ? 'Not measured' : shelfFmt(m.left) + ' ft'; }
-function shelfJobLine(check) {
-  if (!check) return null;
-  const line = !check.ok ? check.lines.find(text => /Too narrow|Not enough/.test(text)) || check.lines[0] : check.lines[check.lines.length - 1];
-  return {ok: check.ok && !/unknown/.test(line), warn: check.ok && /unknown/.test(line), text: line};
-}
 function shelfAria(m) {
   const parts = [m.name, `${shelfFmt(m.w)} inch roll`, m.left == null ? 'length left not measured' : `${shelfFmt(m.left)} feet${m.full ? ' of ' + shelfFmt(m.full) + ' feet' : ''} left`];
   if (m.low) parts.push('low stock');
   if (m.id === $('material').value) parts.push('selected for this job');
-  const line = shelfJobLine(rollJobCheck(m.item));
-  if (line) parts.push('job check: ' + line.text);
+  const status = rollJobStatus(m.item);
+  if (status) parts.push(status.text);
   return parts.join(', ');
 }
 function shelfNode(tag, cls, text, parent) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; if (parent) parent.append(e); return e; }
@@ -3572,11 +3581,15 @@ function renderStock() {
     slot.setAttribute('aria-label', draft ? 'New roll being added' : shelfAria(m));
     slot.tabIndex = (active ? active === m.id : index === 0) ? 0 : -1;
     if (m.id === $('material').value) shelfNode('span', 'stock-pill', 'In use', slot).setAttribute('aria-hidden', 'true');
+    // How much is left sits above the roll; the roll's name sits under it, on the shelf.
+    const qty = shelfNode('div', 'stock-qty', null, slot);
+    qty.setAttribute('aria-hidden', 'true');
+    shelfNode('b', m.left == null && !(draft && !(m.w > 0)) ? 'unknown' : null, draft && !(m.w > 0) ? 'New roll' : shelfLeftText(m), qty);
     const svg = svgEl('svg', {'aria-hidden': 'true', class: 'stock-roll'}, slot);
     drawRoll(svg, m, false, refFt);
     if (!draft) shelfMark(svg, rollJobCheck(m.item));
     const label = shelfNode('div', 'stock-label', null, slot);
-    shelfNode('b', m.left == null && !(draft && !(m.w > 0)) ? 'unknown' : null, draft && !(m.w > 0) ? 'New roll' : shelfLeftText(m), label);
+    label.setAttribute('aria-hidden', 'true');
     const nameLine = shelfNode('span', null, m.name || 'New roll', label);
     if (m.name) nameLine.title = m.name;
     if (!draft) slot.addEventListener('click', () => { if (!stockForm) selectRoll(stockSel === m.id ? null : m.id); });
@@ -3648,16 +3661,26 @@ function renderRollPanel() {
   if (m.low) shelfNode('span', 'stock-low', rollLowText(item).startsWith('Out') ? 'Out of stock' : 'Low stock', left);
   const cost = rollCostPerSqFt(item);
   if (cost) shelfNode('p', 'stock-sub', cost, panel);
-  const line = shelfJobLine(rollJobCheck(item));
-  if (line) shelfNode('p', 'stock-check', line.text, panel).dataset.ok = line.ok ? '1' : line.warn ? 'warn' : '0';
+  const status = rollJobStatus(item), inUse = item.id === $('material').value;
+  // No job open: no job line at all.
+  if (status) {
+    const check = shelfNode('p', 'stock-check', status.text, panel);
+    check.dataset.kind = status.kind;
+    check.dataset.ok = status.kind === 'fits' ? '1' : status.kind === 'unmeasured' ? 'warn' : '0';
+  }
   const actions = shelfNode('div', 'stock-row-actions', null, panel);
-  if (item.id === $('material').value) shelfNode('span', 'stock-selected', 'This job uses this roll', actions);
-  else {
-    const use = shelfNode('button', null, 'Use for this job', actions); use.type = 'button'; use.disabled = inventoryBusy;
+  if (inUse) {
+    shelfNode('span', 'stock-selected', 'This job uses this roll', actions);
+    const other = shelfNode('button', 'link', 'Use a different roll', actions); other.type = 'button';
+    other.addEventListener('click', () => { selectRoll(null); $('stock-list').querySelector('.stock-slot:not(.in-use)')?.focus(); });
+  } else if (status?.kind !== 'narrow') {
+    // A roll that is too narrow can't print this job, so it has no button.
+    const use = shelfNode('button', status?.kind === 'fits' || !status ? 'primary' : null, 'Use for this job', actions);
+    use.type = 'button'; use.disabled = inventoryBusy;
     use.addEventListener('click', () => { $('stock').close(); chooseMaterial(item.id); });
   }
   const edit = shelfNode('button', 'link', 'Edit', actions); edit.type = 'button';
-  edit.addEventListener('click', () => openRollForm('edit', item, 'roll-f-name'));
+  edit.addEventListener('click', () => openRollForm('edit', item, status?.kind === 'unmeasured' ? 'roll-f-left' : 'roll-f-name'));
 }
 // One parser for every Inventory number. Plain digits with an optional decimal point and
 // unit; no exponents, no commas. Limits sit inside the shop computer's own limits.
@@ -3818,7 +3841,7 @@ function rollFormLive() {
   const slot = $('stock-list').querySelector(`[data-id="${stockForm.id}"]`);
   if (slot) {
     drawRoll(slot.querySelector('svg'), m, false, refFt);
-    slot.querySelector('.stock-label b').textContent = !(m.w > 0) && stockForm.mode === 'add' ? 'New roll' : shelfLeftText(m);
+    slot.querySelector('.stock-qty b').textContent = !(m.w > 0) && stockForm.mode === 'add' ? 'New roll' : shelfLeftText(m);
     slot.querySelector('.stock-label span').textContent = m.name || 'New roll';
   }
   const cost = parsePrice(stockForm.values.cost).value, costHint = $('roll-f-cost-hint');

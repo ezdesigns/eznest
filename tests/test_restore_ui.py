@@ -284,18 +284,21 @@ class RestoreUiTests(unittest.TestCase):
         expect(page.locator('.stock-slot')).to_have_count(3)
         expect(page.locator('#stock-job')).to_be_visible()
         gloss = page.locator('.stock-slot[data-id="gloss-54"]')
-        expect(gloss).to_have_attribute('aria-label', re.compile('Enough for this job'))
+        expect(gloss).to_have_attribute('aria-label', re.compile('Fits this job'))
         gloss.click()
-        expect(page.locator('#stock-panel')).to_contain_text('Enough for this job')
+        expect(page.locator('#stock-panel .stock-check')).to_have_text(re.compile(r'^Fits this job: needs about [\d.]+ ft, [\d.]+ ft left$'))
+        expect(page.locator('#stock-panel button.primary', has_text='Use for this job')).to_be_visible()
         expect(page.locator('#stock-panel')).to_contain_text('per sq ft')
         matte = page.locator('.stock-slot[data-id="matte-30"]')
         expect(matte).to_have_class(re.compile('low'))
         matte.click()
         expect(page.locator('#stock-panel .stock-low')).to_be_visible()
-        expect(page.locator('#stock-panel')).to_contain_text('Too narrow')
+        expect(page.locator('#stock-panel .stock-check')).to_have_text(re.compile(r'^Too narrow for this job \(needs [\d.]+ in, roll is [\d.]+ in\)$'))
+        expect(page.locator('#stock-panel button', has_text='Use for this job')).to_have_count(0)
         clear = page.locator('.stock-slot[data-id="clear-54"]')
         clear.click()
-        expect(page.locator('#stock-panel')).to_contain_text('Length left unknown')
+        expect(page.locator('#stock-panel .stock-check')).to_have_text('Enter how much is left to check')
+        expect(page.locator('#stock-panel button.link', has_text='Edit')).to_be_visible()
         expect(page.locator('#stock-panel')).not_to_contain_text('per sq ft')
         expect(page.locator('#stock')).not_to_contain_text('Reserved')
         self.shot(page, f'after-inventory-crosscheck-{width}.png')
@@ -601,6 +604,97 @@ class InventoryShelfTests(unittest.TestCase):
                 self.assertIn('material-other', shown)
             finally:
                 browser.close()
+
+    def assert_labels_clear_of_rolls(self, page):
+        # Amount left above every roll, name under it, nothing touching the drawing.
+        bad = page.evaluate("""() => [...document.querySelectorAll('.stock-slot')].map(slot => {
+            const qty = slot.querySelector('.stock-qty').getBoundingClientRect();
+            const svg = slot.querySelector('svg.stock-roll');
+            const shape = svg.querySelector('.roll-body') || svg.querySelector('path');
+            const roll = shape.getBoundingClientRect(), box = svg.getBoundingClientRect();
+            const name = slot.querySelector('.stock-label').getBoundingClientRect();
+            return [slot.dataset.id, qty.bottom <= roll.top + 0.5, name.top >= box.bottom - 0.5];
+        }).filter(([, above, below]) => !above || !below)""")
+        self.assertEqual(bad, [])
+
+    def test_shelf_labels_and_job_lines(self):
+        from playwright.sync_api import sync_playwright, expect
+        rolls = [
+            ['fits', roll('Gloss vinyl 54 in', width='54', roll_width='54', left='1800', **{'roll-length': '1800'})],
+            ['narrow', roll('Matte vinyl 30 in', width='30', roll_width='30', left='1200', **{'roll-length': '1800'})],
+            ['short', roll('Clear laminate 54 in', width='54', roll_width='54', left='240', **{'roll-length': '1800'})],
+            ['unmeasured', roll('Window film 60 in', width='60', roll_width='60')],
+            ['low', roll('Backlit film 54 in with a very long name for the shelf', width='54', roll_width='54', left='60', **{'roll-length': '1800', 'low-stock': '120'})],
+        ] + [[f'extra-{i}', roll(f'Banner {i} 64 in', width='64', roll_width='64', left=str(600 + i * 120), **{'roll-length': '1800'})] for i in range(7)]
+        with without_gate_env(), sync_playwright() as playwright:
+            for width in (1280, 390):
+                if width == 390:
+                    self.fresh()
+                browser, context, page = self.page(playwright, width)
+                try:
+                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    self.save_rolls(page, rolls[:3])
+                    page.click('#stock-open')
+                    expect(page.locator('.stock-slot')).to_have_count(3)
+                    self.assert_labels_clear_of_rolls(page)
+                    self.snap(page, '3-rolls', width)
+                    # No job open: no job line and no fit wording.
+                    page.locator('.stock-slot[data-id="fits"]').click()
+                    expect(page.locator('#stock-panel .stock-check')).to_have_count(0)
+                    expect(page.locator('#stock-panel button', has_text='Use for this job')).to_be_visible()
+                    page.click('#stock-close')
+                    self.save_rolls(page, rolls[3:])
+                    # A job 50 in wide that needs 100 ft.
+                    page.evaluate("() => { current = {...(current || {}), result: {width: 50 * 25.4, usedLength: 100 * 304.8}}; }")
+                    page.click('#stock-open')
+                    expect(page.locator('.stock-slot')).to_have_count(12)
+                    per_row = page.evaluate("() => new Set([...document.querySelectorAll('.stock-slot')].map(n => Math.round(n.getBoundingClientRect().top))).size")
+                    self.assertEqual(per_row, 2 if width == 1280 else 3)
+                    self.assert_labels_clear_of_rolls(page)
+                    qty = page.locator('.stock-slot[data-id="unmeasured"] .stock-qty b')
+                    expect(qty).to_have_text('Not measured')
+                    low = page.locator('.stock-slot[data-id="low"]')
+                    expect(low.locator('.stock-qty b')).to_have_css('color', 'rgb(180, 35, 24)')
+                    name = low.locator('.stock-label span')
+                    self.assertEqual(name.get_attribute('title'), 'Backlit film 54 in with a very long name for the shelf')
+                    self.assertIn('Backlit film 54 in with a very long name for the shelf', low.get_attribute('aria-label'))
+                    self.assertLessEqual(name.evaluate("n => Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight))"), 2)
+                    self.snap(page, '12-rolls', width)
+                    cases = {
+                        'fits': r'^Fits this job: needs about 100 ft, 150 ft left$',
+                        'narrow': r'^Too narrow for this job \(needs 50 in, roll is 30 in\)$',
+                        'short': r'^Not enough on this roll\. Need 80 more ft$',
+                        'unmeasured': r'^Enter how much is left to check$',
+                    }
+                    for rid, text in cases.items():
+                        page.locator(f'.stock-slot[data-id="{rid}"]').click()
+                        expect(page.locator('#stock-panel .stock-check')).to_have_text(re.compile(text))
+                        use = page.locator('#stock-panel button', has_text='Use for this job')
+                        expect(use).to_have_count(0 if rid == 'narrow' else 1)
+                        if rid == 'fits':
+                            expect(use).to_have_class(re.compile('primary'))
+                            expect(page.locator('#stock-panel .stock-check')).to_have_css('color', 'rgb(21, 128, 61)')
+                        if rid == 'unmeasured':
+                            page.locator('#stock-panel button.link', has_text='Edit').click()
+                            expect(page.locator('#roll-f-left')).to_be_focused()
+                            page.keyboard.press('Escape')
+                            expect(page.locator('#roll-f-left')).to_have_count(0)
+                            continue
+                        self.assert_panel_hides_nothing(page)
+                        self.snap(page, {'fits': 'detail-fits', 'narrow': 'detail-too-narrow', 'short': 'detail-not-enough'}[rid], width)
+                        page.keyboard.press('Escape')
+                    if not page.locator('#stock').is_visible():
+                        page.click('#stock-open')
+                    page.locator('.stock-slot[data-id="low"]').click()
+                    expect(page.locator('#stock-panel .stock-low')).to_be_visible()
+                    self.snap(page, 'low-stock', width)
+                    # The roll this job already uses.
+                    page.evaluate("() => { $('material').value = 'fits'; renderStock(); selectRoll('fits'); }")
+                    expect(page.locator('#stock-panel .stock-selected')).to_have_text('This job uses this roll')
+                    page.locator('#stock-panel button', has_text='Use a different roll').click()
+                    expect(page.locator('#stock-panel')).to_be_hidden()
+                finally:
+                    browser.close()
 
     def test_a_refresh_during_a_slow_save_does_not_hide_the_saved_roll(self):
         from playwright.sync_api import sync_playwright
