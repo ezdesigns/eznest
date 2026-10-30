@@ -1,0 +1,102 @@
+name: Signed Mac OUTPUT acceptance
+
+# A manually dispatched disposable VM installs already-signed bytes. No signing
+# key or Apple credential is available here. PRs validate source only.
+on:
+  workflow_dispatch:
+    inputs:
+      run_acceptance:
+        description: 'Install the reviewed candidate on a disposable Mac VM'
+        type: boolean
+        default: false
+      package_sha256:
+        description: 'SHA-256 of the reviewed signed and stapled arm64 package'
+        type: string
+        required: true
+      live_output_acceptance:
+        description: 'Use owner-approved test-shop code; owner must revoke this host during the run'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - '.github/workflows/macos-output-acceptance.yml'
+      - 'tests/test_published_macos.py'
+      - 'tests/test_macos_acceptance.py'
+      - 'tests/macos_svg_acceptance.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-output-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Mac acceptance script
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -p test_macos_acceptance.py
+      - run: python -m py_compile tests/test_published_macos.py tests/macos_svg_acceptance.py
+
+  installed-mac:
+    name: Signed Mac package to OUTPUT
+    needs: validate
+    if: github.repository == 'ezdesigns/eznest' && github.event_name == 'workflow_dispatch' && inputs.run_acceptance
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: arm64
+      - name: Download the private candidate without publishing it
+        env:
+          EZ_NEST_MACOS_CANDIDATE_URL: ${{ secrets.EZ_NEST_MACOS_CANDIDATE_URL }}
+        run: python tests/test_published_macos.py Download
+      - name: Verify signed package and install the isolated shop service
+        env:
+          EZ_NEST_PACKAGE_SHA256: ${{ inputs.package_sha256 }}
+        run: python tests/test_published_macos.py Install
+      - name: Prepare isolated SVG browser regression dependencies
+        if: inputs.live_output_acceptance
+        # Use the runner's installed Chrome; no account profile or browser download.
+        run: python -m pip install --disable-pip-version-check 'playwright==1.64.1'
+      - name: Pair, import SVG and PDF, export, and verify restart persistence
+        if: inputs.live_output_acceptance
+        env:
+          EZ_NEST_MACOS_ACCEPTANCE_CODE: ${{ secrets.EZ_NEST_MACOS_ACCEPTANCE_CODE }}
+        run: python tests/test_published_macos.py Connect
+      - name: Expose only host identity and acceptance booleans
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-output-connected-${{ github.run_id }}
+          path: ${{ runner.temp }}/eznest-macos-acceptance.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Wait for owner revocation and verify the closed gate
+        if: inputs.live_output_acceptance
+        run: python tests/test_published_macos.py VerifyRevoked
+      - name: Clean up only this VM's owned shop installation
+        if: always()
+        run: python tests/test_published_macos.py Cleanup
+      - name: Upload sanitized final receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-output-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/eznest-macos-acceptance.json
+          retention-days: 7
+          if-no-files-found: warn
