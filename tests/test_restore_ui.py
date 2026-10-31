@@ -201,7 +201,7 @@ class RestoreUiTests(unittest.TestCase):
                                        >= document.getElementById('max-output').getBoundingClientRect().bottom - 1};
                 }''')
                 self.assertEqual(look['maxOutput'], 'rgb(243, 243, 240)')
-                self.assertEqual(look['badge'], 'Devnet sandbox')
+                self.assertEqual(look['badge'], 'Preview · test only')
                 self.assertFalse(look['rotated'])
                 self.assertTrue(look['effortBelow'])
                 self.assertEqual(look['inHouse'], 'rgb(239, 245, 255)')

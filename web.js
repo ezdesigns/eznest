@@ -2003,7 +2003,7 @@ function showRestart(shop) {
   const note = $('lan-restart');
   if (shop && shop.lanWaiting) {
     note.hidden = false;
-    note.textContent = 'Shop network is waiting for a shop PIN. Set the PIN on this computer, then restart eznest.';
+    note.textContent = 'Shop network is waiting for a shop PIN. Set the PIN on this computer, then restart Ez Nest.';
     return;
   }
   if (!shop || !shop.restart) {
@@ -2012,7 +2012,7 @@ function showRestart(shop) {
     return;
   }
   note.hidden = false;
-  note.textContent = 'Shop network requires starting eznest with --lan.';
+  note.textContent = 'Shop network requires starting Ez Nest with --lan.';
 }
 
 function applyShop(shop) {
@@ -2138,8 +2138,8 @@ async function saveDeploy() {
     kiss: $('kiss-name').value.trim()
   }));
   applyShop(result);
-  if (result.restart && result.lan) status('Restart eznest to open the shop network.');
-  else if (result.restart) status('Shop network turns off after you restart eznest.');
+  if (result.restart && result.lan) status('Restart Ez Nest to open the shop network.');
+  else if (result.restart) status('Shop network turns off after you restart Ez Nest.');
 }
 
 async function saveHotFolder() {
@@ -3041,7 +3041,7 @@ function showUpdate(info) {
   $('settings-open').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
   if (info?.managedSupported && info?.staged && !info.localPC) {
     note.hidden = false;
-    note.textContent = 'The update is ready. Approve installation on the PC running eznest.';
+    note.textContent = 'The update is ready. Approve installation on the PC running Ez Nest.';
     $('update').disabled = true;
     return;
   }
@@ -3350,7 +3350,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (error) {
       const offline = /Failed to fetch|NetworkError/i.test(String(error.message || error));
       if (installNow && offline) {
-        status('eznest is restarting to install the update.');
+        status('Ez Nest is restarting to install the update.');
         return;
       }
       status(error.message, true);
@@ -3374,7 +3374,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch {
       if (updateWasQueued) {
         $('update-note').hidden = false;
-        $('update-note').textContent = 'Installing the update. This page will reconnect when eznest is ready.';
+        $('update-note').textContent = 'Installing the update. This page will reconnect when Ez Nest is ready.';
       }
     }
   }, 5000);

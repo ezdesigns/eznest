@@ -158,7 +158,7 @@ class UpdateQueueTests(unittest.TestCase):
                     self.assertFalse(shown['cancelHidden'])
                     shown = render({**info, 'localPC':False})
                     self.assertTrue(shown['disabled'])
-                    self.assertIn('PC running eznest', shown['note'])
+                    self.assertIn('PC running Ez Nest', shown['note'])
                     hot = server.WORK/'update-preview-hot'
                     hot.mkdir()
                     # First run has no setup card; the same fields live in Settings.

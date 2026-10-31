@@ -130,7 +130,7 @@ def main():
             # used to exit, leaving no page on which to set the PIN.
             host, lan = '127.0.0.1', False
             os.environ['EZ_NEST_LAN_WAITING'] = 'pin'
-            print('Shop network stays closed until a shop PIN is set on this computer. Set it, then restart eznest.', file=sys.stderr)
+            print('Shop network stays closed until a shop PIN is set on this computer. Set it, then restart Ez Nest.', file=sys.stderr)
     else:
         host, lan = '127.0.0.1', False
         os.environ.pop('EZ_NEST_LAN_WAITING', None)

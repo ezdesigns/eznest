@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>eznest</title>
+<title>Ez Nest</title>
 <link rel="stylesheet" href="/web.css">
 </head>
 <body data-step="drop">
 <header class="shop-header">
-  <strong>eznest</strong>
+  <strong>Ez Nest</strong>
   <button id="logout" type="button" class="link" hidden>Log out</button>
 </header>
 <dialog id="pin-gate" aria-labelledby="pin-title">
@@ -129,7 +129,7 @@
     <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
     <div id="lan-access" hidden>
     <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
-    <p class="hint">Shop network access is configured when the app starts. This box only shows whether Ez Nest was started with --lan. It stays disabled because a saved setting cannot open the shop network. To turn it on or off later, update the eznest startup task and restart. Choosing Shop network in the installer does that only on a fresh install.</p>
+    <p class="hint">Shop network access is configured when the app starts. This box only shows whether Ez Nest was started with --lan. It stays disabled because a saved setting cannot open the shop network. To turn it on or off later, update the <code>eznest</code> startup task and restart. Choosing Shop network in the installer does that only on a fresh install.</p>
     <p id="lan-note" class="lan-note" hidden>Shop computers need the shop PIN before they can nest or send. Anyone on the shop LAN can Send to ONYX after that PIN. Do not share this network with guest WiFi.</p>
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
@@ -268,7 +268,7 @@
 </section>
 
   <section id="illustrator-handoff" class="handoff" hidden>
-    <strong>Nest in eznest · Illustrator · Regular</strong>
+    <strong>Nest in Ez Nest · Illustrator · Regular</strong>
     <p id="illustrator-note">Your production copy is ready to load.</p>
     <button id="illustrator-load" class="primary" type="button">Load Illustrator selection</button>
     <p class="hint">Review the detected pieces before sending. Colors are preserved. No automatic bleed or color substitutions.</p>
@@ -351,8 +351,8 @@
     <div class="output-modes" aria-label="Where to print">
       <button id="in-house" class="nest-mode" type="button" aria-pressed="true">In-house</button>
       <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Learn about OUTPUT">
-        <strong>Don't print 🤑</strong>
-        <span class="paid-badge">Devnet sandbox</span>
+        <strong>Don't print</strong>
+        <span class="paid-badge">Preview · test only</span>
       </button>
     </div>
     <div class="effort-heading"><button id="effort-help" class="help-label" type="button">Nesting effort</button><span class="hint">More time may find a tighter fit.</span></div>
@@ -406,6 +406,7 @@
 </main>
 <dialog id="max-output-dialog" aria-labelledby="max-output-title">
   <div class="dialog-heading"><h2 id="max-output-title">Don't print</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <p>This is a test preview. No real jobs or payments are sent.</p>
   <p>OUTPUT routes the job to the best-fit print shop near you, based on what each shop can make.</p>
   <p>You still get paid.</p>
   <p class="output-when">Use it when</p>
@@ -525,7 +526,7 @@
 </dialog>
 <aside id="feedback-welcome" hidden aria-label="Welcome">
   <button id="feedback-dismiss" type="button" aria-label="Dismiss welcome">×</button>
-  <strong>Thanks for trying EZ Nest.</strong><p>Have an idea or hit a snag? We'd love your feedback.</p>
+  <strong>Thanks for trying Ez Nest.</strong><p>Have an idea or hit a snag? We'd love your feedback.</p>
 </aside>
 <div class="corner-actions">
 <details id="settings-support">
