@@ -31,6 +31,8 @@ let inventoryBusy = false;
 let inventoryGen = 0; // bumped on every inventory change so an older poll answer is ignored
 let presetEditor = null;
 let activeMaterial = 'white-gloss';
+// EZ46-7: OUTPUT's browser-approval endpoint is not live yet. Keep that entry closed.
+const OUTPUT_APPROVE_ENDPOINT_READY = false;
 const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'print-layout', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
 
 function status(message, failed) {
@@ -2637,8 +2639,6 @@ function renderOutputRequired(session) {
   showOutputRequired(session?.outputConnection?.ok === false);
   showOutputBanner(session);
 }
-// OUTPUT's browser-approval endpoint is not live yet. Keep that entry closed.
-const OUTPUT_APPROVE_ENDPOINT_READY = false;
 function setupSkipped() {
   try { return localStorage.getItem('eznest-setup-skipped') === '1'; }
   catch { return false; }
@@ -2688,11 +2688,12 @@ function beginShopSetup(button, waiting, match, note, error) {
     }, setupShopPollDelay(attempt));
   };
   button.onclick = async () => {
+    if (!OUTPUT_APPROVE_ENDPOINT_READY) return;
     if (error) error.textContent = '';
     button.disabled = true;
     const popup = window.open('', '_blank');
     try {
-      const body = await api('/api/telemetry/output/link/start', {});
+      const body = await api(OUTPUT_APPROVE_ENDPOINT_READY ? '/api/telemetry/output/link/start' : '', {});
       const approve = outputApproveUrl(body.approveUrl);
       if (!approve) throw Error('OUTPUT did not return a page on its own site.');
       match.textContent = body.userCode;

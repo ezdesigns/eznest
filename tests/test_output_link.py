@@ -152,6 +152,26 @@ class LinkApiTests(unittest.TestCase):
         self.assertEqual((status, body['state']), (200, 'cancelled'))
 
 
+class ApproveEndpointGateTests(unittest.TestCase):
+    """EZ46-7: browser approval stays closed until OUTPUT's endpoint is live."""
+
+    def test_flag_defaults_off_and_blocks_link_start(self):
+        js = (ROOT / 'web.js').read_text(encoding='utf-8')
+        self.assertIn('const OUTPUT_APPROVE_ENDPOINT_READY = false;', js)
+        handler = js.split('button.onclick = async () => {', 1)[1].split('const cancel', 1)[0]
+        guard = handler.index('if (!OUTPUT_APPROVE_ENDPOINT_READY) return;')
+        call = handler.index("OUTPUT_APPROVE_ENDPOINT_READY ? '/api/telemetry/output/link/start'")
+        self.assertLess(guard, call)
+        self.assertNotIn("api('/api/telemetry/output/link/start'", js)
+
+    def test_skip_is_stored_outside_session_storage(self):
+        js = (ROOT / 'web.js').read_text(encoding='utf-8')
+        self.assertIn("localStorage.getItem('eznest-setup-skipped')", js)
+        self.assertIn("localStorage.setItem('eznest-setup-skipped', '1')", js)
+        self.assertNotIn("sessionStorage.getItem('eznest-setup-skipped')", js)
+        self.assertNotIn("sessionStorage.setItem('eznest-setup-skipped'", js)
+
+
 class SetupCardCopyTests(unittest.TestCase):
     def test_card_wording_is_plain(self):
         html = (ROOT / 'web.html').read_text(encoding='utf-8')
