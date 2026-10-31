@@ -84,7 +84,7 @@ A request is accepted only when the Host header is this computer's own name or o
 
 ### OUTPUT connection
 
-The API does not require OUTPUT pairing for nesting, sending, or stock changes. Connection status is still computed by `output_gate.public_status` and returned in `/api/session`; the browser still shows the Connect screen when that status is not ready. Host, session, PIN, and host-only checks still apply. Pairing, disconnect, and check-in are host-only. The address allowlist is unchanged: `https://output.jeezlabs.io`, or the exact origin in `EZ_NEST_OUTPUT_URL`.
+The local API no longer requires an OUTPUT connection for nesting, sending, or stock changes. Connection status is still computed by `output_gate.public_status` and returned in `/api/session`. Until the skip path ships, the browser still shows the connect screen. Connecting to OUTPUT is optional. Host, session, PIN, and host-only checks still apply. Pairing, disconnect, and check-in are host-only. The address allowlist is unchanged: `https://output.jeezlabs.io`, or the exact origin in `EZ_NEST_OUTPUT_URL`.
 
 The pairing code and the shop credential are not logged, not put in source, and not returned to the browser. Check-in sends the app version only. The computer name and installation id go out once, at pairing. Customer artwork, filenames, and stock contents are not part of either request.
 
