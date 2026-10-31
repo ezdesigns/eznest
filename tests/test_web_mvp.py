@@ -209,13 +209,14 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.locator('#in-house').get_attribute('aria-pressed'), 'true')
                 expect(page.locator('#in-house')).to_have_text('In-house')
                 expect(page.locator('#max-output')).to_contain_text("Don't print")
-                self.assertEqual(page.locator('#max-output').get_attribute('aria-label'), "Don't print. Still get paid. Learn about OUTPUT")
+                self.assertEqual(page.locator('#max-output').get_attribute('aria-label'), "Don't print. Learn about OUTPUT")
                 self.assertEqual(page.locator('#max-output').get_attribute('aria-pressed'), 'false')
-                self.assertEqual(page.locator('#max-output').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(243, 251, 246)')
+                self.assertEqual(page.locator('#max-output').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(243, 243, 240)')
                 self.assertEqual(page.locator('#in-house').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(239, 245, 255)')
                 pill = page.locator('#max-output .paid-badge')
-                self.assertEqual(pill.inner_text(), 'Still get paid 🤑')
-                self.assertEqual(pill.evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(21, 128, 61)')
+                self.assertEqual(pill.inner_text(), 'Devnet sandbox')
+                self.assertIn('🤑', page.locator('#max-output').inner_text())
+                self.assertEqual(pill.evaluate('n => getComputedStyle(n).backgroundColor'), 'rgba(0, 0, 0, 0)')
                 self.assertNotEqual(pill.evaluate('n => getComputedStyle(n).color'), 'rgb(217, 47, 0)')
                 self.assertNotEqual(pill.evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(217, 47, 0)')
                 page.click('#max-output .paid-badge')
@@ -263,7 +264,8 @@ class WebMvpTests(unittest.TestCase):
                 self.assertLessEqual(box['x'] + box['width'], 390)
                 page.keyboard.press('Escape')
                 expect(page.locator('#max-output-dialog')).to_be_hidden()
-                self.assertEqual(page.locator('#in-house').get_attribute('aria-pressed'), 'true')
+                self.assertEqual(page.locator('#max-output').get_attribute('aria-pressed'), 'true')
+                self.assertEqual(page.locator('#in-house').get_attribute('aria-pressed'), 'false')
                 self.assertEqual(page.input_value('#nesting-effort'), effort)
                 self.assertEqual(json.load(urlopen(self.url() + '/api/state'))['id'], before['id'])
                 self.assertEqual(page.input_value('#sets'), '1')
@@ -378,9 +380,12 @@ class WebMvpTests(unittest.TestCase):
             page=browser.new_page(viewport={'width':1280,'height':900},accept_downloads=True)
             try:
                 page.goto(self.url()+'/web'); self.wait_ready(page)
+                expect(page.locator('#setup')).to_be_visible()
+                page.click('#setup-dismiss')
                 expect(page.locator('#setup')).to_be_hidden()
                 self.assertIsNone(server.OUTPUT.root)
                 page.click('#edit-material')
+                page.fill('#preset-name', 'Shop roll')
                 page.fill('#roll-length','1200'); page.fill('#roll-cost','300')
                 page.click('#save-material')
                 page.wait_for_function("() => !document.querySelector('#save-material').disabled")
@@ -716,7 +721,7 @@ class WebMvpTests(unittest.TestCase):
         page.goto(self.url() + '/web', wait_until='domcontentloaded')
         self.wait_ready(page)
         page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
-        self.assertEqual(page.locator('#material option:checked').inner_text(), 'Moto Regular')
+        self.assertEqual(page.locator('#material option:checked').inner_text(), 'Add your first material')
         self.assertEqual(page.input_value('#width'), '51.5')
         self.assertEqual(page.input_value('#nest-width'), '51.5')
         self.assertIn('on 51.5" wide', page.locator('#used-width').inner_text())
@@ -726,11 +731,10 @@ class WebMvpTests(unittest.TestCase):
         self.assertEqual(page.input_value('#auto-bleed'), '0')
         self.assertEqual(page.input_value('#thru-name'), 'CutContour_Thru-cut')
         self.assertEqual(page.input_value('#kiss-name'), 'CutContour_Kiss-cut')
-        self.assertEqual(page.input_value('#material'), 'white-gloss')
-        self.assertGreaterEqual(page.locator('#material option').count(), 4)
+        self.assertEqual(page.input_value('#material'), '')
+        self.assertEqual(page.locator('#material option').count(), 2)
+        self.assertEqual(page.locator('#material option[value="white-gloss"]').count(), 0)
         self.assertFalse(page.locator('#staging-on').is_checked())
-        self.assertEqual(page.locator('#material option[value="white-gloss"]').get_attribute('data-quickset'), 'Example RIP quick set')
-        self.assertEqual(page.locator('#material option[value="white-gloss"]').get_attribute('data-printer'), 'Example printer')
         self.assertFalse(page.locator('#draw-marks').is_checked())
         self.assertIn('Example RIP Input', page.locator('#settings').inner_text())
         page.select_option('#cut-preset', 'ln')
@@ -749,6 +753,7 @@ class WebMvpTests(unittest.TestCase):
             page.set_viewport_size({'width': 1280, 'height': 900})
         page.locator('#settings').evaluate('node => node.close()')
         page.click('#edit-material')
+        page.fill('#preset-name', 'Shop roll')
         page.select_option('#unit', 'mm')
         page.fill('#width', '220')
         page.locator('#material-advanced').evaluate('n => { n.open = true }')
@@ -1399,9 +1404,17 @@ class WebMvpTests(unittest.TestCase):
             try:
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
                 self.wait_ready(page)
-                page.select_option('#material','holographic')
+                if page.locator('#setup').is_visible():
+                    page.click('#setup-dismiss')
+                page.select_option('#material','custom')
                 page.locator('#material-dialog').wait_for(state='visible')
-                self.assertEqual(page.input_value('#preset-name'), 'Moto Holographic')
+                page.fill('#preset-name', 'Shop white')
+                page.click('#save-material')
+                page.wait_for_function("() => !document.querySelector('#save-material').disabled")
+                white = page.input_value('#material')
+                page.select_option('#material','custom')
+                page.locator('#material-dialog').wait_for(state='visible')
+                page.fill('#preset-name', 'Moto Holographic')
                 page.locator('#material-advanced').evaluate('n => { n.open = true }')
                 page.fill('#gap', '0.25')
                 page.locator('#material-advanced').evaluate('n => { n.open = true }')
@@ -1412,10 +1425,11 @@ class WebMvpTests(unittest.TestCase):
                 page.click('#save-material')
                 page.wait_for_function("() => !document.querySelector('#save-material').disabled")
                 self.assertTrue(page.locator('#preset-editor').is_hidden())
-                page.select_option('#material','white-gloss')
+                holo = page.input_value('#material')
+                page.select_option('#material', white)
                 self.assertEqual(page.input_value('#gap'), '0.12')
                 self.assertEqual(page.input_value('#available-length'), '')
-                page.select_option('#material','holographic')
+                page.select_option('#material', holo)
                 self.assertEqual(page.input_value('#gap'), '0.25')
                 self.assertEqual(page.input_value('#margin'), '0.3')
                 self.assertEqual(page.input_value('#available-length'), '1800')
@@ -1431,7 +1445,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertIn('wider than the roll', page.inner_text('#preset-error'))
                 page.click('#cancel-material')
                 self.assertEqual(page.input_value('#width'), '51.5')
-                self.assertEqual(page.input_value('#material'), 'holographic')
+                self.assertEqual(page.input_value('#material'), holo)
                 page.click('#edit-material')
                 page.fill('#width', '20')
                 page.locator('#material-dialog').get_by_role('button',name='About Printable width',exact=True).hover()
@@ -1709,6 +1723,107 @@ class WebMvpTests(unittest.TestCase):
                 self.assertIn(state['id'], artwork)
                 self.assertNotIn('barcode', artwork.casefold())
                 self.assertTrue(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
+            finally:
+                browser.close()
+
+
+    def test_setup_dismiss_is_remembered_on_this_computer(self):
+        from playwright.sync_api import sync_playwright
+        import shop_deploy
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+            try:
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                self.wait_ready(page)
+                self.assertTrue(page.locator('#setup').is_visible())
+                setup = page.locator('#setup').inner_text()
+                self.assertIn('One-time setup for this computer', setup)
+                self.assertIn('Where finished files are saved', setup)
+                self.assertIn('This PC runs ONYX', setup)
+                self.assertIn('Through-cut name', setup)
+                self.assertIn('Kiss-cut name', setup)
+                self.assertNotIn('Check your cut line names', setup)
+                box = page.locator('#setup').bounding_box()
+                panel = page.locator('.job-panel').bounding_box()
+                self.assertLessEqual(box['x'] + box['width'], panel['x'] + 2)
+                page.click('#setup-dismiss')
+                self.assertTrue(page.locator('#setup').is_hidden())
+                self.assertTrue(shop_deploy.load_shop(server.WORK)['setupDismissed'])
+                page.reload()
+                self.wait_ready(page)
+                self.assertTrue(page.locator('#setup').is_hidden())
+                self.assertEqual(page.locator('#material option:checked').inner_text(), 'Add your first material')
+                fresh = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+                fresh.goto(self.url() + '/web', wait_until='domcontentloaded')
+                self.wait_ready(fresh)
+                self.assertTrue(fresh.locator('#setup').is_hidden())
+                self.assertEqual(fresh.locator('#material option:checked').inner_text(), 'Add your first material')
+            finally:
+                browser.close()
+
+    def test_upgrade_keeps_a_reserved_default_roll_until_the_operator_picks(self):
+        from playwright.sync_api import sync_playwright
+        import material_inventory as inventory
+        profile = {
+            'preset-name': 'Moto Regular', 'unit': 'mm', 'width': '500', 'roll': '510',
+            'available-length': '1000', 'roll-length': '5000', 'gap': '2', 'margin': '5',
+            'mark-margin': '0', 'sheet': '1000', 'rotations': '0,90,180,270', 'auto-bleed': '0',
+            'bleed': '0', 'cost': '', 'roll-cost': '', 'low-stock': '200', 'print-layout': 'sections',
+        }
+        inventory.save(server.WORK, 'other-roll', dict(profile, **{'preset-name': 'Other roll'}), 0)
+        inventory.save(server.WORK, 'white-gloss', profile, 0)
+        inventory.reserve(server.WORK, 'white-gloss', 'job-old', 100, 500, 'legacy')
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+            try:
+                page.add_init_script("if (!localStorage.getItem('eznest-placeholders')) localStorage.setItem('eznest-placeholders', JSON.stringify({material:'white-gloss'}))")
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                self.wait_ready(page)
+                self.assertEqual(page.locator('#material option:checked').inner_text(), 'Pick a roll')
+                self.assertEqual(page.input_value('#material'), '')
+                self.assertEqual(page.locator('#material option[value="white-gloss"]').count(), 1)
+                reserved = inventory.read(server.WORK)['reservations']
+                self.assertEqual(reserved[0]['id'], 'job-old')
+                self.assertEqual(reserved[0]['material'], 'white-gloss')
+                self.assertEqual(reserved[0]['status'], 'reserved')
+                page.select_option('#material', 'white-gloss')
+                page.reload()
+                self.wait_ready(page)
+                self.assertEqual(page.input_value('#material'), 'white-gloss')
+                self.assertEqual(inventory.read(server.WORK)['reservations'][0]['status'], 'reserved')
+            finally:
+                browser.close()
+
+    def test_designer_pin_gate_explains_the_host_and_unlocks_when_set(self):
+        from playwright.sync_api import sync_playwright, expect
+        import json as json_lib
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 800}).new_page()
+            try:
+                state = {'configured': False}
+                def fulfill(route):
+                    route.fulfill(status=200, content_type='application/json', body=json_lib.dumps({
+                        'app': 'eznest', 'version': 'test', 'localPC': False, 'authenticated': False,
+                        'pinConfigured': state['configured'], 'pinWeak': False, 'localSave': False,
+                        'setupComplete': True, 'setupDismissed': True,
+                        'outputConnection': {'ok': True, 'state': 'ok', 'message': '', 'banner': None, 'devMode': False, 'canPair': False, 'canCheckIn': False},
+                    }))
+                page.route('**/api/session', fulfill)
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                expect(page.locator('#pin-gate')).to_be_visible()
+                expect(page.locator('#pin-input')).to_be_hidden()
+                expect(page.locator('#pin-submit')).to_be_hidden()
+                note = page.locator('#pin-note').inner_text()
+                self.assertIn('host PC', note)
+                self.assertIn('Settings', note)
+                self.assertIn('Shop PIN', note)
+                state['configured'] = True
+                expect(page.locator('#pin-input')).to_be_visible(timeout=5000)
+                expect(page.locator('#pin-submit')).to_be_visible()
+                expect(page.locator('#pin-note')).to_contain_text('Enter the shop PIN from the host PC')
             finally:
                 browser.close()
 

@@ -132,9 +132,8 @@ class ReadinessTests(unittest.TestCase):
                         page = browser.new_page(viewport={'width': 1100, 'height': 900})
                         page.goto(fixture.url() + '/web')
                         fixture.wait_ready(page)
-                        # No first-run card: defaults are saved, one quiet line points to Settings.
-                        self.assertFalse(page.locator('#setup').is_visible())
-                        page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                        # The one-time card stays until this computer saves or dismisses it.
+                        self.assertTrue(page.locator('#setup').is_visible())
                         self.assertFalse(page.locator('#cut-line-note').is_visible())
                         self.assertIn('kiss-cut', page.locator('#cut-line-note').text_content())
                         save = """([hot, thru, kiss]) => { $('setup-printer').value = 'Customer printer'; $('setup-hot').value = hot;
