@@ -20,6 +20,7 @@ import output_pairing
 import output_remote
 import telemetry
 import telemetry_sender
+import stock_output
 import material_inventory
 import macos_service_runtime
 import illustrator_bridge
@@ -188,6 +189,8 @@ def shop_status():
         'url': f'http://{name}:{PORT}/web',
         'warning': WARNING,
         'hotFolderDefault': default_hot_folder(saved['onyxPc']),
+        'shareStockSummary': saved['shareStockSummary'],
+        'showRollNames': saved['showRollNames'],
         **output_status(WORK),
     }
 
@@ -552,6 +555,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(409, {'error':'The checked Mac update is unavailable. Download it again.'})
         if path == '/api/shop':
             return self.send(200, shop_status())
+        if path == '/api/stock/output':
+            if not self.loopback_client():
+                return self.send(403, {'error': 'Open stock sharing on the shop computer.'})
+            names = parse_qs(urlparse(self.path).query).get('names', [None])[0]
+            if names not in (None, '', '0', '1'):
+                return self.send(400, {'error': 'Choose whether roll names are included.'})
+            override = None if names in (None, '') else names == '1'
+            try:
+                return self.send(200, stock_output.public_status(WORK, names=override))
+            except (OSError, sqlite3.Error):
+                return self.send(503, {'error': 'Shop inventory is unavailable. Check disk space and folder permissions.'})
         if path == '/api/materials':
             try:
                 return self.send(200, material_inventory.read(WORK))
@@ -796,6 +810,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Local session required for job tracking.'})
                 if not isinstance(data, dict):
                     raise ValueError('Supply a tracking request object.')
+                if path in ('/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel') and not output_remote.READY:
+                    return self.send(403, {'error': 'Browser approval is not available yet.'})
                 if path == '/api/telemetry/output/consent':
                     if set(data) != {'revision', 'version', 'configurationId', 'confirmed'}:
                         raise ValueError('Review and explicitly approve the sharing disclosure.')
@@ -989,17 +1005,25 @@ class Handler(BaseHTTPRequestHandler):
                 if data.get('shareStockSummary') is True and not output_remote.READY:
                     return self.send(403, {'error': 'Stock summaries cannot be shared until OUTPUT can receive them.'})
                 fields = {}
-                for key in ('channel', 'outputNetwork', 'setupComplete', 'setupDismissed', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl'):
+                if data.get('shareStockSummary') is True and not output_remote.READY:
+                    return self.send(403, {'error': 'Stock summaries cannot be shared until OUTPUT can receive them.'})
+                for key in ('channel', 'outputNetwork', 'setupComplete', 'setupDismissed', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl', 'shareStockSummary', 'showRollNames'):
                     if key in data:
                         fields[key] = data.get(key)
-                save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates, **fields)
+                before = current
+                after = save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates, **fields)
+                stock_output.apply_settings(WORK, before, after)
                 UPDATE_CHECK.clear()
                 UPDATE_WAKE.set()
                 return self.send(200, shop_status())
             if path == '/api/materials/save':
-                return self.send(200, material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision')))
+                saved = material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision'))
+                stock_output.note_change(WORK)
+                return self.send(200, saved)
             if path == '/api/materials/remove':
-                return self.send(200, material_inventory.remove(WORK, data.get('id'), data.get('revision')))
+                saved = material_inventory.remove(WORK, data.get('id'), data.get('revision'))
+                stock_output.note_change(WORK)
+                return self.send(200, saved)
             if path == '/api/materials/reserve':
                 with LOCK:
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
@@ -1013,9 +1037,13 @@ class Handler(BaseHTTPRequestHandler):
                             raise ValueError('Resolve the print-file checks before reserving material.')
                     result = STATE['result']
                     fingerprint = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
-                    return self.send(200, material_inventory.reserve(WORK, key, STATE['id'], result['usedLength'], result['width'], fingerprint))
+                    saved = material_inventory.reserve(WORK, key, STATE['id'], result['usedLength'], result['width'], fingerprint)
+                    stock_output.note_change(WORK)
+                    return self.send(200, saved)
             if path == '/api/materials/transition':
-                return self.send(200, material_inventory.transition(WORK, data.get('id'), data.get('action')))
+                saved = material_inventory.transition(WORK, data.get('id'), data.get('action'))
+                stock_output.note_change(WORK)
+                return self.send(200, saved)
             if path == '/api/update':
                 if macos_service_runtime.active():
                     if not self.loopback_client():
@@ -1293,6 +1321,8 @@ def serve(open_browser=False, page='/'):
     update_stop = threading.Event()
     sender_thread = threading.Thread(target=telemetry_sender.run, args=(WORK, update_stop, telemetry_paused), daemon=True)
     sender_thread.start()
+    stock_thread = threading.Thread(target=stock_output.run, args=(WORK, update_stop, telemetry_paused), daemon=True)
+    stock_thread.start()
     threading.Thread(target=output_gate.run, args=(WORK, update_stop), daemon=True).start()
     threading.Thread(target=check_updates, args=(update_stop,), daemon=True).start()
     if open_browser:
@@ -1311,6 +1341,7 @@ def serve(open_browser=False, page='/'):
         UPDATE_WAKE.set()
         service.server_close()
         sender_thread.join(timeout=12)
+        stock_thread.join(timeout=12)
 
 
 if __name__ == '__main__':

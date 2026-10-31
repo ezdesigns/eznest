@@ -374,6 +374,41 @@ class GateTests(unittest.TestCase):
         finally:
             helper.tearDown()
 
+    def test_skip_opens_inventory_when_browser_storage_is_unavailable(self):
+        from playwright.sync_api import expect, sync_playwright
+        import test_web_mvp
+        helper = test_web_mvp.WebMvpTests(methodName='runTest')
+        helper.setUp()
+        try:
+            with sync_playwright() as playwright:
+                browser = test_web_mvp.launch_browser(playwright)
+                try:
+                    page = browser.new_page()
+                    page.add_init_script("""(() => {
+                      for (const method of ['getItem', 'setItem']) {
+                        const original = Storage.prototype[method];
+                        Storage.prototype[method] = function(key, ...args) {
+                          if (key === 'eznest-setup-skipped') throw new DOMException('Storage blocked', 'SecurityError');
+                          return original.call(this, key, ...args);
+                        };
+                      }
+                    })();""")
+                    page.goto(helper.url() + '/web')
+                    page.wait_for_function("() => document.body.dataset.ready === '1'")
+                    expect(page.locator('#output-required')).to_be_visible()
+                    page.evaluate('window.skipVisit = true')
+                    page.click('#output-required-skip')
+                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
+                    self.assertTrue(page.evaluate('window.skipVisit === true'))
+                    page.click('#stock-open')
+                    expect(page.locator('#stock-add')).to_be_visible()
+                    page.click('#stock-add')
+                    expect(page.locator('#roll-f-name')).to_be_visible()
+                finally:
+                    browser.close()
+        finally:
+            helper.tearDown()
+
     def test_opt_out_requires_dev_mode_on_a_source_checkout(self):
         os.environ['EZ_NEST_OUTPUT_GATE_OPEN'] = '1'
         with patch('sys.argv', ['python', '-m', 'unittest', 'discover']):
