@@ -16,6 +16,7 @@ import ssl
 import workload
 import output_gate
 import output_pairing
+import output_remote
 import telemetry
 import telemetry_sender
 import stock_output
@@ -807,6 +808,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Local session required for job tracking.'})
                 if not isinstance(data, dict):
                     raise ValueError('Supply a tracking request object.')
+                if path in ('/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel') and not output_remote.READY:
+                    return self.send(403, {'error': 'Browser approval is not available yet.'})
                 if path == '/api/telemetry/output/consent':
                     if set(data) != {'revision', 'version', 'configurationId', 'confirmed'}:
                         raise ValueError('Review and explicitly approve the sharing disclosure.')
@@ -983,6 +986,8 @@ class Handler(BaseHTTPRequestHandler):
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
                 fields = {}
+                if data.get('shareStockSummary') is True and not output_remote.READY:
+                    return self.send(403, {'error': 'Stock summaries cannot be shared until OUTPUT can receive them.'})
                 for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl', 'shareStockSummary', 'showRollNames'):
                     if key in data:
                         fields[key] = data.get(key)

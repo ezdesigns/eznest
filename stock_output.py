@@ -17,6 +17,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 import material_inventory
+import output_remote
 import shop_deploy
 import telemetry
 import telemetry_sender
@@ -307,7 +308,7 @@ def _send(directory, method, payload, token, paused=lambda: False):
 
 def tick(directory, now=None, *, paused=lambda: False):
     """One scheduling step. Returns seconds until the next check."""
-    if paused():
+    if paused() or not output_remote.READY:
         return 30
     now = clock() if now is None else now
     token = _credential(directory)

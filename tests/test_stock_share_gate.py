@@ -20,6 +20,10 @@ class StockShareGateTest(unittest.TestCase):
         self.assertIn('shareStock.disabled = !hostComputer || !STOCK_SHARE_ENDPOINT_READY;', js)
         self.assertIn('stockShare.hidden = !STOCK_SHARE_ENDPOINT_READY;', js)
         self.assertRegex(js, r'shareStockSummary: STOCK_SHARE_ENDPOINT_READY &&')
+        server = (ROOT / 'server.py').read_text(encoding='utf-8')
+        self.assertIn('import output_remote', server)
+        self.assertIn("data.get('shareStockSummary') is True and not output_remote.READY", server)
+        self.assertIn('READY = False', (ROOT / 'output_remote.py').read_text(encoding='utf-8'))
 
 
 if __name__ == '__main__':

@@ -17,6 +17,7 @@ from unittest.mock import patch
 import opt_out  # noqa: F401
 import material_inventory as inventory
 import output_credential
+import output_remote
 import shop_auth
 import shop_deploy
 import stock_output
@@ -200,6 +201,9 @@ class DeliveryTests(unittest.TestCase):
         self.deliver = patch.object(stock_output, 'deliver', side_effect=deliver)
         self.deliver.start()
         self.addCleanup(self.deliver.stop)
+        self.ready = patch.object(output_remote, 'READY', True)
+        self.ready.start()
+        self.addCleanup(self.ready.stop)
         inventory.save(self.root, 'roll-a', profile(), 0)
         output_credential.save(self.root, TOKEN)
         shop_deploy.save_shop(self.root, False, False, shareStockSummary=True, showRollNames=True)
@@ -422,6 +426,26 @@ class TransportTests(unittest.TestCase):
         self.assertFalse(telemetry_sender._emit_stock('https://output.jeezlabs.io/api/shop/telemetry', {'schema': 'eznest-stock/1'}, TOKEN, 'PUT'))
 
 
+class RemoteEndpointOffTests(unittest.TestCase):
+    def test_paired_sharing_still_makes_no_output_request(self):
+        self.assertIs(output_remote.READY, False)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        inventory.save(root, 'roll-a', profile(), 0)
+        output_credential.save(root, TOKEN)
+        shop_deploy.save_shop(root, False, False, shareStockSummary=True, showRollNames=True)
+
+        def boom(*_args, **_kwargs):
+            raise AssertionError('network')
+
+        with patch.object(stock_output, 'deliver', side_effect=boom), \
+             patch('urllib.request.urlopen', side_effect=boom):
+            self.assertEqual(stock_output.tick(root, now=0), 30)
+            stock_output._sched(root)['delete_pending'] = True
+            self.assertEqual(stock_output.tick(root, now=0), 30)
+
+
 class SettingsTests(unittest.TestCase):
     def setUp(self):
         self.old = (server.WORK, server.HOST, server.PORT, server.LAN)
@@ -500,10 +524,29 @@ class SettingsTests(unittest.TestCase):
         self.assertIs(shop_deploy.load_shop(server.WORK)['showRollNames'], False)
         turned = self.handler('/api/shop', body=json.dumps({'onyxPc': False, 'lan': False, 'shareStockSummary': True, 'showRollNames': False}).encode())
         turned.handle_post()
-        self.assertEqual(turned.sent[0][0], 200)
-        self.assertIs(turned.sent[0][1]['shareStockSummary'], True)
-        self.assertIs(turned.sent[0][1]['showRollNames'], False)
-        self.assertIs(shop_deploy.load_shop(server.WORK)['shareStockSummary'], True)
+        self.assertEqual(turned.sent[0][0], 403)
+        self.assertIs(shop_deploy.load_shop(server.WORK)['shareStockSummary'], False)
+        self.assertIs(shop_deploy.load_shop(server.WORK)['showRollNames'], False)
+
+    def test_share_true_and_link_routes_are_rejected_without_calling_output(self):
+        self.assertIs(output_remote.READY, False)
+        calls = []
+
+        def boom(*args, **kwargs):
+            calls.append(args)
+            raise AssertionError('network')
+
+        with patch.object(stock_output, 'deliver', side_effect=boom), \
+             patch('urllib.request.build_opener', side_effect=boom):
+            denied = self.handler('/api/shop', body=json.dumps({'onyxPc': False, 'lan': False, 'shareStockSummary': True}).encode())
+            denied.handle_post()
+            self.assertEqual(denied.sent[0][0], 403)
+            self.assertIs(shop_deploy.load_shop(server.WORK)['shareStockSummary'], False)
+            for path in ('/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel'):
+                blocked = self.handler(path, body=b'{}')
+                blocked.handle_post()
+                self.assertEqual(blocked.sent[0][0], 403, path)
+        self.assertEqual(calls, [])
 
 
 class ScreenTests(unittest.TestCase):
