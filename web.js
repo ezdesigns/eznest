@@ -31,6 +31,8 @@ let inventoryBusy = false;
 let inventoryGen = 0; // bumped on every inventory change so an older poll answer is ignored
 let presetEditor = null;
 let activeMaterial = 'white-gloss';
+// EZ39-9: OUTPUT has no stock-summary receiving endpoint yet; keep sharing off until it ships.
+const STOCK_SHARE_ENDPOINT_READY = false;
 const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'print-layout', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
 
 function status(message, failed) {
@@ -2000,9 +2002,9 @@ function applyShop(shop) {
   const shareStock = $('share-stock-summary');
   const showNames = $('show-roll-names');
   if (shareStock && showNames) {
-    shareStock.checked = shop.shareStockSummary === true;
+    shareStock.checked = STOCK_SHARE_ENDPOINT_READY && shop.shareStockSummary === true;
     showNames.checked = shop.showRollNames !== false;
-    shareStock.disabled = !hostComputer;
+    shareStock.disabled = !hostComputer || !STOCK_SHARE_ENDPOINT_READY;
     showNames.disabled = !hostComputer;
   }
   if (shop.outputNote) $('output-note').textContent = shop.outputNote;
@@ -2105,7 +2107,7 @@ function shopPayload(extra) {
     updates: $('updates').checked,
     channel: $('test-channel').checked ? 'test' : 'stable',
     outputNetwork: $('output-network').checked,
-    shareStockSummary: $('share-stock-summary') ? $('share-stock-summary').checked : false,
+    shareStockSummary: STOCK_SHARE_ENDPOINT_READY && $('share-stock-summary') ? $('share-stock-summary').checked : false,
     showRollNames: $('show-roll-names') ? $('show-roll-names').checked : true
   }, extra || {});
   const outputUrl = outputUrlField();
