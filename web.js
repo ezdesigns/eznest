@@ -30,7 +30,7 @@ let inventoryReady = false;
 let inventoryBusy = false;
 let inventoryGen = 0; // bumped on every inventory change so an older poll answer is ignored
 let presetEditor = null;
-let activeMaterial = 'white-gloss';
+let activeMaterial = '';
 const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'print-layout', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
 
 function status(message, failed) {
@@ -85,6 +85,7 @@ function installSettingsHelp() {
     'draw-marks': ['Add cutter marks', 'Draws registration marks in the output. Leave off if ONYX adds its own marks, so you do not get two sets.']
   };
   for (const [setup, main] of Object.entries({'setup-hot': 'hot-folder', 'setup-onyx': 'onyx-pc', 'setup-printer': 'printer', 'setup-thru': 'thru-name', 'setup-kiss': 'kiss-name', 'setup-units': 'unit'})) help[setup] = help[main];
+  help['setup-hot'] = ['Where finished files are saved', 'This is the folder used when you save. You can pick a different folder for each job.'];
   const tip = document.createElement('div');
   tip.id = 'setting-help'; tip.className = 'setting-help'; tip.role = 'tooltip'; tip.hidden = true;
   document.body.append(tip);
@@ -1693,14 +1694,39 @@ function stagingPath() {
   return $('staging-folder').value.trim();
 }
 
+function legacyRollUnconfirmed() {
+  const stored = prefs();
+  return stored.material === 'white-gloss' && stored.materialPicked !== true;
+}
+
+function syncMaterialChoice() {
+  // An empty choice stays empty. The operator picks a roll; the first saved roll is not assumed.
+  if (legacyRollUnconfirmed() && $('material').value === 'white-gloss') $('material').value = '';
+  return false;
+}
+
 function renderMaterialButtons() {
+  if (syncMaterialChoice()) return;
   const selected = $('material').value;
   $('material').disabled = !!illustratorHandoff || !!presetEditor || busy || saving || document.body.dataset.step === 'confirm';
   for (const option of $('material').options) {
-    option.hidden = !!illustratorHandoff && option.value !== 'white-gloss';
     const stock = lowStock(materialProfiles[option.value]);
     option.textContent = (option.dataset.name || option.textContent.split(' · ')[0]) + (stock ? ' · ' + stock.split(' · ')[0] : '');
   }
+  const prompt = [...$('material').options].find(option => option.value === '');
+  const saved = [...$('material').options].filter(option => option.value && option.value !== 'custom');
+  const picked = !!materialProfiles[selected];
+  if (prompt) {
+    if (!saved.length) {
+      prompt.hidden = false;
+      prompt.textContent = 'Add your first material';
+    } else if (!picked || legacyRollUnconfirmed()) {
+      prompt.hidden = false;
+      prompt.textContent = 'Pick a roll';
+      if (!picked) $('material').value = '';
+    } else prompt.hidden = true;
+  }
+  if ($('edit-material')) $('edit-material').textContent = picked ? 'Edit' : 'Add';
   const box = $('materials');
   box.replaceChildren();
   const stock = lowStock(materialProfiles[selected]);
@@ -1771,7 +1797,6 @@ function registerMaterial(id, values) {
 }
 
 function loadMaterialProfiles(stored) {
-  registerMaterial('white-gloss', materialValues());
   const hiddenLegacy = (id, values) => id === 'moto' || values['preset-name'] === 'Design PC test roll';
   const renamed = (id, values) => ({...values, 'preset-name': id === 'holographic' && values['preset-name'] === 'Holographic' ? 'Moto Holographic' : id === 'chrome' && values['preset-name'] === 'Chrome' ? 'Moto Chrome' : values['preset-name']});
   for (const [id, saved] of Object.entries(stored.presets || {})) {
@@ -1790,14 +1815,16 @@ function loadMaterialProfiles(stored) {
 
 function chooseMaterial(id) {
   if (busy || saving || presetEditor || document.body.dataset.step === 'confirm') return;
-  if (id === activeMaterial && materialProfiles[id]) return;
-  if (id === 'custom' || !materialProfiles[id]) { openPreset(id); return; }
+  if (id && id === activeMaterial && materialProfiles[id]) return;
+  if (!id || id === 'custom' || !materialProfiles[id]) { openPreset(!id || id === 'custom' ? 'custom' : id); return; }
   $('material').value = id;
+  savePrefs({material: id, materialPicked: true});
   applyMaterial();
   requestNest();
 }
 
 async function openPreset(id) {
+  if (!id) id = 'custom';
   if (busy || saving || presetEditor || illustratorHandoff || document.body.dataset.step === 'confirm') return;
   await refreshInventory().catch(() => {});
   if (presetEditor || busy || saving) return;
@@ -1976,7 +2003,7 @@ function showRestart(shop) {
   const note = $('lan-restart');
   if (shop && shop.lanWaiting) {
     note.hidden = false;
-    note.textContent = 'Shop network is waiting for a shop PIN. Set the PIN on this computer, then restart eznest.';
+    note.textContent = 'Shop network is waiting for a shop PIN. Set the PIN on this computer, then restart Ez Nest.';
     return;
   }
   if (!shop || !shop.restart) {
@@ -1985,7 +2012,7 @@ function showRestart(shop) {
     return;
   }
   note.hidden = false;
-  note.textContent = 'Shop network requires starting eznest with --lan.';
+  note.textContent = 'Shop network requires starting Ez Nest with --lan.';
 }
 
 function applyShop(shop) {
@@ -2026,23 +2053,18 @@ function reportLink(shop) {
 
 function showSetup(shop) {
   const panel = $('setup');
-  if (!shop || shop.setupComplete) {
+  if (!shop || shop.setupComplete || shop.setupDismissed) {
     panel.hidden = true;
     return;
   }
-  // First run: no setup card. Save the prefilled defaults; every field stays in Settings.
-  panel.hidden = true;
+  panel.hidden = false;
   if (!$('setup-thru').value) $('setup-thru').value = $('thru-name').value;
   if (!$('setup-kiss').value) $('setup-kiss').value = $('kiss-name').value;
   $('setup-units').value = $('unit').value || 'in';
   if (shop.hotFolder && !$('setup-hot').value) $('setup-hot').value = shop.hotFolder;
   if (shop.printer && !$('setup-printer').value) $('setup-printer').value = shop.printer;
   $('setup-onyx').checked = $('onyx-pc').checked;
-  if (shop.localPC === false || setupSaving) return;
-  setupSaving = true;
-  saveSetup(shop).catch(() => {}).finally(() => { setupSaving = false; renderCutLineNote(); });
 }
-let setupSaving = false;
 function renderCutLineNote() {
   const short = name => String(name || '').replace(/^CutContour_/i, '') || 'not set';
   $('cut-line-names').textContent = short($('thru-name').value) + ', ' + short($('kiss-name').value);
@@ -2060,34 +2082,39 @@ function applyEzPreset(shop) {
 }
 
 async function saveSetup(shop) {
-  const previous = $('unit').dataset.current || $('unit').value;
-  $('unit').value = $('setup-units').value;
-  if ($('unit').value !== previous) convertUnit($('unit').value);
-  $('thru-name').value = $('setup-thru').value.trim();
-  $('kiss-name').value = $('setup-kiss').value.trim();
-  matchCutPreset();
-  $('printer').value = $('setup-printer').value.trim();
-  $('onyx-pc').checked = $('setup-onyx').checked;
-  $('hot-folder').value = $('setup-hot').value.trim();
-  const result = await api('/api/setup', shopPayload({
-    setupComplete: true,
-    printer: $('printer').value,
-    units: $('unit').value,
-    thru: $('thru-name').value,
-    kiss: $('kiss-name').value,
-    hotFolder: $('hot-folder').value
-  }));
-  applyShop(result);
-  saveShop();
-  if ($('hot-folder').value.trim()) await saveHotFolder();
-  else $('hot-error').hidden = true;
-  if ($('hot-error').hidden) {
+  try {
+    const previous = $('unit').dataset.current || $('unit').value;
+    $('unit').value = $('setup-units').value;
+    if ($('unit').value !== previous) convertUnit($('unit').value);
+    $('thru-name').value = $('setup-thru').value.trim();
+    $('kiss-name').value = $('setup-kiss').value.trim();
+    matchCutPreset();
+    $('printer').value = $('setup-printer').value.trim();
+    $('onyx-pc').checked = $('setup-onyx').checked;
+    $('hot-folder').value = $('setup-hot').value.trim();
+    const result = await api('/api/setup', shopPayload({
+      setupComplete: true,
+      printer: $('printer').value,
+      units: $('unit').value,
+      thru: $('thru-name').value,
+      kiss: $('kiss-name').value,
+      hotFolder: $('hot-folder').value
+    }));
+    applyShop(result);
+    saveShop();
+    try {
+      if ($('hot-folder').value.trim()) await saveHotFolder();
+      else $('hot-error').hidden = true;
+    } catch (error) {
+      $('hot-error').hidden = false;
+      $('hot-error').textContent = error.message;
+    }
+  } finally {
+    // A folder problem is reported in Settings. The card does not stay over the job.
     $('setup').hidden = true;
     $('setup-error').hidden = true;
-  } else {
-    // A bad saved folder is reported in Settings; it never blocks nesting.
-    $('setup').hidden = true;
   }
+  await autoLoadIllustrator();
 }
 
 function shopPayload(extra) {
@@ -2111,8 +2138,8 @@ async function saveDeploy() {
     kiss: $('kiss-name').value.trim()
   }));
   applyShop(result);
-  if (result.restart && result.lan) status('Restart eznest to open the shop network.');
-  else if (result.restart) status('Shop network turns off after you restart eznest.');
+  if (result.restart && result.lan) status('Restart Ez Nest to open the shop network.');
+  else if (result.restart) status('Shop network turns off after you restart Ez Nest.');
 }
 
 async function saveHotFolder() {
@@ -2452,15 +2479,20 @@ function restoreJob(state) {
 }
 
 let outputSharing = null;
+let reconnectOpen = false;
+let lastCheckInText = '';
 function renderOutputSharing(info) {
   outputSharing = info;
   const source = info.connection;
   const paired = source === 'paired';
   const launch = source === 'environment' || source === 'environment-invalid';
+  const connected = paired || launch;
   $('output-connect-shop').hidden = !paired;
   $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
-  $('output-pair-form').hidden = paired || launch || source === 'disabled';
+  $('output-pair-form').hidden = (paired && !reconnectOpen) || launch || source === 'disabled';
   $('output-disconnect').hidden = !paired;
+  $('output-reconnect').hidden = !paired || info.paused;
+  $('output-check-now').hidden = !connected || info.paused;
   $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
   $('output-disconnect').disabled = !paired || info.paused;
   const connectStatus = $('output-connect-status');
@@ -2468,9 +2500,9 @@ function renderOutputSharing(info) {
   if (info.paused) connectStatus.textContent = 'Sharing is paused during installation or recovery.';
   else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.';
   else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
-  else if (paired && info.requiresConsent) connectStatus.textContent = 'Review the sharing details below, then choose Enable sharing.';
-  else if (paired) connectStatus.textContent = '';
-  else connectStatus.textContent = 'Not connected. Nesting, saving, and stock work without OUTPUT.';
+  else if (paired && reconnectOpen) connectStatus.textContent = 'Paste a new pairing code. This computer stays connected until that code is accepted.';
+  else if (paired) connectStatus.textContent = [lastCheckInText || 'Choose Check now to confirm the last check-in.', info.requiresConsent ? 'Review the sharing details below, then choose Enable sharing.' : ''].filter(Boolean).join(' ');
+  else connectStatus.textContent = 'This computer is not connected. Paste a pairing code from OUTPUT.';
   $('telemetry-agree').checked = false;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
   $('telemetry-enable').disabled = true;
@@ -2515,6 +2547,7 @@ async function connectOutput() {
       throw failure;
     }
     input.value = '';
+    reconnectOpen = false;
     renderOutputSharing(body);
     refreshOutputLink().catch(() => {});
     if (body.requiresConsent && !$('telemetry-agree').disabled) $('telemetry-agree').focus();
@@ -2598,8 +2631,9 @@ async function boot() {
     return;
   }
   await refreshInventory().catch(() => {});
-  if (inventoryReady && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
+  if (inventoryReady && !legacyRollUnconfirmed() && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
   if (inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) applyMaterial(true);
+  renderMaterialButtons();
   try {
     const folder = await fetchJson('/api/output', 5000);
     if (folder.path) $('hot-folder').value = folder.path;
@@ -2708,13 +2742,64 @@ function requireShopPin(session) {
   const error = $('pin-error');
   error.hidden = true;
   error.textContent = '';
+  const pinLabel = input.closest('label');
+  function showPinEntry(next) {
+    note.textContent = next && next.pinWeak
+      ? 'This PIN still works. The shop computer must replace it. You can keep nesting until then. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.'
+      : 'Enter the shop PIN from the host PC. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.';
+    if (pinLabel) pinLabel.hidden = false;
+    input.hidden = false;
+    submit.hidden = false;
+    submit.disabled = false;
+    input.focus();
+  }
   if (!session.pinConfigured) {
-    note.textContent = 'Ask the person at the shop computer to set a PIN, then refresh this page.';
+    note.textContent = 'Set the shop PIN on the host PC. Open Settings on that computer and choose Shop PIN. This page updates on its own when the PIN is saved.';
+    if (pinLabel) pinLabel.hidden = true;
     input.hidden = true;
     submit.hidden = true;
     gate.showModal();
-    return new Promise(() => {});
+    let waiting = 0;
+    const watch = () => {
+      waiting = setTimeout(async () => {
+        try {
+          const next = await fetchJson('/api/session', 4000);
+          if (next.pinConfigured) {
+            showPinEntry(next);
+            return;
+          }
+        } catch { /* The host may still be saving the PIN. */ }
+        watch();
+      }, 1500);
+    };
+    watch();
+    return new Promise(resolve => {
+      $('pin-form').onsubmit = async event => {
+        event.preventDefault();
+        if (input.hidden) return;
+        clearTimeout(waiting);
+        submit.disabled = true;
+        try {
+          const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pin: input.value})
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) throw Error(body.error || 'Could not sign in.');
+          input.value = '';
+          gate.close();
+          resolve();
+        } catch (err) {
+          error.hidden = false;
+          error.textContent = err.message;
+          submit.disabled = false;
+          watch();
+        }
+      };
+    });
   }
+  if (pinLabel) pinLabel.hidden = false;
   note.textContent = session.pinWeak
     ? 'This PIN still works. The shop computer must replace it. You can keep nesting until then. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.'
     : 'Enter the shop PIN or passphrase from the computer that runs Ez Nest. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.';
@@ -2911,14 +2996,9 @@ async function loadIllustrator() {
   const data = await response.json();
   if (!response.ok) throw Error(data.error);
   nextKit();
-  $('material').value = 'white-gloss';
-  const regular = $('material').selectedOptions[0];
-  regular.dataset.name = 'Regular';
-  regular.dataset.width = data.widthIn;
-  regular.dataset.roll = Math.max(54, data.widthIn);
-  regular.textContent = 'Regular';
-  applyMaterial(true);
+  // Loading a production copy does not create a Regular roll.
   $('nest-width').value = data.widthIn;
+  $('width').value = data.widthIn;
   $('sets').value = data.sets;
   $('bleed').value = data.bleedMm;
   $('auto-bleed').value = '0';
@@ -2961,7 +3041,7 @@ function showUpdate(info) {
   $('settings-open').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
   if (info?.managedSupported && info?.staged && !info.localPC) {
     note.hidden = false;
-    note.textContent = 'The update is ready. Approve installation on the PC running eznest.';
+    note.textContent = 'The update is ready. Approve installation on the PC running Ez Nest.';
     $('update').disabled = true;
     return;
   }
@@ -3070,7 +3150,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     watchChoices.observe($('layout-options'));
   }
+  function selectOutputMode(id) {
+    for (const button of [$('in-house'), $('max-output')]) {
+      const on = button.id === id;
+      button.classList.toggle('nest-mode', on);
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  }
   $('max-output').addEventListener('click', () => {
+    selectOutputMode('max-output');
     const dialog = $('max-output-dialog');
     if (!dialog.open) dialog.showModal();
     $('max-output-close').focus();
@@ -3197,12 +3285,39 @@ document.addEventListener('DOMContentLoaded', () => {
   $('test-channel').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('output-network').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('printer').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  $('setup-dismiss').addEventListener('click', async () => {
+    $('setup').hidden = true;
+    try { applyShop(await api('/api/shop', shopPayload({setupDismissed: true}))); }
+    catch (error) {
+      $('setup').hidden = false;
+      status(error.message, true);
+    }
+  });
+  $('output-check-now').addEventListener('click', async () => {
+    $('output-check-now').disabled = true;
+    try {
+      await api('/api/telemetry/output/check-in', {});
+      const session = await fetchJson('/api/session', 5000);
+      lastCheckInText = 'Last check-in ' + (agoText(session.outputLink && session.outputLink.secondsSinceCheckIn) || 'just now') + '.';
+      renderOutputLink(session.outputLink, session.localPC);
+      await refreshOutputSharing();
+    } catch (error) {
+      $('output-connect-status').textContent = error.message;
+      $('output-connect-status').classList.add('error');
+    }
+    $('output-check-now').disabled = false;
+  });
+  $('output-reconnect').addEventListener('click', () => {
+    reconnectOpen = true;
+    if (outputSharing) renderOutputSharing(outputSharing);
+    $('output-pair-code').focus();
+  });
   $('setup-preset').addEventListener('click', async () => {
     try { applyEzPreset(await (await fetch('/api/shop')).json()); }
     catch (error) { status(error.message, true); }
   });
   $('setup-save').addEventListener('click', async () => {
-    try { await saveSetup(); await autoLoadIllustrator(); }
+    try { await saveSetup(); }
     catch (error) {
       $('setup-error').hidden = false;
       $('setup-error').textContent = error.message;
@@ -3235,7 +3350,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (error) {
       const offline = /Failed to fetch|NetworkError/i.test(String(error.message || error));
       if (installNow && offline) {
-        status('eznest is restarting to install the update.');
+        status('Ez Nest is restarting to install the update.');
         return;
       }
       status(error.message, true);
@@ -3259,7 +3374,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch {
       if (updateWasQueued) {
         $('update-note').hidden = false;
-        $('update-note').textContent = 'Installing the update. This page will reconnect when eznest is ready.';
+        $('update-note').textContent = 'Installing the update. This page will reconnect when Ez Nest is ready.';
       }
     }
   }, 5000);
@@ -3284,7 +3399,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dismissWelcome = () => { $('feedback-welcome').hidden = true; savePrefs({feedbackWelcomed: true}); };
   syncWelcome();
   $('feedback-dismiss').addEventListener('click', dismissWelcome);
-  $('in-house').addEventListener('click', () => $('nesting-effort').focus());
+  $('in-house').addEventListener('click', () => { selectOutputMode('in-house'); $('nesting-effort').focus(); });
   $('start-nesting').addEventListener('click', () => { dismissWelcome(); nest(); });
   $('feedback-open').addEventListener('click', () => {
     dismissWelcome();

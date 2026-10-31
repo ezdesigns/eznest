@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>eznest</title>
+<title>Ez Nest</title>
 <link rel="stylesheet" href="/web.css">
 </head>
 <body data-step="drop">
 <header class="shop-header">
-  <strong>eznest</strong>
+  <strong>Ez Nest</strong>
   <button id="logout" type="button" class="link" hidden>Log out</button>
 </header>
 <dialog id="pin-gate" aria-labelledby="pin-title">
@@ -22,37 +22,6 @@
     <p id="pin-error" class="lan-note" hidden></p>
   </form>
 </dialog>
-<section id="setup" hidden>
-  <h2>Ready to nest</h2>
-  <p class="hint">Check your cut line names. Printer and default folder are optional; you can choose where to save each finished file.</p>
-  <div class="fields">
-    <label class="wide">Hot folder
-      <input id="setup-hot" type="text" maxlength="400" placeholder="Optional — choose where to save later" autocomplete="off" spellcheck="false">
-    </label>
-    <label class="check wide"><input id="setup-onyx" type="checkbox"> This PC holds the hot folder</label>
-    <label class="wide">Printer
-      <input id="setup-printer" type="text" maxlength="80" autocomplete="off">
-    </label>
-    <label>Thru spot
-      <input id="setup-thru" type="text" maxlength="80" spellcheck="false" autocomplete="off">
-    </label>
-    <label>Kiss spot
-      <input id="setup-kiss" type="text" maxlength="80" spellcheck="false" autocomplete="off">
-    </label>
-    <label>Units
-      <select id="setup-units">
-        <option value="in">Inches</option>
-        <option value="mm">Millimeters</option>
-        <option value="cm">Centimeters</option>
-      </select>
-    </label>
-  </div>
-  <div class="setup-actions">
-    <button id="setup-preset" type="button" class="link">Use Example shop preset</button>
-    <button id="setup-save" type="button" class="primary">Start nesting</button>
-  </div>
-  <p id="setup-error" class="lan-note" hidden></p>
-</section>
 <div id="output-required" class="output-required" role="status" hidden>
   <p><strong id="output-required-title">Connect to OUTPUT to start nesting</strong> <span id="output-required-note" class="hint"></span></p>
   <button id="output-required-connect" type="button" class="primary">Connect</button>
@@ -160,7 +129,7 @@
     <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
     <div id="lan-access" hidden>
     <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
-    <p class="hint">Shop network access is configured when the app starts. This box only shows whether Ez Nest was started with --lan. It stays disabled because a saved setting cannot open the shop network. To turn it on or off later, update the eznest startup task and restart. Choosing Shop network in the installer does that only on a fresh install.</p>
+    <p class="hint">Shop network access is configured when the app starts. This box only shows whether Ez Nest was started with --lan. It stays disabled because a saved setting cannot open the shop network. To turn it on or off later, update the <code>eznest</code> startup task and restart. Choosing Shop network in the installer does that only on a fresh install.</p>
     <p id="lan-note" class="lan-note" hidden>Shop computers need the shop PIN before they can nest or send. Anyone on the shop LAN can Send to ONYX after that PIN. Do not share this network with guest WiFi.</p>
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
@@ -170,15 +139,19 @@
       <summary>Share activity with OUTPUT</summary>
       <div id="output-connect">
         <h3>Connect to OUTPUT</h3>
-        <p id="output-connect-shop" hidden></p>
+        <p id="output-connect-shop" class="connect-success" role="status" hidden></p>
+        <div class="connect-status-row">
+          <p id="output-connect-status" role="status" aria-live="polite"></p>
+          <button id="output-check-now" class="link" type="button" hidden>Check now</button>
+        </div>
+        <button id="output-reconnect" class="link" type="button" hidden>Reconnect with a new code</button>
         <div id="output-pair-form">
           <label>Pairing code
             <input id="output-pair-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="text" aria-describedby="output-connect-status">
           </label>
-          <button id="output-pair" type="button" disabled>Connect</button>
+          <button id="output-pair" class="primary" type="button" disabled>Connect</button>
         </div>
-        <button id="output-disconnect" type="button" hidden>Disconnect</button>
-        <p id="output-connect-status" role="status" aria-live="polite"></p>
+        <button id="output-disconnect" class="link" type="button" hidden>Disconnect</button>
       </div>
       <h3>What OUTPUT sees</h3>
       <p>Connecting to OUTPUT is optional. Nesting, saving, and stock work without it. The connection is separate from sharing activity.</p>
@@ -253,9 +226,49 @@
 <main>
   <div class="workspace-grid">
   <section class="canvas-area" aria-label="Layout">
+<section id="setup" hidden>
+  <div class="setup-heading">
+    <div>
+      <h2>Set up this PC</h2>
+      <p class="hint">One-time setup for this computer. Check these, then click Start.</p>
+    </div>
+    <button id="setup-dismiss" type="button" class="dialog-close" aria-label="Dismiss setup">×</button>
+  </div>
+  <div class="fields">
+    <label class="wide">Where finished files are saved
+      <input id="setup-hot" type="text" maxlength="400" placeholder="Optional — choose a folder later" autocomplete="off" spellcheck="false">
+      <span class="hint">This is the folder used when you save. You can pick a different folder for each job.</span>
+    </label>
+    <label class="check wide"><input id="setup-onyx" type="checkbox"> This PC runs ONYX</label>
+    <p class="hint setup-note">Turn this on only if ONYX is installed on this computer. It changes the suggested folder.</p>
+    <label class="wide">Printer label (optional)
+      <input id="setup-printer" type="text" maxlength="80" autocomplete="off">
+      <span class="hint">A name for your notes. It does not connect a printer.</span>
+    </label>
+    <label>Through-cut name
+      <input id="setup-thru" type="text" maxlength="80" spellcheck="false" autocomplete="off">
+    </label>
+    <label>Kiss-cut name
+      <input id="setup-kiss" type="text" maxlength="80" spellcheck="false" autocomplete="off">
+    </label>
+    <p class="hint setup-note">Type these exactly as your design software names the through-cut and kiss-cut lines.</p>
+    <label>Units
+      <select id="setup-units">
+        <option value="in">Inches</option>
+        <option value="mm">Millimeters</option>
+        <option value="cm">Centimeters</option>
+      </select>
+    </label>
+  </div>
+  <div class="setup-actions">
+    <button id="setup-preset" type="button" class="link">Use Example shop preset</button>
+    <button id="setup-save" type="button" class="primary">Start nesting</button>
+  </div>
+  <p id="setup-error" class="lan-note" hidden></p>
+</section>
 
   <section id="illustrator-handoff" class="handoff" hidden>
-    <strong>Nest in eznest · Illustrator · Regular</strong>
+    <strong>Nest in Ez Nest · Illustrator · Regular</strong>
     <p id="illustrator-note">Your production copy is ready to load.</p>
     <button id="illustrator-load" class="primary" type="button">Load Illustrator selection</button>
     <p class="hint">Review the detected pieces before sending. Colors are preserved. No automatic bleed or color substitutions.</p>
@@ -320,9 +333,7 @@
     <div class="material-heading"><label for="material"><span class="step-number">2</span> Choose material</label><button id="edit-material" class="link" type="button">Edit</button></div>
     <p class="hint step-hint">Use the roll you plan to print on.</p>
     <select id="material" aria-label="Material">
-      <option value="white-gloss" data-name="Moto Regular" data-width="51.5" data-roll="54" data-unit="in" data-printer="Example printer" data-quickset="Example RIP quick set" selected>Moto Regular</option>
-      <option value="holographic" data-name="Moto Holographic">Moto Holographic</option>
-      <option value="chrome" data-name="Moto Chrome">Moto Chrome</option>
+      <option value="" selected>Add your first material</option>
       <option value="custom">+ Add material</option>
     </select>
     <div id="materials" aria-live="polite"></div>
@@ -339,9 +350,9 @@
     <h2><span class="step-number">3</span> Where will you print?</h2>
     <div class="output-modes" aria-label="Where to print">
       <button id="in-house" class="nest-mode" type="button" aria-pressed="true">In-house</button>
-      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Still get paid. Learn about OUTPUT">
+      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Learn about OUTPUT">
         <strong>Don't print</strong>
-        <span class="paid-badge">Still get paid <span class="paid-emoji">🤑</span></span>
+        <span class="paid-badge">Preview · test only</span>
       </button>
     </div>
     <div class="effort-heading"><button id="effort-help" class="help-label" type="button">Nesting effort</button><span class="hint">More time may find a tighter fit.</span></div>
@@ -395,6 +406,7 @@
 </main>
 <dialog id="max-output-dialog" aria-labelledby="max-output-title">
   <div class="dialog-heading"><h2 id="max-output-title">Don't print</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <p>This is a test preview. No real jobs or payments are sent.</p>
   <p>OUTPUT routes the job to the best-fit print shop near you, based on what each shop can make.</p>
   <p>You still get paid.</p>
   <p class="output-when">Use it when</p>
@@ -514,7 +526,7 @@
 </dialog>
 <aside id="feedback-welcome" hidden aria-label="Welcome">
   <button id="feedback-dismiss" type="button" aria-label="Dismiss welcome">×</button>
-  <strong>Thanks for trying EZ Nest.</strong><p>Have an idea or hit a snag? We'd love your feedback.</p>
+  <strong>Thanks for trying Ez Nest.</strong><p>Have an idea or hit a snag? We'd love your feedback.</p>
 </aside>
 <div class="corner-actions">
 <details id="settings-support">

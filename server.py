@@ -169,6 +169,7 @@ def shop_status():
         'outputNote': OUTPUT_NOTE,
         'outputShare': output_network_status(saved),
         'setupComplete': saved['setupComplete'],
+        'setupDismissed': saved['setupDismissed'],
         'printer': saved['printer'],
         'units': saved['units'],
         'thru': saved['thru'],
@@ -888,7 +889,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {'path': target, 'cancelled': target is None})
             if path == '/api/export/folders':
                 if not self.loopback_client():
-                    return self.send(403, {'error': 'Browse folders on the PC running eznest.'})
+                    return self.send(403, {'error': 'Browse folders on the PC running Ez Nest.'})
                 return self.send(200, print_export.browse_folders(data.get('path'), OUTPUT.root))
             if path == '/api/export/save':
                 with LOCK:
@@ -902,7 +903,7 @@ class Handler(BaseHTTPRequestHandler):
                 expected = data.get('replaceSha256')
                 if mode == 'choose':
                     if not self.loopback_client():
-                        return self.send(403, {'error': 'Choose a location on the PC running eznest, or use browser download.'})
+                        return self.send(403, {'error': 'Choose a location on the PC running Ez Nest, or use browser download.'})
                     selected = data.get('path')
                     if not isinstance(selected, str) or len(selected) > 1000 or not Path(selected).is_absolute():
                         raise ValueError('Choose a file in the Windows save window first.')
@@ -943,10 +944,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, shop_auth.acknowledge_alert())
             if path in ('/api/output/connect', '/api/output/pick'):
                 if not self.loopback_client():
-                    return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
+                    return self.send(403, {'error': 'Choose this folder on the PC running Ez Nest.'})
                 if path.endswith('/pick'):
                     if not self.loopback_client():
-                        return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
+                        return self.send(403, {'error': 'Choose this folder on the PC running Ez Nest.'})
                     data = {'path': pick_folder('Select where eznest will save print packs')}
                     if not data['path']:
                         return self.send(200, {'cancelled': True})
@@ -969,7 +970,7 @@ class Handler(BaseHTTPRequestHandler):
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
                 fields = {}
-                for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl'):
+                for key in ('channel', 'outputNetwork', 'setupComplete', 'setupDismissed', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl'):
                     if key in data:
                         fields[key] = data.get(key)
                 save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates, **fields)
