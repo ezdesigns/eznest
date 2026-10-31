@@ -17,8 +17,9 @@
   preset are removed. The example shop preset uses placeholder printer and
   hot-folder paths. OUTPUT's service origin is `EZ_NEST_OUTPUT_URL` or
   `outputUrl` in `shop.json`, defaulting to https://output.jeezlabs.io.
-  Activity sharing stays opt-in and off. The browser still requires the OUTPUT
-  account connection; the API does not. Background update checks default off
+  Activity sharing stays opt-in and off. The local API no longer requires an
+  OUTPUT connection. Until the skip path ships, the browser still shows the
+  connect screen. Connecting to OUTPUT is optional. Background update checks default off
   (`EZ_NEST_UPDATES` defaults to `0`, and `shop.json` `updates` defaults to
   false). Turn them on from Settings and that environment variable. Downloads
   still require a matching SHA-256, and installation stays a separate click.

@@ -122,7 +122,7 @@ If an update rolled back, include `helper.log` and leave customer files out of i
 
 ## Privacy and telemetry
 
-Artwork, nests, and stock records stay on the shop host. The API does not require OUTPUT pairing; the browser still requires the connection. Nesting does not upload artwork. Activity sharing stays **off** until the host opts in.
+Artwork, nests, and stock records stay on the shop host. The local API no longer requires an OUTPUT connection. Until the skip path ships, the browser still shows the connect screen. Connecting to OUTPUT is optional. Nesting does not upload artwork. Activity sharing stays **off** until the host opts in.
 
 A paired host, or `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN`, can turn on activity sharing with **Enable sharing** after a current OUTPUT check-in. `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off and does not by itself satisfy the connection. **Stop sharing** stops later activity sends. **Disconnect** removes the paired credential and returns the host to the Connect screen. Neither deletes records the service already accepted.
 
