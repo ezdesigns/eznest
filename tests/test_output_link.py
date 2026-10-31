@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 import output_credential
 import output_link
 import output_pairing
+import output_remote
 import server
 
 TOKEN = 'osa_' + 'C' * 43
@@ -32,6 +33,9 @@ class LinkFlowTests(unittest.TestCase):
         self.env = patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS': '', 'EZ_NEST_OUTPUT_TOKEN': ''})
         self.env.start()
         self.addCleanup(self.env.stop)
+        self.ready = patch.object(output_remote, 'READY', True)
+        self.ready.start()
+        self.addCleanup(self.ready.stop)
         self.addCleanup(output_link.cancel, self.root)
         self.sent = []
 
@@ -137,7 +141,7 @@ class LinkApiTests(unittest.TestCase):
         source = (ROOT / 'server.py').read_text(encoding='utf-8')
         self.assertNotIn('reject_output_gate', source)
         self.assertNotIn("'/api/telemetry/output/link/start', '/api/telemetry/output/link/check'", source)
-        with patch.object(output_link, '_post', return_value=reply({'linkId': LINK, 'state': 'pending', 'userCode': 'ABCD-2345'})):
+        with patch.object(output_remote, 'READY', True), patch.object(output_link, '_post', return_value=reply({'linkId': LINK, 'state': 'pending', 'userCode': 'ABCD-2345'})):
             status, body = self.request('/api/telemetry/output/link/start', {})
             self.assertEqual(status, 200, body)
             self.assertEqual(body['userCode'], 'ABCD-2345')
@@ -148,8 +152,28 @@ class LinkApiTests(unittest.TestCase):
             self.assertEqual(status, 403)
             status, _ = self.request('/api/telemetry/output/link/start', {'code': 'X'})
             self.assertEqual(status, 400)
-        status, body = self.request('/api/telemetry/output/link/cancel', {})
-        self.assertEqual((status, body['state']), (200, 'cancelled'))
+            status, body = self.request('/api/telemetry/output/link/cancel', {})
+            self.assertEqual((status, body['state']), (200, 'cancelled'))
+
+    def test_closed_flag_rejects_link_and_stock_share_without_calling_output(self):
+        self.assertIs(output_remote.READY, False)
+        calls = []
+
+        def boom(*args, **kwargs):
+            calls.append(args)
+            raise AssertionError('network')
+
+        with patch.object(output_link, '_post', side_effect=boom), \
+             patch.object(output_pairing, 'connect', side_effect=boom), \
+             patch.object(output_link, 'start', side_effect=boom), \
+             patch.object(output_link, 'check', side_effect=boom), \
+             patch.object(output_link, 'cancel', side_effect=boom):
+            for path in ('/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel'):
+                status, body = self.request(path, {})
+                self.assertEqual(status, 403, body)
+            status, body = self.request('/api/shop', {'onyxPc': False, 'lan': False, 'shareStockSummary': True})
+            self.assertEqual(status, 403, body)
+        self.assertEqual(calls, [])
 
 
 class ApproveEndpointGateTests(unittest.TestCase):

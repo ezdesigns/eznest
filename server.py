@@ -17,6 +17,7 @@ import workload
 import output_gate
 import output_link
 import output_pairing
+import output_remote
 import telemetry
 import telemetry_sender
 import material_inventory
@@ -814,6 +815,8 @@ class Handler(BaseHTTPRequestHandler):
                 # Shop setup is a normal local route. Pairing is optional, so these
                 # paths are not exemptions on a connection gate.
                 if path == '/api/telemetry/output/link/start' or path == '/api/telemetry/output/link/check' or path == '/api/telemetry/output/link/cancel':
+                    if not output_remote.READY:
+                        return self.send(403, {'error': 'Browser approval is not available yet.'})
                     if data:
                         raise ValueError('Shop setup takes no additional data.')
                     try:
@@ -982,6 +985,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Change shop settings on the shop computer.'})
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
+                if data.get('shareStockSummary') is True and not output_remote.READY:
+                    return self.send(403, {'error': 'Stock summaries cannot be shared until OUTPUT can receive them.'})
                 fields = {}
                 for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl'):
                     if key in data:
