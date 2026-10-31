@@ -1,7 +1,7 @@
 # OUTPUT sharing
 
-The API allows nesting, stock, and export without an OUTPUT connection. The
-browser still shows the Connect screen described in
+The shop computer must be connected to OUTPUT before nesting, stock, or
+export. That connection is the pairing flow in
 [OUTPUT pairing](output-pairing.md). Activity sharing is a second step. It
 stays off until the host agrees. The host exchanges a pairing code for an
 `osa_` credential, stores it in `output-credential.bin` in the host data

@@ -136,7 +136,9 @@ try {
   Write-LockedFile $marker 'synthetic retained shop data'
   $beforeShop = Get-LockedHash $shopFile
   $beforeTask = Export-ScheduledTask -TaskName eznest
-  Invoke-LocalApi '/api/shutdown' @{} | Out-Null
+  try { Invoke-LocalApi '/api/shutdown' @{} | Out-Null } catch {
+    if (($_ | Out-String) -notmatch 'connect_required') { throw }
+  }
   Stop-ShopTask
   $reinstallLog = Join-Path $env:RUNNER_TEMP 'eznest-acceptance-reinstall.log'
   # Same-build maintenance install tests the existing-install path, not signed

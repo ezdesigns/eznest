@@ -1,15 +1,14 @@
 # OUTPUT pairing
 
-The Ez Nest API allows nesting, sending, and stock changes without an OUTPUT
-connection. The browser still shows a Connect screen based on
-`outputConnection` in `/api/session`. On the shop computer, paste a
+Ez Nest has to be connected to OUTPUT before a shop can nest, send, or change
+stock. The first run on the shop computer is one Connect step: paste a
 one-time pairing code from <https://output.jeezlabs.io/outpost/ez-nest>.
 Designer PCs cannot pair. If the host is not connected, they see "Ask the
 shop computer to connect to OUTPUT."
 
-The local API no longer requires an OUTPUT connection. Until the skip path ships, the browser still shows the connect screen. Connecting to OUTPUT is optional. Sharing activity, and
-sharing capacity with the OUTPUT network, are separate and stay off until
-someone on the host opts in.
+The account connection is required. Sharing activity, and sharing capacity
+with the OUTPUT network, are separate and stay off until someone on the host
+opts in.
 
 The public pages are <https://output.jeezlabs.io/> and the waitlist at
 <https://output.jeezlabs.io/waitlist>. Pairing, disconnect, and check-in are
@@ -38,15 +37,12 @@ devnet test tokens. Ez Nest does not send a price.
 
 ## What happens
 
-1. Until the host is paired, the page is the Connect screen. `/api/session`
-   reports `outputConnection.code: connect_required`, but other API routes do
-   not reject requests because of that status. Host, session, PIN, and host-only
-   checks still apply.
+1. Until the host is paired, the page is the Connect screen and the API
+   answers `connect_required`.
 2. The host operator pastes a pairing code. The code is not logged or shown
    again.
 3. Ez Nest sends that code to the pair endpoint and receives a scoped shop key.
-4. The host stores the key. The browser opens the workspace. Activity is not
-   uploaded yet.
+4. The host stores the key. Nesting works. Activity is not uploaded yet.
 5. After **Enable sharing**, new local activity can be delivered as
    `eznest-observation/1` events. That consent is still optional.
 
@@ -56,18 +52,17 @@ the host.
 ## Offline grace
 
 `CHECK_IN_MAX_AGE_DAYS` is 14. After a successful pairing or check-in, Ez Nest
-keeps the browser workspace open when OUTPUT cannot be reached. The check-in
-record is bound to the shop credential. A missing or unreadable record keeps
-the browser on the Connect screen until a live check-in succeeds. A check-in record written by the previous build has no
+keeps working when OUTPUT cannot be reached. The check-in record is bound to
+the shop credential. A missing or unreadable record stays closed until a live
+check-in succeeds. A check-in record written by the previous build has no
 signature. If the credential is still present, the time is not ahead of this
 computer, and the record is under 14 days old, the first load signs it and
-the offline grace continues. Any other unsigned record keeps the browser on
-the Connect screen. A time ahead of this computer is not a current check-in.
+the offline grace continues. Any other unsigned record stays closed. A time
+ahead of this computer is not a current check-in.
 A banner appears after 3 days offline. After 14 days without a successful
-check-in, the next page load shows the Connect screen until a check-in succeeds.
-If OUTPUT says the credential is unpaired or revoked, the stored credential
-is removed and stays revoked; the next page load shows the Connect screen.
-These connection states do not block API access.
+check-in, the Connect screen returns until a check-in succeeds. If OUTPUT
+says the credential is unpaired or revoked, the gate returns immediately, the
+stored credential is removed, and that credential stays closed.
 
 Check-in is `POST /api/shop/agent/check-in` with `{"appVersion":"..."}` only.
 The computer name and installation id are not sent again. A missing route or
@@ -80,8 +75,8 @@ response that says the credential is unpaired or revoked does.
 when the process is a source checkout started in dev mode (`--dev`, which
 sets `EZ_NEST_DEV=1`). The page shows `DEV MODE: not connected to OUTPUT`
 while the first of those is set. Installed Windows and macOS builds, and the
-container image, ignore those variables. The browser connection screen still
-applies; API access does not require these variables.
+container image, ignore those variables. Forks may remove the requirement
+under the Apache-2.0 license. Official builds enforce it.
 
 Disconnect is host-only. It returns the computer to the Connect screen.
 

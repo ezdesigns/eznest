@@ -309,7 +309,7 @@ def install(root, expected):
     write_json(marker, ownership)
     receipt = dict(version=VERSION, architecture='arm64', teamId=TEAM, sha256=expected,
                    runId=os.environ['GITHUB_RUN_ID'], hostLabel=socket.gethostname(),
-                   installed=False, unpairedApiOpen=False, paired=False, restarted=False,
+                   installed=False, gated=False, paired=False, restarted=False,
                    nested=False, sharingOff=False, revoked=False, cleanup=False)
     write_json(root / 'eznest-macos-acceptance.json', receipt)
     # Installer can delegate to installd. Timeout cannot establish transaction
@@ -335,9 +335,9 @@ def install(root, expected):
     verify_installed_identity()
     require(session['outputConnection']['ok'] is False
             and session['outputConnection']['devMode'] is False
-            and api.request('/api/state')[0] == 200,
-            'Fresh installed connection status or unpaired API access is incorrect.')
-    receipt.update(installed=True, unpairedApiOpen=True)
+            and api.request('/api/state')[0] == 403,
+            'Fresh installed workspace is not locked.')
+    receipt.update(installed=True, gated=True)
     write_json(root / 'eznest-macos-acceptance.json', receipt)
     print('INSTALL_PASS: signed downloaded package installed as a limited, unpaired service.')
 
@@ -470,7 +470,7 @@ def connect(root):
     require(re.fullmatch('[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}', code),
             'An owner-approved one-time test-shop code is required.')
     receipt = json.loads((root / 'eznest-macos-acceptance.json').read_text())
-    require(receipt['installed'] and receipt['unpairedApiOpen'], 'Installed acceptance evidence is incomplete.')
+    require(receipt['installed'] and receipt['gated'], 'Installed acceptance evidence is incomplete.')
     api = LocalAPI(); api.session()
     status, value = api.request('/api/telemetry/output/pair', {'code': code})
     require(status == 200 and value.get('configured') is True and value.get('enabled') is False,
@@ -522,11 +522,11 @@ def verify_revoked(root):
             time.sleep(120)
     require(status == 200 and value.get('state') == 'revoked' and value.get('ok') is False,
             'Owner revocation was not observed within the check-in budget.')
-    require(api.request('/api/state')[0] == 200 and api.request('/api/solve', {})[0] == 400,
-            'Revoked OUTPUT connection blocked API access or bypassed request validation.')
+    require(api.request('/api/state')[0] == 403 and api.request('/api/solve', {})[0] == 403,
+            'Revoked host still accepts work.')
     receipt['revoked'] = True
     write_json(root / 'eznest-macos-acceptance.json', receipt)
-    print('REVOCATION_PASS: owner revocation was reported; the installed API remains accessible.')
+    print('REVOCATION_PASS: owner revocation closed the installed host gate.')
 
 
 # Fixed paths only; preflight + run-specific marker establish exclusive VM ownership.
