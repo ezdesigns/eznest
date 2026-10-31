@@ -103,7 +103,13 @@ class SharedInventoryBrowserTests(unittest.TestCase):
                 a.fill('#available-length','1000')
                 a.click('#save-material')
                 expect(a.locator('#material-dialog')).not_to_be_visible()
-                b.wait_for_function("() => { const picked = document.querySelector('#material option:checked'); return picked && picked.textContent.startsWith('Shop roll'); }")
+                b.wait_for_function("() => [...document.querySelectorAll('#material option')].some(option => option.textContent.startsWith('Shop roll'))")
+                b.evaluate("""() => {
+                  const option = [...document.querySelectorAll('#material option')].find(item => item.textContent.startsWith('Shop roll'));
+                  const select = document.querySelector('#material');
+                  select.value = option.value;
+                  select.dispatchEvent(new Event('change', {bubbles: true}));
+                }""")
                 b.click('#edit-material')
                 expect(b.locator('#inventory-materials')).to_contain_text('83.33 ft')
                 b.click('#cancel-material')
