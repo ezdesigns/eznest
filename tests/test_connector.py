@@ -564,8 +564,12 @@ class BoundAndHostTests(TempCase):
         store.set_tail('onyx_joblog', 9, 0, 2**63 - 1)
         fitted = store.tail('onyx_joblog')
         self.assertEqual((fitted['device'], fitted['inode'], fitted['offset']), (0, 2**63 - 1, 9))
-        with sqlite3.connect(store.path) as db:
-            db.execute("INSERT OR REPLACE INTO tails(plugin, offset, device, inode, ready, skip_line) VALUES('legacy', 1, 7, 99, 1, 0)")
+        legacy_db = sqlite3.connect(store.path)
+        try:
+            legacy_db.execute("INSERT OR REPLACE INTO tails(plugin, offset, device, inode, ready, skip_line) VALUES('legacy', 1, 7, 99, 1, 0)")
+            legacy_db.commit()
+        finally:
+            legacy_db.close()
         legacy = store.tail('legacy')
         self.assertEqual((legacy['device'], legacy['inode'], legacy['offset']), (7, 99, 1))
 
