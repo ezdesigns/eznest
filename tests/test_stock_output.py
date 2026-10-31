@@ -557,8 +557,6 @@ class ScreenTests(unittest.TestCase):
         helper.setUp()
         try:
             inventory.save(server.WORK, 'roll-a', profile(), 0)
-            folder = Path('/opt/cursor/artifacts/screenshots')
-            folder.mkdir(parents=True, exist_ok=True)
             with sync_playwright() as playwright:
                 browser = test_web_mvp.launch_browser(playwright)
                 try:
