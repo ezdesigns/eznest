@@ -42,9 +42,10 @@ browser after they say the host is back.
 
 ## Privacy
 
-The shop computer has to be connected to OUTPUT. If this page says to ask the
-shop computer to connect to OUTPUT, tell the person at that PC. They paste a
-pairing code there. You do not.
+Connecting to OUTPUT is optional. If this page says to ask the shop computer
+to connect to OUTPUT, choose **Skip** and keep nesting. Tell the person at
+that PC if they want this computer paired. They paste a pairing code there.
+You do not.
 
 Your artwork, filenames, customer names, and stock stay on the host. Connecting
 sends the host computer's name, an installation id, and later the app version.
@@ -57,7 +58,7 @@ Designer PCs only open `http://SHOP-HOST:8765/web`. Install Ez Nest on the
 host. Set a shop PIN before other PCs connect:
 
 1. On the host, open `http://127.0.0.1:8765/web`.
-2. Choose **Connect** and paste a pairing code from <https://output.jeezlabs.io/outpost/ez-nest>. The shop cannot nest until this computer is connected. Designer PCs cannot do this step.
+2. Connecting to OUTPUT is optional. Choose **Skip** to open the workspace in this browser, or choose **Have a pairing code?** and paste a code from <https://output.jeezlabs.io/outpost/ez-nest>. **Skip** is remembered in that browser. Designer PCs cannot pair. **Set up your shop** stays hidden.
 3. Open **Settings**, then **Shop PIN**.
 4. Type 8 to 12 digits, or a passphrase of at least 10 characters with a letter, and choose **Save shop PIN**. Tell the designers that PIN. Do not write it in a file in the data folder. If Settings says the saved PIN is old, replace it.
 5. Optional and recommended: pass `-TlsCert` and `-TlsKey` together so the shop page is HTTPS. Leave both empty to keep HTTP. On HTTP, someone who can watch the shop network can copy a signed-in browser's session. See [Security](../SECURITY.md).
