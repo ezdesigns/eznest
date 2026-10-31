@@ -7,7 +7,7 @@ one-time pairing code from <https://output.jeezlabs.io/outpost/ez-nest>.
 Designer PCs cannot pair. If the host is not connected, they see "Ask the
 shop computer to connect to OUTPUT."
 
-The browser requires the account connection on page load. Sharing activity, and
+The local API no longer requires an OUTPUT connection. Until the skip path ships, the browser still shows the connect screen. Connecting to OUTPUT is optional. Sharing activity, and
 sharing capacity with the OUTPUT network, are separate and stay off until
 someone on the host opts in.
 

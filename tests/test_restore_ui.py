@@ -158,6 +158,9 @@ class RestoreUiTests(unittest.TestCase):
         page = context.new_page()
         page.goto(local + '/web', wait_until='domcontentloaded')
         self.wait_ready(page)
+        if page.locator('#setup').is_visible():
+            page.click('#setup-save')
+            page.locator('#setup').wait_for(state='hidden')
         return browser, context, page
 
     def final(self, page, name, width):
@@ -197,21 +200,22 @@ class RestoreUiTests(unittest.TestCase):
                           effortBelow: document.getElementById('nesting-effort').getBoundingClientRect().top
                                        >= document.getElementById('max-output').getBoundingClientRect().bottom - 1};
                 }''')
-                self.assertEqual(look['maxOutput'], 'rgb(243, 251, 246)')
-                self.assertEqual(look['badge'], 'Still get paid 🤑')
-                self.assertTrue(look['rotated'])
+                self.assertEqual(look['maxOutput'], 'rgb(243, 243, 240)')
+                self.assertEqual(look['badge'], 'Preview · test only')
+                self.assertFalse(look['rotated'])
                 self.assertTrue(look['effortBelow'])
-                rgb = [int(v) for v in look['inHouse'].split('(')[1].split(')')[0].split(',')[:3]]
                 self.assertEqual(look['inHouse'], 'rgb(239, 245, 255)')
-                green = [int(v) for v in look['badgeColor'].split('(')[1].split(')')[0].split(',')[:3]]
-                self.assertEqual(look['badgeColor'], 'rgb(21, 128, 61)')
+                self.assertEqual(look['badgeColor'], 'rgba(0, 0, 0, 0)')
                 self.shot(page, 'after-step3-1280.png')
-                self.assertEqual(page.locator('#max-output').get_attribute('aria-label'), "Don't print. Still get paid. Learn about OUTPUT")
-                self.assertNotIn('sandbox', page.locator('.job-panel').inner_text().lower())
+                self.assertEqual(page.locator('#max-output').get_attribute('aria-label'), "Don't print. Learn about OUTPUT")
+                panel = page.locator('.job-panel').inner_text().lower()
+                self.assertIn('preview · test only', panel)
+                self.assertNotIn('devnet', panel)
                 page.click('#max-output')
                 dialog = page.locator('#max-output-dialog')
                 self.assertEqual(page.locator('#max-output-title').inner_text(), "Don't print")
                 text = dialog.inner_text()
+                self.assertIn('This is a test preview. No real jobs or payments are sent.', text)
                 self.assertIn('OUTPUT routes the job to the best-fit print shop near you', text)
                 self.assertIn('You still get paid.', text)
                 self.assertNotIn('sandbox', text.lower())
@@ -272,6 +276,9 @@ class RestoreUiTests(unittest.TestCase):
             page.click('#output-link-submit')
         self.wait_ready(page)
         expect(page.locator('#output-required')).to_be_hidden()
+        if page.locator('#setup').is_visible():
+            page.click('#setup-save')
+            page.locator('#setup').wait_for(state='hidden')
         expect(page.locator('#output-dot')).to_have_class(re.compile('connected'))
         expect(page.locator('#output-link-label')).to_contain_text('Connected')
         self.assertGreaterEqual(fake.checkins, 1, (page.locator('#output-link').inner_text(), len(fake.live), output_gate.link_status(server.WORK, True), os.environ.get('EZ_NEST_DEV'), output_gate._token(server.WORK)[1]))

@@ -171,6 +171,7 @@ def shop_status():
         'outputNote': OUTPUT_NOTE,
         'outputShare': output_network_status(saved),
         'setupComplete': saved['setupComplete'],
+        'setupDismissed': saved['setupDismissed'],
         'printer': saved['printer'],
         'units': saved['units'],
         'thru': saved['thru'],
@@ -988,7 +989,7 @@ class Handler(BaseHTTPRequestHandler):
                 fields = {}
                 if data.get('shareStockSummary') is True and not output_remote.READY:
                     return self.send(403, {'error': 'Stock summaries cannot be shared until OUTPUT can receive them.'})
-                for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl', 'shareStockSummary', 'showRollNames'):
+                for key in ('channel', 'outputNetwork', 'setupComplete', 'setupDismissed', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl', 'shareStockSummary', 'showRollNames'):
                     if key in data:
                         fields[key] = data.get(key)
                 before = current
