@@ -1700,12 +1700,9 @@ function legacyRollUnconfirmed() {
 }
 
 function syncMaterialChoice() {
+  // An empty choice stays empty. The operator picks a roll; the first saved roll is not assumed.
   if (legacyRollUnconfirmed() && $('material').value === 'white-gloss') $('material').value = '';
-  const saved = [...$('material').options].filter(option => option.value && option.value !== 'custom');
-  if (presetEditor || !saved.length || materialProfiles[$('material').value] || legacyRollUnconfirmed()) return false;
-  $('material').value = saved[0].value;
-  applyMaterial(true);
-  return true;
+  return false;
 }
 
 function renderMaterialButtons() {
