@@ -9,7 +9,7 @@ $.evalFile(new File(File($.fileName).parent.fsName+'/bridge-core.js'));
         var settings=EZPilot.readPreferences(preferencesFile,presetNames);
         var settingsOnly=$.global.EZNestSettingsOnly===true;
         if(!settings||settingsOnly){
-            var dialog=new Window('dialog','Nest in eznest - setup');
+            var dialog=new Window('dialog','Nest in Ez Nest - setup');
             dialog.orientation='column';dialog.alignChildren='fill';
             dialog.add('statictext',undefined,'Saved for this Windows user. Change later with EZ Nest Settings.jsx.');
             dialog.add('statictext',undefined,'Material');
@@ -39,7 +39,7 @@ $.evalFile(new File(File($.fileName).parent.fsName+'/bridge-core.js'));
         if(!source.saved)throw Error('Save your design first so this export has a stable source reference.');
         var items=$.global.EZNestWholeDocument===true?EZPilot.documentRoots(source):EZPilot.selectionRoots(selected);
         var session=EZPilot.http('GET','/api/session');
-        if(session.app!=='eznest')throw Error('Port 8765 is not running eznest.');
+        if(session.app!=='eznest')throw Error('Port 8765 is not running Ez Nest.');
         var sourceKey=source.fullName.fsName;
         production=EZPilot.prepareSelection(source,items,settings.bleedMm).document;
         var folder=new Folder(Folder.temp.fsName+'/eznest-illustrator');
@@ -57,12 +57,12 @@ $.evalFile(new File(File($.fileName).parent.fsName+'/bridge-core.js'));
         var url='http://127.0.0.1:8765/web?illustrator='+requestId;
         var link=new File(folder.fsName+'/'+requestId+'.html');link.encoding='UTF-8';
         if(!link.open('w'))throw Error('Production copy saved, but the browser link could not be created. Open '+url);
-        link.write('<!doctype html><meta http-equiv="refresh" content="0;url='+url+'"><a href="'+url+'">Open eznest</a>');link.close();
+        link.write('<!doctype html><meta http-equiv="refresh" content="0;url='+url+'"><a href="'+url+'">Open Ez Nest</a>');link.close();
         source.activate();
         if(!link.execute())throw Error('Production copy saved. Open '+url);
     }catch(error){
         if(production&&!exported){try{production.close(SaveOptions.DONOTSAVECHANGES);}catch(ignore){}}
         // Leave an exported production copy open for inspection; never save the source.
-        alert('EZ Nest: '+String(error.message||error));
+        alert('Ez Nest: '+String(error.message||error));
     }
 }());

@@ -319,7 +319,7 @@ class GateTests(unittest.TestCase):
                     # Unpaired: a plain message and one Connect action; nesting waits.
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
                     expect(page.locator('#output-required')).to_be_visible()
-                    expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT to start nesting')
+                    expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT (optional)')
                     expect(page.locator('#output-required-connect')).to_have_text('Connect')
                     expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
                     with page.context.expect_page() as opened:

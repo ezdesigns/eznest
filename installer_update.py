@@ -537,7 +537,7 @@ def begin_apply(data_dir, install_root):
     pending['applyOnRestart'] = True
     write_json(updates_dir(data_dir) / 'pending.json', pending)
     spawn_helper(install_root, data_dir, os.getpid())
-    return {'ok': True, 'restarting': True, 'version': pending['version'], 'latest': pending['version'], 'message': f'eznest is restarting to install {pending["version"]}. Settings and the hot folder stay.'}
+    return {'ok': True, 'restarting': True, 'version': pending['version'], 'latest': pending['version'], 'message': f'Ez Nest is restarting to install {pending["version"]}. Settings and the hot folder stay.'}
 
 
 def handoff_if_pending(install_root, data_dir):
