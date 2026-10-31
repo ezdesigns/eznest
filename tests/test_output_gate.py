@@ -320,7 +320,7 @@ class GateTests(unittest.TestCase):
                     # Unpaired: a plain message and one Connect action; nesting waits.
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
                     expect(page.locator('#output-required')).to_be_visible()
-                    expect(page.locator('#output-required-title')).to_have_text('Set up your shop')
+                    expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT (optional)')
                     expect(page.locator('#output-required-connect')).to_be_hidden()
                     expect(page.locator('#output-required-connect')).to_have_text('Set up your shop')
                     calls = page.evaluate("""() => {

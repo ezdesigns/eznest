@@ -226,7 +226,7 @@ window.EZNSVG = (() => {
   }
   function buildSVG(job,result) {
     const output=document.createElementNS(NS,'svg');output.setAttribute('xmlns',NS);output.setAttribute('width',result.width+'mm');output.setAttribute('height',result.usedLength+'mm');output.setAttribute('viewBox',`0 0 ${result.width} ${result.usedLength}`);
-    const description=document.createElementNS(NS,'desc');description.textContent='EZ Nest artwork layout. Spacing uses imported boundaries; bleed and RIP spot colors require separate verification.';output.append(description);
+    const description=document.createElementNS(NS,'desc');description.textContent='Ez Nest artwork layout. Spacing uses imported boundaries; bleed and RIP spot colors require separate verification.';output.append(description);
     result.placements.forEach((placement,index)=>{
       const part=job.parts.find(p=>p.id===placement.id);
       if(!part?.svg||(!job.svgSource&&!job.svgSources))fail('Original SVG artwork is unavailable for this job.');

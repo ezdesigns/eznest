@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>eznest</title>
+<title>Ez Nest</title>
 <link rel="stylesheet" href="/web.css">
 </head>
 <body data-step="drop">
 <header class="shop-header">
-  <strong>eznest</strong>
+  <strong>Ez Nest</strong>
   <button id="logout" type="button" class="link" hidden>Log out</button>
 </header>
 <dialog id="pin-gate" aria-labelledby="pin-title">
@@ -55,7 +55,7 @@
 </section>
 <div id="output-required" class="output-required" role="status" hidden>
   <div>
-    <p><strong id="output-required-title">Set up your shop</strong> <span class="hint">Connects to OUTPUT</span></p>
+    <p><strong id="output-required-title">Connect to OUTPUT (optional)</strong> <span class="hint">Nesting works without it. Connect any time in Settings.</span></p>
     <p id="output-required-note" class="hint"></p>
     <div id="output-setup-waiting" class="setup-shop-waiting" hidden>
       <p class="hint">Approve in your browser. The code there should match:</p>
@@ -173,7 +173,7 @@
     <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
     <div id="lan-access" hidden>
     <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
-    <p class="hint">Shop network access is configured when the app starts. This box only shows whether Ez Nest was started with --lan. It stays disabled because a saved setting cannot open the shop network. To turn it on or off later, update the eznest startup task and restart. Choosing Shop network in the installer does that only on a fresh install.</p>
+    <p class="hint">Shop network access is configured when the app starts. This box only shows whether Ez Nest was started with --lan. It stays disabled because a saved setting cannot open the shop network. To turn it on or off later, update the <code>eznest</code> startup task and restart. Choosing Shop network in the installer does that only on a fresh install.</p>
     <p id="lan-note" class="lan-note" hidden>Shop computers need the shop PIN before they can nest or send. Anyone on the shop LAN can Send to ONYX after that PIN. Do not share this network with guest WiFi.</p>
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
@@ -275,7 +275,7 @@
   <section class="canvas-area" aria-label="Layout">
 
   <section id="illustrator-handoff" class="handoff" hidden>
-    <strong>Nest in eznest · Illustrator · Regular</strong>
+    <strong>Nest in Ez Nest · Illustrator · Regular</strong>
     <p id="illustrator-note">Your production copy is ready to load.</p>
     <button id="illustrator-load" class="primary" type="button">Load Illustrator selection</button>
     <p class="hint">Review the detected pieces before sending. Colors are preserved. No automatic bleed or color substitutions.</p>
@@ -534,7 +534,7 @@
 </dialog>
 <aside id="feedback-welcome" hidden aria-label="Welcome">
   <button id="feedback-dismiss" type="button" aria-label="Dismiss welcome">×</button>
-  <strong>Thanks for trying EZ Nest.</strong><p>Have an idea or hit a snag? We'd love your feedback.</p>
+  <strong>Thanks for trying Ez Nest.</strong><p>Have an idea or hit a snag? We'd love your feedback.</p>
 </aside>
 <div class="corner-actions">
 <details id="settings-support">

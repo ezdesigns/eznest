@@ -175,8 +175,9 @@ class ApproveEndpointGateTests(unittest.TestCase):
 class SetupCardCopyTests(unittest.TestCase):
     def test_card_wording_is_plain(self):
         html = (ROOT / 'web.html').read_text(encoding='utf-8')
-        self.assertIn('>Set up your shop</strong>', html)
-        self.assertIn('Connects to OUTPUT', html)
+        self.assertIn('>Connect to OUTPUT (optional)</strong>', html)
+        self.assertIn('Nesting works without it. Connect any time in Settings.', html)
+        self.assertNotIn('>Set up your shop</strong>', html)
         self.assertIn('id="output-required-skip"', html)
         self.assertIn('Have a pairing code?', html)
         self.assertIn('id="output-setup-settings"', html)

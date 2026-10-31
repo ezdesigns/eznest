@@ -23,7 +23,7 @@
       (job.parts || []).map(p => [p.documentId || p.sourceJobId, p.pdfPieceId || p.originalPartId || p.id, p.quantity])]);
   }
   function feedback(version, message, state, includeResults) {
-    const lines = ['EZ Nest feedback', 'Version: ' + String(version || 'unknown'), '', String(message || '').trim()];
+    const lines = ['Ez Nest feedback', 'Version: ' + String(version || 'unknown'), '', String(message || '').trim()];
     if (includeResults && state?.result) {
       const r = state.result;
       const metrics = {placedCopies: r.placements?.length, sheetCount: r.sheets?.length || 1,
