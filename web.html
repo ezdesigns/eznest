@@ -23,7 +23,7 @@
   </form>
 </dialog>
 <div id="output-required" class="output-required" role="status" hidden>
-  <p><strong id="output-required-title">Connect to OUTPUT to start nesting</strong> <span id="output-required-note" class="hint"></span></p>
+  <p><strong id="output-required-title">Connect to OUTPUT (optional)</strong> <span class="hint">Nesting works without it. Connect any time in Settings.</span> <span id="output-required-note" class="hint"></span></p>
   <button id="output-required-connect" type="button" class="primary">Connect</button>
 </div>
 <p id="output-banner" class="hint" hidden></p>
@@ -175,6 +175,16 @@
       <button id="telemetry-stop" type="button" disabled>Stop sharing</button>
       <button id="telemetry-refresh" type="button">Refresh sharing status</button>
       <p id="telemetry-status" role="status" aria-live="polite">Open this section on the host computer to review sharing.</p>
+    </details>
+    <details id="settings-stock-share" class="settings-section" hidden>
+      <summary>Stock summary for OUTPUT</summary>
+      <p class="section-note">Off until you turn it on. A paired computer can send roll width, length left, reserved length, and a low marker. Job details, cost, and customer information stay on this computer.</p>
+      <label class="check"><input id="share-stock-summary" type="checkbox" disabled> Share stock summary with OUTPUT</label>
+      <p class="hint">Coming soon: OUTPUT cannot receive stock summaries yet.</p>
+      <label class="check"><input id="show-roll-names" type="checkbox"> Show roll names in OUTPUT</label>
+      <p class="hint">Preview of the stock summary this computer would send.</p>
+      <pre id="stock-output-preview" aria-label="Stock summary preview"></pre>
+      <p id="stock-output-note" class="hint"></p>
     </details>
     <details id="settings-updates" class="settings-section">
       <summary>App updates</summary>

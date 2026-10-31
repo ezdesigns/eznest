@@ -31,6 +31,8 @@ let inventoryBusy = false;
 let inventoryGen = 0; // bumped on every inventory change so an older poll answer is ignored
 let presetEditor = null;
 let activeMaterial = '';
+// EZ39-9: OUTPUT has no stock-summary receiving endpoint yet; keep sharing off until it ships.
+const STOCK_SHARE_ENDPOINT_READY = false;
 const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'print-layout', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
 
 function status(message, failed) {
@@ -175,7 +177,7 @@ function fetchJson(path, ms) {
       const body = await response.json().catch(() => ({}));
       if (body.code === 'connect_required') {
         showOutputRequired(true);
-        throw Error('Connect to OUTPUT to start nesting.');
+        throw Error('Connect to OUTPUT in Settings. Nesting works without it.');
       }
       throw Error('Request failed.');
     }
@@ -258,7 +260,7 @@ async function api(path, data, file) {
   if (!response.ok) {
     const gated = body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/');
     if (gated) showOutputRequired(true);
-    const error = Error(gated ? 'Connect to OUTPUT to start nesting.' : body.error || 'Request failed.');
+    const error = Error(gated ? 'Connect to OUTPUT in Settings. Nesting works without it.' : body.error || 'Request failed.');
     error.code = body.code;
     if (path === '/api/document/import' || path === '/api/document/import-file') {
       error.guideReview = body.guideReview; error.cutReview = body.cutReview;
@@ -2024,6 +2026,16 @@ function applyShop(shop) {
   $('update').hidden = !$('updates').checked;
   $('test-channel').checked = shop.channel === 'test';
   $('output-network').checked = shop.outputNetwork === true;
+  const shareStock = $('share-stock-summary');
+  const showNames = $('show-roll-names');
+  if (shareStock && showNames) {
+    shareStock.checked = STOCK_SHARE_ENDPOINT_READY && shop.shareStockSummary === true;
+    showNames.checked = shop.showRollNames === true;
+    shareStock.disabled = !hostComputer || !STOCK_SHARE_ENDPOINT_READY;
+    const stockShare = $('settings-stock-share');
+    if (stockShare) stockShare.hidden = !STOCK_SHARE_ENDPOINT_READY;
+    showNames.disabled = !hostComputer;
+  }
   if (shop.outputNote) $('output-note').textContent = shop.outputNote;
   if (shop.printer) $('printer').value = shop.printer;
   if (shop.setupComplete && !prefs().thru && shop.thru) $('thru-name').value = shop.thru;
@@ -2123,7 +2135,9 @@ function shopPayload(extra) {
     onyxPc: $('onyx-pc').checked,
     updates: $('updates').checked,
     channel: $('test-channel').checked ? 'test' : 'stable',
-    outputNetwork: $('output-network').checked
+    outputNetwork: $('output-network').checked,
+    shareStockSummary: STOCK_SHARE_ENDPOINT_READY && $('share-stock-summary') ? $('share-stock-summary').checked : false,
+    showRollNames: $('show-roll-names') ? $('show-roll-names').checked : false
   }, extra || {});
   const outputUrl = outputUrlField();
   if (outputUrl !== null) payload.outputUrl = outputUrl;
@@ -2169,6 +2183,7 @@ async function saveSettings() {
     cutMapping();
     if (!await saveHotFolder()) throw Error($('hot-error').textContent);
     await saveDeploy();
+    await refreshStockPreview();
     if (!saveShop() || !savePrefs({undo: $('allow-undo').checked})) throw Error('This browser could not save your preferences.');
     note.textContent = 'Saved.';
   } catch (error) {
@@ -2479,6 +2494,7 @@ function restoreJob(state) {
 }
 
 let outputSharing = null;
+let hostComputer = false;
 let reconnectOpen = false;
 let lastCheckInText = '';
 function renderOutputSharing(info) {
@@ -2570,6 +2586,25 @@ async function disconnectOutput() {
     refreshOutputSharing().catch(() => {});
   }
 }
+async function refreshStockPreview() {
+  const preview = $('stock-output-preview');
+  if (!preview) return;
+  const names = $('show-roll-names') && $('show-roll-names').checked ? '1' : '0';
+  try {
+    const info = await fetchJson('/api/stock/output?names=' + names, 5000);
+    preview.textContent = JSON.stringify(info.preview, null, 2);
+    const note = $('stock-output-note');
+    if (!note) return;
+    if (!hostComputer) note.textContent = 'Change this on the shop computer.';
+    else if (!$('share-stock-summary').checked) note.textContent = 'Sharing is off. Nothing is sent until you turn it on and this computer is paired.';
+    else if (!info.paired) note.textContent = 'Sharing is on. Nothing is sent until this computer is paired.';
+    else note.textContent = 'This is the stock summary sent to OUTPUT.';
+  } catch {
+    preview.textContent = '';
+    if ($('stock-output-note')) $('stock-output-note').textContent = 'The preview is unavailable.';
+  }
+}
+
 async function changeOutputSharing(enable) {
   if (enable && (!outputSharing || outputSharing.paused || !$('telemetry-agree').checked)) return;
   $('telemetry-enable').disabled = $('telemetry-stop').disabled = true;
@@ -2608,6 +2643,7 @@ async function boot() {
   await ensureLibraries();
   await ensureStyles();
   let session = await fetchJsonRetry('/api/session');
+  hostComputer = session.localPC === true;
   token = session.token || '';
   localSave = session.localSave === true;
   renderOutputLink(session.outputLink, session.localPC);
@@ -3126,7 +3162,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const dialog = $('settings');
     if (!dialog.open) dialog.showModal();
     $('hot-folder').focus();
+    refreshStockPreview();
   });
+  $('settings-stock-share').addEventListener('toggle', () => { if ($('settings-stock-share').open) refreshStockPreview(); });
+  $('show-roll-names').addEventListener('change', refreshStockPreview);
+  $('share-stock-summary').addEventListener('change', refreshStockPreview);
   $('settings-close').addEventListener('click', () => $('settings').close());
   $('settings-telemetry').addEventListener('toggle', () => { if ($('settings-telemetry').open) refreshOutputSharing(); });
   $('telemetry-refresh').addEventListener('click', refreshOutputSharing);
