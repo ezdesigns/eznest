@@ -160,13 +160,17 @@ class SetupCardCopyTests(unittest.TestCase):
         self.assertIn('id="output-required-skip"', html)
         self.assertIn('Have a pairing code?', html)
         self.assertIn('id="output-setup-settings"', html)
+        self.assertRegex(html, r'<button id="output-required-connect"[^>]*\bhidden\b[^>]*>Set up your shop</button>')
+        self.assertRegex(html, r'<button id="output-setup-settings"[^>]*\bhidden\b[^>]*>Set up your shop</button>')
         self.assertLess(html.index('output-required-connect'), html.index('output-required-code'))
         script = (ROOT / 'web.js').read_text(encoding='utf-8')
         self.assertIn("'/api/telemetry/output/link/start'", script)
         self.assertIn('popup.opener = null', script)
         self.assertIn("parsed.protocol !== 'https:'", script)
         self.assertIn('parsed.host !== allowed.host', script)
-        self.assertIn('eznest-setup-skipped', script)
+        self.assertIn('const OUTPUT_APPROVE_ENDPOINT_READY = false;', script)
+        self.assertIn("localStorage.getItem('eznest-setup-skipped')", script)
+        self.assertNotIn("sessionStorage.getItem('eznest-setup-skipped')", script)
 
 
 if __name__ == '__main__':

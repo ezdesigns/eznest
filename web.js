@@ -2460,7 +2460,8 @@ function renderOutputSharing(info) {
   $('output-connect-shop').hidden = !paired;
   $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
   $('output-pair-form').hidden = paired || launch || source === 'disabled';
-  if ($('output-setup-settings')) $('output-setup-settings').hidden = $('output-pair-form').hidden;
+  if ($('output-setup-settings')) $('output-setup-settings').hidden = !OUTPUT_APPROVE_ENDPOINT_READY || $('output-pair-form').hidden;
+  if (!OUTPUT_APPROVE_ENDPOINT_READY && $('output-setup-settings-waiting')) $('output-setup-settings-waiting').hidden = true;
   $('output-disconnect').hidden = !paired;
   $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
   $('output-disconnect').disabled = !paired || info.paused;
@@ -2636,8 +2637,10 @@ function renderOutputRequired(session) {
   showOutputRequired(session?.outputConnection?.ok === false);
   showOutputBanner(session);
 }
+// OUTPUT's browser-approval endpoint is not live yet. Keep that entry closed.
+const OUTPUT_APPROVE_ENDPOINT_READY = false;
 function setupSkipped() {
-  try { return sessionStorage.getItem('eznest-setup-skipped') === '1'; }
+  try { return localStorage.getItem('eznest-setup-skipped') === '1'; }
   catch { return false; }
 }
 function outputApproveUrl(url) {
@@ -2662,7 +2665,7 @@ function beginShopSetup(button, waiting, match, note, error) {
     run += 1;
     window.clearTimeout(timer);
     waiting.hidden = true;
-    button.hidden = false;
+    button.hidden = !OUTPUT_APPROVE_ENDPOINT_READY;
     button.disabled = false;
     if (message && error) error.textContent = message;
   };
@@ -2719,7 +2722,8 @@ function showOutputRequired(required) {
   outputRequired = required === true && !setupSkipped();
   $('output-required').hidden = !outputRequired;
   $('output-required-note').textContent = outputRequiredLocal ? '' : 'Ask the shop computer to connect to OUTPUT.';
-  $('output-required-connect').hidden = !outputRequiredLocal;
+  $('output-required-connect').hidden = !OUTPUT_APPROVE_ENDPOINT_READY || !outputRequiredLocal;
+  if (!OUTPUT_APPROVE_ENDPOINT_READY && $('output-setup-waiting')) $('output-setup-waiting').hidden = true;
   if ($('output-required-code')) $('output-required-code').hidden = !outputRequiredLocal;
   document.body.classList.toggle('output-required-on', outputRequired);
 }
@@ -3533,7 +3537,7 @@ $('output-link-connect').addEventListener('click', openOutputLinkForm);
 $('output-link-reconnect').addEventListener('click', openOutputLinkForm);
 $('output-required-code').addEventListener('click', openOutputLinkForm);
 $('output-required-skip').addEventListener('click', () => {
-  try { sessionStorage.setItem('eznest-setup-skipped', '1'); } catch { /* This visit can still continue. */ }
+  try { localStorage.setItem('eznest-setup-skipped', '1'); } catch { /* This visit can still continue. */ }
   location.reload();
 });
 beginShopSetup($('output-required-connect'), $('output-setup-waiting'), $('output-setup-match'), $('output-setup-wait'), $('output-required-note'));

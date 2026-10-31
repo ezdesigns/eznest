@@ -320,6 +320,7 @@ class GateTests(unittest.TestCase):
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
                     expect(page.locator('#output-required')).to_be_visible()
                     expect(page.locator('#output-required-title')).to_have_text('Set up your shop')
+                    expect(page.locator('#output-required-connect')).to_be_hidden()
                     expect(page.locator('#output-required-connect')).to_have_text('Set up your shop')
                     expect(page.locator('#output-required-skip')).to_have_text('Skip')
                     expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
@@ -335,7 +336,7 @@ class GateTests(unittest.TestCase):
                     page.click('#output-link-cancel')
                     page.click('#output-required-skip')
                     page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
-                    self.assertEqual(page.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"), '1')
+                    self.assertEqual(page.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
                 finally:
                     browser.close()
         finally:
