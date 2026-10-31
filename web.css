@@ -192,6 +192,10 @@ button.primary {
 .output-required[hidden] { display: none; }
 .output-required p { margin: 0; }
 .output-required button { min-height: 38px; padding: 6px 16px; flex: none; }
+.output-required-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.setup-shop-waiting { display: grid; gap: 6px; }
+.setup-shop-waiting p { margin: 0; }
+.setup-shop-code { font: 700 28px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
 #output-banner { margin: 8px auto 0; width: min(760px, calc(100% - 32px)); text-align: center; }
 #pin-alert { margin: 0 0 12px; }
 #logout { margin-left: auto; }
@@ -524,7 +528,8 @@ body:has(#settings-support[open]) #feedback-welcome { display: none; }
 #output-connect { display: grid; gap: 8px; margin: 4px 0 16px; padding-bottom: 12px; border-bottom: 1px solid #e7e7e1; }
 #output-connect h3 { margin: 0; font-size: 15px; }
 #output-connect label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
-#output-pair-code { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #ccc; border-radius: 8px; font-weight: 400; }
+#output-pair-code { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid #5c5c58; border-radius: 8px; background: #fff; color: #1c1c1c; font-weight: 400; }
+#output-pair-code::placeholder { color: #5c5c58; }
 #output-connect-shop { margin: 0; font-weight: 700; }
 #output-connect-status { margin: 0; font-size: 13px; }
 #output-connect-status.error { color: #D92F00; }
@@ -640,7 +645,8 @@ body[data-step="sent"] #inventory-open { display: block; }
 #output-link-disconnect { color: #971b12; }
 .output-link-form label { font-size: 13px; font-weight: 700; }
 .output-link-row { display: flex; gap: 8px; }
-.output-link-row input { flex: 1; min-width: 0; min-height: 38px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 8px; font-family: ui-monospace, "Cascadia Mono", monospace; letter-spacing: .04em; }
+.output-link-row input { flex: 1; min-width: 0; min-height: 38px; padding: 6px 10px; border: 1px solid #5c5c58; border-radius: 8px; background: #fff; color: #1c1c1c; font-family: ui-monospace, "Cascadia Mono", monospace; letter-spacing: .04em; }
+.output-link-row input::placeholder { color: #5c5c58; }
 .output-link-row button { min-height: 38px; padding: 6px 14px; }
 .output-link-form .hint { font-size: 12px; }
 

@@ -432,7 +432,7 @@ $('nest').onclick=()=>startNest();$('improve').onclick=()=>improve();$('cancel')
 $('quick-width').onchange=()=>{try{const p=activePreset(),width=readPhysicalField('quick-width',displayUnit());if(width===null)throw Error('Enter your roll width.');const validated=EZNQueue.validatePreset({...p,settings:{...p.settings,width}});p.settings=validated.settings;renderPresets();invalidate();status('Roll width updated. Nest to use this width.');}catch(e){setDimensionField('quick-width',activePreset().settings.width,displayUnit());status(e.message,true);}};
 
 $('help-open').onclick=()=>$('help').showModal();$('help-close').onclick=()=>$('help').close();
-$('quit').onclick=async()=>{if(busy||saving)return;try{await api('/api/shutdown',{});clearInterval(folderTimer);clearTimeout(autoTimer);$('help').close();document.querySelectorAll('button,input,select').forEach(el=>el.disabled=true);status('eznest has stopped. You can close this tab. Open eznest again to continue.');}catch(e){$('help-status').textContent=e.message;}};
+$('quit').onclick=async()=>{if(busy||saving)return;try{await api('/api/shutdown',{});clearInterval(folderTimer);clearTimeout(autoTimer);$('help').close();document.querySelectorAll('button,input,select').forEach(el=>el.disabled=true);status('Ez Nest has stopped. You can close this tab. Open Ez Nest again to continue.');}catch(e){$('help-status').textContent=e.message;}};
 
 $('preset').onchange=()=>{preferences.active=$('preset').value;renderPresets();invalidate();};$('batch-length').onchange=()=>{preferences.runLengths=preferences.runLengths||{};preferences.runLengths[activePreset().id]=readPhysicalField('batch-length',displayUnit());invalidate();};$('fill-area').onchange=()=>{preferences.fillArea=$('fill-area').value;invalidate();};
 

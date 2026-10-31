@@ -552,6 +552,27 @@ class BoundAndHostTests(TempCase):
         self.assertEqual(dropped, 0)
         self.assertFalse(skipping)
 
+    def test_file_index_past_sqlite_signed_integer_round_trips(self):
+        store = self.store()
+        inode = 2**63 + 1
+        device = (1 << 80) + 11
+        store.set_tail('onyx_joblog', 4, device, inode, skip_line=True)
+        row = store.tail('onyx_joblog')
+        self.assertEqual((row['device'], row['inode']), (device, inode))
+        self.assertEqual(row['offset'], 4)
+        self.assertEqual(row['skip_line'], 1)
+        store.set_tail('onyx_joblog', 9, 0, 2**63 - 1)
+        fitted = store.tail('onyx_joblog')
+        self.assertEqual((fitted['device'], fitted['inode'], fitted['offset']), (0, 2**63 - 1, 9))
+        legacy_db = sqlite3.connect(store.path)
+        try:
+            legacy_db.execute("INSERT OR REPLACE INTO tails(plugin, offset, device, inode, ready, skip_line) VALUES('legacy', 1, 7, 99, 1, 0)")
+            legacy_db.commit()
+        finally:
+            legacy_db.close()
+        legacy = store.tail('legacy')
+        self.assertEqual((legacy['device'], legacy['inode'], legacy['offset']), (7, 99, 1))
+
     def test_poll_drops_oversize_lines_and_bounds_inventory(self):
         log = self.root / 'JobLog.txt'
         log.write_bytes(b'')

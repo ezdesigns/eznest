@@ -31,6 +31,8 @@ let inventoryBusy = false;
 let inventoryGen = 0; // bumped on every inventory change so an older poll answer is ignored
 let presetEditor = null;
 let activeMaterial = 'white-gloss';
+// EZ46-7: OUTPUT's browser-approval endpoint is not live yet. Keep that entry closed.
+const OUTPUT_APPROVE_ENDPOINT_READY = false;
 const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'print-layout', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
 
 function status(message, failed) {
@@ -174,7 +176,7 @@ function fetchJson(path, ms) {
       const body = await response.json().catch(() => ({}));
       if (body.code === 'connect_required') {
         showOutputRequired(true);
-        throw Error('Connect to OUTPUT to start nesting.');
+        throw Error('Connect to OUTPUT in Settings. Nesting works without it.');
       }
       throw Error('Request failed.');
     }
@@ -257,7 +259,7 @@ async function api(path, data, file) {
   if (!response.ok) {
     const gated = body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/');
     if (gated) showOutputRequired(true);
-    const error = Error(gated ? 'Connect to OUTPUT to start nesting.' : body.error || 'Request failed.');
+    const error = Error(gated ? 'Connect to OUTPUT in Settings. Nesting works without it.' : body.error || 'Request failed.');
     error.code = body.code;
     if (path === '/api/document/import' || path === '/api/document/import-file') {
       error.guideReview = body.guideReview; error.cutReview = body.cutReview;
@@ -1976,7 +1978,7 @@ function showRestart(shop) {
   const note = $('lan-restart');
   if (shop && shop.lanWaiting) {
     note.hidden = false;
-    note.textContent = 'Shop network is waiting for a shop PIN. Set the PIN on this computer, then restart eznest.';
+    note.textContent = 'Shop network is waiting for a shop PIN. Set the PIN on this computer, then restart Ez Nest.';
     return;
   }
   if (!shop || !shop.restart) {
@@ -1985,7 +1987,7 @@ function showRestart(shop) {
     return;
   }
   note.hidden = false;
-  note.textContent = 'Shop network requires starting eznest with --lan.';
+  note.textContent = 'Shop network requires starting Ez Nest with --lan.';
 }
 
 function applyShop(shop) {
@@ -2111,8 +2113,8 @@ async function saveDeploy() {
     kiss: $('kiss-name').value.trim()
   }));
   applyShop(result);
-  if (result.restart && result.lan) status('Restart eznest to open the shop network.');
-  else if (result.restart) status('Shop network turns off after you restart eznest.');
+  if (result.restart && result.lan) status('Restart Ez Nest to open the shop network.');
+  else if (result.restart) status('Shop network turns off after you restart Ez Nest.');
 }
 
 async function saveHotFolder() {
@@ -2460,6 +2462,8 @@ function renderOutputSharing(info) {
   $('output-connect-shop').hidden = !paired;
   $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
   $('output-pair-form').hidden = paired || launch || source === 'disabled';
+  if ($('output-setup-settings')) $('output-setup-settings').hidden = !OUTPUT_APPROVE_ENDPOINT_READY || $('output-pair-form').hidden;
+  if (!OUTPUT_APPROVE_ENDPOINT_READY && $('output-setup-settings-waiting')) $('output-setup-settings-waiting').hidden = true;
   $('output-disconnect').hidden = !paired;
   $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
   $('output-disconnect').disabled = !paired || info.paused;
@@ -2635,11 +2639,93 @@ function renderOutputRequired(session) {
   showOutputRequired(session?.outputConnection?.ok === false);
   showOutputBanner(session);
 }
+function setupSkipped() {
+  try { return localStorage.getItem('eznest-setup-skipped') === '1'; }
+  catch { return false; }
+}
+function outputApproveUrl(url) {
+  // EZ46-7: only the allowlisted OUTPUT host may be opened from a setup reply.
+  let parsed;
+  try { parsed = new URL(url); }
+  catch { return ''; }
+  const sample = $('output-link-open') && $('output-link-open').href;
+  let allowed;
+  try { allowed = new URL(sample || 'https://output.jeezlabs.io/outpost/ez-nest'); }
+  catch { return ''; }
+  if (parsed.protocol !== 'https:' || parsed.host !== allowed.host) return '';
+  return parsed.href;
+}
+function setupShopPollDelay(attempt) {
+  return [2000, 3000, 5000, 8000][Math.min(3, attempt)];
+}
+function beginShopSetup(button, waiting, match, note, error) {
+  let timer = 0;
+  let run = 0;
+  const stop = message => {
+    run += 1;
+    window.clearTimeout(timer);
+    waiting.hidden = true;
+    button.hidden = !OUTPUT_APPROVE_ENDPOINT_READY;
+    button.disabled = false;
+    if (message && error) error.textContent = message;
+  };
+  const poll = (mine, attempt) => {
+    timer = window.setTimeout(async () => {
+      if (mine !== run) return;
+      try {
+        const body = await api('/api/telemetry/output/link/check', {});
+        if (mine !== run) return;
+        if (body.state === 'connected') {
+          note.textContent = 'Connected.';
+          location.reload();
+          return;
+        }
+        if (body.state === 'pending') return poll(mine, attempt + 1);
+        stop(body.message || 'Click Set up your shop to try again.');
+      } catch (err) {
+        if (mine === run) stop(err.message);
+      }
+    }, setupShopPollDelay(attempt));
+  };
+  button.onclick = async () => {
+    if (!OUTPUT_APPROVE_ENDPOINT_READY) return;
+    if (error) error.textContent = '';
+    button.disabled = true;
+    const popup = window.open('', '_blank');
+    try {
+      const body = await api(OUTPUT_APPROVE_ENDPOINT_READY ? '/api/telemetry/output/link/start' : '', {});
+      const approve = outputApproveUrl(body.approveUrl);
+      if (!approve) throw Error('OUTPUT did not return a page on its own site.');
+      match.textContent = body.userCode;
+      const reopen = waiting.querySelector('a');
+      if (reopen) reopen.href = approve;
+      note.textContent = 'Waiting…';
+      if (popup) {
+        popup.opener = null;
+        popup.location.href = approve;
+      } else window.open(approve, '_blank', 'noopener');
+      button.hidden = true;
+      waiting.hidden = false;
+      run += 1;
+      poll(run, 0);
+    } catch (err) {
+      if (popup) popup.close();
+      stop(err.message);
+    }
+  };
+  const cancel = waiting.querySelector('button');
+  if (cancel) cancel.onclick = async () => {
+    stop('');
+    try { await api('/api/telemetry/output/link/cancel', {}); } catch { /* The request expires on its own. */ }
+  };
+}
 function showOutputRequired(required) {
-  outputRequired = required === true;
+  outputRequired = required === true && !setupSkipped();
   $('output-required').hidden = !outputRequired;
   $('output-required-note').textContent = outputRequiredLocal ? '' : 'Ask the shop computer to connect to OUTPUT.';
-  $('output-required-connect').hidden = !outputRequiredLocal;
+  $('output-required-connect').hidden = !OUTPUT_APPROVE_ENDPOINT_READY || !outputRequiredLocal;
+  if (!OUTPUT_APPROVE_ENDPOINT_READY && $('output-setup-waiting')) $('output-setup-waiting').hidden = true;
+  if ($('output-required-code')) $('output-required-code').hidden = !outputRequiredLocal;
   document.body.classList.toggle('output-required-on', outputRequired);
 }
 function showOutputBanner(session) {
@@ -2961,7 +3047,7 @@ function showUpdate(info) {
   $('settings-open').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
   if (info?.managedSupported && info?.staged && !info.localPC) {
     note.hidden = false;
-    note.textContent = 'The update is ready. Approve installation on the PC running eznest.';
+    note.textContent = 'The update is ready. Approve installation on the PC running Ez Nest.';
     $('update').disabled = true;
     return;
   }
@@ -3235,7 +3321,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (error) {
       const offline = /Failed to fetch|NetworkError/i.test(String(error.message || error));
       if (installNow && offline) {
-        status('eznest is restarting to install the update.');
+        status('Ez Nest is restarting to install the update.');
         return;
       }
       status(error.message, true);
@@ -3259,7 +3345,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch {
       if (updateWasQueued) {
         $('update-note').hidden = false;
-        $('update-note').textContent = 'Installing the update. This page will reconnect when eznest is ready.';
+        $('update-note').textContent = 'Installing the update. This page will reconnect when Ez Nest is ready.';
       }
     }
   }, 5000);
@@ -3450,7 +3536,13 @@ async function disconnectOutputLink() {
 }
 $('output-link-connect').addEventListener('click', openOutputLinkForm);
 $('output-link-reconnect').addEventListener('click', openOutputLinkForm);
-$('output-required-connect').addEventListener('click', openOutputLinkForm);
+$('output-required-code').addEventListener('click', openOutputLinkForm);
+$('output-required-skip').addEventListener('click', () => {
+  try { localStorage.setItem('eznest-setup-skipped', '1'); } catch { /* This visit can still continue. */ }
+  location.reload();
+});
+beginShopSetup($('output-required-connect'), $('output-setup-waiting'), $('output-setup-match'), $('output-setup-wait'), $('output-required-note'));
+beginShopSetup($('output-setup-settings'), $('output-setup-settings-waiting'), $('output-setup-settings-match'), $('output-setup-settings-wait'), $('output-connect-status'));
 $('output-link-cancel').addEventListener('click', closeOutputLinkForm);
 $('output-link-form').addEventListener('submit', submitOutputLink);
 $('output-link-check').addEventListener('click', checkOutputLink);
