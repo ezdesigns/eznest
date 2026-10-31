@@ -93,8 +93,8 @@ This preview still requires the exact signed/notarized/stapled package digest,
 required current-head CI, independent review, actual limited-account installation,
 OUTPUT pairing and fresh check-ins before/after restart, installed SVG/PDF
 import/nest/export with restart persistence, sharing and updates off, owner
-revocation closing access, and isolated runner cleanup. None of those gates is
-waived by the preview scope.
+revocation reflected in connection status while API access stays available,
+and isolated runner cleanup. None of those gates is waived by the preview scope.
 
 The owner knowingly deferred reboot/logout longevity, two-version signed upgrade,
 failed-start rollback and interruption recovery, native updater/Installer handoff,
@@ -112,13 +112,16 @@ Do not overwrite an unrelated application or adopt existing user data. Confirm
 launchd uses the limited `_eznest` account and normal mode, then use a clearly
 labeled test shop to verify:
 
-1. Unpaired access is locked; an OUTPUT account produces a one-time pairing code.
+1. Unpaired API access works while the browser shows the Connect screen; an
+   OUTPUT account produces a one-time pairing code.
 2. The installed host pairs, appears in that shop and advances a successful
    check-in timestamp, with activity sharing off.
 3. Restart the service and verify another fresh successful check-in, then import,
    nest and export synthetic SVG/PDF work.
-4. Owner revocation closes access and rejects further work. Revoke only this test
-   host, preserve other bindings, and remove transient credentials.
+4. Owner revocation updates connection status; the next page load shows the
+   Connect screen. API access remains available with normal request validation.
+   Revoke only this test host, preserve other bindings, and remove transient
+   credentials.
 5. Verify install/uninstall and required service/update recovery checks from
    `macos-shop-service.md`. Mocked trust responses and source-mode tests do not
    establish these results.
