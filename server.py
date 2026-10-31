@@ -1002,8 +1002,6 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Change shop settings on the shop computer.'})
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
-                if data.get('shareStockSummary') is True and not output_remote.READY:
-                    return self.send(403, {'error': 'Stock summaries cannot be shared until OUTPUT can receive them.'})
                 fields = {}
                 if data.get('shareStockSummary') is True and not output_remote.READY:
                     return self.send(403, {'error': 'Stock summaries cannot be shared until OUTPUT can receive them.'})

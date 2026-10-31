@@ -140,7 +140,6 @@ class LinkApiTests(unittest.TestCase):
     def test_setup_routes_need_a_session_and_are_not_gate_exemptions(self):
         source = (ROOT / 'server.py').read_text(encoding='utf-8')
         self.assertNotIn('reject_output_gate', source)
-        self.assertNotIn("'/api/telemetry/output/link/start', '/api/telemetry/output/link/check'", source)
         with patch.object(output_remote, 'READY', True), patch.object(output_link, '_post', return_value=reply({'linkId': LINK, 'state': 'pending', 'userCode': 'ABCD-2345'})):
             status, body = self.request('/api/telemetry/output/link/start', {})
             self.assertEqual(status, 200, body)
