@@ -2460,6 +2460,7 @@ function renderOutputSharing(info) {
   $('output-connect-shop').hidden = !paired;
   $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
   $('output-pair-form').hidden = paired || launch || source === 'disabled';
+  if ($('output-setup-settings')) $('output-setup-settings').hidden = $('output-pair-form').hidden;
   $('output-disconnect').hidden = !paired;
   $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
   $('output-disconnect').disabled = !paired || info.paused;
@@ -2635,11 +2636,91 @@ function renderOutputRequired(session) {
   showOutputRequired(session?.outputConnection?.ok === false);
   showOutputBanner(session);
 }
+function setupSkipped() {
+  try { return sessionStorage.getItem('eznest-setup-skipped') === '1'; }
+  catch { return false; }
+}
+function outputApproveUrl(url) {
+  // EZ46-7: only the allowlisted OUTPUT host may be opened from a setup reply.
+  let parsed;
+  try { parsed = new URL(url); }
+  catch { return ''; }
+  const sample = $('output-link-open') && $('output-link-open').href;
+  let allowed;
+  try { allowed = new URL(sample || 'https://output.jeezlabs.io/outpost/ez-nest'); }
+  catch { return ''; }
+  if (parsed.protocol !== 'https:' || parsed.host !== allowed.host) return '';
+  return parsed.href;
+}
+function setupShopPollDelay(attempt) {
+  return [2000, 3000, 5000, 8000][Math.min(3, attempt)];
+}
+function beginShopSetup(button, waiting, match, note, error) {
+  let timer = 0;
+  let run = 0;
+  const stop = message => {
+    run += 1;
+    window.clearTimeout(timer);
+    waiting.hidden = true;
+    button.hidden = false;
+    button.disabled = false;
+    if (message && error) error.textContent = message;
+  };
+  const poll = (mine, attempt) => {
+    timer = window.setTimeout(async () => {
+      if (mine !== run) return;
+      try {
+        const body = await api('/api/telemetry/output/link/check', {});
+        if (mine !== run) return;
+        if (body.state === 'connected') {
+          note.textContent = 'Connected.';
+          location.reload();
+          return;
+        }
+        if (body.state === 'pending') return poll(mine, attempt + 1);
+        stop(body.message || 'Click Set up your shop to try again.');
+      } catch (err) {
+        if (mine === run) stop(err.message);
+      }
+    }, setupShopPollDelay(attempt));
+  };
+  button.onclick = async () => {
+    if (error) error.textContent = '';
+    button.disabled = true;
+    const popup = window.open('', '_blank');
+    try {
+      const body = await api('/api/telemetry/output/link/start', {});
+      const approve = outputApproveUrl(body.approveUrl);
+      if (!approve) throw Error('OUTPUT did not return a page on its own site.');
+      match.textContent = body.userCode;
+      const reopen = waiting.querySelector('a');
+      if (reopen) reopen.href = approve;
+      note.textContent = 'Waiting…';
+      if (popup) {
+        popup.opener = null;
+        popup.location.href = approve;
+      } else window.open(approve, '_blank', 'noopener');
+      button.hidden = true;
+      waiting.hidden = false;
+      run += 1;
+      poll(run, 0);
+    } catch (err) {
+      if (popup) popup.close();
+      stop(err.message);
+    }
+  };
+  const cancel = waiting.querySelector('button');
+  if (cancel) cancel.onclick = async () => {
+    stop('');
+    try { await api('/api/telemetry/output/link/cancel', {}); } catch { /* The request expires on its own. */ }
+  };
+}
 function showOutputRequired(required) {
-  outputRequired = required === true;
+  outputRequired = required === true && !setupSkipped();
   $('output-required').hidden = !outputRequired;
   $('output-required-note').textContent = outputRequiredLocal ? '' : 'Ask the shop computer to connect to OUTPUT.';
   $('output-required-connect').hidden = !outputRequiredLocal;
+  if ($('output-required-code')) $('output-required-code').hidden = !outputRequiredLocal;
   document.body.classList.toggle('output-required-on', outputRequired);
 }
 function showOutputBanner(session) {
@@ -3450,7 +3531,13 @@ async function disconnectOutputLink() {
 }
 $('output-link-connect').addEventListener('click', openOutputLinkForm);
 $('output-link-reconnect').addEventListener('click', openOutputLinkForm);
-$('output-required-connect').addEventListener('click', openOutputLinkForm);
+$('output-required-code').addEventListener('click', openOutputLinkForm);
+$('output-required-skip').addEventListener('click', () => {
+  try { sessionStorage.setItem('eznest-setup-skipped', '1'); } catch { /* This visit can still continue. */ }
+  location.reload();
+});
+beginShopSetup($('output-required-connect'), $('output-setup-waiting'), $('output-setup-match'), $('output-setup-wait'), $('output-required-note'));
+beginShopSetup($('output-setup-settings'), $('output-setup-settings-waiting'), $('output-setup-settings-match'), $('output-setup-settings-wait'), $('output-connect-status'));
 $('output-link-cancel').addEventListener('click', closeOutputLinkForm);
 $('output-link-form').addEventListener('submit', submitOutputLink);
 $('output-link-check').addEventListener('click', checkOutputLink);

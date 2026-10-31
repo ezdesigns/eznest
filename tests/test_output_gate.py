@@ -319,11 +319,12 @@ class GateTests(unittest.TestCase):
                     # Unpaired: a plain message and one Connect action; nesting waits.
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
                     expect(page.locator('#output-required')).to_be_visible()
-                    expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT to start nesting')
-                    expect(page.locator('#output-required-connect')).to_have_text('Connect')
+                    expect(page.locator('#output-required-title')).to_have_text('Set up your shop')
+                    expect(page.locator('#output-required-connect')).to_have_text('Set up your shop')
+                    expect(page.locator('#output-required-skip')).to_have_text('Skip')
                     expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
                     with page.context.expect_page() as opened:
-                        page.click('#output-required-connect')
+                        page.click('#output-required-code')
                     opened.value.close()
                     expect(page.locator('#output-link-form')).to_be_visible()
                     expect(page.locator('#output-link-code')).to_be_focused()
@@ -331,6 +332,10 @@ class GateTests(unittest.TestCase):
                     shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
                     shots.mkdir(parents=True, exist_ok=True)
                     page.screenshot(path=str(shots / 'output-connect-gate.png'))
+                    page.click('#output-link-cancel')
+                    page.click('#output-required-skip')
+                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
+                    self.assertEqual(page.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"), '1')
                 finally:
                     browser.close()
         finally:

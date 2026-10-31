@@ -259,10 +259,11 @@ class RestoreUiTests(unittest.TestCase):
         expect(page.locator('#output-dot')).to_have_attribute('title', 'Connect to OUTPUT')
         # Unpaired: one plain message, nesting waits until OUTPUT is connected.
         expect(page.locator('#output-required')).to_be_visible()
-        expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT to start nesting')
+        expect(page.locator('#output-required-title')).to_have_text('Set up your shop')
+        expect(page.locator('#output-required-skip')).to_be_visible()
         self.final(page, 'not-connected', width)
         with context.expect_page() as tab:
-            page.click('#output-required-connect')
+            page.click('#output-required-code')
         self.assertTrue(tab.value.url.endswith('/outpost/ez-nest'), tab.value.url)
         tab.value.close()
         expect(page.locator('#output-link-code')).to_be_visible()
