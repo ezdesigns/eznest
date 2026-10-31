@@ -197,6 +197,10 @@ button.primary {
 .output-required[hidden] { display: none; }
 .output-required p { margin: 0; }
 .output-required button { min-height: 38px; padding: 6px 16px; flex: none; }
+.output-required-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.setup-shop-waiting { display: grid; gap: 6px; }
+.setup-shop-waiting p { margin: 0; }
+.setup-shop-code { font: 700 28px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
 #output-banner { margin: 8px auto 0; width: min(760px, calc(100% - 32px)); text-align: center; }
 #pin-alert { margin: 0 0 12px; }
 #logout { margin-left: auto; }

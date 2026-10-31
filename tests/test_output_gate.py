@@ -314,16 +314,40 @@ class GateTests(unittest.TestCase):
             with sync_playwright() as playwright:
                 browser = test_web_mvp.launch_browser(playwright)
                 try:
-                    page = browser.new_page(viewport={'width': 1280, 'height': 800})
+                    context = browser.new_context(viewport={'width': 1280, 'height': 800})
+                    page = context.new_page()
                     page.goto(helper.url() + '/web')
                     # Unpaired: a plain message and one Connect action; nesting waits.
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
                     expect(page.locator('#output-required')).to_be_visible()
                     expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT (optional)')
-                    expect(page.locator('#output-required-connect')).to_have_text('Connect')
+                    expect(page.locator('#output-required-connect')).to_be_hidden()
+                    expect(page.locator('#output-required-connect')).to_have_text('Set up your shop')
+                    calls = page.evaluate("""() => {
+                      const hits = [];
+                      const opened = [];
+                      const origFetch = window.fetch;
+                      const origOpen = window.open;
+                      window.fetch = function(url, options) {
+                        const target = String(url);
+                        if (target.includes('/api/telemetry/output/link/start')) hits.push(target);
+                        return origFetch.apply(this, arguments);
+                      };
+                      window.open = function(url) {
+                        opened.push(url);
+                        return {close() {}, opener: null, location: {href: ''}};
+                      };
+                      document.getElementById('output-required-connect').click();
+                      document.getElementById('output-setup-settings').click();
+                      window.fetch = origFetch;
+                      window.open = origOpen;
+                      return {hits: hits.length, opened: opened.length};
+                    }""")
+                    self.assertEqual(calls, {'hits': 0, 'opened': 0})
+                    expect(page.locator('#output-required-skip')).to_have_text('Skip')
                     expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
                     with page.context.expect_page() as opened:
-                        page.click('#output-required-connect')
+                        page.click('#output-required-code')
                     opened.value.close()
                     expect(page.locator('#output-link-form')).to_be_visible()
                     expect(page.locator('#output-link-code')).to_be_focused()
@@ -331,6 +355,55 @@ class GateTests(unittest.TestCase):
                     shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
                     shots.mkdir(parents=True, exist_ok=True)
                     page.screenshot(path=str(shots / 'output-connect-gate.png'))
+                    page.click('#output-link-cancel')
+                    page.click('#output-required-skip')
+                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
+                    self.assertEqual(page.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
+                    self.assertIsNone(page.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"))
+                    fresh = context.new_page()
+                    try:
+                        fresh.goto(helper.url() + '/web')
+                        fresh.wait_for_function("() => document.body.dataset.ready === '1'")
+                        expect(fresh.locator('#output-required')).to_be_hidden()
+                        self.assertEqual(fresh.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
+                        self.assertIsNone(fresh.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"))
+                    finally:
+                        fresh.close()
+                finally:
+                    browser.close()
+        finally:
+            helper.tearDown()
+
+    def test_skip_opens_inventory_when_browser_storage_is_unavailable(self):
+        from playwright.sync_api import expect, sync_playwright
+        import test_web_mvp
+        helper = test_web_mvp.WebMvpTests(methodName='runTest')
+        helper.setUp()
+        try:
+            with sync_playwright() as playwright:
+                browser = test_web_mvp.launch_browser(playwright)
+                try:
+                    page = browser.new_page()
+                    page.add_init_script("""(() => {
+                      for (const method of ['getItem', 'setItem']) {
+                        const original = Storage.prototype[method];
+                        Storage.prototype[method] = function(key, ...args) {
+                          if (key === 'eznest-setup-skipped') throw new DOMException('Storage blocked', 'SecurityError');
+                          return original.call(this, key, ...args);
+                        };
+                      }
+                    })();""")
+                    page.goto(helper.url() + '/web')
+                    page.wait_for_function("() => document.body.dataset.ready === '1'")
+                    expect(page.locator('#output-required')).to_be_visible()
+                    page.evaluate('window.skipVisit = true')
+                    page.click('#output-required-skip')
+                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
+                    self.assertTrue(page.evaluate('window.skipVisit === true'))
+                    page.click('#stock-open')
+                    expect(page.locator('#stock-add')).to_be_visible()
+                    page.click('#stock-add')
+                    expect(page.locator('#roll-f-name')).to_be_visible()
                 finally:
                     browser.close()
         finally:

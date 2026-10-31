@@ -23,8 +23,21 @@
   </form>
 </dialog>
 <div id="output-required" class="output-required" role="status" hidden>
-  <p><strong id="output-required-title">Connect to OUTPUT (optional)</strong> <span class="hint">Nesting works without it. Connect any time in Settings.</span> <span id="output-required-note" class="hint"></span></p>
-  <button id="output-required-connect" type="button" class="primary">Connect</button>
+  <div>
+    <p><strong id="output-required-title">Connect to OUTPUT (optional)</strong> <span class="hint">Nesting works without it. Connect any time in Settings.</span></p>
+    <p id="output-required-note" class="hint"></p>
+    <div id="output-setup-waiting" class="setup-shop-waiting" hidden>
+      <p class="hint">Approve in your browser. The code there should match:</p>
+      <p id="output-setup-match" class="setup-shop-code" aria-live="polite"></p>
+      <p id="output-setup-wait" class="hint" role="status">Waiting…</p>
+      <p class="hint"><a id="output-setup-reopen" href="#" target="_blank" rel="noopener noreferrer">Open again</a> · <button id="output-setup-cancel" class="link" type="button">Cancel</button></p>
+    </div>
+  </div>
+  <div class="output-required-actions">
+    <button id="output-required-connect" type="button" class="primary" hidden>Set up your shop</button>
+    <button id="output-required-code" type="button" class="link">Have a pairing code?</button>
+    <button id="output-required-skip" type="button" class="link">Skip</button>
+  </div>
 </div>
 <p id="output-banner" class="hint" hidden></p>
 <div id="top-actions" class="top-actions">
@@ -145,6 +158,13 @@
           <button id="output-check-now" class="link" type="button" hidden>Check now</button>
         </div>
         <button id="output-reconnect" class="link" type="button" hidden>Reconnect with a new code</button>
+        <button id="output-setup-settings" type="button" class="primary" hidden>Set up your shop</button>
+        <div id="output-setup-settings-waiting" class="setup-shop-waiting" hidden>
+          <p class="hint">Approve in your browser. The code there should match:</p>
+          <p id="output-setup-settings-match" class="setup-shop-code" aria-live="polite"></p>
+          <p id="output-setup-settings-wait" class="hint" role="status">Waiting…</p>
+          <p class="hint"><button id="output-setup-settings-cancel" class="link" type="button">Cancel</button></p>
+        </div>
         <div id="output-pair-form">
           <label>Pairing code
             <input id="output-pair-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="text" aria-describedby="output-connect-status">
