@@ -2003,8 +2003,10 @@ function applyShop(shop) {
   const showNames = $('show-roll-names');
   if (shareStock && showNames) {
     shareStock.checked = STOCK_SHARE_ENDPOINT_READY && shop.shareStockSummary === true;
-    showNames.checked = shop.showRollNames !== false;
+    showNames.checked = shop.showRollNames === true;
     shareStock.disabled = !hostComputer || !STOCK_SHARE_ENDPOINT_READY;
+    const stockShare = $('settings-stock-share');
+    if (stockShare) stockShare.hidden = !STOCK_SHARE_ENDPOINT_READY;
     showNames.disabled = !hostComputer;
   }
   if (shop.outputNote) $('output-note').textContent = shop.outputNote;
@@ -2108,7 +2110,7 @@ function shopPayload(extra) {
     channel: $('test-channel').checked ? 'test' : 'stable',
     outputNetwork: $('output-network').checked,
     shareStockSummary: STOCK_SHARE_ENDPOINT_READY && $('share-stock-summary') ? $('share-stock-summary').checked : false,
-    showRollNames: $('show-roll-names') ? $('show-roll-names').checked : true
+    showRollNames: $('show-roll-names') ? $('show-roll-names').checked : false
   }, extra || {});
   const outputUrl = outputUrlField();
   if (outputUrl !== null) payload.outputUrl = outputUrl;

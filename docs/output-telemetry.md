@@ -55,7 +55,7 @@ Unknown stock has an empty length and is not marked low. At most 200 rolls are
 included, and the request stays within 32 KB. Reservations, job codes, cost,
 supplier, profile text, file names, and customer details are omitted. A name
 that looks like a path, email address, URL, or job code is sent empty. Show
-roll names in OUTPUT is on unless the host turns it off; then every name is empty.
+roll names in OUTPUT stay off until the host turns them on; until then every name is empty.
 
 Settings shows the JSON that would be sent. Delivery is
 `PUT {output base}/api/shop/agent/stock` with the stored credential, through

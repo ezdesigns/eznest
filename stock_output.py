@@ -79,8 +79,8 @@ def apply_settings(directory, before, after):
     """React to the host settings save. Turning sharing off clears the remote copy."""
     was = before.get('shareStockSummary') is True
     enabled = after.get('shareStockSummary') is True
-    names_before = before.get('showRollNames') is not False
-    names_after = after.get('showRollNames') is not False
+    names_before = before.get('showRollNames') is True
+    names_after = after.get('showRollNames') is True
     with LOCK:
         sched = _sched(directory)
         if was and not enabled:
@@ -111,7 +111,7 @@ def _sharing(directory):
 
 
 def _show_names(directory):
-    return shop_deploy.load_shop(directory).get('showRollNames') is not False
+    return shop_deploy.load_shop(directory).get('showRollNames') is True
 
 
 def tenth(value):

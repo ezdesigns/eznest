@@ -175,7 +175,7 @@ def load_shop(directory):
         'outputUrl': output_url,
         'sourceRoots': _source_roots(data.get('sourceRoots')),
         'shareStockSummary': data.get('shareStockSummary') is True,
-        'showRollNames': data.get('showRollNames') is not False,
+        'showRollNames': data.get('showRollNames') is True,
     }
 
 
@@ -248,7 +248,7 @@ def save_shop(directory, onyx_pc, lan, updates=None, **fields):
         'outputUrl': current['outputUrl'] if 'outputUrl' not in fields else clean_output_url(fields.get('outputUrl')),
         'sourceRoots': current['sourceRoots'] if 'sourceRoots' not in fields else _source_roots(fields.get('sourceRoots')),
         'shareStockSummary': current['shareStockSummary'] if 'shareStockSummary' not in fields else fields.get('shareStockSummary') is True,
-        'showRollNames': current['showRollNames'] if 'showRollNames' not in fields else fields.get('showRollNames') is not False,
+        'showRollNames': current['showRollNames'] if 'showRollNames' not in fields else fields.get('showRollNames') is True,
     }
     path = Path(directory) / 'shop.json'
     path.parent.mkdir(parents=True, exist_ok=True)
