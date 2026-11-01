@@ -135,13 +135,13 @@ class PublicationTests(unittest.TestCase):
 
     def test_both_platforms_are_verified_before_first_remote_write(self):
         pin = self.root / 'macos/MACOS-RELEASE.json'
-        row = json.loads(pin.read_text()); row['packageNotarized'] = False; pin.write_text(json.dumps(row))
+        row = json.loads(pin.read_text(encoding="utf-8")); row['packageNotarized'] = False; pin.write_text(json.dumps(row))
         with self.assertRaises(release.ReleaseError): self.publish()
         self.assertEqual(self.api.writes, [])
 
     def test_source_version_checksum_and_cleanup_must_match(self):
         pin = self.root / 'macos/MACOS-RELEASE.json'
-        original = json.loads(pin.read_text())
+        original = json.loads(pin.read_text(encoding="utf-8"))
         for key, value in [('commit',OTHER),('version','0.1.0'),('sha256','0'*64),('cleanup',False)]:
             pin.write_text(json.dumps({**original,key:value}))
             with self.subTest(key=key), self.assertRaises(release.ReleaseError): self.publish()
@@ -261,7 +261,7 @@ class AdditionalPublicationBoundaries(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder); artifacts(root)
             out=root/'macos'
-            accepted=dict(version=VERSION,sha256=json.loads((out/'MACOS-RELEASE.json').read_text())['sha256'],
+            accepted=dict(version=VERSION,sha256=json.loads((out/'MACOS-RELEASE.json').read_text(encoding="utf-8"))['sha256'],
                 installed=True,offlineFileFlows=True,persistenceVerified=True,restarted=True,
                 sharingOff=True,updatesOff=True,loopbackOnly=True,cleanup=True)
             with patch.dict(os.environ,{'RUNNER_TEMP':str(root)}):
@@ -270,7 +270,7 @@ class AdditionalPublicationBoundaries(unittest.TestCase):
                     with self.subTest(key=key), self.assertRaises(ValueError): mac.finalize(out)
                 (root/'eznest-macos-acceptance.json').write_text(json.dumps(accepted))
                 mac.finalize(out)
-                self.assertTrue(json.loads((out/'MACOS-RELEASE.json').read_text())['cleanup'])
+                self.assertTrue(json.loads((out/'MACOS-RELEASE.json').read_text(encoding="utf-8"))['cleanup'])
 
     def test_mac_signing_cannot_touch_a_local_machine(self):
         values={name:'fixture' for name in mac.REQUIRED}
@@ -303,7 +303,7 @@ class OfflineAcceptanceTests(unittest.TestCase):
                 self.assertEqual([e['format'] for e in persistence.call_args.args[1]],['pdf','svg'])
                 self.assertEqual(command.call_count,1)
                 self.assertIn('kickstart',command.call_args.args[0])
-                saved=json.loads(receipt.read_text())
+                saved=json.loads(receipt.read_text(encoding="utf-8"))
                 self.assertFalse(saved['paired'])
                 self.assertTrue(saved['offlineFileFlows'])
                 self.assertTrue(saved['sharingOff'])
@@ -319,22 +319,22 @@ class OfflineAcceptanceTests(unittest.TestCase):
 
     def test_svg_acceptance_opens_the_simple_view_with_its_controls(self):
         root = Path(__file__).resolve().parents[1]
-        source = (root / 'tests/macos_svg_acceptance.py').read_text()
+        source = (root / 'tests/macos_svg_acceptance.py').read_text(encoding="utf-8")
         self.assertIn("page.goto(ORIGIN + '/?view=simple'", source)
-        simple = (root / 'web.html').read_text()
+        simple = (root / 'web.html').read_text(encoding="utf-8")
         for control in ('edit-material', 'start-nesting', 'save-destination'):
             self.assertIn('id="' + control + '"', simple)
 
     def test_release_workflow_keeps_secrets_and_write_access_out_of_pr_jobs(self):
         root=Path(__file__).resolve().parents[1]
-        workflow=(root/'.github/workflows/auto-release.yml').read_text()
+        workflow=(root/'.github/workflows/auto-release.yml').read_text(encoding="utf-8")
         validate=workflow.split('  validate:',1)[1].split('  plan:',1)[0]
         self.assertNotIn('secrets.',validate)
         self.assertIn("github.event_name == 'workflow_run'",workflow)
         self.assertIn('needs: [plan, windows, macos]',workflow)
         self.assertEqual(workflow.count('contents: write'),1)
         self.assertNotIn('secrets:',workflow.split('  windows:',1)[1].split('  macos:',1)[0])
-        windows=(root/'.github/workflows/windows-installer.yml').read_text()
+        windows=(root/'.github/workflows/windows-installer.yml').read_text(encoding="utf-8")
         self.assertIn('workflow_call:',windows)
         self.assertNotIn('  publish:',windows)
         self.assertNotIn('--clobber',windows)
