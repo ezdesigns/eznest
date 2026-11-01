@@ -702,13 +702,14 @@ class WebMvpTests(unittest.TestCase):
             )
             raise AssertionError('Shop page was not ready. ' + detail) from None
 
-    def test_desktop_workspace_remains_the_front_page(self):
+    def test_root_is_the_single_workspace_and_legacy_link_reaches_it(self):
         with urlopen(self.url() + '/', timeout=10) as response:
             desktop = response.read().decode()
         with urlopen(self.url() + '/web', timeout=10) as response:
             page = response.read().decode()
-        self.assertIn('Nest selected jobs', desktop)
-        self.assertIn('href="/web"', desktop)
+        self.assertEqual(desktop, page)
+        self.assertNotIn('Full workspace', desktop)
+        self.assertNotIn('Simple page', desktop)
         self.assertIn('Upload your print here', page)
         self.assertIn('Stop · keep best', page)
         self.assertIn('id="files"', page)

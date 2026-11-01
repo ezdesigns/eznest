@@ -8,7 +8,7 @@ The shop host is a 64-bit PC running Windows 10 or Windows 11. Each designer PC 
 
 **Stock database.** `materials.sqlite3` stays on the host. Only the Ez Nest process on that PC may open it. Do not put it on an SMB share or copy it to a designer PC.
 
-**Shop network.** The page stays on the host at `http://127.0.0.1:8765/web` until you set a shop PIN and turn Shop network on. Other computers then open `http://SHOP-HOST:8765/web` and enter that PIN once. The default is plain HTTP on port 8765. Anyone who can watch that LAN can copy a signed-in browser's session cookie. Local HTTPS is the recommended extra step. See [Security](SECURITY.md). Use a trusted private network. The installer firewall rule is the Private profile only, limited to the local subnet or the designer PC addresses you pass in. Keep port 8765 off the internet.
+**Shop network.** The page stays on the host at `http://127.0.0.1:8765/` until you set a shop PIN and turn Shop network on. Other computers then open `http://SHOP-HOST:8765/` and enter that PIN once. The default is plain HTTP on port 8765. Anyone who can watch that LAN can copy a signed-in browser's session cookie. Local HTTPS is the recommended extra step. See [Security](SECURITY.md). Use a trusted private network. The installer firewall rule is the Private profile only, limited to the local subnet or the designer PC addresses you pass in. Keep port 8765 off the internet.
 
 **Uninstall.** Uninstall removes the program, the startup task, the `eznest-svc` account, and the firewall rule. `%ProgramData%\eznest` stays on the host, including `materials.sqlite3`. The RIP hot folder stays too. Details are under [Uninstall](#uninstall).
 
@@ -156,7 +156,7 @@ After pairing, the browser workspace stays open if OUTPUT is unreachable, for 14
 
 ## Shop network
 
-The default is this computer only: `http://127.0.0.1:8765/web`.
+The default is this computer only: `http://127.0.0.1:8765/`.
 
 Shop network stays closed until a shop PIN is set on this computer and you start with `--lan`. The page is plain HTTP. Designer browsers enter the PIN once. They do not receive the host write token. Do not share this network with guest WiFi. Do not forward port 8765 to the internet. See [Security](SECURITY.md).
 
@@ -211,7 +211,7 @@ py -3.12 -m venv .local/venv
 .local/venv/Scripts/python.exe launcher.py --web
 ```
 
-On Linux or macOS, use `python3` and `.local/venv/bin/python`. Then open `http://127.0.0.1:8765/web`.
+On Linux or macOS, use `python3` and `.local/venv/bin/python`. Then open `http://127.0.0.1:8765/`.
 
 ```bash
 docker build -t eznest .

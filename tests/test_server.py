@@ -13,6 +13,43 @@ from unittest.mock import patch
 
 
 class ServerTests(unittest.TestCase):
+    def test_one_app_entry_preserves_legacy_handoff_queries_and_host_validation(self):
+        from http.client import HTTPConnection
+        old_port = server.PORT
+        service = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+        server.PORT = service.server_port
+        thread = threading.Thread(target=service.serve_forever, daemon=True)
+        thread.start()
+        def get(path, host=None):
+            connection = HTTPConnection('127.0.0.1', server.PORT, timeout=5)
+            try:
+                connection.request('GET', path, headers={'Host': host} if host else {})
+                response = connection.getresponse()
+                return response.status, dict(response.getheaders()), response.read()
+            finally:
+                connection.close()
+        try:
+            status, headers, body = get('/')
+            self.assertEqual(status, 200)
+            self.assertIn(b'Upload your print here', body)
+            self.assertNotIn(b'Full workspace', body)
+            self.assertNotIn(b'Simple page', body)
+            for path, target in [('/web', '/'), ('/web/', '/'),
+                                 ('/web?illustrator=capture%2Fid&mode=review', '/?illustrator=capture%2Fid&mode=review'),
+                                 ('/web/?next=https%3A%2F%2Fexample.com', '/?next=https%3A%2F%2Fexample.com')]:
+                with self.subTest(path=path):
+                    status, headers, body = get(path)
+                    self.assertEqual(status, 307)
+                    self.assertEqual(headers['Location'], target)
+                    self.assertEqual(headers['Cache-Control'], 'no-store')
+                    self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
+                    self.assertEqual(body, b'')
+            self.assertEqual(get('/web', 'other.example:' + str(server.PORT))[0], 403)
+            self.assertEqual(get('/production.html')[0], 404)
+        finally:
+            service.shutdown(); service.server_close(); thread.join()
+            server.PORT = old_port
+
     def test_local_server_restarts_after_connection_but_rejects_live_listener(self):
         from http.server import BaseHTTPRequestHandler
         class Handler(BaseHTTPRequestHandler):
