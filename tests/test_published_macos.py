@@ -1,7 +1,7 @@
 """Disposable-runner acceptance of signed Mac package bytes, never source mode.
 
-Only an explicitly dispatched job may install. Owner revocation is mandatory
-outside this script, including on failure. Cleanup is CI containment, not a
+Only the guarded disposable CI runner may install. Live pairing is explicitly
+dispatched and requires owner revocation outside this script, including on failure. Cleanup is CI containment, not a
 product uninstaller. It refuses to race a timed-out Apple Installer transaction.
 """
 import argparse
@@ -27,7 +27,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
-VERSION = '1.0.0-rc.5'
+VERSION = json.loads((Path(__file__).resolve().parents[1] / 'version.json').read_text())['version']
 TEAM = 'JC6858UYM9'
 LABEL = 'io.jeezlabs.eznest'
 PACKAGE_ID = LABEL + '.shop'
@@ -465,6 +465,32 @@ def preview_settings(api):
             'Installed service is not listening exclusively on IPv4 loopback.')
 
 
+def offline(root):
+    """Local release acceptance; no pairing code, remote shop or account is used."""
+    receipt_path = root / 'eznest-macos-acceptance.json'
+    receipt = json.loads(receipt_path.read_text())
+    require(receipt.get('installed') is True and receipt.get('unpairedApiOpen') is True
+            and receipt.get('paired') is False, 'A fresh unpaired owned installation is required.')
+    api = LocalAPI(); api.session()
+    status, sharing = api.request('/api/telemetry/output')
+    require(status == 200 and sharing.get('configured') is False and sharing.get('enabled') is False,
+            'Offline acceptance must remain unpaired with sharing disabled.')
+    preview_settings(api)
+    exports = [pdf_file_flow(api)]
+    require(api.request('/api/work/discard', {})[0] == 200, 'Could not start the SVG test job.')
+    from macos_svg_acceptance import svg_file_flow
+    exports.append(svg_file_flow(api, root))
+    before = api.session()['pid']
+    command(['/usr/bin/sudo', '-n', '/bin/launchctl', 'kickstart', '-k', 'system/' + LABEL])
+    require(api.healthy()['pid'] != before, 'The service process did not restart.')
+    verify_persistence(api, exports)
+    preview_settings(api)
+    receipt.update(offlineFileFlows=True, restarted=True, nested=True, persistenceVerified=True,
+                   sharingOff=True, updatesOff=True, loopbackOnly=True)
+    write_json(receipt_path, receipt)
+    print('OFFLINE_PASS: local PDF/SVG export and restart persistence; no remote pairing claim.')
+
+
 def connect(root):
     code = os.environ.pop('EZ_NEST_MACOS_ACCEPTANCE_CODE', '')
     require(re.fullmatch('[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}', code),
@@ -597,7 +623,7 @@ def cleanup(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase', choices=('Download', 'Install', 'Connect', 'VerifyRevoked', 'Cleanup'))
+    parser.add_argument('phase', choices=('Download', 'Install', 'Offline', 'Connect', 'VerifyRevoked', 'Cleanup'))
     args = parser.parse_args()
     try:
         root = runner_guard()
@@ -605,6 +631,8 @@ def main():
             download(root)
         elif args.phase == 'Install':
             install(root, valid_hash(os.environ.get('EZ_NEST_PACKAGE_SHA256')))
+        elif args.phase == 'Offline':
+            offline(root)
         elif args.phase == 'Connect':
             connect(root)
         elif args.phase == 'VerifyRevoked':

@@ -2,11 +2,17 @@ name: Windows installer
 
 # CI produces unsigned test installers and never reads publisher credentials.
 # version.json is the only version number. build_windows.py passes it to Inno Setup.
-# A v* tag attaches eznest-setup.exe to that GitHub release.
+# Release publication is owned by auto-release.yml after both platforms pass.
 # workflow_dispatch uploads the same exe as an artifact and does not publish a release.
 # pull_request runs the build on this branch before the file is on the default branch.
 # GitHub hides workflow_dispatch until the workflow is on the default branch or has run once.
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: 'Checked main commit selected by the release planner'
+        required: true
+        type: string
   workflow_dispatch:
   pull_request:
   push:
@@ -29,7 +35,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Python
@@ -96,7 +102,7 @@ jobs:
       - name: Build the shop installer
         shell: pwsh
         env:
-          EZ_NEST_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          EZ_NEST_COMMIT: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
         run: |
           python build_windows.py --out (Join-Path $env:RUNNER_TEMP "eznest-build")
           $setup = "installer\Output\eznest-setup.exe"
@@ -112,7 +118,7 @@ jobs:
       - name: Write the checksum from version.json
         shell: pwsh
         env:
-          EZ_NEST_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          EZ_NEST_COMMIT: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
         run: |
           $setup = "installer\Output\eznest-setup.exe"
           $pin = "installer\Output\BUILD.json"
@@ -140,41 +146,4 @@ jobs:
       - name: Test actual fresh install on disposable Windows runner
         shell: pwsh
         run: pwsh -NoProfile -File tests/test_installed_shop.ps1
-
-  publish:
-    name: Publish approved tag build
-    needs: installer
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-latest
-    environment: eznest-release
-    permissions:
-      contents: write
-    steps:
-      - name: Download the installer
-        uses: actions/download-artifact@v4
-        with:
-          name: eznest-setup
-          path: installer/Output
-
-      - name: Attach the installer to the release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $setup = "installer\Output\eznest-setup.exe"
-          $pin = "installer\Output\BUILD.json"
-          $sha = "installer\Output\eznest-setup.exe.sha256"
-          $manifest = "installer\Output\manifest.json"
-          $notes = "Shop server installer for $tag. Run eznest-setup.exe on the shop PC. It does not need Python or Git. BUILD.json records the version, commit, and SHA-256 of eznest-setup.exe. eznest-setup.exe.sha256 is the checksum Update checks."
-          gh release view $tag
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $setup $pin $sha $manifest --clobber
-          } else {
-            gh release create $tag $setup $pin $sha $manifest --title $tag --notes $notes
-          }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
 
