@@ -45,6 +45,9 @@ def svg_file_flow(api, root):
                 page = context.new_page()
                 page.goto(ORIGIN + '/web', wait_until='domcontentloaded')
                 expect(page.locator('body')).to_have_attribute('data-ready', '1', timeout=60000)
+                if page.locator('#output-required').is_visible():
+                    page.click('#output-required-skip')
+                    expect(page.locator('#output-required')).to_be_hidden()
                 if page.locator('#feedback-welcome').is_visible():
                     page.click('#feedback-dismiss')
                 if page.locator('#setup').is_visible():

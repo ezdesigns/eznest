@@ -1,5 +1,10 @@
 # Signed Mac release procedure
 
+For owner-selected automatic experimental previews, see [Automatic releases](automatic-release.md).
+That pipeline uses CI signing/notarization and offline installed-file/restart checks.
+The live OUTPUT and full rollout checks below remain independent evidence; the
+automatic pipeline does not claim to have performed them.
+
 Use a dedicated native Python 3.12 environment with `requirements-build.txt`.
 Build and accept each architecture separately. An arm64 build does not certify
 Intel. Preserve existing Windows release assets and the shop's data.
