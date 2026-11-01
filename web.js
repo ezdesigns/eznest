@@ -3240,6 +3240,12 @@ function syncWelcome() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  $('mode-switch').addEventListener('click', event => {
+    if (busy || saving || importing) {
+      event.preventDefault(); status('Finish the current operation before switching modes.', true); return;
+    }
+    if (kits.length && !window.confirm('Switch to full mode? Save your work first. Jobs are not transferred between modes, and unsaved changes may be lost.')) event.preventDefault();
+  });
   closeSettingsFolds();
   $('inventory-open').addEventListener('click', () => openPreset($('material').value));
   $('preset-editor').addEventListener('input', renderInventory);

@@ -31,12 +31,16 @@ class ServerTests(unittest.TestCase):
         try:
             status, headers, body = get('/')
             self.assertEqual(status, 200)
+            self.assertIn(b'Jobs to print', body)
+            self.assertIn(b'href="/?view=simple">Simple mode', body)
+            status, headers, body = get('/?view=simple')
+            self.assertEqual(status, 200)
             self.assertIn(b'Upload your print here', body)
-            self.assertNotIn(b'Full workspace', body)
-            self.assertNotIn(b'Simple page', body)
-            for path, target in [('/web', '/'), ('/web/', '/'),
-                                 ('/web?illustrator=capture%2Fid&mode=review', '/?illustrator=capture%2Fid&mode=review'),
-                                 ('/web/?next=https%3A%2F%2Fexample.com', '/?next=https%3A%2F%2Fexample.com')]:
+            self.assertIn(b'href="/">Full mode', body)
+            self.assertIn(b'Jobs to print', get('/?view=unknown')[2])
+            for path, target in [('/web', '/?view=simple'), ('/web/', '/?view=simple'),
+                                 ('/web?illustrator=capture%2Fid&mode=review', '/?view=simple&illustrator=capture%2Fid&mode=review'),
+                                 ('/web/?next=https%3A%2F%2Fexample.com', '/?view=simple&next=https%3A%2F%2Fexample.com')]:
                 with self.subTest(path=path):
                     status, headers, body = get(path)
                     self.assertEqual(status, 307)

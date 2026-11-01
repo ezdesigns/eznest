@@ -436,6 +436,7 @@ body[data-step="confirm"] #layout-options { display: none; }
 .piece-card details { font-size: 11px; color: var(--muted); }
 .piece-card details summary { font-weight: 400; }
 .piece-card details span { display: block; margin-top: 6px; }
+.shop-header #mode-switch { text-decoration: none; border: 1px solid #d8d8d2; }
 .corner-actions { position: fixed; right: 22px; bottom: 20px; z-index: 4; display: flex; align-items: center; gap: 10px; }
 #feedback-open { position: static; display: flex; align-items: center; gap: 8px; border: 1px solid #d9dedf; border-radius: 28px; padding: 12px 17px; background: #fff; box-shadow: 0 3px 18px #0002; font-size: 13px; }
 #feedback-welcome { position: fixed; right: 22px; bottom: 84px; z-index: 4; width: min(280px, calc(100vw - 44px)); padding: 18px 35px 18px 18px; border: 1px solid #d9dedf; border-radius: 14px; background: #fff; box-shadow: 0 4px 24px #0002; font-size: 13px; }
@@ -727,7 +728,7 @@ body[data-step="sent"] #inventory-open { display: block; }
   .top-actions { top: 12px; right: 12px; gap: 6px; }
   .top-button { padding: 6px 8px; }
   #stock-open span, #settings-open span { display: none; }
-  .shop-header { padding-right: 0; flex-wrap: wrap; }
+  .shop-header { padding-right: 148px; flex-wrap: wrap; row-gap: 8px; }
   .shop-header strong { line-height: 36px; }
   .output-link-menu, .output-link-form { position: fixed; top: 58px; left: 12px; right: 12px; width: auto; }
 }

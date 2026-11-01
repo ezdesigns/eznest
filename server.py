@@ -485,7 +485,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/web':
             # Older installers and Illustrator links keep working at the one app entry.
             query = urlparse(self.path).query
-            target = '/' + ('?' + query if query else '')
+            target = '/?view=simple' + ('&' + query if query else '')
             return self.send(307, b'', 'text/plain; charset=utf-8',
                              extra_headers=(('Location', target),))
         if path == '/api/session':
@@ -659,7 +659,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, json.loads(source.read_text(encoding='utf-8-sig')))
             except Exception:
                 return self.send(400, {'error': 'Illustrator capture could not be read.'})
-        static = {'/': ('web.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
+        view = parse_qs(urlparse(self.path).query).get('view', [''])[0]
+        workspace = 'web.html' if view == 'simple' else 'production.html'
+        static = {'/': (workspace, 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
         static.update({'/svg-io.js': ('svg-io.js', 'text/javascript'), '/sample-artwork.svg': ('sample-artwork.svg', 'image/svg+xml')})
         static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css')})
         static['/production-features.js']=('production-features.js','text/javascript')

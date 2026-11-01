@@ -62,6 +62,8 @@ That removes the program, the shortcuts the installer created, the `eznest` star
 
 ## First run
 
+The main entry `/` opens the full workspace. Choose **Simple mode** for the focused upload-and-nest flow, then **Full mode** to return. Both use this one local app; the old `/web` link redirects to `/?view=simple`. Jobs are not transferred between modes. Save your work before switching.
+
 The first time the page opens, it asks for four things:
 
 - Hot folder, the RIP folder a save writes to

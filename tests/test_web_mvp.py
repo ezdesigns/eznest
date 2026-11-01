@@ -702,14 +702,16 @@ class WebMvpTests(unittest.TestCase):
             )
             raise AssertionError('Shop page was not ready. ' + detail) from None
 
-    def test_root_is_the_single_workspace_and_legacy_link_reaches_it(self):
+    def test_one_local_app_has_full_and_simple_modes(self):
         with urlopen(self.url() + '/', timeout=10) as response:
             desktop = response.read().decode()
         with urlopen(self.url() + '/web', timeout=10) as response:
             page = response.read().decode()
-        self.assertEqual(desktop, page)
-        self.assertNotIn('Full workspace', desktop)
-        self.assertNotIn('Simple page', desktop)
+        self.assertIn('Jobs to print', desktop)
+        self.assertIn('href="/?view=simple">Simple mode', desktop)
+        with urlopen(self.url() + '/?view=simple', timeout=10) as response:
+            self.assertEqual(response.read().decode(), page)
+        self.assertIn('href="/">Full mode', page)
         self.assertIn('Upload your print here', page)
         self.assertIn('Stop · keep best', page)
         self.assertIn('id="files"', page)
@@ -718,6 +720,48 @@ class WebMvpTests(unittest.TestCase):
         self.assertNotIn('id="nest"', page)
         self.assertIn('/svg-io.js', page)
         self.assertNotIn('<script>', page.lower().split('<body', 1)[-1].replace('src=', ''))
+
+    def test_mode_switches_warn_before_leaving_work_and_fit_mobile(self):
+        from playwright.sync_api import sync_playwright, expect
+        artwork = Path(__file__).resolve().parents[1] / 'sample-artwork.svg'
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_page(viewport={'width': 1280, 'height': 900})
+            try:
+                page.goto(self.url() + '/')
+                full = page.get_by_role('link', name='Simple mode', exact=True)
+                expect(full).to_be_visible()
+                page.screenshot(path=str(SCREENSHOTS / 'mode-full-desktop.png'))
+                page.set_viewport_size({'width': 390, 'height': 844})
+                expect(full).to_be_visible()
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), 390)
+                page.screenshot(path=str(SCREENSHOTS / 'mode-full-mobile.png'))
+                full.click()
+                self.wait_ready(page)
+                self.assertEqual(page.url, self.url() + '/?view=simple')
+                back = page.get_by_role('link', name='Full mode', exact=True)
+                expect(back).to_be_visible()
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), 390)
+                page.screenshot(path=str(SCREENSHOTS / 'mode-simple-mobile.png'))
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.screenshot(path=str(SCREENSHOTS / 'mode-simple-desktop.png'))
+                page.set_input_files('#file', str(artwork))
+                page.wait_for_function('() => !importing && kits.length === 1')
+                page.once('dialog', lambda dialog: dialog.dismiss())
+                back.click()
+                self.assertEqual(page.url, self.url() + '/?view=simple')
+                self.assertEqual(page.evaluate('kits.length'), 1)
+                page.once('dialog', lambda dialog: dialog.accept())
+                back.click()
+                expect(page.get_by_role('link', name='Simple mode', exact=True)).to_be_visible()
+                page.set_input_files('#files', str(artwork))
+                page.wait_for_function('() => !importing && queue.length === 1')
+                page.once('dialog', lambda dialog: dialog.dismiss())
+                page.get_by_role('link', name='Simple mode', exact=True).click()
+                self.assertEqual(page.url, self.url() + '/')
+                self.assertEqual(page.evaluate('queue.length'), 1)
+            finally:
+                browser.close()
 
     def open_page(self, playwright, shots=False):
         browser = launch_browser(playwright)
