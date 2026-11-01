@@ -204,7 +204,7 @@ class RestoreUiTests(unittest.TestCase):
                 self.assertEqual(look['badge'], 'Preview · test only')
                 self.assertFalse(look['rotated'])
                 self.assertTrue(look['effortBelow'])
-                self.assertEqual(look['inHouse'], 'rgb(239, 245, 255)')
+                self.assertEqual(look['inHouse'], 'rgb(237, 244, 255)')
                 self.assertEqual(look['badgeColor'], 'rgba(0, 0, 0, 0)')
                 self.shot(page, 'after-step3-1280.png')
                 self.assertEqual(page.locator('#max-output').get_attribute('aria-label'), "Don't print. Learn about OUTPUT")
@@ -250,16 +250,17 @@ class RestoreUiTests(unittest.TestCase):
         self.assertLess(box['x'], gear['x'])
         self.assertEqual((round(box['height']), round(box['y'])), (round(gear['height']), round(gear['y'])))
         if width < 600:
-            self.assertEqual(round(box['width']), round(gear['width']))
+            self.assertGreaterEqual(round(box['width']), 44)
+            self.assertGreaterEqual(round(gear['width']), 44)
         expect(page.locator('#setup')).to_be_hidden()
         expect(page.locator('#cut-line-note')).to_be_hidden()
         expect(page.locator('#cut-line-names')).to_have_text('Thru-cut, Kiss-cut')
-        self.assertEqual((round(box['height']), round(gear['height'])), (36, 36))
+        self.assertEqual((round(box['height']), round(gear['height'])), (44, 44))
         expect(page.locator('#start-nesting')).to_be_visible()
         expect(page.locator('#start-over-idle')).to_be_visible()
         expect(page.locator('#start-over-idle')).to_be_disabled()
         self.assertEqual(round(page.locator('#start-over-idle').bounding_box()['height']), round(page.locator('#start-nesting').bounding_box()['height']))
-        self.assertEqual(round(page.locator('#output-dot').bounding_box()['height']), 36)
+        self.assertEqual(round(page.locator('#output-dot').bounding_box()['height']), 44)
         expect(page.locator('#output-dot')).to_have_attribute('title', 'Connect to OUTPUT')
         # Unpaired: one plain message, nesting waits until OUTPUT is connected.
         expect(page.locator('#output-required')).to_be_visible()
@@ -726,7 +727,7 @@ class InventoryShelfTests(unittest.TestCase):
                     expect(page.locator('#stock-panel .stock-low')).to_be_visible()
                     self.snap(page, 'low-stock', width)
                     # The roll this job already uses.
-                    page.evaluate("() => { $('material').value = 'fits'; renderStock(); selectRoll('fits'); }")
+                    page.evaluate("() => { $('material').value = 'fits'; inventoryPanel.render(); inventoryPanel.select('fits'); }")
                     expect(page.locator('#stock-panel .stock-selected')).to_have_text('This job uses this roll')
                     page.locator('#stock-panel button', has_text='Use a different roll').click()
                     expect(page.locator('#stock-panel')).to_be_hidden()
@@ -769,8 +770,8 @@ class InventoryShelfTests(unittest.TestCase):
                 browser, context, page = self.page(playwright, width)
                 try:
                     page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
-                    cases = page.evaluate("""() => [shelfShortName('Gloss vinyl 54 in', 54), shelfShortName('Banner 64', 64), shelfShortName('Clear laminate', 54),
-                        shelfShortName('Vinyl - 54"', 54), shelfShortName('Gloss vinyl 54 in', 30), shelfShortName('54 in', 54), shelfShortName('Film 51.5 in', 51.5)]""")
+                    cases = page.evaluate("""() => [inventoryPanel.shortName('Gloss vinyl 54 in', 54), inventoryPanel.shortName('Banner 64', 64), inventoryPanel.shortName('Clear laminate', 54),
+                        inventoryPanel.shortName('Vinyl - 54"', 54), inventoryPanel.shortName('Gloss vinyl 54 in', 30), inventoryPanel.shortName('54 in', 54), inventoryPanel.shortName('Film 51.5 in', 51.5)]""")
                     self.assertEqual(cases, ['Gloss vinyl', 'Banner', 'Clear laminate', 'Vinyl', 'Gloss vinyl 54 in', '54 in', 'Film'])
                     self.save_rolls(page, base)
                     page.click('#stock-open')

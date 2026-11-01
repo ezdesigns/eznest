@@ -69,3 +69,36 @@ function rollNameKey(text) {
   const upper = [...clean].map(ch => ROLL_LOOK_ALIKE_CAPITALS[ch] ?? ch).join('');
   return [...upper.toLowerCase()].map(ch => ROLL_LOOK_ALIKES[ch] ?? ch).join('');
 }
+
+// Shared stock number parsing, also used by the Inventory shelf.
+const ROLL_LIMITS = {inches: [0.4, 196], feet: [0, 100000], price: [0, 1000000]};
+function parseRollNumber(text, units) {
+  const value = String(text || '').trim().toLowerCase();
+  if (!value) return {empty: true};
+  const match = value.match(/^(\d{1,9}(?:\.\d{0,4})?|\.\d{1,4})\s*([a-z'"]+)?$/);
+  if (!match) return {bad: true};
+  const number = Number(match[1]);
+  if (!Number.isFinite(number)) return {bad: true};
+  let unit = null;
+  if (match[2]) { unit = units?.[match[2]]; if (!unit) return {bad: true}; }
+  return {number, unit};
+}
+const LENGTH_UNITS = {ft: 'ft', feet: 'ft', foot: 'ft', "'": 'ft', in: 'in', inch: 'in', inches: 'in', '"': 'in'};
+// Lengths: feet by default; "150 ft", "1800 in", 12' and 6" all work.
+function parseLength(text, unit) {
+  const read = parseRollNumber(text, LENGTH_UNITS);
+  if (read.empty || read.bad) return read;
+  const given = read.unit || unit, ft = read.number / (given === 'in' ? 12 : 1);
+  if (ft > ROLL_LIMITS.feet[1] || (ft > 0 && ft < 0.01)) return {bad: true};
+  return {ft, given, typed: !!read.unit};
+}
+function parseInches(text) {
+  const read = parseRollNumber(text, {in: 'in', inch: 'in', inches: 'in', '"': 'in'});
+  if (read.empty || read.bad || read.number < ROLL_LIMITS.inches[0] || read.number > ROLL_LIMITS.inches[1]) return null;
+  return read.number;
+}
+function parsePrice(text) {
+  const read = parseRollNumber(String(text || '').trim().replace(/^\$\s*/, ''), null);
+  if (read.empty || read.bad) return read;
+  return read.number > ROLL_LIMITS.price[1] ? {bad: true} : {value: read.number};
+}
