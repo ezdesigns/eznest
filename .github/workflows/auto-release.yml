@@ -10,6 +10,7 @@ on:
       - 'tests/test_auto_release.py'
       - 'tests/test_published_macos.py'
       - 'tests/macos_svg_acceptance.py'
+      - 'tests/test_macos_svg_flow.py'
   workflow_run:
     workflows: [Tests]
     branches: [main]
@@ -37,6 +38,22 @@ jobs:
           python-version: '3.12'
       - run: python -m unittest discover -s tests -p test_auto_release.py
       - run: python -m py_compile tools/auto_release.py tools/macos_release.py tests/test_published_macos.py
+
+  source-browser:
+    if: github.event_name == 'pull_request'
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: arm64
+      # No signing secrets, installation or live OUTPUT calls in this source-only regression.
+      - run: python -m pip install -r requirements.txt 'playwright==1.64.1'
+      - run: python -m unittest discover -s tests -p test_macos_svg_flow.py
 
   plan:
     if: >-
@@ -123,6 +140,14 @@ jobs:
       - name: Clean up only this VM's owned installation
         if: always()
         run: python tests/test_published_macos.py Cleanup
+      - name: Retain sanitized installed acceptance result on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eznest-macos-acceptance-${{ github.run_id }}
+          path: ${{ runner.temp }}/eznest-macos-acceptance.json
+          retention-days: 7
+          if-no-files-found: warn
       - name: Finalize platform acceptance receipt
         run: python tools/macos_release.py finalize --out "$RUNNER_TEMP/eznest-release-macos"
       - name: Upload checked Mac package
