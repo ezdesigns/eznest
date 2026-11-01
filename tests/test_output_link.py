@@ -156,6 +156,7 @@ class SetupCardCopyTests(unittest.TestCase):
         self.assertIn('<h2 id="output-gate-title">Set up your shop</h2>', gate)
         self.assertIn('type="button">Connect</button>', gate)
         self.assertIn('Have a pairing code?', gate)
+        self.assertIn('Type this code in your browser to approve:', gate)
         self.assertIn("Artwork, customers, and stock stay here.", gate)
         self.assertNotIn('Later check-ins', gate)
         self.assertLess(gate.index('output-gate-setup-button'), gate.index('output-gate-code'))
