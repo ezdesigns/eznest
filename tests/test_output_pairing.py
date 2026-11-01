@@ -353,6 +353,7 @@ class ExchangeTests(unittest.TestCase):
         def envelope(code, field='code'):
             return {'error': {'version': 1, 'schema': None, 'code': code, 'field': field, 'message': 'server says ' + CODE}}
 
+        self.assertEqual(output_pairing.INVALID_CODE, 'In OUTPUT, click Add a computer for a new code.')
         cases = (
             (503, envelope('disabled', 'service'), 'disabled', output_pairing.DISABLED),
             (404, envelope('invalid_code'), 'invalid_code', output_pairing.INVALID_CODE),
