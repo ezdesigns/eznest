@@ -1,0 +1,65 @@
+/* One app identity across full and simple workspaces. */
+@font-face { font-family: "Red Hat Display"; src: url(/fonts/red-hat-display-400.woff2) format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Red Hat Display"; src: url(/fonts/red-hat-display-700.woff2) format('woff2'); font-weight: 700; font-display: swap; }
+:root {
+  --ink: #1c1c1c; --muted: #5c5c58; --paper: #fff; --bg: #f7f7f4; --canvas: #efeee8;
+  --line: #deded7; --control-line: #cecec6; --accent: #1c1c1c; --accent-hover: #000; --accent-soft: #ecece6;
+  font: 16px/1.45 "Red Hat Display", "Segoe UI", sans-serif; color: var(--ink); background: var(--bg);
+}
+h1, h2, h3 { font-weight: 700; }
+body { background: var(--bg); color: var(--ink); }
+button, input, select, textarea { font-family: inherit; }
+[hidden] { display: none !important; }
+.app-header, .app-header.shop-header {
+  position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+  height: auto; min-height: 76px; padding: 16px 24px; background: var(--bg); border: 0;
+}
+.app-header .brand { color: var(--ink); font: 700 24px/1.2 "Red Hat Display", sans-serif; letter-spacing: -.5px; text-decoration: none; }
+.app-header .local { display: none; }
+.app-header .header-tools, .app-header .top-actions { position: static; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.app-header button, .app-header .button, .app-header .top-button, .app-header #settings-open, .app-header #mode-switch {
+  position: static; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 38px; min-height: 38px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px;
+  font: 400 13px/1 "Red Hat Display", sans-serif; color: var(--ink); background: transparent; white-space: nowrap;
+}
+.app-header #mode-switch { border-color: var(--control-line); text-decoration: none; }
+.app-header button:hover, .app-header #mode-switch:hover { background: var(--accent-soft); }
+.app-header svg { flex-shrink: 0; }
+button.primary, .primary { background: var(--accent); border: 1px solid var(--accent); color: #fff; border-radius: 8px; box-shadow: none; font-size: 14px; font-weight: 700; min-height: 44px; }
+button.primary:hover, .primary:hover { background: var(--accent-hover); }
+button.primary:disabled, .primary:disabled { background: #ececea; border-color: #ececea; color: #8a8a86; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #5b5b54; outline-offset: 3px; }
+input, select { border-radius: 8px; }
+dialog { color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: none; }
+dialog::backdrop { background: #1c1c1c55; }
+.hint { color: var(--muted); font-size: 13px; font-weight: 400; }
+.dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.dialog-heading h2 { margin: 0; font-size: 21px; font-weight: 700; }
+.dialog-heading .hint { margin-top: 6px; }
+.dialog-close { flex: 0 0 32px; width: 32px; min-height: 32px; padding: 0; border: 0; background: transparent; font-size: 25px; color: var(--muted); }
+#stock button.link { border: 0; background: transparent; padding: 0; font-size: 14px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+#stock p { margin: 0; }
+#stock label { margin: 0; }
+#stock .roll-field { display: flex; }
+#stock .roll-field input { min-height: 0; box-shadow: none; }
+#stock button.primary { min-height: 44px; padding: 0 22px; font-size: 16px; font-weight: 700; }
+/* Quiet selection and disabled states use the same neutral palette. */
+.step-number { background: #ecece6; color: var(--ink); }
+.output-modes .nest-mode { background: #f0f0eb; border-color: #8d8d86; }
+#start-nesting:disabled, #export.primary:disabled, #confirm-send:disabled { background: #ececea; border-color: #ececea; color: #8a8a86; }
+#empty::before { filter: grayscale(1); }
+/* The full workspace keeps its queue, but shares the simple workspace's cards. */
+.full-workspace main { padding: 8px 24px 24px; gap: 20px; grid-template-columns: 350px minmax(0,1fr); height: calc(100dvh - 106px); }
+.queue-panel { border: 1px solid var(--line); border-radius: 14px; }
+.full-workspace .workspace { background: #fff; border: 1px solid var(--line); border-radius: 14px; }
+.full-workspace .canvas { background: var(--canvas); border-color: var(--line); border-radius: 12px; }
+#prepared-count { background: #ecece6; color: var(--muted); }
+@media (max-width: 720px) {
+  .app-header, .app-header.shop-header { padding: 14px 16px; gap: 10px; }
+  .app-header .header-tools, .app-header .top-actions { width: 100%; margin-left: 0; justify-content: flex-end; }
+  .app-header #stock-open, .app-header #settings-open { width: auto; }
+  .app-header #stock-open span, .app-header #settings-open span { display: inline; }
+  .app-header button:first-of-type { margin-left: 0; }
+  .full-workspace main { display: block; height: auto; padding: 4px 16px 20px; }
+  .full-workspace .workspace { margin-top: 16px; }
+}

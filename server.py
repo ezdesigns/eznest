@@ -668,6 +668,8 @@ class Handler(BaseHTTPRequestHandler):
         static['/layout-comparison.js']=('layout-comparison.js','text/javascript')
         static['/cut-mapping.js']=('cut-mapping.js','text/javascript')
         static['/shop-profiles.js'] = ('shop-profiles.js','text/javascript')
+        for asset in ('app-theme.css', 'inventory-panel.css', 'material-profile.js', 'inventory-panel.js', 'queue-inventory.js'):
+            static['/' + asset] = (asset, 'text/css' if asset.endswith('.css') else 'text/javascript')
         static['/web.css'] = ('web.css', 'text/css')
         static['/web.js'] = ('web.js', 'text/javascript')
         static['/tester-results.js'] = ('tester-results.js', 'text/javascript')
