@@ -2620,7 +2620,7 @@ function showOutputBanner(session) {
   banner.textContent = text || '';
 }
 
-// "Set up your shop": the owner approves this computer in the browser. No code to type.
+// "Set up your shop": the owner signs in to OUTPUT in the browser and types the code shown here to approve.
 function setupShopPollDelay(attempt) {
   return [2000, 3000, 5000, 8000][Math.min(3, attempt)];
 }
