@@ -28,8 +28,13 @@ let materialProfiles = {};
 let shopInventory = {materials: [], reservations: []};
 let inventoryReady = false;
 let inventoryBusy = false;
+let inventoryGen = 0; // bumped on every inventory change so an older poll answer is ignored
 let presetEditor = null;
-let activeMaterial = 'white-gloss';
+let activeMaterial = '';
+// OUTPUT browser approval stays closed until its receiving endpoint is available.
+const OUTPUT_APPROVE_ENDPOINT_READY = false;
+// EZ39-9: OUTPUT has no stock-summary receiving endpoint yet; keep sharing off until it ships.
+const STOCK_SHARE_ENDPOINT_READY = false;
 const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'print-layout', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
 
 function status(message, failed) {
@@ -84,6 +89,7 @@ function installSettingsHelp() {
     'draw-marks': ['Add cutter marks', 'Draws registration marks in the output. Leave off if ONYX adds its own marks, so you do not get two sets.']
   };
   for (const [setup, main] of Object.entries({'setup-hot': 'hot-folder', 'setup-onyx': 'onyx-pc', 'setup-printer': 'printer', 'setup-thru': 'thru-name', 'setup-kiss': 'kiss-name', 'setup-units': 'unit'})) help[setup] = help[main];
+  help['setup-hot'] = ['Where finished files are saved', 'This is the folder used when you save. You can pick a different folder for each job.'];
   const tip = document.createElement('div');
   tip.id = 'setting-help'; tip.className = 'setting-help'; tip.role = 'tooltip'; tip.hidden = true;
   document.body.append(tip);
@@ -172,8 +178,8 @@ function fetchJson(path, ms) {
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       if (body.code === 'connect_required') {
-        location.reload();
-        throw Error(body.error || 'Connect to OUTPUT.');
+        showOutputRequired(true);
+        throw Error('Connect to OUTPUT in Settings. Nesting works without it.');
       }
       throw Error('Request failed.');
     }
@@ -254,10 +260,9 @@ async function api(path, data, file) {
   });
   const body = await response.json();
   if (!response.ok) {
-    if (body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/')) {
-      location.reload();
-    }
-    const error = Error(body.error || 'Request failed.');
+    const gated = body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/');
+    if (gated) showOutputRequired(true);
+    const error = Error(gated ? 'Connect to OUTPUT in Settings. Nesting works without it.' : body.error || 'Request failed.');
     error.code = body.code;
     if (path === '/api/document/import' || path === '/api/document/import-file') {
       error.guideReview = body.guideReview; error.cutReview = body.cutReview;
@@ -380,35 +385,7 @@ function shortProblem(message) {
 // Savings use full roll cost divided by full length. The pack estimate uses that
 // same purchase spread over roll width × full length. A saved per-m² price is
 // kept only when those three values cannot produce one.
-function derivedCostPerSquareMeter(values) {
-  if (!values || !['mm', 'cm', 'in'].includes(values.unit)) return null;
-  const priceText = String(values['roll-cost'] ?? '').trim();
-  const widthText = String(values.roll ?? '').trim();
-  const lengthText = String(values['roll-length'] ?? '').trim();
-  if (!priceText || !widthText || !lengthText) return null;
-  const price = Number(priceText), width = Number(widthText), length = Number(lengthText);
-  if (!Number.isFinite(price) || price < 0 || !Number.isFinite(width) || width <= 0 || !Number.isFinite(length) || length <= 0) return null;
-  const millimeters = EZNQueue.unitScale(values.unit);
-  const area = (width * millimeters / 1000) * (length * millimeters / 1000);
-  return area > 0 ? price / area : null;
-}
 
-function pricedMaterial(values) {
-  const derived = derivedCostPerSquareMeter(values);
-  if (derived != null) {
-    const usable = derived <= 1000000;
-    values.cost = usable ? String(derived) : '';
-    return usable ? derived : null;
-  }
-  const legacy = String(values.cost ?? '').trim();
-  const price = Number(legacy);
-  if (!legacy || !Number.isFinite(price) || price < 0 || price > 1000000) {
-    values.cost = '';
-    return null;
-  }
-  values.cost = legacy;
-  return price;
-}
 
 function preset() {
   if ($('available-length').value.trim() && Number($('available-length').value) === 0) throw Error('This material is out of stock. Update material left or choose another roll.');
@@ -646,9 +623,11 @@ function showScreen(name) {
   $('readout').hidden = empty;
   $('export').hidden = empty || confirming || name === 'nest';
   $('start-nesting').hidden = !!current?.result || !['drop', 'configure', 'blocked'].includes(name);
+  $('nest-row').hidden = $('start-nesting').hidden;
+  $('start-over-idle').disabled = kits.length === 0;
   if (empty) $('sheet-tabs').hidden = true;
   $('confirm').hidden = !confirming;
-  $('start-over').hidden = idle || confirming;
+  $('start-over').hidden = idle || confirming || !$('nest-row').hidden;
   $('delivery-receipt').hidden = name !== 'sent';
   $('saved-heading').hidden = name !== 'sent';
   $('start-over').textContent = name === 'sent' ? 'Next job' : 'Start over';
@@ -1691,14 +1670,39 @@ function stagingPath() {
   return $('staging-folder').value.trim();
 }
 
+function legacyRollUnconfirmed() {
+  const stored = prefs();
+  return stored.material === 'white-gloss' && stored.materialPicked !== true;
+}
+
+function syncMaterialChoice() {
+  // An empty choice stays empty. The operator picks a roll; the first saved roll is not assumed.
+  if (legacyRollUnconfirmed() && $('material').value === 'white-gloss') $('material').value = '';
+  return false;
+}
+
 function renderMaterialButtons() {
+  if (syncMaterialChoice()) return;
   const selected = $('material').value;
   $('material').disabled = !!illustratorHandoff || !!presetEditor || busy || saving || document.body.dataset.step === 'confirm';
   for (const option of $('material').options) {
-    option.hidden = !!illustratorHandoff && option.value !== 'white-gloss';
     const stock = lowStock(materialProfiles[option.value]);
     option.textContent = (option.dataset.name || option.textContent.split(' · ')[0]) + (stock ? ' · ' + stock.split(' · ')[0] : '');
   }
+  const prompt = [...$('material').options].find(option => option.value === '');
+  const saved = [...$('material').options].filter(option => option.value && option.value !== 'custom');
+  const picked = !!materialProfiles[selected];
+  if (prompt) {
+    if (!saved.length) {
+      prompt.hidden = false;
+      prompt.textContent = 'Add your first material';
+    } else if (!picked || legacyRollUnconfirmed()) {
+      prompt.hidden = false;
+      prompt.textContent = 'Pick a roll';
+      if (!picked) $('material').value = '';
+    } else prompt.hidden = true;
+  }
+  if ($('edit-material')) $('edit-material').textContent = picked ? 'Edit' : 'Add';
   const box = $('materials');
   box.replaceChildren();
   const stock = lowStock(materialProfiles[selected]);
@@ -1712,13 +1716,6 @@ function renderMaterialButtons() {
   $('material-summary').textContent = shared ? `${stockFeet(shared.availableMm)} available · ${stockFeet(shared.reservedMm)} reserved` : remaining && !stock ? `${Number(remaining)} ${$('unit').value} available · this browser only` : '';
 }
 
-function lowStock(values) {
-  if (!values || !String(values['available-length'] ?? '').trim()) return '';
-  const left = Number(values['available-length']);
-  const threshold = String(values['low-stock'] ?? '').trim() ? Number(values['low-stock']) : Number(values['roll-length'] || 0) * 0.1;
-  if (!Number.isFinite(left) || left < 0 || !Number.isFinite(threshold) || left > threshold) return '';
-  return (left === 0 ? 'Out of stock' : 'Low stock') + ' · ' + left + ' ' + values.unit + ' left';
-}
 
 function materialValues() {
   return {...Object.fromEntries(MATERIAL_FIELDS.map(id => [id, $(id).value])), drawMarks: $('draw-marks').checked};
@@ -1733,29 +1730,6 @@ function setMaterialValues(values) {
   for (const node of document.querySelectorAll('span[data-unit]')) node.textContent = $('unit').value;
 }
 
-function validateMaterial(values) {
-  if (!values || !['mm', 'cm', 'in'].includes(values.unit)) throw Error('Choose units for this preset.');
-  const factor = EZNQueue.unitScale(values.unit);
-  const n = id => Number(values[id]) * factor;
-  const edge = n('margin'), mark = n('mark-margin');
-  if (values['available-length']?.trim() && (!Number.isFinite(n('available-length')) || n('available-length') < 0)) throw Error('Material left must be zero or more, or blank if unknown.');
-  const settings = {width: n('width'), maxLength: values['available-length']?.trim() && n('available-length') > 0 ? n('available-length') : null, gap: n('gap'), margin: edge + mark, edgeMargin: edge, markMargin: mark, seconds: 5,
-    rotations: values.rotations === 'free' ? null : String(values.rotations).split(',').map(Number), rollWidth: n('roll')};
-  if (values.sheet !== '') settings.sheetLength = n('sheet');
-  if (!['continuous','sections'].includes(values['print-layout'] || 'sections')) throw Error('Choose a print layout.');
-  const price = pricedMaterial(values);
-  if (price != null) settings.costPerSquareMeter = price;
-  EZNQueue.validatePreset({name: values['preset-name'], units: values.unit, settings});
-  if (settings.width > settings.rollWidth) throw Error('Printable width cannot be wider than the roll.');
-  if (!['0', '0.0625', '0.125'].includes(values['auto-bleed'])) throw Error('Choose a supported bleed setting.');
-  if (!Number.isFinite(Number(values.bleed)) || Number(values.bleed) < 0 || Number(values.bleed) > 25) throw Error('Existing bleed must be from 0 to 25 mm.');
-  if (values['roll-length']?.trim() && (!Number.isFinite(n('roll-length')) || n('roll-length') <= 0)) throw Error('Enter a positive full roll length or leave it blank.');
-  if (values['roll-cost']?.trim() && (!Number.isFinite(Number(values['roll-cost'])) || Number(values['roll-cost']) < 0 || !(n('roll-length') > 0))) throw Error('Enter a full roll length and a cost of zero or more to estimate savings.');
-  if (values['roll-length']?.trim() && values['available-length']?.trim() && n('available-length') > n('roll-length')) throw Error('Material left cannot exceed the full roll length.');
-  if (values['low-stock']?.trim() && (!Number.isFinite(n('low-stock')) || n('low-stock') < 0)) throw Error('Enter a low-stock alert of zero or more, or leave it blank.');
-  if (values['roll-length']?.trim() && values['low-stock']?.trim() && n('low-stock') > n('roll-length')) throw Error('The low-stock alert cannot exceed the full roll length.');
-  return {'roll-length': '', 'roll-cost': '', 'available-length': '', 'low-stock': '', ...values, 'preset-name': values['preset-name'].trim()};
-}
 
 function registerMaterial(id, values) {
   let option = [...$('material').options].find(item => item.value === id);
@@ -1769,7 +1743,6 @@ function registerMaterial(id, values) {
 }
 
 function loadMaterialProfiles(stored) {
-  registerMaterial('white-gloss', materialValues());
   const hiddenLegacy = (id, values) => id === 'moto' || values['preset-name'] === 'Design PC test roll';
   const renamed = (id, values) => ({...values, 'preset-name': id === 'holographic' && values['preset-name'] === 'Holographic' ? 'Moto Holographic' : id === 'chrome' && values['preset-name'] === 'Chrome' ? 'Moto Chrome' : values['preset-name']});
   for (const [id, saved] of Object.entries(stored.presets || {})) {
@@ -1788,14 +1761,16 @@ function loadMaterialProfiles(stored) {
 
 function chooseMaterial(id) {
   if (busy || saving || presetEditor || document.body.dataset.step === 'confirm') return;
-  if (id === activeMaterial && materialProfiles[id]) return;
-  if (id === 'custom' || !materialProfiles[id]) { openPreset(id); return; }
+  if (id && id === activeMaterial && materialProfiles[id]) return;
+  if (!id || id === 'custom' || !materialProfiles[id]) { openPreset(!id || id === 'custom' ? 'custom' : id); return; }
   $('material').value = id;
+  savePrefs({material: id, materialPicked: true});
   applyMaterial();
   requestNest();
 }
 
 async function openPreset(id) {
+  if (!id) id = 'custom';
   if (busy || saving || presetEditor || illustratorHandoff || document.body.dataset.step === 'confirm') return;
   await refreshInventory().catch(() => {});
   if (presetEditor || busy || saving) return;
@@ -1847,9 +1822,8 @@ async function saveMaterial() {
     }
     const values = validateMaterial(entered);
     const id = presetEditor.id === 'custom' ? 'material-' + crypto.randomUUID() : presetEditor.id;
-    if (Object.entries(materialProfiles).some(([key, item]) => key !== id && item['preset-name'].toLowerCase() === values['preset-name'].toLowerCase())) throw Error('A preset with that name already exists. Choose another name.');
-    const updated = await api('/api/materials/save', {id, profile: values, revision: presetEditor.revision});
-    acceptInventory(updated);
+    if (!(materialProfiles[id] && rollNameKey(materialProfiles[id]['preset-name']) === rollNameKey(values['preset-name'])) && Object.entries(materialProfiles).some(([key, item]) => key !== id && rollNameKey(item['preset-name']) === rollNameKey(values['preset-name']))) throw Error('A material with this name already exists.');
+    await mutateInventory('/api/materials/save', {id, profile: values, revision: presetEditor.revision});
     savePrefs({material: id, nestWidth: String(Number(values.width) * EZNQueue.unitScale(values.unit) / 25.4)});
     presetEditor = null;
     $('preset-editor').hidden = true;
@@ -1966,20 +1940,25 @@ function showOutputService(shop) {
   const note = $('output-url-note');
   if (note) {
     note.textContent = locked
-      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Activity sharing stays off until you agree. The account connection is required.'
-      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree. The account connection is required.';
+      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Activity sharing stays off until you agree. Connecting to OUTPUT is optional.'
+      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree. Connecting to OUTPUT is optional.';
   }
 }
 
 function showRestart(shop) {
   const note = $('lan-restart');
+  if (shop && shop.lanWaiting) {
+    note.hidden = false;
+    note.textContent = 'Shop network is waiting for a shop PIN. Set the PIN on this computer, then restart Ez Nest.';
+    return;
+  }
   if (!shop || !shop.restart) {
     note.hidden = true;
     note.textContent = '';
     return;
   }
   note.hidden = false;
-  note.textContent = 'Shop network requires starting eznest with --lan.';
+  note.textContent = 'Shop network requires starting Ez Nest with --lan.';
 }
 
 function applyShop(shop) {
@@ -1991,6 +1970,16 @@ function applyShop(shop) {
   $('update').hidden = !$('updates').checked;
   $('test-channel').checked = shop.channel === 'test';
   $('output-network').checked = shop.outputNetwork === true;
+  const shareStock = $('share-stock-summary');
+  const showNames = $('show-roll-names');
+  if (shareStock && showNames) {
+    shareStock.checked = STOCK_SHARE_ENDPOINT_READY && shop.shareStockSummary === true;
+    showNames.checked = shop.showRollNames === true;
+    shareStock.disabled = !hostComputer || !STOCK_SHARE_ENDPOINT_READY;
+    const stockShare = $('settings-stock-share');
+    if (stockShare) stockShare.hidden = !STOCK_SHARE_ENDPOINT_READY;
+    showNames.disabled = !hostComputer;
+  }
   if (shop.outputNote) $('output-note').textContent = shop.outputNote;
   if (shop.printer) $('printer').value = shop.printer;
   if (shop.setupComplete && !prefs().thru && shop.thru) $('thru-name').value = shop.thru;
@@ -2004,6 +1993,7 @@ function applyShop(shop) {
   showRestart(shop);
   showHotDefault(shop.hotFolderDefault);
   showSetup(shop);
+  renderCutLineNote();
   reportLink(shop);
 }
 
@@ -2019,7 +2009,7 @@ function reportLink(shop) {
 
 function showSetup(shop) {
   const panel = $('setup');
-  if (!shop || shop.setupComplete) {
+  if (!shop || shop.setupComplete || shop.setupDismissed) {
     panel.hidden = true;
     return;
   }
@@ -2030,6 +2020,10 @@ function showSetup(shop) {
   if (shop.hotFolder && !$('setup-hot').value) $('setup-hot').value = shop.hotFolder;
   if (shop.printer && !$('setup-printer').value) $('setup-printer').value = shop.printer;
   $('setup-onyx').checked = $('onyx-pc').checked;
+}
+function renderCutLineNote() {
+  const short = name => String(name || '').replace(/^CutContour_/i, '') || 'not set';
+  $('cut-line-names').textContent = short($('thru-name').value) + ', ' + short($('kiss-name').value);
 }
 
 function applyEzPreset(shop) {
@@ -2044,35 +2038,39 @@ function applyEzPreset(shop) {
 }
 
 async function saveSetup(shop) {
-  const previous = $('unit').dataset.current || $('unit').value;
-  $('unit').value = $('setup-units').value;
-  if ($('unit').value !== previous) convertUnit($('unit').value);
-  $('thru-name').value = $('setup-thru').value.trim();
-  $('kiss-name').value = $('setup-kiss').value.trim();
-  matchCutPreset();
-  $('printer').value = $('setup-printer').value.trim();
-  $('onyx-pc').checked = $('setup-onyx').checked;
-  $('hot-folder').value = $('setup-hot').value.trim();
-  const result = await api('/api/setup', shopPayload({
-    setupComplete: true,
-    printer: $('printer').value,
-    units: $('unit').value,
-    thru: $('thru-name').value,
-    kiss: $('kiss-name').value,
-    hotFolder: $('hot-folder').value
-  }));
-  applyShop(result);
-  saveShop();
-  if ($('hot-folder').value.trim()) await saveHotFolder();
-  else $('hot-error').hidden = true;
-  if ($('hot-error').hidden) {
+  try {
+    const previous = $('unit').dataset.current || $('unit').value;
+    $('unit').value = $('setup-units').value;
+    if ($('unit').value !== previous) convertUnit($('unit').value);
+    $('thru-name').value = $('setup-thru').value.trim();
+    $('kiss-name').value = $('setup-kiss').value.trim();
+    matchCutPreset();
+    $('printer').value = $('setup-printer').value.trim();
+    $('onyx-pc').checked = $('setup-onyx').checked;
+    $('hot-folder').value = $('setup-hot').value.trim();
+    const result = await api('/api/setup', shopPayload({
+      setupComplete: true,
+      printer: $('printer').value,
+      units: $('unit').value,
+      thru: $('thru-name').value,
+      kiss: $('kiss-name').value,
+      hotFolder: $('hot-folder').value
+    }));
+    applyShop(result);
+    saveShop();
+    try {
+      if ($('hot-folder').value.trim()) await saveHotFolder();
+      else $('hot-error').hidden = true;
+    } catch (error) {
+      $('hot-error').hidden = false;
+      $('hot-error').textContent = error.message;
+    }
+  } finally {
+    // A folder problem is reported in Settings. The card does not stay over the job.
     $('setup').hidden = true;
     $('setup-error').hidden = true;
-  } else {
-    $('setup-error').hidden = false;
-    $('setup-error').textContent = $('hot-error').textContent;
-    $('setup').hidden = false;
   }
+  await autoLoadIllustrator();
 }
 
 function shopPayload(extra) {
@@ -2081,7 +2079,9 @@ function shopPayload(extra) {
     onyxPc: $('onyx-pc').checked,
     updates: $('updates').checked,
     channel: $('test-channel').checked ? 'test' : 'stable',
-    outputNetwork: $('output-network').checked
+    outputNetwork: $('output-network').checked,
+    shareStockSummary: STOCK_SHARE_ENDPOINT_READY && $('share-stock-summary') ? $('share-stock-summary').checked : false,
+    showRollNames: $('show-roll-names') ? $('show-roll-names').checked : false
   }, extra || {});
   const outputUrl = outputUrlField();
   if (outputUrl !== null) payload.outputUrl = outputUrl;
@@ -2096,8 +2096,8 @@ async function saveDeploy() {
     kiss: $('kiss-name').value.trim()
   }));
   applyShop(result);
-  if (result.restart && result.lan) status('Restart eznest to open the shop network.');
-  else if (result.restart) status('Shop network turns off after you restart eznest.');
+  if (result.restart && result.lan) status('Restart Ez Nest to open the shop network.');
+  else if (result.restart) status('Shop network turns off after you restart Ez Nest.');
 }
 
 async function saveHotFolder() {
@@ -2127,6 +2127,7 @@ async function saveSettings() {
     cutMapping();
     if (!await saveHotFolder()) throw Error($('hot-error').textContent);
     await saveDeploy();
+    await refreshStockPreview();
     if (!saveShop() || !savePrefs({undo: $('allow-undo').checked})) throw Error('This browser could not save your preferences.');
     note.textContent = 'Saved.';
   } catch (error) {
@@ -2437,15 +2438,23 @@ function restoreJob(state) {
 }
 
 let outputSharing = null;
+let hostComputer = false;
+let reconnectOpen = false;
+let lastCheckInText = '';
 function renderOutputSharing(info) {
   outputSharing = info;
   const source = info.connection;
   const paired = source === 'paired';
   const launch = source === 'environment' || source === 'environment-invalid';
+  const connected = paired || launch;
   $('output-connect-shop').hidden = !paired;
   $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
-  $('output-pair-form').hidden = paired || launch || source === 'disabled';
+  $('output-pair-form').hidden = (paired && !reconnectOpen) || launch || source === 'disabled';
+  if ($('output-setup-settings')) $('output-setup-settings').hidden = !OUTPUT_APPROVE_ENDPOINT_READY || $('output-pair-form').hidden;
+  if (!OUTPUT_APPROVE_ENDPOINT_READY && $('output-setup-settings-waiting')) $('output-setup-settings-waiting').hidden = true;
   $('output-disconnect').hidden = !paired;
+  $('output-reconnect').hidden = !paired || info.paused;
+  $('output-check-now').hidden = !connected || info.paused;
   $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
   $('output-disconnect').disabled = !paired || info.paused;
   const connectStatus = $('output-connect-status');
@@ -2453,9 +2462,9 @@ function renderOutputSharing(info) {
   if (info.paused) connectStatus.textContent = 'Sharing is paused during installation or recovery.';
   else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.';
   else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
-  else if (paired && info.requiresConsent) connectStatus.textContent = 'Review the sharing details below, then choose Enable sharing.';
-  else if (paired) connectStatus.textContent = '';
-  else connectStatus.textContent = 'This computer is connected. Paste a new pairing code only when you need to connect again.';
+  else if (paired && reconnectOpen) connectStatus.textContent = 'Paste a new pairing code. This computer stays connected until that code is accepted.';
+  else if (paired) connectStatus.textContent = [lastCheckInText || 'Choose Check now to confirm the last check-in.', info.requiresConsent ? 'Review the sharing details below, then choose Enable sharing.' : ''].filter(Boolean).join(' ');
+  else connectStatus.textContent = 'This computer is not connected. Paste a pairing code from OUTPUT.';
   $('telemetry-agree').checked = false;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
   $('telemetry-enable').disabled = true;
@@ -2500,7 +2509,9 @@ async function connectOutput() {
       throw failure;
     }
     input.value = '';
+    reconnectOpen = false;
     renderOutputSharing(body);
+    refreshOutputLink().catch(() => {});
     if (body.requiresConsent && !$('telemetry-agree').disabled) $('telemetry-agree').focus();
   } catch (error) {
     if (['invalid_code', 'expired', 'consumed', 'limit', 'replay', 'unexpected', 'rejected'].includes(error.reason)) input.value = '';
@@ -2510,17 +2521,36 @@ async function connectOutput() {
   }
 }
 async function disconnectOutput() {
-  if (!window.confirm('Disconnect this computer from OUTPUT? Ez Nest stops until this computer connects again.')) return;
+  if (!window.confirm('Disconnect this computer from OUTPUT? Nesting, saving, and stock keep working on this computer.')) return;
   $('output-disconnect').disabled = true;
   try {
-    await api('/api/telemetry/output/disconnect', {});
-    location.reload();
+    renderOutputSharing(await api('/api/telemetry/output/disconnect', {}));
+    await refreshOutputLink();
   } catch (error) {
     $('output-connect-status').textContent = error.message;
     $('output-connect-status').classList.add('error');
     refreshOutputSharing().catch(() => {});
   }
 }
+async function refreshStockPreview() {
+  const preview = $('stock-output-preview');
+  if (!preview) return;
+  const names = $('show-roll-names') && $('show-roll-names').checked ? '1' : '0';
+  try {
+    const info = await fetchJson('/api/stock/output?names=' + names, 5000);
+    preview.textContent = JSON.stringify(info.preview, null, 2);
+    const note = $('stock-output-note');
+    if (!note) return;
+    if (!hostComputer) note.textContent = 'Change this on the shop computer.';
+    else if (!$('share-stock-summary').checked) note.textContent = 'Sharing is off. Nothing is sent until you turn it on and this computer is paired.';
+    else if (!info.paired) note.textContent = 'Sharing is on. Nothing is sent until this computer is paired.';
+    else note.textContent = 'This is the stock summary sent to OUTPUT.';
+  } catch {
+    preview.textContent = '';
+    if ($('stock-output-note')) $('stock-output-note').textContent = 'The preview is unavailable.';
+  }
+}
+
 async function changeOutputSharing(enable) {
   if (enable && (!outputSharing || outputSharing.paused || !$('telemetry-agree').checked)) return;
   $('telemetry-enable').disabled = $('telemetry-stop').disabled = true;
@@ -2559,15 +2589,11 @@ async function boot() {
   await ensureLibraries();
   await ensureStyles();
   let session = await fetchJsonRetry('/api/session');
+  hostComputer = session.localPC === true;
   token = session.token || '';
   localSave = session.localSave === true;
-  showOutputBanner(session);
-  if (session.outputConnection && !session.outputConnection.ok) {
-    await requireOutputConnection(session);
-    session = await fetchJsonRetry('/api/session');
-    token = session.token || '';
-    showOutputBanner(session);
-  }
+  renderOutputLink(session.outputLink, session.localPC);
+  renderOutputRequired(session);
   if (session.localPC && session.pinWeak) {
     await requireHostPinReset();
     session = await fetchJsonRetry('/api/session');
@@ -2581,9 +2607,15 @@ async function boot() {
   } else if (!session.localPC) {
     $('logout').hidden = false;
   }
+  if (outputRequired) {
+    showScreen('drop'); status(''); renderActions();
+    document.body.dataset.ready = '1';
+    return;
+  }
   await refreshInventory().catch(() => {});
-  if (inventoryReady && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
+  if (inventoryReady && !legacyRollUnconfirmed() && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
   if (inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) applyMaterial(true);
+  renderMaterialButtons();
   try {
     const folder = await fetchJson('/api/output', 5000);
     if (folder.path) $('hot-folder').value = folder.path;
@@ -2609,38 +2641,47 @@ async function boot() {
   }
   document.body.dataset.ready = '1';
   await autoLoadIllustrator();
-  setInterval(() => { if (!document.hidden && !inventoryBusy) refreshInventory().catch(() => {}); }, 10000);
+  setInterval(() => { if (!document.hidden && !inventoryBusy && !inventoryPanel.isEditing() && !document.querySelector('dialog[open]')) refreshInventory().catch(() => {}); }, 10000);
 }
 
-function showOutputBanner(session) {
-  const banner = $('output-banner');
-  if (!banner) return;
-  const text = session && session.outputConnection && session.outputConnection.banner;
-  banner.hidden = !text;
-  banner.textContent = text || '';
+let outputRequired = false;
+let outputRequiredLocal = true;
+function renderOutputRequired(session) {
+  outputRequiredLocal = session?.localPC !== false;
+  showOutputRequired(session?.outputConnection?.ok === false);
+  showOutputBanner(session);
 }
-
-// "Set up your shop": the owner signs in to OUTPUT in the browser and types the code shown here to approve.
+let setupSkippedThisVisit = false;
+function setupSkipped() {
+  if (setupSkippedThisVisit) return true;
+  try { return localStorage.getItem('eznest-setup-skipped') === '1'; }
+  catch { return false; }
+}
+function outputApproveUrl(url) {
+  // EZ46-7: only the allowlisted OUTPUT host may be opened from a setup reply.
+  let parsed;
+  try { parsed = new URL(url); }
+  catch { return ''; }
+  const sample = $('output-link-open') && $('output-link-open').href;
+  let allowed;
+  try { allowed = new URL(sample || 'https://output.jeezlabs.io/outpost/ez-nest'); }
+  catch { return ''; }
+  if (parsed.protocol !== 'https:' || parsed.host !== allowed.host) return '';
+  return parsed.href;
+}
 function setupShopPollDelay(attempt) {
   return [2000, 3000, 5000, 8000][Math.min(3, attempt)];
 }
-
-function setupShop(finish, error) {
-  const button = $('output-gate-setup-button');
-  const waiting = $('output-gate-waiting');
-  const note = $('output-gate-wait-note');
+function beginShopSetup(button, waiting, match, note, error) {
   let timer = 0;
   let run = 0;
   const stop = message => {
     run += 1;
     window.clearTimeout(timer);
     waiting.hidden = true;
-    button.hidden = false;
+    button.hidden = !OUTPUT_APPROVE_ENDPOINT_READY;
     button.disabled = false;
-    if (message) {
-      error.hidden = false;
-      error.textContent = message;
-    }
+    if (message && error) error.textContent = message;
   };
   const poll = (mine, attempt) => {
     timer = window.setTimeout(async () => {
@@ -2650,32 +2691,33 @@ function setupShop(finish, error) {
         if (mine !== run) return;
         if (body.state === 'connected') {
           note.textContent = 'Connected.';
-          await finish();
+          location.reload();
           return;
         }
         if (body.state === 'pending') return poll(mine, attempt + 1);
-        stop(body.message || 'Click Connect to try again.');
+        stop(body.message || 'Click Set up your shop to try again.');
       } catch (err) {
         if (mine === run) stop(err.message);
       }
     }, setupShopPollDelay(attempt));
   };
   button.onclick = async () => {
-    error.hidden = true;
+    if (!OUTPUT_APPROVE_ENDPOINT_READY) return;
+    if (error) error.textContent = '';
     button.disabled = true;
-    // Open the window during the click so the browser does not block it.
     const popup = window.open('', '_blank');
     try {
-      const body = await api('/api/telemetry/output/link/start', {});
-      $('output-gate-match').textContent = body.userCode;
-      $('output-gate-reopen').href = body.approveUrl;
+      const body = await api(OUTPUT_APPROVE_ENDPOINT_READY ? '/api/telemetry/output/link/start' : '', {});
+      const approve = outputApproveUrl(body.approveUrl);
+      if (!approve) throw Error('OUTPUT did not return a page on its own site.');
+      match.textContent = body.userCode;
+      const reopen = waiting.querySelector('a');
+      if (reopen) reopen.href = approve;
       note.textContent = 'Waiting…';
       if (popup) {
         popup.opener = null;
-        popup.location.href = body.approveUrl;
-      } else {
-        window.open(body.approveUrl, '_blank', 'noopener');
-      }
+        popup.location.href = approve;
+      } else window.open(approve, '_blank', 'noopener');
       button.hidden = true;
       waiting.hidden = false;
       run += 1;
@@ -2685,102 +2727,27 @@ function setupShop(finish, error) {
       stop(err.message);
     }
   };
-  $('output-gate-cancel').onclick = async () => {
+  const cancel = waiting.querySelector('button');
+  if (cancel) cancel.onclick = async () => {
     stop('');
-    try { await api('/api/telemetry/output/link/cancel', {}); } catch (_) { /* expires on its own */ }
+    try { await api('/api/telemetry/output/link/cancel', {}); } catch { /* The request expires on its own. */ }
   };
 }
-
-// Short, plain note for the connect popup. Other server messages pass through unchanged.
-function gateNote(message) {
-  const text = message || '';
-  if (!text || text.startsWith('Connect this computer to OUTPUT before')) return 'Connect this computer to OUTPUT to start nesting.';
-  if (text.startsWith('This computer is disconnected from OUTPUT')) return 'This computer was disconnected. Connect again to keep nesting.';
-  return text;
+function showOutputRequired(required) {
+  outputRequired = required === true && !setupSkipped();
+  $('output-required').hidden = !outputRequired;
+  $('output-required-note').textContent = outputRequiredLocal ? '' : 'Ask the shop computer to connect to OUTPUT.';
+  $('output-required-connect').hidden = !OUTPUT_APPROVE_ENDPOINT_READY || !outputRequiredLocal;
+  if (!OUTPUT_APPROVE_ENDPOINT_READY && $('output-setup-waiting')) $('output-setup-waiting').hidden = true;
+  if ($('output-required-code')) $('output-required-code').hidden = !outputRequiredLocal;
+  document.body.classList.toggle('output-required-on', outputRequired);
 }
-
-function requireOutputConnection(session) {
-  const gate = $('output-gate');
-  const info = session.outputConnection || {};
-  const fields = $('output-gate-fields');
-  const lan = $('output-gate-lan');
-  const error = $('output-gate-error');
-  const check = $('output-gate-check');
-  gate.addEventListener('cancel', event => event.preventDefault());
-  error.hidden = true;
-  $('output-gate-note').textContent = gateNote(info.message);
-  if (!session.localPC) {
-    fields.hidden = true;
-    $('output-gate-setup').hidden = true;
-    $('output-gate-code-option').hidden = true;
-    check.hidden = true;
-    lan.hidden = false;
-    lan.textContent = info.message || 'Ask the shop computer to connect to OUTPUT.';
-    gate.showModal();
-    return new Promise(() => {});
-  }
-  lan.hidden = true;
-  fields.hidden = info.canPair === false;
-  $('output-gate-setup').hidden = fields.hidden;
-  $('output-gate-code-option').hidden = fields.hidden;
-  check.hidden = !info.canCheckIn;
-  gate.showModal();
-  const input = $('output-gate-code');
-  if (!fields.hidden) $('output-gate-setup-button').focus();
-  return new Promise(resolve => {
-    const finish = async () => {
-      input.value = '';
-      const next = await fetchJsonRetry('/api/session');
-      if (next.outputConnection && next.outputConnection.ok) {
-        gate.close();
-        resolve();
-      }
-    };
-    $('output-gate-form').onsubmit = async event => {
-      event.preventDefault();
-      const code = input.value.trim();
-      if (!code) {
-        error.hidden = false;
-        error.textContent = 'Paste the pairing code from OUTPUT.';
-        return;
-      }
-      $('output-gate-submit').disabled = true;
-      try {
-        const response = await fetch('/api/telemetry/output/pair', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-EZ-Token': token},
-          body: JSON.stringify({code})
-        });
-        const body = await response.json();
-        if (!response.ok) throw Error(body.error || 'Could not connect to OUTPUT.');
-        input.value = '';
-        await finish();
-        $('output-gate-submit').disabled = false;
-      } catch (err) {
-        input.value = '';
-        error.hidden = false;
-        error.textContent = err.message;
-        $('output-gate-submit').disabled = false;
-      }
-    };
-    setupShop(finish, error);
-    check.onclick = async () => {
-      check.disabled = true;
-      try {
-        const body = await api('/api/telemetry/output/check-in', {});
-        if (body.ok) await finish();
-        else {
-          error.hidden = false;
-          error.textContent = body.message || 'OUTPUT could not be reached.';
-          check.disabled = false;
-        }
-      } catch (err) {
-        error.hidden = false;
-        error.textContent = err.message;
-        check.disabled = false;
-      }
-    };
-  });
+function showOutputBanner(session) {
+  const banner = $('output-banner');
+  if (!banner) return;
+  const text = session && session.outputConnection && session.outputConnection.banner;
+  banner.hidden = !text;
+  banner.textContent = text || '';
 }
 
 function requireHostPinReset() {
@@ -2841,13 +2808,64 @@ function requireShopPin(session) {
   const error = $('pin-error');
   error.hidden = true;
   error.textContent = '';
+  const pinLabel = input.closest('label');
+  function showPinEntry(next) {
+    note.textContent = next && next.pinWeak
+      ? 'This PIN still works. The shop computer must replace it. You can keep nesting until then. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.'
+      : 'Enter the shop PIN from the host PC. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.';
+    if (pinLabel) pinLabel.hidden = false;
+    input.hidden = false;
+    submit.hidden = false;
+    submit.disabled = false;
+    input.focus();
+  }
   if (!session.pinConfigured) {
-    note.textContent = 'Ask the person at the shop computer to set a PIN, then refresh this page.';
+    note.textContent = 'Set the shop PIN on the host PC. Open Settings on that computer and choose Shop PIN. This page updates on its own when the PIN is saved.';
+    if (pinLabel) pinLabel.hidden = true;
     input.hidden = true;
     submit.hidden = true;
     gate.showModal();
-    return new Promise(() => {});
+    let waiting = 0;
+    const watch = () => {
+      waiting = setTimeout(async () => {
+        try {
+          const next = await fetchJson('/api/session', 4000);
+          if (next.pinConfigured) {
+            showPinEntry(next);
+            return;
+          }
+        } catch { /* The host may still be saving the PIN. */ }
+        watch();
+      }, 1500);
+    };
+    watch();
+    return new Promise(resolve => {
+      $('pin-form').onsubmit = async event => {
+        event.preventDefault();
+        if (input.hidden) return;
+        clearTimeout(waiting);
+        submit.disabled = true;
+        try {
+          const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pin: input.value})
+          });
+          const body = await response.json().catch(() => ({}));
+          if (!response.ok) throw Error(body.error || 'Could not sign in.');
+          input.value = '';
+          gate.close();
+          resolve();
+        } catch (err) {
+          error.hidden = false;
+          error.textContent = err.message;
+          submit.disabled = false;
+          watch();
+        }
+      };
+    });
   }
+  if (pinLabel) pinLabel.hidden = false;
   note.textContent = session.pinWeak
     ? 'This PIN still works. The shop computer must replace it. You can keep nesting until then. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.'
     : 'Enter the shop PIN or passphrase from the computer that runs Ez Nest. You stay signed in on this browser until you log out, stay idle for an hour, or eight hours pass.';
@@ -2884,7 +2902,8 @@ function stockInput(mm, unit) { return String(Number((mm / EZNQueue.unitScale(un
 function stockFeet(mm) { return mm == null ? 'unknown' : (mm / 304.8).toFixed(2) + ' ft'; }
 
 function acceptInventory(data) {
-  if (JSON.stringify(data) !== JSON.stringify(shopInventory)) $('inventory-status').textContent = '';
+  const changed = JSON.stringify(data) !== JSON.stringify(shopInventory);
+  if (changed) $('inventory-status').textContent = '';
   shopInventory = data;
   inventoryReady = true;
   for (const item of data.materials) {
@@ -2893,10 +2912,54 @@ function acceptInventory(data) {
   }
   renderMaterialButtons();
   renderInventory();
+  if (changed && $('stock')?.open) inventoryPanel.render();
+}
+
+// Every inventory request gets a number when it starts. An answer older than the last one
+// shown is dropped, so a slow poll can never put back an older picture of the shelf.
+let inventorySeq = 0, inventoryShown = 0, inventoryPending = 0, inventoryRefetch = false;
+function showInventory(seq, data) {
+  if (seq < inventoryShown) return false;
+  inventoryShown = seq;
+  acceptInventory(data);
+  return true;
+}
+
+// While a save or remove is on its way, a plain refresh may read the shelf from before it
+// landed. Such a refresh is never shown; once every change has finished, the shelf is read again.
+function settleInventory() {
+  if (--inventoryPending > 0 || !inventoryRefetch) return;
+  inventoryRefetch = false;
+  refreshInventory().catch(() => {});
+}
+
+async function mutateInventory(path, payload) {
+  inventoryGen++;
+  inventoryPending++;
+  const seq = ++inventorySeq;
+  try {
+    const data = await api(path, payload);
+    inventoryGen++;
+    // A change the server made is always newer than any snapshot that started before it.
+    inventoryShown = Math.max(inventoryShown, seq - 1);
+    if (!showInventory(seq, data)) inventoryRefetch = true;
+    return data;
+  } catch (error) { inventoryGen++; inventoryRefetch = true; throw error; }
+  finally { settleInventory(); }
 }
 
 async function refreshInventory() {
-  try { acceptInventory(await fetchJson('/api/materials', 5000)); }
+  const gen = inventoryGen, seq = ++inventorySeq, overlapped = inventoryPending > 0;
+  try {
+    const data = await fetchJson('/api/materials', 5000);
+    // A save or remove started or finished while this was in flight: its answer wins, and the
+    // shelf is read again after it settles.
+    if (overlapped || gen !== inventoryGen || inventoryPending > 0) {
+      if (inventoryPending > 0) inventoryRefetch = true;
+      return;
+    }
+    showInventory(seq, data);
+  }
   catch (error) {
     inventoryReady = false;
     $('inventory-status').textContent = 'Shop stock is unavailable. Reconnect before reserving or confirming usage.';
@@ -2954,7 +3017,7 @@ async function inventoryAction(path, payload) {
   if (inventoryBusy || !presetEditor || materialStockDirty()) return;
   inventoryBusy = true; $('save-material').disabled = true; renderInventory();
   try {
-    acceptInventory(await api(path, payload));
+    await mutateInventory(path, payload);
     const updated = shopInventory.materials.find(item => item.id === presetEditor.id);
     if (updated) {
       presetEditor.revision = updated.revision;
@@ -2993,21 +3056,15 @@ async function openIllustrator() {
 
 async function loadIllustrator() {
   if (busy || saving) throw Error('Finish the current operation first.');
-  if (!$('setup').hidden) throw Error('Finish shop setup first.');
   if ((kits.length || current) && !confirm('Replace the current preview with this Illustrator selection?')) return;
   const id = new URLSearchParams(location.search).get('illustrator');
   const response = await fetch('/api/illustrator/' + encodeURIComponent(id));
   const data = await response.json();
   if (!response.ok) throw Error(data.error);
   nextKit();
-  $('material').value = 'white-gloss';
-  const regular = $('material').selectedOptions[0];
-  regular.dataset.name = 'Regular';
-  regular.dataset.width = data.widthIn;
-  regular.dataset.roll = Math.max(54, data.widthIn);
-  regular.textContent = 'Regular';
-  applyMaterial(true);
+  // Loading a production copy does not create a Regular roll.
   $('nest-width').value = data.widthIn;
+  $('width').value = data.widthIn;
   $('sets').value = data.sets;
   $('bleed').value = data.bleedMm;
   $('auto-bleed').value = '0';
@@ -3050,7 +3107,7 @@ function showUpdate(info) {
   $('settings-open').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
   if (info?.managedSupported && info?.staged && !info.localPC) {
     note.hidden = false;
-    note.textContent = 'The update is ready. Approve installation on the PC running eznest.';
+    note.textContent = 'The update is ready. Approve installation on the PC running Ez Nest.';
     $('update').disabled = true;
     return;
   }
@@ -3125,6 +3182,12 @@ function syncWelcome() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  $('mode-switch').addEventListener('click', event => {
+    if (busy || saving || importing) {
+      event.preventDefault(); status('Finish the current operation before switching modes.', true); return;
+    }
+    if (kits.length && !window.confirm('Switch to full mode? Save your work first. Jobs are not transferred between modes, and unsaved changes may be lost.')) event.preventDefault();
+  });
   closeSettingsFolds();
   $('inventory-open').addEventListener('click', () => openPreset($('material').value));
   $('preset-editor').addEventListener('input', renderInventory);
@@ -3135,7 +3198,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const dialog = $('settings');
     if (!dialog.open) dialog.showModal();
     $('hot-folder').focus();
+    refreshStockPreview();
   });
+  $('settings-stock-share').addEventListener('toggle', () => { if ($('settings-stock-share').open) refreshStockPreview(); });
+  $('show-roll-names').addEventListener('change', refreshStockPreview);
+  $('share-stock-summary').addEventListener('change', refreshStockPreview);
   $('settings-close').addEventListener('click', () => $('settings').close());
   $('settings-telemetry').addEventListener('toggle', () => { if ($('settings-telemetry').open) refreshOutputSharing(); });
   $('telemetry-refresh').addEventListener('click', refreshOutputSharing);
@@ -3159,7 +3226,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     watchChoices.observe($('layout-options'));
   }
+  function selectOutputMode(id) {
+    for (const button of [$('in-house'), $('max-output')]) {
+      const on = button.id === id;
+      button.classList.toggle('nest-mode', on);
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  }
   $('max-output').addEventListener('click', () => {
+    selectOutputMode('max-output');
     const dialog = $('max-output-dialog');
     if (!dialog.open) dialog.showModal();
     $('max-output-close').focus();
@@ -3286,12 +3361,39 @@ document.addEventListener('DOMContentLoaded', () => {
   $('test-channel').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('output-network').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
   $('printer').addEventListener('change', () => { saveDeploy().catch(error => status(error.message, true)); });
+  $('setup-dismiss').addEventListener('click', async () => {
+    $('setup').hidden = true;
+    try { applyShop(await api('/api/shop', shopPayload({setupDismissed: true}))); }
+    catch (error) {
+      $('setup').hidden = false;
+      status(error.message, true);
+    }
+  });
+  $('output-check-now').addEventListener('click', async () => {
+    $('output-check-now').disabled = true;
+    try {
+      await api('/api/telemetry/output/check-in', {});
+      const session = await fetchJson('/api/session', 5000);
+      lastCheckInText = 'Last check-in ' + (agoText(session.outputLink && session.outputLink.secondsSinceCheckIn) || 'just now') + '.';
+      renderOutputLink(session.outputLink, session.localPC);
+      await refreshOutputSharing();
+    } catch (error) {
+      $('output-connect-status').textContent = error.message;
+      $('output-connect-status').classList.add('error');
+    }
+    $('output-check-now').disabled = false;
+  });
+  $('output-reconnect').addEventListener('click', () => {
+    reconnectOpen = true;
+    if (outputSharing) renderOutputSharing(outputSharing);
+    $('output-pair-code').focus();
+  });
   $('setup-preset').addEventListener('click', async () => {
     try { applyEzPreset(await (await fetch('/api/shop')).json()); }
     catch (error) { status(error.message, true); }
   });
   $('setup-save').addEventListener('click', async () => {
-    try { await saveSetup(); await autoLoadIllustrator(); }
+    try { await saveSetup(); }
     catch (error) {
       $('setup-error').hidden = false;
       $('setup-error').textContent = error.message;
@@ -3324,7 +3426,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (error) {
       const offline = /Failed to fetch|NetworkError/i.test(String(error.message || error));
       if (installNow && offline) {
-        status('eznest is restarting to install the update.');
+        status('Ez Nest is restarting to install the update.');
         return;
       }
       status(error.message, true);
@@ -3348,7 +3450,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch {
       if (updateWasQueued) {
         $('update-note').hidden = false;
-        $('update-note').textContent = 'Installing the update. This page will reconnect when eznest is ready.';
+        $('update-note').textContent = 'Installing the update. This page will reconnect when Ez Nest is ready.';
       }
     }
   }, 5000);
@@ -3361,6 +3463,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('choose-kiss').addEventListener('click', () => selectCut('kiss'));
   $('choose-confirm').addEventListener('click', confirmCut);
   $('start-over').addEventListener('click', startOver);
+  $('start-over-idle').addEventListener('click', startOver);
   $('more').addEventListener('change', async event => {
     try { await importFiles(event.target.files); }
     catch (error) { showImportError(error); }
@@ -3372,7 +3475,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dismissWelcome = () => { $('feedback-welcome').hidden = true; savePrefs({feedbackWelcomed: true}); };
   syncWelcome();
   $('feedback-dismiss').addEventListener('click', dismissWelcome);
-  $('in-house').addEventListener('click', () => $('nesting-effort').focus());
+  $('in-house').addEventListener('click', () => { selectOutputMode('in-house'); $('nesting-effort').focus(); });
   $('start-nesting').addEventListener('click', () => { dismissWelcome(); nest(); });
   $('feedback-open').addEventListener('click', () => {
     dismissWelcome();
@@ -3417,7 +3520,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if ($('settings').open || $('max-output-dialog').open || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
+    if ($('settings').open || $('stock').open || $('max-output-dialog').open || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #top-actions, #stock, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }
@@ -3427,3 +3530,167 @@ document.addEventListener('DOMContentLoaded', () => {
   boot().catch(error => status(error.message, true));
 });
 
+
+// --- OUTPUT link control (header). Connecting is optional; nothing here blocks nesting.
+let outputLink = null;
+let outputLinkLocal = true;
+function agoText(seconds) {
+  if (seconds == null) return '';
+  if (seconds < 90) return 'just now';
+  if (seconds < 5400) return Math.round(seconds / 60) + ' min ago';
+  if (seconds < 172800) return Math.round(seconds / 3600) + ' h ago';
+  return Math.round(seconds / 86400) + ' days ago';
+}
+function renderOutputLink(info, local) {
+  outputLink = info || null;
+  if (local !== undefined) outputLinkLocal = local !== false;
+  const root = $('output-link');
+  if (!root) return;
+  const state = info?.state || 'unpaired';
+  const paired = state === 'connected' || state === 'stale';
+  root.dataset.state = state;
+  root.hidden = !info;
+  if (info?.connectUrl) $('output-link-open').href = info.connectUrl;
+  $('output-link-connect').hidden = paired || !$('output-link-form').hidden;
+  $('output-link-connect').textContent = state === 'revoked' ? 'Reconnect to OUTPUT' : 'Connect to OUTPUT';
+  $('output-link-connect').disabled = !info?.canPair;
+  $('output-link-connect').title = info?.canPair ? '' : 'Connect from the shop computer.';
+  $('output-link-status').hidden = !paired;
+  const name = info?.shopName ? ' · ' + info.shopName : '';
+  $('output-link-label').textContent = state === 'stale' ? 'Last seen ' + (agoText(info.secondsSinceCheckIn) || 'not yet') : 'Connected' + name;
+  $('output-link-detail').textContent = state === 'stale'
+    ? (info.secondsSinceCheckIn == null ? 'OUTPUT has not heard from this computer yet.' : 'Last check-in ' + agoText(info.secondsSinceCheckIn) + '. Nesting keeps working.')
+    : 'Connected' + name + '. Last check-in ' + (agoText(info?.secondsSinceCheckIn) || 'not yet') + '.';
+  for (const id of ['output-link-reconnect', 'output-link-disconnect']) $(id).disabled = !info?.canPair;
+  const dot = $('output-dot');
+  if (dot) {
+    const live = state === 'connected' && info?.secondsSinceCheckIn != null;
+    dot.classList.toggle('connected', live);
+    const label = live ? 'Connected to OUTPUT' + name : paired ? $('output-link-label').textContent : 'Connect to OUTPUT';
+    dot.title = label; dot.setAttribute('aria-label', label);
+  }
+}
+async function refreshOutputLink() {
+  const session = await fetchJson('/api/session', 5000);
+  const wasRequired = outputRequired;
+  renderOutputLink(session.outputLink, session.localPC);
+  renderOutputRequired(session);
+  if (wasRequired && !outputRequired) location.reload();
+}
+function closeOutputLinkMenu() {
+  $('output-link-menu').hidden = true;
+  $('output-link-status').setAttribute('aria-expanded', 'false');
+}
+function openOutputLinkForm() {
+  closeOutputLinkMenu();
+  const url = outputLink?.connectUrl;
+  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  $('output-link-form').hidden = false;
+  $('output-link-connect').hidden = true;
+  $('output-link-error').hidden = true;
+  $('output-link-code').value = '';
+  $('output-link-code').focus();
+}
+function closeOutputLinkForm() {
+  $('output-link-form').hidden = true;
+  $('output-link-code').value = '';
+  renderOutputLink(outputLink);
+}
+async function submitOutputLink(event) {
+  event.preventDefault();
+  const code = $('output-link-code').value.trim();
+  const error = $('output-link-error');
+  if (!code) { error.textContent = 'Paste the pairing code from OUTPUT.'; error.hidden = false; return; }
+  $('output-link-submit').disabled = true;
+  try {
+    const body = await api('/api/telemetry/output/pair', {code});
+    $('output-link-code').value = '';
+    $('output-link-form').hidden = true;
+    renderOutputSharing(body);
+    await refreshOutputLink();
+  } catch (failure) {
+    $('output-link-code').value = '';
+    error.textContent = failure.message;
+    error.hidden = false;
+  } finally {
+    $('output-link-submit').disabled = false;
+  }
+}
+async function checkOutputLink() {
+  $('output-link-check').disabled = true;
+  $('output-link-detail').textContent = 'Checking…';
+  try {
+    await api('/api/telemetry/output/check-in', {});
+    await refreshOutputLink();
+    if (outputLink?.state === 'stale') $('output-link-detail').textContent = 'OUTPUT did not answer. Nesting keeps working. Try again later.';
+  } catch (failure) {
+    $('output-link-detail').textContent = failure.message;
+  } finally {
+    $('output-link-check').disabled = false;
+  }
+}
+async function disconnectOutputLink() {
+  closeOutputLinkMenu();
+  if (!window.confirm('Disconnect this computer from OUTPUT? Nesting, saving, and stock keep working on this computer.')) return;
+  try {
+    renderOutputSharing(await api('/api/telemetry/output/disconnect', {}));
+  } catch (failure) {
+    status(failure.message, true);
+  }
+  await refreshOutputLink().catch(() => {});
+}
+$('output-link-connect').addEventListener('click', openOutputLinkForm);
+$('output-link-reconnect').addEventListener('click', openOutputLinkForm);
+$('output-required-code').addEventListener('click', openOutputLinkForm);
+$('output-required-skip').addEventListener('click', () => {
+  try {
+    localStorage.setItem('eznest-setup-skipped', '1');
+    location.reload();
+  } catch {
+    setupSkippedThisVisit = true;
+    document.body.dataset.ready = '0';
+    showOutputRequired(false);
+    boot().catch(error => status(error.message, true));
+  }
+});
+beginShopSetup($('output-required-connect'), $('output-setup-waiting'), $('output-setup-match'), $('output-setup-wait'), $('output-required-note'));
+beginShopSetup($('output-setup-settings'), $('output-setup-settings-waiting'), $('output-setup-settings-match'), $('output-setup-settings-wait'), $('output-connect-status'));
+$('output-link-cancel').addEventListener('click', closeOutputLinkForm);
+$('output-link-form').addEventListener('submit', submitOutputLink);
+$('output-link-check').addEventListener('click', checkOutputLink);
+$('output-link-disconnect').addEventListener('click', disconnectOutputLink);
+$('output-link-status').addEventListener('click', () => {
+  const open = $('output-link-menu').hidden;
+  $('output-link-menu').hidden = !open;
+  $('output-link-status').setAttribute('aria-expanded', String(open));
+  if (open) $('output-link-check').focus();
+});
+document.addEventListener('click', event => { if (!event.target.closest('#output-link')) closeOutputLinkMenu(); });
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  if (!$('output-link-menu').hidden) { closeOutputLinkMenu(); $('output-link-status').focus(); }
+  else if (!$('output-link-form').hidden && event.target.closest('#output-link-form')) closeOutputLinkForm();
+});
+
+const inventoryPanel = EZNInventoryPanel.create({
+  get profiles() { return materialProfiles; },
+  get inventory() { return shopInventory; }, get ready() { return inventoryReady; },
+  get busy() { return inventoryBusy; }, set busy(value) { inventoryBusy = value; },
+  get current() { return current; }, selectedId: () => $('material').value,
+  defaults: materialValues, validate: validateMaterial, refresh: refreshInventory, mutate: mutateInventory,
+  choose: chooseMaterial,
+  updated(id) { if (id === $('material').value) applyMaterial(true); },
+  removed(id) {
+    const option = [...$('material').options].find(entry => entry.value === id);
+    const selected = $('material').value === id;
+    option?.remove(); delete materialProfiles[id];
+    if (selected) { $('material').selectedIndex = 0; applyMaterial(true); }
+    renderMaterialButtons();
+  }
+});
+
+for (const id of ['thru-name', 'kiss-name']) $(id).addEventListener('input', renderCutLineNote);
+renderCutLineNote();
+
+// Header status circle: click reuses the existing connect flow (or the connected menu).
+$('output-dot')?.addEventListener('click', event => { event.stopPropagation(); ($('output-link-status').hidden ? $('output-link-connect') : $('output-link-status')).click(); });

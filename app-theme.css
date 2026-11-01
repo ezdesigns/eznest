@@ -1,0 +1,90 @@
+/* Brand values verified against the live OUTPUT and EZNest sites, 2026-11-01. */
+@font-face { font-family: "OUTPUT Shop"; src: url(/fonts/Archivo.ttf) format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+:root {
+  --output-blue: #006cf5; --output-blue-hover: #0054c2; --output-blue-wash: #edf4ff;
+  --output-ink: #182136; --output-muted: #5c6870; --output-paper: #fff;
+  --output-wash: #f7f7f2; --output-line: #dce1dd; --output-line-strong: #7c878e;
+  --font-sans: "OUTPUT Shop", Arial, sans-serif;
+  --ink: var(--output-ink); --muted: var(--output-muted); --paper: var(--output-paper);
+  --bg: var(--output-paper); --canvas: var(--output-wash); --line: var(--output-line);
+  --control-line: var(--output-line-strong); --accent: var(--output-blue);
+  --accent-hover: var(--output-blue-hover); --accent-soft: var(--output-blue-wash);
+  font: 15px/1.5 var(--font-sans); color: var(--ink); background: var(--bg);
+}
+h1, h2, h3 { font-weight: 650; }
+.full-workspace { display: flex; flex-direction: column; height: 100dvh; }
+.full-workspace > .app-header, .full-workspace > footer { flex-shrink: 0; }
+body { background: var(--bg); color: var(--ink); -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font-family: var(--font-sans); }
+[hidden] { display: none !important; }
+.app-header, .app-header.shop-header {
+  position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 24px;
+  height: auto; min-height: 84px; padding: 18px 40px; background: var(--bg); border: 0;
+  border-bottom: 1px solid var(--line);
+}
+.app-header .brand {
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px;
+  color: var(--ink); font: 800 25px/1.05 var(--font-sans); letter-spacing: -1px; text-decoration: none;
+}
+.app-header .brand small { font: 500 9px/1.2 var(--font-sans); letter-spacing: .14em; color: var(--muted); white-space: nowrap; }
+.app-header .local { display: none; }
+.app-header .header-tools, .app-header .top-actions { position: static; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.app-header button, .app-header .button, .app-header .top-button, .app-header #settings-open, .app-header #mode-switch {
+  position: static; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; min-height: 44px; padding: 0 12px; border: 1px solid transparent; border-radius: 8px;
+  font: 500 13px/1.5 var(--font-sans); color: var(--muted); background: transparent; white-space: nowrap;
+}
+.app-header #mode-switch { border-color: var(--control-line); color: var(--ink); text-decoration: none; }
+.app-header button:hover, .app-header #mode-switch:hover { background: var(--output-wash); color: var(--output-blue-hover); }
+.app-header svg { flex-shrink: 0; }
+button.primary, .primary, #start-nesting, #export.primary, #confirm-send {
+  background: var(--accent); border: 1px solid var(--accent); color: #fff; border-radius: 8px;
+  box-shadow: none; font-size: 13px; font-weight: 600; min-height: 44px;
+}
+button.primary:hover:enabled, .primary:hover:enabled, #start-nesting:hover:enabled, #export.primary:hover:enabled, #confirm-send:hover:enabled { background: var(--accent-hover); border-color: var(--accent-hover); }
+button.primary:disabled, .primary:disabled, #start-nesting:disabled, #export.primary:disabled, #confirm-send:disabled { background: #e4e9ed; border-color: #e4e9ed; color: var(--muted); }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--output-blue); outline-offset: 3px; }
+input, select { border-radius: 8px; }
+dialog { color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 14px; box-shadow: none; }
+dialog::backdrop { background: #18213655; }
+.hint { color: var(--muted); font-size: 13px; font-weight: 400; }
+.dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.dialog-heading h2 { margin: 0; font-size: 23px; font-weight: 650; letter-spacing: -.04em; }
+.dialog-heading .hint { margin-top: 6px; }
+.dialog-close { flex: 0 0 32px; width: 32px; min-height: 32px; padding: 0; border: 0; background: transparent; font-size: 25px; color: var(--muted); }
+#stock button.link { border: 0; background: transparent; padding: 0; color: var(--output-blue-hover); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+#stock p { margin: 0; }
+#stock label { margin: 0; }
+#stock .roll-field { display: flex; }
+#stock .roll-field input { min-height: 0; box-shadow: none; }
+#stock button.primary { min-height: 44px; padding: 0 18px; font-size: 13px; font-weight: 600; }
+.step-number { background: var(--output-blue-wash); color: var(--output-blue-hover); font-family: ui-monospace, monospace; }
+.output-modes .nest-mode { background: var(--output-blue-wash); border-color: var(--output-blue); }
+#empty::before { filter: none; }
+body .metrics .num, body .metrics .unit { font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+/* Preserve the workflows while using the sites' white paper and warm figure stage. */
+.full-workspace main { width: 100%; max-width: 1440px; margin: 0 auto; padding: 24px 40px; gap: 24px; grid-template-columns: 350px minmax(0,1fr); height: auto; min-height: 0; flex: 1; }
+.queue-panel { border: 1px solid var(--line); border-radius: 14px; }
+.full-workspace .workspace { background: #fff; border: 1px solid var(--line); border-radius: 14px; }
+.full-workspace .canvas { background: var(--canvas); border-color: var(--line); border-radius: 14px; }
+body:not(.full-workspace) main { width: min(1360px, calc(100% - 80px)); padding-top: 24px; }
+body:not(.full-workspace) .job-panel { border-color: var(--line); }
+.drop { background: var(--output-wash); border-color: var(--line-strong, var(--output-line-strong)); border-radius: 14px; }
+.job-panel select { background: var(--output-wash); }
+#prepared-count { background: var(--output-blue-wash); color: var(--output-blue-hover); }
+@media (max-width: 720px) {
+  .app-header, .app-header.shop-header { padding: 18px 20px; gap: 14px; }
+  .app-header .header-tools, .app-header .top-actions { width: 100%; margin-left: 0; justify-content: flex-end; }
+  .app-header #stock-open, .app-header #settings-open { width: auto; }
+  .app-header #stock-open span, .app-header #settings-open span { display: inline; }
+  .app-header button:first-of-type { margin-left: 0; }
+  .full-workspace { display: block; height: auto; }
+  .full-workspace main { display: block; height: auto; padding: 20px; }
+  .full-workspace .workspace { margin-top: 20px; }
+  body:not(.full-workspace) main { width: calc(100% - 40px); padding-top: 20px; }
+}
+/* Keep the Save action visible on short shop laptops without shrinking controls. */
+@media (min-width: 721px) and (max-height: 800px) {
+  .app-header, .app-header.shop-header { min-height: 72px; padding-top: 12px; padding-bottom: 12px; }
+  body:not(.full-workspace) main { padding-top: 16px; }
+}

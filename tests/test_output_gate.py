@@ -1,4 +1,4 @@
-"""The shop host must be connected to OUTPUT before nesting, sending, or stock."""
+"""OUTPUT connection status and browser gating do not block the shop API."""
 import io
 import json
 import os
@@ -75,25 +75,32 @@ class GateTests(unittest.TestCase):
         stamp = int(time.time()) - age_seconds
         output_gate.note_paired(server.WORK, now=stamp)
 
-    def assert_blocked(self, sent, message):
+    def assert_api_open(self, sent, message, expected_status=200):
         status, body, _headers = sent
-        self.assertEqual(status, 403)
-        self.assertEqual(body.get('code'), 'connect_required')
-        self.assertEqual(body.get('error'), message)
+        self.assertEqual(status, expected_status)
+        self.assertNotEqual(body.get('code'), 'connect_required')
         self.assertNotIn(TOKEN, json.dumps(body))
+        session = self.handler('/api/session')
+        session.do_GET()
+        self.assertEqual(session.sent[0][0], 200)
+        connection = session.sent[0][1]['outputConnection']
+        self.assertFalse(connection['ok'])
+        self.assertEqual(connection['code'], 'connect_required')
+        self.assertEqual(connection['message'], message)
+        self.assertNotIn(TOKEN, json.dumps(session.sent[0][1]))
 
     def test_constants_are_named_days(self):
         self.assertEqual(output_gate.CHECK_IN_MAX_AGE_DAYS, 14)
         self.assertEqual(output_gate.CHECK_IN_MAX_AGE, 14 * 24 * 60 * 60)
         self.assertEqual(output_gate.OFFLINE_BANNER_AFTER_DAYS, 3)
 
-    def test_unpaired_host_blocks_stock_and_nesting_but_keeps_gate_endpoints(self):
+    def test_unpaired_host_allows_stock_and_validates_nesting_and_pairing(self):
         stock = self.handler('/api/materials')
         stock.do_GET()
-        self.assert_blocked(stock.sent[0], output_gate.HOST_UNPAIRED)
+        self.assert_api_open(stock.sent[0], output_gate.HOST_UNPAIRED)
         solve = self.handler('/api/solve', body=b'{}')
         solve.handle_post()
-        self.assert_blocked(solve.sent[0], output_gate.HOST_UNPAIRED)
+        self.assert_api_open(solve.sent[0], output_gate.HOST_UNPAIRED, expected_status=400)
         health = self.handler('/api/health')
         health.do_GET()
         self.assertEqual(health.sent[0][0], 200)
@@ -107,7 +114,7 @@ class GateTests(unittest.TestCase):
         self.assertNotEqual(pair.sent[0][1].get('code'), 'connect_required')
         self.assertNotIn('not-a-code', json.dumps(pair.sent[0][1]))
 
-    def test_designer_lan_client_is_told_to_ask_the_shop_computer(self):
+    def test_unpaired_lan_client_still_needs_pin_and_sees_connection_message(self):
         server.HOST = '0.0.0.0'
         server.LAN = True
         shop_deploy.clear_name_cache()
@@ -115,7 +122,13 @@ class GateTests(unittest.TestCase):
             shop_deploy.clear_name_cache()
             stock = self.handler('/api/materials', ip='192.168.1.50')
             stock.do_GET()
-            self.assert_blocked(stock.sent[0], output_gate.LAN_MESSAGE)
+            self.assertEqual(stock.sent[0][0], 403)
+            self.assertEqual(stock.sent[0][1]['error'], 'Enter the shop PIN on this computer.')
+            self.assertNotEqual(stock.sent[0][1].get('code'), 'connect_required')
+            with patch.object(server.Handler, 'authenticated', return_value=True):
+                authenticated = self.handler('/api/materials', ip='192.168.1.50')
+                authenticated.do_GET()
+            self.assertEqual(authenticated.sent[0][0], 200)
             session = self.handler('/api/session', ip='192.168.1.50')
             session.do_GET()
             self.assertEqual(session.sent[0][0], 200)
@@ -188,14 +201,14 @@ class GateTests(unittest.TestCase):
         fresh.do_GET()
         self.assertIsNone(fresh.sent[0][1]['outputConnection']['banner'])
 
-    def test_past_fourteen_days_blocks(self):
+    def test_past_fourteen_days_reports_reconnect_but_allows_stock(self):
         self.pair(output_gate.CHECK_IN_MAX_AGE + 30)
         stock = self.handler('/api/materials')
         stock.do_GET()
-        self.assert_blocked(stock.sent[0], output_gate.HOST_RECONNECT)
+        self.assert_api_open(stock.sent[0], output_gate.HOST_RECONNECT)
         self.assertTrue(output_credential.path(server.WORK).is_file())
 
-    def test_revoked_credential_regates_and_check_in_sends_only_the_app_version(self):
+    def test_revoked_credential_allows_stock_and_check_in_sends_only_the_app_version(self):
         self.pair()
         seen = {}
 
@@ -217,13 +230,13 @@ class GateTests(unittest.TestCase):
         self.assertNotIn(TOKEN, _state_text())
         stock = self.handler('/api/materials')
         stock.do_GET()
-        self.assert_blocked(stock.sent[0], output_gate.HOST_REVOKED)
+        self.assert_api_open(stock.sent[0], output_gate.HOST_REVOKED)
 
-    def test_a_successful_check_in_lifts_the_fourteen_day_gate(self):
+    def test_a_successful_check_in_restores_status_while_stock_stays_accessible(self):
         self.pair(output_gate.CHECK_IN_MAX_AGE + 30)
-        blocked = self.handler('/api/materials')
-        blocked.do_GET()
-        self.assert_blocked(blocked.sent[0], output_gate.HOST_RECONNECT)
+        stock = self.handler('/api/materials')
+        stock.do_GET()
+        self.assert_api_open(stock.sent[0], output_gate.HOST_RECONNECT)
 
         def transport(raw, _token):
             self.assertEqual(json.loads(raw), {'appVersion': VERSION})
@@ -259,13 +272,13 @@ class GateTests(unittest.TestCase):
         os.environ['EZ_NEST_DEV_NO_OUTPUT'] = '1'
         stock = self.handler('/api/materials')
         stock.do_GET()
-        self.assert_blocked(stock.sent[0], output_gate.HOST_UNPAIRED)
+        self.assert_api_open(stock.sent[0], output_gate.HOST_UNPAIRED)
         os.environ['EZ_NEST_DEV'] = '1'
         with patch.object(sys_module(), 'frozen', True, create=True):
             self.assertFalse(output_gate.dev_escape())
             frozen = self.handler('/api/materials')
             frozen.do_GET()
-            self.assert_blocked(frozen.sent[0], output_gate.HOST_UNPAIRED)
+            self.assert_api_open(frozen.sent[0], output_gate.HOST_UNPAIRED)
 
     def test_dev_escape_opens_the_gate_and_sets_the_banner(self):
         os.environ['EZ_NEST_DEV'] = '1'
@@ -281,12 +294,12 @@ class GateTests(unittest.TestCase):
         self.assertTrue(connection['devMode'])
         self.assertEqual(connection['banner'], 'DEV MODE: not connected to OUTPUT')
 
-    def test_disconnect_returns_the_host_to_the_gate(self):
+    def test_disconnect_updates_status_but_allows_stock(self):
         self.pair()
         output_pairing.disconnect(server.WORK)
         stock = self.handler('/api/materials')
         stock.do_GET()
-        self.assert_blocked(stock.sent[0], output_gate.HOST_DISCONNECTED)
+        self.assert_api_open(stock.sent[0], output_gate.HOST_DISCONNECTED)
         self.assertFalse(output_credential.path(server.WORK).is_file())
 
     def test_host_page_shows_only_the_connect_screen_until_paired(self):
@@ -301,17 +314,96 @@ class GateTests(unittest.TestCase):
             with sync_playwright() as playwright:
                 browser = test_web_mvp.launch_browser(playwright)
                 try:
-                    page = browser.new_page(viewport={'width': 1280, 'height': 800})
+                    context = browser.new_context(viewport={'width': 1280, 'height': 800})
+                    page = context.new_page()
                     page.goto(helper.url() + '/web')
-                    expect(page.locator('#output-gate')).to_be_visible()
-                    expect(page.locator('#output-gate-title')).to_have_text('Set up your shop')
-                    expect(page.locator('#output-gate-note')).to_contain_text('Connect this computer to OUTPUT to start nesting.')
-                    expect(page.locator('#output-gate-fields a')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
-                    self.assertTrue(page.locator('#output-gate').evaluate("n => n.matches(':modal')"))
-                    self.assertEqual(page.locator('#output-gate-code').input_value(), '')
+                    # Unpaired: a plain message and one Connect action; nesting waits.
+                    page.wait_for_function("() => document.body.dataset.ready === '1'")
+                    expect(page.locator('#output-required')).to_be_visible()
+                    expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT (optional)')
+                    expect(page.locator('#output-required-connect')).to_be_hidden()
+                    expect(page.locator('#output-required-connect')).to_have_text('Set up your shop')
+                    calls = page.evaluate("""() => {
+                      const hits = [];
+                      const opened = [];
+                      const origFetch = window.fetch;
+                      const origOpen = window.open;
+                      window.fetch = function(url, options) {
+                        const target = String(url);
+                        if (target.includes('/api/telemetry/output/link/start')) hits.push(target);
+                        return origFetch.apply(this, arguments);
+                      };
+                      window.open = function(url) {
+                        opened.push(url);
+                        return {close() {}, opener: null, location: {href: ''}};
+                      };
+                      document.getElementById('output-required-connect').click();
+                      document.getElementById('output-setup-settings').click();
+                      window.fetch = origFetch;
+                      window.open = origOpen;
+                      return {hits: hits.length, opened: opened.length};
+                    }""")
+                    self.assertEqual(calls, {'hits': 0, 'opened': 0})
+                    expect(page.locator('#output-required-skip')).to_have_text('Skip')
+                    expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
+                    with page.context.expect_page() as opened:
+                        page.click('#output-required-code')
+                    opened.value.close()
+                    expect(page.locator('#output-link-form')).to_be_visible()
+                    expect(page.locator('#output-link-code')).to_be_focused()
+                    self.assertEqual(page.locator('#output-link-code').input_value(), '')
                     shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
                     shots.mkdir(parents=True, exist_ok=True)
                     page.screenshot(path=str(shots / 'output-connect-gate.png'))
+                    page.click('#output-link-cancel')
+                    page.click('#output-required-skip')
+                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
+                    self.assertEqual(page.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
+                    self.assertIsNone(page.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"))
+                    fresh = context.new_page()
+                    try:
+                        fresh.goto(helper.url() + '/web')
+                        fresh.wait_for_function("() => document.body.dataset.ready === '1'")
+                        expect(fresh.locator('#output-required')).to_be_hidden()
+                        self.assertEqual(fresh.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
+                        self.assertIsNone(fresh.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"))
+                    finally:
+                        fresh.close()
+                finally:
+                    browser.close()
+        finally:
+            helper.tearDown()
+
+    def test_skip_opens_inventory_when_browser_storage_is_unavailable(self):
+        from playwright.sync_api import expect, sync_playwright
+        import test_web_mvp
+        helper = test_web_mvp.WebMvpTests(methodName='runTest')
+        helper.setUp()
+        try:
+            with sync_playwright() as playwright:
+                browser = test_web_mvp.launch_browser(playwright)
+                try:
+                    page = browser.new_page()
+                    page.add_init_script("""(() => {
+                      for (const method of ['getItem', 'setItem']) {
+                        const original = Storage.prototype[method];
+                        Storage.prototype[method] = function(key, ...args) {
+                          if (key === 'eznest-setup-skipped') throw new DOMException('Storage blocked', 'SecurityError');
+                          return original.call(this, key, ...args);
+                        };
+                      }
+                    })();""")
+                    page.goto(helper.url() + '/web')
+                    page.wait_for_function("() => document.body.dataset.ready === '1'")
+                    expect(page.locator('#output-required')).to_be_visible()
+                    page.evaluate('window.skipVisit = true')
+                    page.click('#output-required-skip')
+                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
+                    self.assertTrue(page.evaluate('window.skipVisit === true'))
+                    page.click('#stock-open')
+                    expect(page.locator('#stock-add')).to_be_visible()
+                    page.click('#stock-add')
+                    expect(page.locator('#roll-f-name')).to_be_visible()
                 finally:
                     browser.close()
         finally:
@@ -323,7 +415,7 @@ class GateTests(unittest.TestCase):
             self.assertFalse(output_gate.gate_opt_out())
         stock = self.handler('/api/materials')
         stock.do_GET()
-        self.assert_blocked(stock.sent[0], output_gate.HOST_UNPAIRED)
+        self.assert_api_open(stock.sent[0], output_gate.HOST_UNPAIRED)
         os.environ['EZ_NEST_DEV'] = '1'
         self.assertTrue(output_gate.source_checkout())
         self.assertTrue(output_gate.gate_opt_out())
@@ -335,7 +427,7 @@ class GateTests(unittest.TestCase):
             self.assertFalse(output_gate.gate_opt_out())
             frozen = self.handler('/api/materials')
             frozen.do_GET()
-            self.assert_blocked(frozen.sent[0], output_gate.HOST_UNPAIRED)
+            self.assert_api_open(frozen.sent[0], output_gate.HOST_UNPAIRED)
 
     def test_release_marker_ignores_the_dev_opt_out(self):
         marker = Path(output_gate.__file__).resolve().parent / output_gate.RELEASE_MARKER
@@ -458,7 +550,7 @@ class GateTests(unittest.TestCase):
         self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
         stock = self.handler('/api/materials')
         stock.do_GET()
-        self.assert_blocked(stock.sent[0], output_gate.HOST_RECONNECT)
+        self.assert_api_open(stock.sent[0], output_gate.HOST_RECONNECT)
 
         def transport(raw, token):
             self.assertEqual(json.loads(raw), {'appVersion': VERSION})
@@ -489,7 +581,7 @@ class GateTests(unittest.TestCase):
         self.assertNotIn(TOKEN, output_gate._revocation_path(server.WORK).read_text(encoding='utf-8'))
         stock = self.handler('/api/materials')
         stock.do_GET()
-        self.assert_blocked(stock.sent[0], output_gate.HOST_REVOKED)
+        self.assert_api_open(stock.sent[0], output_gate.HOST_REVOKED)
         os.environ['EZ_NEST_OUTPUT_TOKEN'] = 'osa_' + 'D' * 43
 
         def other(raw, token):
@@ -535,13 +627,13 @@ class GateTests(unittest.TestCase):
         self.assertEqual(seen['url'], 'https://lab.example/api/shop/agent/check-in')
         self.assertNotIn('other.example', seen['url'])
 
-    def test_query_string_uses_the_same_path_as_the_gate(self):
-        blocked = self.handler('/api/materials?refresh=1')
-        blocked.do_GET()
-        self.assert_blocked(blocked.sent[0], output_gate.HOST_UNPAIRED)
+    def test_query_strings_allow_stock_and_validate_save_without_pairing(self):
+        stock = self.handler('/api/materials?refresh=1')
+        stock.do_GET()
+        self.assert_api_open(stock.sent[0], output_gate.HOST_UNPAIRED)
         save = self.handler('/api/materials/save?x=1', body=b'{}')
         save.handle_post()
-        self.assert_blocked(save.sent[0], output_gate.HOST_UNPAIRED)
+        self.assert_api_open(save.sent[0], output_gate.HOST_UNPAIRED, expected_status=400)
         check = self.handler('/api/telemetry/output/check-in?unused=1', body=b'{}')
         check.handle_post()
         self.assertEqual(check.sent[0][0], 200)

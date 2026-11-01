@@ -1,7 +1,7 @@
 """Disposable-runner acceptance of signed Mac package bytes, never source mode.
 
-Only an explicitly dispatched job may install. Owner revocation is mandatory
-outside this script, including on failure. Cleanup is CI containment, not a
+Only the guarded disposable CI runner may install. Live pairing is explicitly
+dispatched and requires owner revocation outside this script, including on failure. Cleanup is CI containment, not a
 product uninstaller. It refuses to race a timed-out Apple Installer transaction.
 """
 import argparse
@@ -27,7 +27,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
-VERSION = '1.0.0-rc.5'
+VERSION = json.loads((Path(__file__).resolve().parents[1] / 'version.json').read_text())['version']
 TEAM = 'JC6858UYM9'
 LABEL = 'io.jeezlabs.eznest'
 PACKAGE_ID = LABEL + '.shop'
@@ -309,7 +309,7 @@ def install(root, expected):
     write_json(marker, ownership)
     receipt = dict(version=VERSION, architecture='arm64', teamId=TEAM, sha256=expected,
                    runId=os.environ['GITHUB_RUN_ID'], hostLabel=socket.gethostname(),
-                   installed=False, gated=False, paired=False, restarted=False,
+                   installed=False, unpairedApiOpen=False, paired=False, restarted=False,
                    nested=False, sharingOff=False, revoked=False, cleanup=False)
     write_json(root / 'eznest-macos-acceptance.json', receipt)
     # Installer can delegate to installd. Timeout cannot establish transaction
@@ -335,9 +335,9 @@ def install(root, expected):
     verify_installed_identity()
     require(session['outputConnection']['ok'] is False
             and session['outputConnection']['devMode'] is False
-            and api.request('/api/state')[0] == 403,
-            'Fresh installed workspace is not locked.')
-    receipt.update(installed=True, gated=True)
+            and api.request('/api/state')[0] == 200,
+            'Fresh installed connection status or unpaired API access is incorrect.')
+    receipt.update(installed=True, unpairedApiOpen=True)
     write_json(root / 'eznest-macos-acceptance.json', receipt)
     print('INSTALL_PASS: signed downloaded package installed as a limited, unpaired service.')
 
@@ -465,12 +465,38 @@ def preview_settings(api):
             'Installed service is not listening exclusively on IPv4 loopback.')
 
 
+def offline(root):
+    """Local release acceptance; no pairing code, remote shop or account is used."""
+    receipt_path = root / 'eznest-macos-acceptance.json'
+    receipt = json.loads(receipt_path.read_text())
+    require(receipt.get('installed') is True and receipt.get('unpairedApiOpen') is True
+            and receipt.get('paired') is False, 'A fresh unpaired owned installation is required.')
+    api = LocalAPI(); api.session()
+    status, sharing = api.request('/api/telemetry/output')
+    require(status == 200 and sharing.get('configured') is False and sharing.get('enabled') is False,
+            'Offline acceptance must remain unpaired with sharing disabled.')
+    preview_settings(api)
+    exports = [pdf_file_flow(api)]
+    require(api.request('/api/work/discard', {})[0] == 200, 'Could not start the SVG test job.')
+    from macos_svg_acceptance import svg_file_flow
+    exports.append(svg_file_flow(api, root))
+    before = api.session()['pid']
+    command(['/usr/bin/sudo', '-n', '/bin/launchctl', 'kickstart', '-k', 'system/' + LABEL])
+    require(api.healthy()['pid'] != before, 'The service process did not restart.')
+    verify_persistence(api, exports)
+    preview_settings(api)
+    receipt.update(offlineFileFlows=True, restarted=True, nested=True, persistenceVerified=True,
+                   sharingOff=True, updatesOff=True, loopbackOnly=True)
+    write_json(receipt_path, receipt)
+    print('OFFLINE_PASS: local PDF/SVG export and restart persistence; no remote pairing claim.')
+
+
 def connect(root):
     code = os.environ.pop('EZ_NEST_MACOS_ACCEPTANCE_CODE', '')
     require(re.fullmatch('[0-9A-HJKMNP-TV-Z]{5}-[0-9A-HJKMNP-TV-Z]{5}', code),
             'An owner-approved one-time test-shop code is required.')
     receipt = json.loads((root / 'eznest-macos-acceptance.json').read_text())
-    require(receipt['installed'] and receipt['gated'], 'Installed acceptance evidence is incomplete.')
+    require(receipt['installed'] and receipt['unpairedApiOpen'], 'Installed acceptance evidence is incomplete.')
     api = LocalAPI(); api.session()
     status, value = api.request('/api/telemetry/output/pair', {'code': code})
     require(status == 200 and value.get('configured') is True and value.get('enabled') is False,
@@ -522,11 +548,11 @@ def verify_revoked(root):
             time.sleep(120)
     require(status == 200 and value.get('state') == 'revoked' and value.get('ok') is False,
             'Owner revocation was not observed within the check-in budget.')
-    require(api.request('/api/state')[0] == 403 and api.request('/api/solve', {})[0] == 403,
-            'Revoked host still accepts work.')
+    require(api.request('/api/state')[0] == 200 and api.request('/api/solve', {})[0] == 400,
+            'Revoked OUTPUT connection blocked API access or bypassed request validation.')
     receipt['revoked'] = True
     write_json(root / 'eznest-macos-acceptance.json', receipt)
-    print('REVOCATION_PASS: owner revocation closed the installed host gate.')
+    print('REVOCATION_PASS: owner revocation was reported; the installed API remains accessible.')
 
 
 # Fixed paths only; preflight + run-specific marker establish exclusive VM ownership.
@@ -597,7 +623,7 @@ def cleanup(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase', choices=('Download', 'Install', 'Connect', 'VerifyRevoked', 'Cleanup'))
+    parser.add_argument('phase', choices=('Download', 'Install', 'Offline', 'Connect', 'VerifyRevoked', 'Cleanup'))
     args = parser.parse_args()
     try:
         root = runner_guard()
@@ -605,6 +631,8 @@ def main():
             download(root)
         elif args.phase == 'Install':
             install(root, valid_hash(os.environ.get('EZ_NEST_PACKAGE_SHA256')))
+        elif args.phase == 'Offline':
+            offline(root)
         elif args.phase == 'Connect':
             connect(root)
         elif args.phase == 'VerifyRevoked':

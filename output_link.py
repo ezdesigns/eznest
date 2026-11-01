@@ -21,6 +21,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 
 import output_pairing
+import output_remote
 import shop_deploy
 from shop_deploy import host_name
 from telemetry_sender import NoRedirect
@@ -97,6 +98,8 @@ def _valid_user_code(value):
 
 
 def start(directory, *, paused=False, transport=None, host=None, now=time.time):
+    if not output_remote.READY:
+        raise LinkError('disabled', 'Browser approval is not available yet.')
     if paused:
         raise LinkError('disabled', 'Sharing is paused during installation or recovery. Refresh after the host restarts.')
     try:
@@ -135,6 +138,8 @@ def check(directory, *, paused=False, transport=None, pair_transport=None, now=t
     if now() >= item['expires']:
         cancel(directory)
         return {'state': 'expired', 'message': EXPIRED}
+    if not output_remote.READY:
+        raise LinkError('disabled', 'Browser approval is not available yet.')
     payload = {'op': 'status', 'linkId': item['linkId'], 'codeHash': item['hash']}
     status, body = (transport or (lambda p: _post(directory, p)))(payload)
     if status == 404:

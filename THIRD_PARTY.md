@@ -29,6 +29,10 @@ Web page fonts, unmodified latin subsets from Fontsource:
 These files stay under the OFL when the application is distributed. The OFL does
 not relicense the rest of eznest.
 
+Archivo, the unmodified variable font used by OUTPUT and EZNest, is included
+under SIL Open Font License 1.1. Copyright 2020 The Archivo Project Authors.
+Its license is `fonts/Archivo-OFL.txt`; provenance is in `fonts/NOTICE.txt`.
+
 PDF production additions in 0.11:
 - pypdf 6.21.4 (BSD-3-Clause): https://github.com/py-pdf/pypdf
 - pypdfium2 5.13.0 and its PDFium binary: https://github.com/pypdfium2-team/pypdfium2

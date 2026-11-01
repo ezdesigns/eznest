@@ -8,6 +8,7 @@ import json
 import math
 import re
 import sqlite3
+import unicodedata
 from datetime import datetime, timezone
 
 FIELDS = set(('preset-name unit width roll gap margin sheet mark-margin rotations '
@@ -21,25 +22,65 @@ def ident(value):
     return value
 
 
+# Plain names for error messages; raw field keys are never shown to people.
+LABELS = {
+    'width': ('Width you can print on', '54'), 'roll': ('Roll width', '54'),
+    'gap': ('Gap between pieces', '0.25'), 'margin': ('Margin', '0.5'),
+    'mark-margin': ('Cut-mark margin', '0.5'), 'bleed': ('Bleed', '0.125'),
+    'cost': ('Material cost', '1.25'), 'roll-length': ('Length of a new roll', '150'),
+    'roll-cost': ('Roll price', '8.50'), 'available-length': ('Length left on roll', '75'),
+    'low-stock': ('Low-stock warning', '10'), 'sheet': ('Sheet length', '24'),
+}
+MAX_NUMBER = 100_000_000
+
+
 def number(value, label, minimum=0):
+    name, example = LABELS.get(label, (label, '8.50'))
+    problem = ValueError(f'{name} looks wrong. Enter a number like {example}.')
     if isinstance(value, bool):
-        raise ValueError(label + ' must be a number.')
+        raise problem
+    text = value if isinstance(value, str) else str(value) if isinstance(value, (int, float)) else None
+    # Same rule as the browser: plain 0-9 digits with one optional point. No other scripts'
+    # digits, no underscores, no exponents.
+    if text is None or not re.fullmatch(r'\s*\+?(?:\d+(?:\.\d*)?|\.\d+)\s*', text, re.ASCII):
+        if not (isinstance(value, (int, float)) and not isinstance(value, bool)):
+            raise problem
     try:
         result = float(value)
-    except (TypeError, ValueError):
-        raise ValueError(label + ' must be a number.') from None
-    if not math.isfinite(result) or result < minimum or result > 100_000_000:
-        raise ValueError(label + ' is outside the supported range.')
+    except (TypeError, ValueError, OverflowError):
+        raise problem from None
+    if not math.isfinite(result) or result < minimum or result > MAX_NUMBER:
+        raise problem
     return result
+
+
+def clean_name(value):
+    """Same-looking names become the same text: NFKC, no invisible or direction-changing
+    characters, single spaces."""
+    text = unicodedata.normalize('NFKC', str(value))
+    text = ''.join(c for c in text if unicodedata.category(c) not in ('Cc', 'Cf', 'Cs', 'Co', 'Cn') or c in ' \t\n')
+    return ' '.join(text.split())
+
+
+# Letters from other alphabets that look the same as Latin ones, plus Turkish i forms.
+# Used only for the duplicate check; the name people see is not changed. Capitals are mapped
+# before lowercasing, because a Greek or Cyrillic capital can look like a different Latin
+# letter than its own lowercase form does (capital Eta looks like H, small eta does not).
+LOOK_ALIKE_CAPITALS = str.maketrans({'А': 'a', 'В': 'b', 'Е': 'e', 'Ё': 'e', 'К': 'k', 'М': 'm', 'Н': 'h', 'О': 'o', 'Р': 'p', 'С': 'c', 'Т': 't', 'У': 'y', 'Х': 'x', 'І': 'i', 'Ї': 'i', 'Ј': 'j', 'Ѕ': 's', 'Ԁ': 'd', 'Ԛ': 'q', 'Ԝ': 'w', 'Ӏ': 'l', 'Α': 'a', 'Β': 'b', 'Ε': 'e', 'Ζ': 'z', 'Η': 'h', 'Ι': 'i', 'Κ': 'k', 'Μ': 'm', 'Ν': 'n', 'Ο': 'o', 'Ρ': 'p', 'Τ': 't', 'Υ': 'y', 'Χ': 'x', 'İ': 'i'})
+LOOK_ALIKES = str.maketrans({'а': 'a', 'в': 'b', 'е': 'e', 'ё': 'e', 'к': 'k', 'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p', 'с': 'c', 'т': 't', 'у': 'y', 'х': 'x', 'і': 'i', 'ї': 'i', 'ј': 'j', 'ѕ': 's', 'ԁ': 'd', 'ӏ': 'l', 'ԛ': 'q', 'ԝ': 'w', 'α': 'a', 'ι': 'i', 'κ': 'k', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'τ': 't', 'υ': 'u', 'χ': 'x', 'ı': 'i', '\u0307': None})
+
+
+def name_key(value):
+    return clean_name(value).translate(LOOK_ALIKE_CAPITALS).casefold().translate(LOOK_ALIKES)
 
 
 def profile(values):
     if not isinstance(values, dict) or values.get('unit') not in FACTORS:
         raise ValueError('Choose material units.')
     clean = {key: str(values.get(key, '')) for key in FIELDS}
+    clean['preset-name'] = clean_name(clean['preset-name'])
     if any(len(v) > 120 or any(ord(c) < 32 for c in v) for v in clean.values()):
         raise ValueError('Material settings contain invalid text.')
-    clean['preset-name'] = clean['preset-name'].strip()
     if not clean['preset-name']:
         raise ValueError('Enter a material name.')
     if clean['rotations'] not in ('free', '0', '0,180', '0,90,180,270'):
@@ -55,8 +96,8 @@ def profile(values):
             number(clean[key], key)
     clean['drawMarks'] = values.get('drawMarks') is True
     factor = FACTORS[clean['unit']]
-    stock = number(clean['available-length'], 'Stock') * factor if clean['available-length'].strip() else None
-    full = number(clean['roll-length'], 'Roll length') * factor if clean['roll-length'].strip() else None
+    stock = number(clean['available-length'], 'available-length') * factor if clean['available-length'].strip() else None
+    full = number(clean['roll-length'], 'roll-length') * factor if clean['roll-length'].strip() else None
     if stock is not None and full is not None and stock > full:
         raise ValueError('Stock cannot exceed the full roll length.')
     if clean['roll-cost'].strip() and not full:
@@ -121,9 +162,14 @@ def save(directory, key, values, revision):
         expected = previous['revision'] if previous else 0
         if type(revision) is not int or revision != expected:
             raise ValueError('This material changed on another screen. Close and reopen Edit to use the latest stock.')
-        for other in db.execute('SELECT id, profile FROM materials WHERE id!=?', (key,)):
-            if json.loads(other['profile'])['preset-name'].casefold() == values['preset-name'].casefold():
-                raise ValueError('A material with this name already exists.')
+        wanted = name_key(values['preset-name'])
+        # A roll saved before this check existed keeps its name when edited; a new or renamed
+        # roll may not look the same as another one.
+        kept = previous is not None and name_key(json.loads(previous['profile'])['preset-name']) == wanted
+        if not kept:
+            for other in db.execute('SELECT id, profile FROM materials WHERE id!=?', (key,)):
+                if name_key(json.loads(other['profile'])['preset-name']) == wanted:
+                    raise ValueError('A material with this name already exists.')
         held = reserved(db, key)
         if held and (stock is None or stock + 1e-6 < held):
             raise ValueError('Release outstanding reservations before reducing stock below the reserved amount.')
@@ -181,4 +227,24 @@ def transition(directory, run, action):
             db.execute('UPDATE materials SET stock=stock-? WHERE id=?', (row['length'], row['material']))
         db.execute('UPDATE reservations SET status=?, updated=? WHERE id=?', (target, datetime.now(timezone.utc).isoformat(), run))
         db.execute('UPDATE materials SET revision=revision+1 WHERE id=?', (row['material'],))
+        return snapshot(db)
+
+
+def remove(directory, key, revision):
+    """Delete one roll. Outstanding reservations must be released first.
+
+    Finished usage rows for the roll are deleted with it; they only make sense
+    against that roll.
+    """
+    key = ident(key)
+    with database(directory) as db:
+        row = db.execute('SELECT revision FROM materials WHERE id=?', (key,)).fetchone()
+        if not row:
+            raise ValueError('This roll was already removed.')
+        if type(revision) is not int or revision != row['revision']:
+            raise ValueError('This material changed on another screen. Close and reopen Inventory to use the latest stock.')
+        if reserved(db, key):
+            raise ValueError('Release reserved jobs on this roll before removing it.')
+        db.execute('DELETE FROM reservations WHERE material=?', (key,))
+        db.execute('DELETE FROM materials WHERE id=?', (key,))
         return snapshot(db)

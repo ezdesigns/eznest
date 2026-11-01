@@ -540,5 +540,44 @@ def run(directory, stop):
                     check_in(directory)
         except Exception:
             pass
-        if stop.wait(6 * 60 * 60):
+        if stop.wait(60 * 60):
             return
+
+
+SEEN_RECENTLY = DAY_SECONDS
+
+
+def link_status(directory, local, now=None):
+    """Browser-safe OUTPUT link for the header control. Never gates nesting.
+
+    state is unpaired, connected, stale (paired, no check-in within a day,
+    the same window OUTPUT uses for "seen recently"), or revoked.
+    """
+    stamp = _stamp(now)
+    info = telemetry_sender.connection(directory)
+    token = info.get('token')
+    base = shop_deploy.output_base_url(directory)
+    view = {
+        'state': 'unpaired', 'shopName': info.get('shopName'), 'lastCheckInAt': None,
+        'secondsSinceCheckIn': None, 'canPair': bool(local) and _uploads() not in ('0', '1'),
+        'connectUrl': base + '/outpost/ez-nest',
+    }
+    with LOCK:
+        raw = _read_state(directory)
+        revoked = bool(token) and (_known_revoked(directory, token) or _record_altered(directory, token))
+        signed = bool(token) and _mac_ok(token, raw)
+    if not token:
+        if raw.get('reason') == 'revoked':
+            view['state'] = 'revoked'
+        return view
+    if revoked:
+        view['state'] = 'revoked'
+        return view
+    last = raw.get('lastOkAt') if signed else None
+    if isinstance(last, int) and not isinstance(last, bool) and 0 < last <= stamp:
+        view['lastCheckInAt'] = last
+        view['secondsSinceCheckIn'] = stamp - last
+        view['state'] = 'connected' if stamp - last < SEEN_RECENTLY else 'stale'
+    else:
+        view['state'] = 'stale'
+    return view

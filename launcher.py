@@ -41,7 +41,7 @@ def main():
         return 0
     parser = argparse.ArgumentParser(description='eznest local nesting workspace')
     parser.add_argument('--no-browser', action='store_true')
-    parser.add_argument('--web', action='store_true', help='Open the simple nest page')
+    parser.add_argument('--web', action='store_true', help='Compatibility flag; opens the main workspace')
     parser.add_argument('--host', default=None, help='127.0.0.1; use --lan for shop network access')
     parser.add_argument('--lan', action='store_true', help='Open the shop network on this computer')
     parser.add_argument('--port', type=int, default=8765)
@@ -76,7 +76,6 @@ def main():
     if args.shop_test:
         from shop_test import default_data_directory
         args.isolated = True
-        args.web = True
         args.data_dir = args.data_dir or default_data_directory()
     if args.isolated and (args.data_dir is None or args.lan):
         raise ValueError('An isolated test requires --data-dir and loopback access; do not use --lan.')
@@ -88,7 +87,7 @@ def main():
         raise ValueError('Set both --tls-cert and --tls-key, or neither.')
     scheme = 'https' if args.tls_cert else 'http'
     address = f'{scheme}://127.0.0.1:{args.port}'
-    page = '/web' if args.web else '/'
+    page = '/'
     try:
         # The probe only checks this computer. A self-signed shop certificate is not a public CA.
         probe = ssl._create_unverified_context() if args.tls_cert else None
@@ -122,11 +121,18 @@ def main():
     saved = load_shop(data)
     if args.lan:
         import shop_auth
-        if not shop_auth.pin_configured(data):
-            raise ValueError('Set a shop PIN on this computer before opening the shop network.')
-        host, lan = '0.0.0.0', True
+        if shop_auth.pin_configured(data):
+            host, lan = '0.0.0.0', True
+            os.environ.pop('EZ_NEST_LAN_WAITING', None)
+        else:
+            # Fail closed but keep running: a startup task with --lan and no PIN
+            # used to exit, leaving no page on which to set the PIN.
+            host, lan = '127.0.0.1', False
+            os.environ['EZ_NEST_LAN_WAITING'] = 'pin'
+            print('Shop network stays closed until a shop PIN is set on this computer. Set it, then restart Ez Nest.', file=sys.stderr)
     else:
         host, lan = '127.0.0.1', False
+        os.environ.pop('EZ_NEST_LAN_WAITING', None)
     data.mkdir(parents=True, exist_ok=True)
     os.environ['EZ_NEST_DATA'] = str(data.resolve())
     os.environ['EZ_NEST_PORT'] = str(args.port)

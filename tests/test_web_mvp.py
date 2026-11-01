@@ -211,30 +211,33 @@ class WebMvpTests(unittest.TestCase):
                 expect(page.locator('#max-output')).to_contain_text("Don't print")
                 self.assertEqual(page.locator('#max-output').get_attribute('aria-label'), "Don't print. Learn about OUTPUT")
                 self.assertEqual(page.locator('#max-output').get_attribute('aria-pressed'), 'false')
-                self.assertEqual(page.locator('#max-output').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(243, 251, 246)')
-                self.assertEqual(page.locator('#in-house').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(239, 245, 255)')
+                self.assertEqual(page.locator('#max-output').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(243, 243, 240)')
+                self.assertEqual(page.locator('#in-house').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(237, 244, 255)')
                 pill = page.locator('#max-output .paid-badge')
-                self.assertEqual(pill.inner_text(), 'Devnet sandbox')
-                self.assertEqual(pill.evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(21, 128, 61)')
+                self.assertEqual(pill.inner_text(), 'Preview · test only')
+                self.assertNotIn('🤑', page.locator('#max-output').inner_text())
+                self.assertNotIn('Devnet', page.locator('#max-output').inner_text())
+                self.assertEqual(pill.evaluate('n => getComputedStyle(n).backgroundColor'), 'rgba(0, 0, 0, 0)')
                 self.assertNotEqual(pill.evaluate('n => getComputedStyle(n).color'), 'rgb(217, 47, 0)')
                 self.assertNotEqual(pill.evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(217, 47, 0)')
                 page.click('#max-output .paid-badge')
                 expect(page.locator('#max-output-dialog')).to_be_visible()
                 expect(page.locator('#max-output-close')).to_be_focused()
                 self.assertTrue(page.locator('#max-output-dialog').evaluate("n => n.matches(':modal')"))
-                expect(page.locator('#max-output-title')).to_have_text("Don't print it. Let another shop do it.")
+                expect(page.locator('#max-output-title')).to_have_text("Don't print")
                 dialog_text = page.locator('#max-output-dialog').inner_text()
-                self.assertIn('OUTPUT can match this job with another shop. The sandbox does not take payment.', dialog_text)
-                self.assertIn('Devnet sandbox. No payment.', dialog_text)
-                self.assertNotIn('You still get paid', dialog_text)
-                self.assertIn('Use it when', dialog_text)
-                self.assertIn('The queue is backed up and this job would miss its date', dialog_text)
-                self.assertIn('The material is not in stock', dialog_text)
-                self.assertIn('The job is outside what your machines can run', dialog_text)
+                self.assertEqual(page.locator('#max-output-dialog p').first.inner_text(), 'This is a test preview. No real jobs or payments are sent.')
+                self.assertIn('This is a test preview. No real jobs or payments are sent.', dialog_text)
+                self.assertNotIn('Devnet', dialog_text)
+                self.assertIn('OUTPUT routes the job to the best-fit print shop near you, based on what each shop can make.', dialog_text)
+                self.assertIn('You still get paid.', dialog_text)
                 self.assertNotIn('What is OUTPUT?', dialog_text)
-                self.assertNotIn('Why use it?', dialog_text)
                 self.assertNotIn('You stay the shop your customer knows', dialog_text)
                 self.assertNotIn('otherwise turn away', dialog_text)
+                self.assertIn('Use it when', dialog_text)
+                self.assertIn('You don\'t have the material or roll width', dialog_text)
+                self.assertIn('Your customer is too far away', dialog_text)
+                self.assertIn('You\'re too busy to finish on time', dialog_text)
                 self.assertNotIn('Can\'t print it? Another shop can.', dialog_text)
                 self.assertNotIn('Too many pieces', dialog_text)
                 self.assertNotIn('never contacts', dialog_text.lower())
@@ -250,9 +253,8 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(waitlist.get_attribute('href'), 'https://output.jeezlabs.io/waitlist')
                 self.assertEqual(learn.get_attribute('href'), 'https://output.jeezlabs.io/')
                 self.assertEqual(page.locator('.output-points li').count(), 3)
-                self.assertEqual(page.locator('#max-output-dialog .paid-line').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(21, 128, 61)')
-                self.assertEqual(learn.evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(17, 17, 17)')
-                self.assertEqual(learn.evaluate('n => getComputedStyle(n).color'), 'rgb(255, 255, 255)')
+                self.assertEqual(learn.get_attribute('class'), 'output-learn')
+                self.assertEqual(page.locator('#max-output-dialog').inner_text().lower().count('sandbox'), 0)
                 for link in (waitlist, learn):
                     self.assertEqual(link.get_attribute('target'), '_blank')
                     self.assertIn('noopener', link.get_attribute('rel'))
@@ -266,7 +268,8 @@ class WebMvpTests(unittest.TestCase):
                 self.assertLessEqual(box['x'] + box['width'], 390)
                 page.keyboard.press('Escape')
                 expect(page.locator('#max-output-dialog')).to_be_hidden()
-                self.assertEqual(page.locator('#in-house').get_attribute('aria-pressed'), 'true')
+                self.assertEqual(page.locator('#max-output').get_attribute('aria-pressed'), 'true')
+                self.assertEqual(page.locator('#in-house').get_attribute('aria-pressed'), 'false')
                 self.assertEqual(page.input_value('#nesting-effort'), effort)
                 self.assertEqual(json.load(urlopen(self.url() + '/api/state'))['id'], before['id'])
                 self.assertEqual(page.input_value('#sets'), '1')
@@ -381,10 +384,12 @@ class WebMvpTests(unittest.TestCase):
             page=browser.new_page(viewport={'width':1280,'height':900},accept_downloads=True)
             try:
                 page.goto(self.url()+'/web'); self.wait_ready(page)
-                page.click('#setup-save')
+                expect(page.locator('#setup')).to_be_visible()
+                page.click('#setup-dismiss')
                 expect(page.locator('#setup')).to_be_hidden()
                 self.assertIsNone(server.OUTPUT.root)
                 page.click('#edit-material')
+                page.fill('#preset-name', 'Shop roll')
                 page.fill('#roll-length','1200'); page.fill('#roll-cost','300')
                 page.click('#save-material')
                 page.wait_for_function("() => !document.querySelector('#save-material').disabled")
@@ -697,13 +702,16 @@ class WebMvpTests(unittest.TestCase):
             )
             raise AssertionError('Shop page was not ready. ' + detail) from None
 
-    def test_desktop_workspace_remains_the_front_page(self):
+    def test_one_local_app_has_full_and_simple_modes(self):
         with urlopen(self.url() + '/', timeout=10) as response:
             desktop = response.read().decode()
         with urlopen(self.url() + '/web', timeout=10) as response:
             page = response.read().decode()
-        self.assertIn('Nest selected jobs', desktop)
-        self.assertIn('href="/web"', desktop)
+        self.assertIn('Jobs to print', desktop)
+        self.assertIn('href="/?view=simple">Simple mode', desktop)
+        with urlopen(self.url() + '/?view=simple', timeout=10) as response:
+            self.assertEqual(response.read().decode(), page)
+        self.assertIn('href="/">Full mode', page)
         self.assertIn('Upload your print here', page)
         self.assertIn('Stop · keep best', page)
         self.assertIn('id="files"', page)
@@ -713,6 +721,121 @@ class WebMvpTests(unittest.TestCase):
         self.assertIn('/svg-io.js', page)
         self.assertNotIn('<script>', page.lower().split('<body', 1)[-1].replace('src=', ''))
 
+    def test_inventory_shelf_is_shared_across_modes_and_updates_one_ledger(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_page(viewport={'width': 1280, 'height': 900})
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            def styles():
+                return page.evaluate("""() => {
+                    const read = (selector, keys) => {
+                        const s = getComputedStyle(document.querySelector(selector));
+                        return keys.map(key => s[key]);
+                    };
+                    return [read('body', ['fontFamily','color','backgroundColor']),
+                            read('.app-header', ['padding','backgroundColor']),
+                            read('#stock', ['fontFamily','backgroundColor','borderRadius']),
+                            read('#stock-title', ['fontSize','fontWeight']),
+                            read('#stock-add', ['backgroundColor','borderRadius','fontSize'])];
+                }""")
+            try:
+                page.goto(self.url() + '/')
+                page.get_by_role('button', name='Inventory', exact=True).click()
+                expect(page.get_by_role('dialog', name='Inventory', exact=True)).to_be_visible()
+                page.get_by_role('button', name='Add roll', exact=True).click()
+                for key, value in [('name','Shared gloss'),('roll','54'),('width','51.5'),('left','100'),('full','150'),('cost','300')]:
+                    page.fill('#roll-f-' + key, value)
+                page.get_by_role('button', name='Save roll', exact=True).click()
+                expect(page.locator('#stock-status')).to_contain_text('Added Shared gloss')
+                expect(page.locator('#stock-list [role=option]')).to_have_count(1)
+                page.get_by_role('button', name='Close details', exact=True).click()
+                page.evaluate('document.fonts.ready')
+                self.assertTrue(page.evaluate("""document.fonts.check('600 15px "OUTPUT Shop"')"""))
+                full_styles = styles()
+                self.assertIn('OUTPUT Shop', full_styles[0][0])
+                self.assertEqual(full_styles[0][1:], ['rgb(24, 33, 54)', 'rgb(255, 255, 255)'])
+                self.assertEqual(full_styles[4][0], 'rgb(0, 108, 245)')
+                page.screenshot(path=str(SCREENSHOTS / 'shared-inventory-full-desktop.png'))
+                page.click('#stock-close')
+                page.screenshot(path=str(SCREENSHOTS / 'shared-style-full-desktop.png'))
+                page.click('#mode-switch')
+                self.wait_ready(page)
+                if page.locator('#setup').is_visible(): page.click('#setup-dismiss')
+                page.click('#stock-open')
+                expect(page.locator('#stock-list [role=option]')).to_have_count(1)
+                expect(page.locator('#stock-list')).to_contain_text('Shared gloss')
+                self.assertEqual(full_styles, styles())
+                page.screenshot(path=str(SCREENSHOTS / 'shared-inventory-simple-desktop.png'))
+                page.set_viewport_size({'width':390,'height':844})
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'),390)
+                page.screenshot(path=str(SCREENSHOTS / 'shared-inventory-simple-mobile.png'))
+                page.set_viewport_size({'width':1280,'height':900})
+                page.locator('#stock-list [role=option]').click()
+                page.get_by_role('button', name='Edit', exact=True).click()
+                page.fill('#roll-f-left','75')
+                page.get_by_role('button', name='Save', exact=True).click()
+                expect(page.locator('#stock-status')).to_contain_text('75 ft left')
+                page.click('#stock-close')
+                page.screenshot(path=str(SCREENSHOTS / 'shared-style-simple-desktop.png'))
+                page.click('#mode-switch')
+                page.click('#stock-open')
+                expect(page.locator('#stock-list')).to_contain_text('75 ft')
+                page.set_viewport_size({'width':390,'height':844})
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'),390)
+                page.screenshot(path=str(SCREENSHOTS / 'shared-inventory-full-mobile.png'))
+                page.set_viewport_size({'width':1280,'height':900})
+                page.locator('#stock-list [role=option]').click()
+                page.get_by_role('button', name='Use for this job', exact=True).click()
+                expect(page.locator('#preset option:checked')).to_have_text('Shared gloss')
+                self.assertAlmostEqual(float(page.input_value('#quick-width')),51.5)
+                self.assertEqual(errors, [])
+            finally:
+                browser.close()
+
+    def test_mode_switches_warn_before_leaving_work_and_fit_mobile(self):
+        from playwright.sync_api import sync_playwright, expect
+        artwork = Path(__file__).resolve().parents[1] / 'sample-artwork.svg'
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_page(viewport={'width': 1280, 'height': 900})
+            try:
+                page.goto(self.url() + '/')
+                full = page.get_by_role('link', name='Simple mode', exact=True)
+                expect(full).to_be_visible()
+                page.screenshot(path=str(SCREENSHOTS / 'mode-full-desktop.png'))
+                page.set_viewport_size({'width': 390, 'height': 844})
+                expect(full).to_be_visible()
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), 390)
+                page.screenshot(path=str(SCREENSHOTS / 'mode-full-mobile.png'))
+                full.click()
+                self.wait_ready(page)
+                self.assertEqual(page.url, self.url() + '/?view=simple')
+                back = page.get_by_role('link', name='Full mode', exact=True)
+                expect(back).to_be_visible()
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), 390)
+                page.screenshot(path=str(SCREENSHOTS / 'mode-simple-mobile.png'))
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.screenshot(path=str(SCREENSHOTS / 'mode-simple-desktop.png'))
+                page.set_input_files('#file', str(artwork))
+                page.wait_for_function('() => !importing && kits.length === 1')
+                page.once('dialog', lambda dialog: dialog.dismiss())
+                back.click()
+                self.assertEqual(page.url, self.url() + '/?view=simple')
+                self.assertEqual(page.evaluate('kits.length'), 1)
+                page.once('dialog', lambda dialog: dialog.accept())
+                back.click()
+                expect(page.get_by_role('link', name='Simple mode', exact=True)).to_be_visible()
+                page.set_input_files('#files', str(artwork))
+                page.wait_for_function('() => !importing && queue.length === 1')
+                page.once('dialog', lambda dialog: dialog.dismiss())
+                page.get_by_role('link', name='Simple mode', exact=True).click()
+                self.assertEqual(page.url, self.url() + '/')
+                self.assertEqual(page.evaluate('queue.length'), 1)
+            finally:
+                browser.close()
+
     def open_page(self, playwright, shots=False):
         browser = launch_browser(playwright)
         context = browser.new_context(viewport={'width': 1280, 'height': 900}, accept_downloads=True)
@@ -720,7 +843,7 @@ class WebMvpTests(unittest.TestCase):
         page.goto(self.url() + '/web', wait_until='domcontentloaded')
         self.wait_ready(page)
         page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
-        self.assertEqual(page.locator('#material option:checked').inner_text(), 'Moto Regular')
+        self.assertEqual(page.locator('#material option:checked').inner_text(), 'Add your first material')
         self.assertEqual(page.input_value('#width'), '51.5')
         self.assertEqual(page.input_value('#nest-width'), '51.5')
         self.assertIn('on 51.5" wide', page.locator('#used-width').inner_text())
@@ -730,11 +853,10 @@ class WebMvpTests(unittest.TestCase):
         self.assertEqual(page.input_value('#auto-bleed'), '0')
         self.assertEqual(page.input_value('#thru-name'), 'CutContour_Thru-cut')
         self.assertEqual(page.input_value('#kiss-name'), 'CutContour_Kiss-cut')
-        self.assertEqual(page.input_value('#material'), 'white-gloss')
-        self.assertGreaterEqual(page.locator('#material option').count(), 4)
+        self.assertEqual(page.input_value('#material'), '')
+        self.assertEqual(page.locator('#material option').count(), 2)
+        self.assertEqual(page.locator('#material option[value="white-gloss"]').count(), 0)
         self.assertFalse(page.locator('#staging-on').is_checked())
-        self.assertEqual(page.locator('#material option[value="white-gloss"]').get_attribute('data-quickset'), 'Example RIP quick set')
-        self.assertEqual(page.locator('#material option[value="white-gloss"]').get_attribute('data-printer'), 'Example printer')
         self.assertFalse(page.locator('#draw-marks').is_checked())
         self.assertIn('Example RIP Input', page.locator('#settings').inner_text())
         page.select_option('#cut-preset', 'ln')
@@ -753,6 +875,7 @@ class WebMvpTests(unittest.TestCase):
             page.set_viewport_size({'width': 1280, 'height': 900})
         page.locator('#settings').evaluate('node => node.close()')
         page.click('#edit-material')
+        page.fill('#preset-name', 'Shop roll')
         page.select_option('#unit', 'mm')
         page.fill('#width', '220')
         page.locator('#material-advanced').evaluate('n => { n.open = true }')
@@ -1403,9 +1526,17 @@ class WebMvpTests(unittest.TestCase):
             try:
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
                 self.wait_ready(page)
-                page.select_option('#material','holographic')
+                if page.locator('#setup').is_visible():
+                    page.click('#setup-dismiss')
+                page.select_option('#material','custom')
                 page.locator('#material-dialog').wait_for(state='visible')
-                self.assertEqual(page.input_value('#preset-name'), 'Moto Holographic')
+                page.fill('#preset-name', 'Shop white')
+                page.click('#save-material')
+                page.wait_for_function("() => !document.querySelector('#save-material').disabled")
+                white = page.input_value('#material')
+                page.select_option('#material','custom')
+                page.locator('#material-dialog').wait_for(state='visible')
+                page.fill('#preset-name', 'Moto Holographic')
                 page.locator('#material-advanced').evaluate('n => { n.open = true }')
                 page.fill('#gap', '0.25')
                 page.locator('#material-advanced').evaluate('n => { n.open = true }')
@@ -1416,10 +1547,11 @@ class WebMvpTests(unittest.TestCase):
                 page.click('#save-material')
                 page.wait_for_function("() => !document.querySelector('#save-material').disabled")
                 self.assertTrue(page.locator('#preset-editor').is_hidden())
-                page.select_option('#material','white-gloss')
+                holo = page.input_value('#material')
+                page.select_option('#material', white)
                 self.assertEqual(page.input_value('#gap'), '0.12')
                 self.assertEqual(page.input_value('#available-length'), '')
-                page.select_option('#material','holographic')
+                page.select_option('#material', holo)
                 self.assertEqual(page.input_value('#gap'), '0.25')
                 self.assertEqual(page.input_value('#margin'), '0.3')
                 self.assertEqual(page.input_value('#available-length'), '1800')
@@ -1435,7 +1567,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertIn('wider than the roll', page.inner_text('#preset-error'))
                 page.click('#cancel-material')
                 self.assertEqual(page.input_value('#width'), '51.5')
-                self.assertEqual(page.input_value('#material'), 'holographic')
+                self.assertEqual(page.input_value('#material'), holo)
                 page.click('#edit-material')
                 page.fill('#width', '20')
                 page.locator('#material-dialog').get_by_role('button',name='About Printable width',exact=True).hover()
@@ -1481,9 +1613,6 @@ class WebMvpTests(unittest.TestCase):
                 })))
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
                 self.wait_ready(page)
-                page.locator('#setup').screenshot(path=str(shots / 'first-run-desktop.png'))
-                page.click('#setup-preset')
-                page.locator('#setup').screenshot(path=str(shots / 'first-run-preset-desktop.png'))
                 page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
                 page.click('#settings-updates > summary')
                 self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.5')
@@ -1716,6 +1845,107 @@ class WebMvpTests(unittest.TestCase):
                 self.assertIn(state['id'], artwork)
                 self.assertNotIn('barcode', artwork.casefold())
                 self.assertTrue(json.load(urlopen(self.url() + '/api/state', timeout=10)).get('released'))
+            finally:
+                browser.close()
+
+
+    def test_setup_dismiss_is_remembered_on_this_computer(self):
+        from playwright.sync_api import sync_playwright
+        import shop_deploy
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+            try:
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                self.wait_ready(page)
+                self.assertTrue(page.locator('#setup').is_visible())
+                setup = page.locator('#setup').inner_text()
+                self.assertIn('One-time setup for this computer', setup)
+                self.assertIn('Where finished files are saved', setup)
+                self.assertIn('This PC runs ONYX', setup)
+                self.assertIn('Through-cut name', setup)
+                self.assertIn('Kiss-cut name', setup)
+                self.assertNotIn('Check your cut line names', setup)
+                box = page.locator('#setup').bounding_box()
+                panel = page.locator('.job-panel').bounding_box()
+                self.assertLessEqual(box['x'] + box['width'], panel['x'] + 2)
+                page.click('#setup-dismiss')
+                self.assertTrue(page.locator('#setup').is_hidden())
+                self.assertTrue(shop_deploy.load_shop(server.WORK)['setupDismissed'])
+                page.reload()
+                self.wait_ready(page)
+                self.assertTrue(page.locator('#setup').is_hidden())
+                self.assertEqual(page.locator('#material option:checked').inner_text(), 'Add your first material')
+                fresh = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+                fresh.goto(self.url() + '/web', wait_until='domcontentloaded')
+                self.wait_ready(fresh)
+                self.assertTrue(fresh.locator('#setup').is_hidden())
+                self.assertEqual(fresh.locator('#material option:checked').inner_text(), 'Add your first material')
+            finally:
+                browser.close()
+
+    def test_upgrade_keeps_a_reserved_default_roll_until_the_operator_picks(self):
+        from playwright.sync_api import sync_playwright
+        import material_inventory as inventory
+        profile = {
+            'preset-name': 'Moto Regular', 'unit': 'mm', 'width': '500', 'roll': '510',
+            'available-length': '1000', 'roll-length': '5000', 'gap': '2', 'margin': '5',
+            'mark-margin': '0', 'sheet': '1000', 'rotations': '0,90,180,270', 'auto-bleed': '0',
+            'bleed': '0', 'cost': '', 'roll-cost': '', 'low-stock': '200', 'print-layout': 'sections',
+        }
+        inventory.save(server.WORK, 'other-roll', dict(profile, **{'preset-name': 'Other roll'}), 0)
+        inventory.save(server.WORK, 'white-gloss', profile, 0)
+        inventory.reserve(server.WORK, 'white-gloss', 'job-old', 100, 500, 'legacy')
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+            try:
+                page.add_init_script("if (!localStorage.getItem('eznest-placeholders')) localStorage.setItem('eznest-placeholders', JSON.stringify({material:'white-gloss'}))")
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                self.wait_ready(page)
+                self.assertEqual(page.locator('#material option:checked').inner_text(), 'Pick a roll')
+                self.assertEqual(page.input_value('#material'), '')
+                self.assertEqual(page.locator('#material option[value="white-gloss"]').count(), 1)
+                reserved = inventory.read(server.WORK)['reservations']
+                self.assertEqual(reserved[0]['id'], 'job-old')
+                self.assertEqual(reserved[0]['material'], 'white-gloss')
+                self.assertEqual(reserved[0]['status'], 'reserved')
+                page.select_option('#material', 'white-gloss')
+                page.reload()
+                self.wait_ready(page)
+                self.assertEqual(page.input_value('#material'), 'white-gloss')
+                self.assertEqual(inventory.read(server.WORK)['reservations'][0]['status'], 'reserved')
+            finally:
+                browser.close()
+
+    def test_designer_pin_gate_explains_the_host_and_unlocks_when_set(self):
+        from playwright.sync_api import sync_playwright, expect
+        import json as json_lib
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_context(viewport={'width': 1280, 'height': 800}).new_page()
+            try:
+                state = {'configured': False}
+                def fulfill(route):
+                    route.fulfill(status=200, content_type='application/json', body=json_lib.dumps({
+                        'app': 'eznest', 'version': 'test', 'localPC': False, 'authenticated': False,
+                        'pinConfigured': state['configured'], 'pinWeak': False, 'localSave': False,
+                        'setupComplete': True, 'setupDismissed': True,
+                        'outputConnection': {'ok': True, 'state': 'ok', 'message': '', 'banner': None, 'devMode': False, 'canPair': False, 'canCheckIn': False},
+                    }))
+                page.route('**/api/session', fulfill)
+                page.goto(self.url() + '/web', wait_until='domcontentloaded')
+                expect(page.locator('#pin-gate')).to_be_visible()
+                expect(page.locator('#pin-input')).to_be_hidden()
+                expect(page.locator('#pin-submit')).to_be_hidden()
+                note = page.locator('#pin-note').inner_text()
+                self.assertIn('host PC', note)
+                self.assertIn('Settings', note)
+                self.assertIn('Shop PIN', note)
+                state['configured'] = True
+                expect(page.locator('#pin-input')).to_be_visible(timeout=5000)
+                expect(page.locator('#pin-submit')).to_be_visible()
+                expect(page.locator('#pin-note')).to_contain_text('Enter the shop PIN from the host PC')
             finally:
                 browser.close()
 

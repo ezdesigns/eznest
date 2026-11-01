@@ -1,8 +1,12 @@
 # OUTPUT sharing
 
-The shop computer must be connected to OUTPUT before nesting, stock, or
-export. That connection is the pairing flow in
-[OUTPUT pairing](output-pairing.md). Activity sharing is a second step. It
+The API allows nesting, stock, and export without an OUTPUT connection.
+Connecting to OUTPUT is optional. The browser shows **Connect to OUTPUT
+(optional)** until this browser chooses **Skip** or the host connects, as
+described in [OUTPUT pairing](output-pairing.md). `output_remote.READY`
+defaults to false, so browser-approval routes and stock-summary upload stay
+off. **Skip** works with that flag left false.
+Activity sharing is a second step. It
 stays off until the host agrees. The host exchanges a pairing code for an
 `osa_` credential, stores it in `output-credential.bin` in the host data
 directory, and then shows the consent screen. Launch settings still take precedence:
@@ -41,6 +45,32 @@ stock remains on the shop host; these observations do not replace its ledger.
 `--shop-test` disables outbound sharing even if upload settings are inherited.
 Tests use synthetic tokens and injected transport. They do not verify a live
 credential, activate a receiver, or establish public end-to-end delivery.
+
+## Stock summary
+
+Share stock summary with OUTPUT is a separate host setting. The Settings
+control stays hidden (`STOCK_SHARE_ENDPOINT_READY` is false in `web.js`).
+`output_remote.READY` defaults to false, and a shop setting cannot turn it on.
+While it is false, the API refuses `shareStockSummary` and no stock summary
+is sent. Nothing is sent unless this computer is paired, that setting is
+on, and `output_remote.READY` is true. `--shop-test` sends nothing.
+
+The summary uses `eznest-stock/1`. Each roll has an opaque key, an optional
+plain-text name, width in inches, length left in feet, reserved length in feet,
+and a low marker. Lengths are rounded to 0.1 foot and widths to 0.1 inch.
+Unknown stock has an empty length and is not marked low. At most 200 rolls are
+included, and the request stays within 32 KB. Reservations, job codes, cost,
+supplier, profile text, file names, and customer details are omitted. A name
+that looks like a path, email address, URL, or job code is sent empty. Show
+roll names in OUTPUT stay off until the host turns them on; until then every name is empty.
+
+Settings shows the JSON that would be sent. Delivery is
+`PUT {output base}/api/shop/agent/stock` with the stored credential, through
+the same isolated transport as activity sharing: HTTPS only, no redirects, a
+ten-second deadline, and backoff from 30 seconds to 15 minutes. The same
+snapshot keeps the same request id. A summary is sent when the sender starts,
+about 30 seconds after stock changes, and about once an hour. Turning sharing
+off sends `DELETE` to that address. The credential is not written to logs.
 
 During installation or recovery, sharing is temporarily paused. Settings shows
 the pause and requires a refresh after the host restarts before changing consent.

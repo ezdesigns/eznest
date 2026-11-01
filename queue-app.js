@@ -432,12 +432,16 @@ $('nest').onclick=()=>startNest();$('improve').onclick=()=>improve();$('cancel')
 $('quick-width').onchange=()=>{try{const p=activePreset(),width=readPhysicalField('quick-width',displayUnit());if(width===null)throw Error('Enter your roll width.');const validated=EZNQueue.validatePreset({...p,settings:{...p.settings,width}});p.settings=validated.settings;renderPresets();invalidate();status('Roll width updated. Nest to use this width.');}catch(e){setDimensionField('quick-width',activePreset().settings.width,displayUnit());status(e.message,true);}};
 
 $('help-open').onclick=()=>$('help').showModal();$('help-close').onclick=()=>$('help').close();
-$('quit').onclick=async()=>{if(busy||saving)return;try{await api('/api/shutdown',{});clearInterval(folderTimer);clearTimeout(autoTimer);$('help').close();document.querySelectorAll('button,input,select').forEach(el=>el.disabled=true);status('eznest has stopped. You can close this tab. Open eznest again to continue.');}catch(e){$('help-status').textContent=e.message;}};
+$('quit').onclick=async()=>{if(busy||saving)return;try{await api('/api/shutdown',{});clearInterval(folderTimer);clearTimeout(autoTimer);$('help').close();document.querySelectorAll('button,input,select').forEach(el=>el.disabled=true);status('Ez Nest has stopped. You can close this tab. Open Ez Nest again to continue.');}catch(e){$('help-status').textContent=e.message;}};
 
 $('preset').onchange=()=>{preferences.active=$('preset').value;renderPresets();invalidate();};$('batch-length').onchange=()=>{preferences.runLengths=preferences.runLengths||{};preferences.runLengths[activePreset().id]=readPhysicalField('batch-length',displayUnit());invalidate();};$('fill-area').onchange=()=>{preferences.fillArea=$('fill-area').value;invalidate();};
 
 $('show-labels').onchange=renderLayout;$('job-colors').onchange=renderLayout;$('show-all').onclick=()=>{highlightJob='';renderLayout();};
 
+$('mode-switch').onclick=event=>{
+  if(busy||saving||importing){event.preventDefault();status('Finish the current operation before switching modes.',true);return;}
+  if(queue.length&&!window.confirm('Switch to simple mode? Save your work first. Jobs are not transferred between modes, and unsaved changes may be lost.'))event.preventDefault();
+};
 $('settings-open').onclick=()=>{fillSettings();$('settings').showModal();};$('settings-close').onclick=()=>$('settings').close();
 
 $('units').onchange=()=>{const next=$('units').value;for(const key of ['width','maxLength','gap','margin','sheet-length'])setDimensionField(key,readDimensionField(key),next);settingsUnit=next;for(const label of document.querySelectorAll('.field-unit'))label.textContent=next;};

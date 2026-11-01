@@ -33,6 +33,14 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(launcher.main(),0)
             browser.assert_not_called()
 
+    def test_default_and_legacy_web_flag_open_the_same_main_workspace(self):
+        for flags in ([], ['--web']):
+            response = io.BytesIO(json.dumps({'app': 'eznest', 'version': launcher.VERSION}).encode())
+            with self.subTest(flags=flags), patch.object(sys, 'argv', ['eznest', *flags]), \
+                 patch.object(launcher, 'urlopen', return_value=response), patch('webbrowser.open') as browser:
+                self.assertEqual(launcher.main(), 0)
+                browser.assert_called_once_with('http://127.0.0.1:8765/')
+
     def test_wrong_version_not_reused(self):
         response=io.BytesIO(b'{"app":"eznest","version":"old"}')
         with patch.object(sys,'argv',['eznest','--no-browser']),patch.object(launcher,'urlopen',return_value=response):
@@ -93,9 +101,20 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(host, '0.0.0.0')
         self.assertEqual(lan, '1')
 
-    def test_lan_flag_without_a_pin_does_not_bind(self):
-        with self.assertRaisesRegex(ValueError, 'shop PIN'):
-            self._launch(['--lan', '--no-browser'])
+    def test_lan_flag_without_a_pin_stays_on_loopback_and_waits(self):
+        try:
+            host, lan = self._launch(['--lan', '--no-browser'])
+            self.assertEqual(host, '127.0.0.1')
+            self.assertEqual(lan, '0')
+            self.assertEqual(os.environ.get('EZ_NEST_LAN_WAITING'), 'pin')
+        finally:
+            os.environ.pop('EZ_NEST_LAN_WAITING', None)
+
+    def test_lan_flag_with_a_pin_clears_waiting(self):
+        os.environ['EZ_NEST_LAN_WAITING'] = 'pin'
+        host, lan = self._launch(['--lan', '--no-browser'], pin='12345678')
+        self.assertEqual(host, '0.0.0.0')
+        self.assertNotIn('EZ_NEST_LAN_WAITING', os.environ)
 
     def test_saved_shop_network_cannot_open_without_lan_flag(self):
         host, lan = self._launch(['--no-browser'], {'onyxPc': False, 'lan': True})

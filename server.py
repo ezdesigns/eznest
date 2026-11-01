@@ -15,10 +15,12 @@ import sqlite3
 import ssl
 import workload
 import output_gate
-import output_pairing
 import output_link
+import output_pairing
+import output_remote
 import telemetry
 import telemetry_sender
+import stock_output
 import material_inventory
 import macos_service_runtime
 import illustrator_bridge
@@ -170,6 +172,7 @@ def shop_status():
         'outputNote': OUTPUT_NOTE,
         'outputShare': output_network_status(saved),
         'setupComplete': saved['setupComplete'],
+        'setupDismissed': saved['setupDismissed'],
         'printer': saved['printer'],
         'units': saved['units'],
         'thru': saved['thru'],
@@ -179,12 +182,15 @@ def shop_status():
         'issuesUrl': issues_url(WORK),
         'runningLan': running,
         'restart': saved['lan'] != running,
+        'lanWaiting': os.environ.get('EZ_NEST_LAN_WAITING') == 'pin' and not running,
         'port': PORT,
         'name': name,
         'addresses': lan_addresses(),
         'url': f'http://{name}:{PORT}/web',
         'warning': WARNING,
         'hotFolderDefault': default_hot_folder(saved['onyxPc']),
+        'shareStockSummary': saved['shareStockSummary'],
+        'showRollNames': saved['showRollNames'],
         **output_status(WORK),
     }
 
@@ -334,24 +340,31 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', mime)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
-        self.send_header('X-Content-Type-Options', 'nosniff')
         if filename:
             self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
-        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
         for key, value in extra_headers or ():
             self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
         self.wfile.flush()
 
+    SECURITY_HEADERS = (
+        ('X-Content-Type-Options', 'nosniff'),
+        ('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"),
+    )
+
+    def end_headers(self):
+        # Every response, including errors the base class writes itself (HEAD, bad requests).
+        for key, value in self.SECURITY_HEADERS:
+            self.send_header(key, value)
+        super().end_headers()
+
     def local_name(self, value):
         name, separator, port = (value or '').partition(':')
         if not separator:
             return False
         if name in ('127.0.0.1', 'localhost'):
-            # The desktop app only accepts its own port. A container published on
-            # another host port still sends a loopback Host name.
-            return True if HOST != '127.0.0.1' else port == str(PORT)
+            return port == str(PORT)
         if not LAN or port != str(PORT):
             return False
         return shop_name_allowed(name)
@@ -386,6 +399,9 @@ class Handler(BaseHTTPRequestHandler):
             return False
 
     def cookie_ok(self):
+        if not shop_auth.lan_sessions_allowed(WORK):
+            # PIN removed, damaged or replaced while running: no shop-network session stays valid.
+            return False
         header = self.headers.get('Cookie') if self.headers else None
         return shop_auth.session_valid(shop_auth.read_cookie(header), self.client_ip())
 
@@ -394,17 +410,6 @@ class Handler(BaseHTTPRequestHandler):
         if self.loopback_client() and self.token_ok():
             return True
         return self.cookie_ok()
-
-    def reject_output_gate(self, path, *, discard=False):
-        if path in ('/api/session', '/api/health', '/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in', '/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel'):
-            return False
-        decision = output_gate.public_status(WORK, self.loopback_client())
-        if decision['ok']:
-            return False
-        if discard:
-            self._discard_request_body()
-        self.send(403, {'error': decision['message'], 'code': 'connect_required'})
-        return True
 
     def _discard_request_body(self):
         try:
@@ -466,6 +471,7 @@ class Handler(BaseHTTPRequestHandler):
             'pinWeak': shop_auth.pin_is_weak(WORK),
             'tls': TLS,
             'outputConnection': output_gate.public_status(WORK, local),
+            'outputLink': output_gate.link_status(WORK, local),
         }
         if local:
             body['token'] = TOKEN
@@ -476,6 +482,12 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.send(403, {'error': 'Invalid host'})
         path = self.route_path()
+        if path == '/web':
+            # Older installers and Illustrator links keep working at the one app entry.
+            query = urlparse(self.path).query
+            target = '/?view=simple' + ('&' + query if query else '')
+            return self.send(307, b'', 'text/plain; charset=utf-8',
+                             extra_headers=(('Location', target),))
         if path == '/api/session':
             if not self.browser_site_ok():
                 return self.send(403, {'error': 'Invalid session'})
@@ -485,8 +497,6 @@ class Handler(BaseHTTPRequestHandler):
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Open health on the shop computer.'})
                 return self.send(200, {'ok': True, 'app': 'eznest'})
-            if path != '/api/session' and self.reject_output_gate(path):
-                return
             if not self.loopback_client() and not self.authenticated():
                 return self.send(403, {'error': 'Enter the shop PIN on this computer.'})
             if not self.loopback_client() and (path == '/api/shop' or path == '/api/folder' or path.startswith('/api/folder/')):
@@ -551,6 +561,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(409, {'error':'The checked Mac update is unavailable. Download it again.'})
         if path == '/api/shop':
             return self.send(200, shop_status())
+        if path == '/api/stock/output':
+            if not self.loopback_client():
+                return self.send(403, {'error': 'Open stock sharing on the shop computer.'})
+            names = parse_qs(urlparse(self.path).query).get('names', [None])[0]
+            if names not in (None, '', '0', '1'):
+                return self.send(400, {'error': 'Choose whether roll names are included.'})
+            override = None if names in (None, '') else names == '1'
+            try:
+                return self.send(200, stock_output.public_status(WORK, names=override))
+            except (OSError, sqlite3.Error):
+                return self.send(503, {'error': 'Shop inventory is unavailable. Check disk space and folder permissions.'})
         if path == '/api/materials':
             try:
                 return self.send(200, material_inventory.read(WORK))
@@ -638,17 +659,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, json.loads(source.read_text(encoding='utf-8-sig')))
             except Exception:
                 return self.send(400, {'error': 'Illustrator capture could not be read.'})
-        static = {'/': ('production.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
+        view = parse_qs(urlparse(self.path).query).get('view', [''])[0]
+        workspace = 'web.html' if view == 'simple' else 'production.html'
+        static = {'/': (workspace, 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
         static.update({'/svg-io.js': ('svg-io.js', 'text/javascript'), '/sample-artwork.svg': ('sample-artwork.svg', 'image/svg+xml')})
         static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css')})
         static['/production-features.js']=('production-features.js','text/javascript')
         static['/layout-comparison.js']=('layout-comparison.js','text/javascript')
         static['/cut-mapping.js']=('cut-mapping.js','text/javascript')
         static['/shop-profiles.js'] = ('shop-profiles.js','text/javascript')
-        static['/web'] = ('web.html', 'text/html')
+        for asset in ('app-theme.css', 'inventory-panel.css', 'material-profile.js', 'inventory-panel.js', 'queue-inventory.js'):
+            static['/' + asset] = (asset, 'text/css' if asset.endswith('.css') else 'text/javascript')
         static['/web.css'] = ('web.css', 'text/css')
         static['/web.js'] = ('web.js', 'text/javascript')
         static['/tester-results.js'] = ('tester-results.js', 'text/javascript')
+        static['/fonts/Archivo.ttf'] = ('fonts/Archivo.ttf', 'font/ttf')
         static['/fonts/rajdhani-700.woff2'] = ('fonts/rajdhani-700.woff2', 'font/woff2')
         static['/fonts/red-hat-display-400.woff2'] = ('fonts/red-hat-display-400.woff2', 'font/woff2')
         static['/fonts/red-hat-display-700.woff2'] = ('fonts/red-hat-display-700.woff2', 'font/woff2')
@@ -731,6 +756,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {'error': 'Could not sign in.'})
         pin = data.get('pin') if isinstance(data, dict) else ''
         result = shop_auth.login_attempt(WORK, self.client_ip(), pin if isinstance(pin, str) else '')
+        if result == 'unreadable':
+            return self.send(503, {'error': "The shop PIN file can't be read right now. Check the shop computer, then try again."})
         if result == 'missing':
             return self.send(403, {'error': 'The shop PIN is not set. Set it on the shop computer.'})
         if result == 'locked':
@@ -749,9 +776,6 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed() or not self.browser_site_ok():
             return self.send(403, {'error': 'Invalid session'})
         path = self.route_path()
-        if path not in ('/api/telemetry/output/pair', '/api/telemetry/output/disconnect', '/api/telemetry/output/check-in', '/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel'):
-            if self.reject_output_gate(path, discard=True):
-                return
         if path == '/api/login':
             return self._login()
         if path == '/api/logout':
@@ -796,6 +820,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Local session required for job tracking.'})
                 if not isinstance(data, dict):
                     raise ValueError('Supply a tracking request object.')
+                if path in ('/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel') and not output_remote.READY:
+                    return self.send(403, {'error': 'Browser approval is not available yet.'})
                 if path == '/api/telemetry/output/consent':
                     if set(data) != {'revision', 'version', 'configurationId', 'confirmed'}:
                         raise ValueError('Review and explicitly approve the sharing disclosure.')
@@ -813,10 +839,13 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(200, output_pairing.connect(WORK, data.get('code'), paused=telemetry_paused()))
                     except output_pairing.PairingError as error:
                         return self.send(400, {'error': str(error), 'reason': error.reason})
-                if path in ('/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel'):
+                # Shop setup is a normal local route. Pairing is optional, so these
+                # paths are not exemptions on a connection gate.
+                if path == '/api/telemetry/output/link/start' or path == '/api/telemetry/output/link/check' or path == '/api/telemetry/output/link/cancel':
+                    if not output_remote.READY:
+                        return self.send(403, {'error': 'Browser approval is not available yet.'})
                     if data:
                         raise ValueError('Shop setup takes no additional data.')
-                    # Network IO. Do not hold the job lock. The code, hash, and shop key are never returned.
                     try:
                         if path.endswith('/start'):
                             return self.send(200, output_link.start(WORK, paused=telemetry_paused()))
@@ -903,7 +932,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {'path': target, 'cancelled': target is None})
             if path == '/api/export/folders':
                 if not self.loopback_client():
-                    return self.send(403, {'error': 'Browse folders on the PC running eznest.'})
+                    return self.send(403, {'error': 'Browse folders on the PC running Ez Nest.'})
                 return self.send(200, print_export.browse_folders(data.get('path'), OUTPUT.root))
             if path == '/api/export/save':
                 with LOCK:
@@ -917,7 +946,7 @@ class Handler(BaseHTTPRequestHandler):
                 expected = data.get('replaceSha256')
                 if mode == 'choose':
                     if not self.loopback_client():
-                        return self.send(403, {'error': 'Choose a location on the PC running eznest, or use browser download.'})
+                        return self.send(403, {'error': 'Choose a location on the PC running Ez Nest, or use browser download.'})
                     selected = data.get('path')
                     if not isinstance(selected, str) or len(selected) > 1000 or not Path(selected).is_absolute():
                         raise ValueError('Choose a file in the Windows save window first.')
@@ -958,10 +987,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, shop_auth.acknowledge_alert())
             if path in ('/api/output/connect', '/api/output/pick'):
                 if not self.loopback_client():
-                    return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
+                    return self.send(403, {'error': 'Choose this folder on the PC running Ez Nest.'})
                 if path.endswith('/pick'):
                     if not self.loopback_client():
-                        return self.send(403, {'error': 'Choose this folder on the PC running eznest.'})
+                        return self.send(403, {'error': 'Choose this folder on the PC running Ez Nest.'})
                     data = {'path': pick_folder('Select where eznest will save print packs')}
                     if not data['path']:
                         return self.send(200, {'cancelled': True})
@@ -984,15 +1013,25 @@ class Handler(BaseHTTPRequestHandler):
                 current = load_shop(WORK)
                 updates = current['updates'] if 'updates' not in data else data.get('updates') is True
                 fields = {}
-                for key in ('channel', 'outputNetwork', 'setupComplete', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl'):
+                if data.get('shareStockSummary') is True and not output_remote.READY:
+                    return self.send(403, {'error': 'Stock summaries cannot be shared until OUTPUT can receive them.'})
+                for key in ('channel', 'outputNetwork', 'setupComplete', 'setupDismissed', 'printer', 'units', 'thru', 'kiss', 'hotFolder', 'outputUrl', 'shareStockSummary', 'showRollNames'):
                     if key in data:
                         fields[key] = data.get(key)
-                save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates, **fields)
+                before = current
+                after = save_shop(WORK, data.get('onyxPc') is True, data.get('lan') is True, updates, **fields)
+                stock_output.apply_settings(WORK, before, after)
                 UPDATE_CHECK.clear()
                 UPDATE_WAKE.set()
                 return self.send(200, shop_status())
             if path == '/api/materials/save':
-                return self.send(200, material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision')))
+                saved = material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision'))
+                stock_output.note_change(WORK)
+                return self.send(200, saved)
+            if path == '/api/materials/remove':
+                saved = material_inventory.remove(WORK, data.get('id'), data.get('revision'))
+                stock_output.note_change(WORK)
+                return self.send(200, saved)
             if path == '/api/materials/reserve':
                 with LOCK:
                     if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
@@ -1006,9 +1045,13 @@ class Handler(BaseHTTPRequestHandler):
                             raise ValueError('Resolve the print-file checks before reserving material.')
                     result = STATE['result']
                     fingerprint = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
-                    return self.send(200, material_inventory.reserve(WORK, key, STATE['id'], result['usedLength'], result['width'], fingerprint))
+                    saved = material_inventory.reserve(WORK, key, STATE['id'], result['usedLength'], result['width'], fingerprint)
+                    stock_output.note_change(WORK)
+                    return self.send(200, saved)
             if path == '/api/materials/transition':
-                return self.send(200, material_inventory.transition(WORK, data.get('id'), data.get('action')))
+                saved = material_inventory.transition(WORK, data.get('id'), data.get('action'))
+                stock_output.note_change(WORK)
+                return self.send(200, saved)
             if path == '/api/update':
                 if macos_service_runtime.active():
                     if not self.loopback_client():
@@ -1286,6 +1329,8 @@ def serve(open_browser=False, page='/'):
     update_stop = threading.Event()
     sender_thread = threading.Thread(target=telemetry_sender.run, args=(WORK, update_stop, telemetry_paused), daemon=True)
     sender_thread.start()
+    stock_thread = threading.Thread(target=stock_output.run, args=(WORK, update_stop, telemetry_paused), daemon=True)
+    stock_thread.start()
     threading.Thread(target=output_gate.run, args=(WORK, update_stop), daemon=True).start()
     threading.Thread(target=check_updates, args=(update_stop,), daemon=True).start()
     if open_browser:
@@ -1304,6 +1349,7 @@ def serve(open_browser=False, page='/'):
         UPDATE_WAKE.set()
         service.server_close()
         sender_thread.join(timeout=12)
+        stock_thread.join(timeout=12)
 
 
 if __name__ == '__main__':

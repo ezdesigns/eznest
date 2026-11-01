@@ -80,9 +80,8 @@ class IllustratorBridgeTests(unittest.TestCase):
                         page.on('dialog', lambda dialog: dialog.accept())  # Replace only this temporary test export.
                         page.goto(fixture.url()+'/web?illustrator='+result['id'])
                         fixture.wait_ready(page)
-                        page.fill('#setup-hot', str(hot))
-                        page.fill('#setup-printer', 'Pilot')
-                        page.click('#setup-save')
+                        # First run has no setup card; the same fields live in Settings.
+                        page.evaluate('''([hot, printer]) => { $('setup-hot').value = hot; $('setup-printer').value = printer; return saveSetup({}); }''', [str(hot), 'Pilot'])
                         page.wait_for_function("() => document.querySelector('#setup').hidden")
                         for run in range(2):
                             if run:
@@ -94,7 +93,8 @@ class IllustratorBridgeTests(unittest.TestCase):
                             except Exception:
                                 self.fail(page.locator('#illustrator-note').inner_text() + ' / ' + page.locator('#gate').inner_text() + ' / ' + page.locator('#status').inner_text())
                             self.assertEqual(page.input_value('#auto-bleed'), '0')
-                            self.assertIn('Regular', page.locator('#material option:checked').inner_text())
+                            self.assertEqual(page.locator('#material option[value="white-gloss"]').count(), 0)
+                            self.assertNotIn('Regular', page.locator('#material').inner_text())
                             if run == 0:
                                 shots = Path(__file__).resolve().parents[1]/'.local'/'screenshots'
                                 shots.mkdir(parents=True, exist_ok=True)

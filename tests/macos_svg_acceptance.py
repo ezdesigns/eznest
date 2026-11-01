@@ -1,7 +1,7 @@
 """Visible SVG import/export regression against the installed runner service only.
 
 No account browser, saved context, source application, or JavaScript state bypass.
-Playwright is installed only by the explicitly requested live acceptance job.
+Playwright is installed only by the guarded disposable acceptance workflows.
 """
 import hashlib
 import os
@@ -43,8 +43,11 @@ def svg_file_flow(api, root):
                 # Deny WebSocket egress as well; this application uses ordinary HTTP.
                 context.route_web_socket('**/*', lambda websocket: websocket.close())
                 page = context.new_page()
-                page.goto(ORIGIN + '/web', wait_until='domcontentloaded')
+                page.goto(ORIGIN + '/?view=simple', wait_until='domcontentloaded')
                 expect(page.locator('body')).to_have_attribute('data-ready', '1', timeout=60000)
+                if page.locator('#output-required').is_visible():
+                    page.click('#output-required-skip')
+                    expect(page.locator('#output-required')).to_be_hidden()
                 if page.locator('#feedback-welcome').is_visible():
                     page.click('#feedback-dismiss')
                 if page.locator('#setup').is_visible():

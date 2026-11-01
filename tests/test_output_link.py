@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 import output_credential
 import output_link
 import output_pairing
+import output_remote
 import server
 
 TOKEN = 'osa_' + 'C' * 43
@@ -32,6 +33,9 @@ class LinkFlowTests(unittest.TestCase):
         self.env = patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS': '', 'EZ_NEST_OUTPUT_TOKEN': ''})
         self.env.start()
         self.addCleanup(self.env.stop)
+        self.ready = patch.object(output_remote, 'READY', True)
+        self.ready.start()
+        self.addCleanup(self.ready.stop)
         self.addCleanup(output_link.cancel, self.root)
         self.sent = []
 
@@ -133,8 +137,10 @@ class LinkApiTests(unittest.TestCase):
                 raise
             return error.code, json.loads(error.read().decode())
 
-    def test_setup_routes_pass_the_connect_gate_and_need_the_session(self):
-        with patch.object(output_link, '_post', return_value=reply({'linkId': LINK, 'state': 'pending', 'userCode': 'ABCD-2345'})):
+    def test_setup_routes_need_a_session_and_are_not_gate_exemptions(self):
+        source = (ROOT / 'server.py').read_text(encoding='utf-8')
+        self.assertNotIn('reject_output_gate', source)
+        with patch.object(output_remote, 'READY', True), patch.object(output_link, '_post', return_value=reply({'linkId': LINK, 'state': 'pending', 'userCode': 'ABCD-2345'})):
             status, body = self.request('/api/telemetry/output/link/start', {})
             self.assertEqual(status, 200, body)
             self.assertEqual(body['userCode'], 'ABCD-2345')
@@ -145,24 +151,70 @@ class LinkApiTests(unittest.TestCase):
             self.assertEqual(status, 403)
             status, _ = self.request('/api/telemetry/output/link/start', {'code': 'X'})
             self.assertEqual(status, 400)
-        status, body = self.request('/api/telemetry/output/link/cancel', {})
-        self.assertEqual((status, body['state']), (200, 'cancelled'))
+            status, body = self.request('/api/telemetry/output/link/cancel', {})
+            self.assertEqual((status, body['state']), (200, 'cancelled'))
+
+    def test_closed_flag_rejects_link_and_stock_share_without_calling_output(self):
+        self.assertIs(output_remote.READY, False)
+        calls = []
+
+        def boom(*args, **kwargs):
+            calls.append(args)
+            raise AssertionError('network')
+
+        with patch.object(output_link, '_post', side_effect=boom), \
+             patch.object(output_pairing, 'connect', side_effect=boom), \
+             patch.object(output_link, 'start', side_effect=boom), \
+             patch.object(output_link, 'check', side_effect=boom), \
+             patch.object(output_link, 'cancel', side_effect=boom):
+            for path in ('/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel'):
+                status, body = self.request(path, {})
+                self.assertEqual(status, 403, body)
+            status, body = self.request('/api/shop', {'onyxPc': False, 'lan': False, 'shareStockSummary': True})
+            self.assertEqual(status, 403, body)
+        self.assertEqual(calls, [])
+
+
+class ApproveEndpointGateTests(unittest.TestCase):
+    """EZ46-7: browser approval stays closed until OUTPUT's endpoint is live."""
+
+    def test_flag_defaults_off_and_blocks_link_start(self):
+        js = (ROOT / 'web.js').read_text(encoding='utf-8')
+        self.assertIn('const OUTPUT_APPROVE_ENDPOINT_READY = false;', js)
+        handler = js.split('button.onclick = async () => {', 1)[1].split('const cancel', 1)[0]
+        guard = handler.index('if (!OUTPUT_APPROVE_ENDPOINT_READY) return;')
+        call = handler.index("OUTPUT_APPROVE_ENDPOINT_READY ? '/api/telemetry/output/link/start'")
+        self.assertLess(guard, call)
+        self.assertNotIn("api('/api/telemetry/output/link/start'", js)
+
+    def test_skip_is_stored_outside_session_storage(self):
+        js = (ROOT / 'web.js').read_text(encoding='utf-8')
+        self.assertIn("localStorage.getItem('eznest-setup-skipped')", js)
+        self.assertIn("localStorage.setItem('eznest-setup-skipped', '1')", js)
+        self.assertNotIn("sessionStorage.getItem('eznest-setup-skipped')", js)
+        self.assertNotIn("sessionStorage.setItem('eznest-setup-skipped'", js)
 
 
 class SetupCardCopyTests(unittest.TestCase):
     def test_card_wording_is_plain(self):
         html = (ROOT / 'web.html').read_text(encoding='utf-8')
-        gate = html.split('id="output-gate"', 1)[1].split('</dialog>', 1)[0]
-        self.assertIn('<h2 id="output-gate-title">Set up your shop</h2>', gate)
-        self.assertIn('type="button">Connect</button>', gate)
-        self.assertIn('Have a pairing code?', gate)
-        self.assertIn('Type this code in your browser to approve:', gate)
-        self.assertIn("Artwork, customers, and stock stay here.", gate)
-        self.assertNotIn('Later check-ins', gate)
-        self.assertLess(gate.index('output-gate-setup-button'), gate.index('output-gate-code'))
+        self.assertIn('>Connect to OUTPUT (optional)</strong>', html)
+        self.assertIn('Nesting works without it. Connect any time in Settings.', html)
+        self.assertNotIn('>Set up your shop</strong>', html)
+        self.assertIn('id="output-required-skip"', html)
+        self.assertIn('Have a pairing code?', html)
+        self.assertIn('id="output-setup-settings"', html)
+        self.assertRegex(html, r'<button id="output-required-connect"[^>]*\bhidden\b[^>]*>Set up your shop</button>')
+        self.assertRegex(html, r'<button id="output-setup-settings"[^>]*\bhidden\b[^>]*>Set up your shop</button>')
+        self.assertLess(html.index('output-required-connect'), html.index('output-required-code'))
         script = (ROOT / 'web.js').read_text(encoding='utf-8')
         self.assertIn("'/api/telemetry/output/link/start'", script)
         self.assertIn('popup.opener = null', script)
+        self.assertIn("parsed.protocol !== 'https:'", script)
+        self.assertIn('parsed.host !== allowed.host', script)
+        self.assertIn('const OUTPUT_APPROVE_ENDPOINT_READY = false;', script)
+        self.assertIn("localStorage.getItem('eznest-setup-skipped')", script)
+        self.assertNotIn("sessionStorage.getItem('eznest-setup-skipped')", script)
 
 
 if __name__ == '__main__':

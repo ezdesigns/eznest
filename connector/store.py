@@ -14,6 +14,27 @@ import uuid
 from pathlib import Path
 
 
+def sql_identity(value):
+    """Text form of a file device or inode.
+
+    SQLite integers are signed 64-bit, and a numeric literal that does not fit
+    is stored as a float, which drops low bits. Windows file indexes can be
+    larger. A leading marker keeps the full decimal text. Older rows that
+    already fit are still plain integers.
+    """
+    if value is None:
+        return None
+    return 'n:' + str(int(value))
+
+
+def read_identity(value):
+    if value is None:
+        return None
+    if isinstance(value, str) and value.startswith('n:'):
+        return int(value[2:])
+    return int(value)
+
+
 def windows_acl_commands(target, username, *, container):
     """icacls commands: drop inheritance, grant only this user, remove broad principals."""
     if not isinstance(username, str) or not username or len(username) > 64:
@@ -92,7 +113,12 @@ class Store:
     def tail(self, plugin):
         with self._connect() as db:
             row = db.execute('SELECT * FROM tails WHERE plugin=?', (plugin,)).fetchone()
-            return None if row is None else dict(row)
+            if row is None:
+                return None
+            saved = dict(row)
+            saved['device'] = read_identity(saved.get('device'))
+            saved['inode'] = read_identity(saved.get('inode'))
+            return saved
 
     def set_tail(self, plugin, offset, device, inode, skip_line=False):
         with self._connect() as db:
@@ -100,8 +126,8 @@ class Store:
                 'INSERT OR REPLACE INTO tails(plugin, offset, device, inode, ready, skip_line) VALUES(?,?,?,?,1,?)',
                 (
                     plugin, int(offset),
-                    None if device is None else int(device),
-                    None if inode is None else int(inode),
+                    sql_identity(device),
+                    sql_identity(inode),
                     1 if skip_line else 0,
                 ),
             )

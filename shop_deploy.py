@@ -167,6 +167,7 @@ def load_shop(directory):
         'channel': 'test' if data.get('channel') == 'test' else 'stable',
         'outputNetwork': data.get('outputNetwork') is True,
         'setupComplete': data.get('setupComplete') is True,
+        'setupDismissed': data.get('setupDismissed') is True,
         'printer': _clip(data.get('printer'), 80),
         'units': units,
         'thru': _clip(data.get('thru'), 80),
@@ -174,6 +175,8 @@ def load_shop(directory):
         'hotFolder': _clip(data.get('hotFolder'), 400),
         'outputUrl': output_url,
         'sourceRoots': _source_roots(data.get('sourceRoots')),
+        'shareStockSummary': data.get('shareStockSummary') is True,
+        'showRollNames': data.get('showRollNames') is True,
     }
 
 
@@ -238,6 +241,7 @@ def save_shop(directory, onyx_pc, lan, updates=None, **fields):
         'channel': 'test' if channel == 'test' else 'stable',
         'outputNetwork': current['outputNetwork'] if 'outputNetwork' not in fields else fields.get('outputNetwork') is True,
         'setupComplete': current['setupComplete'] if 'setupComplete' not in fields else fields.get('setupComplete') is True,
+        'setupDismissed': current['setupDismissed'] if 'setupDismissed' not in fields else fields.get('setupDismissed') is True,
         'printer': current['printer'] if 'printer' not in fields else _clip(fields.get('printer'), 80),
         'units': units if units in SHOP_UNITS else 'in',
         'thru': current['thru'] if 'thru' not in fields else _clip(fields.get('thru'), 80),
@@ -245,6 +249,8 @@ def save_shop(directory, onyx_pc, lan, updates=None, **fields):
         'hotFolder': current['hotFolder'] if 'hotFolder' not in fields else _clip(fields.get('hotFolder'), 400),
         'outputUrl': current['outputUrl'] if 'outputUrl' not in fields else clean_output_url(fields.get('outputUrl')),
         'sourceRoots': current['sourceRoots'] if 'sourceRoots' not in fields else _source_roots(fields.get('sourceRoots')),
+        'shareStockSummary': current['shareStockSummary'] if 'shareStockSummary' not in fields else fields.get('shareStockSummary') is True,
+        'showRollNames': current['showRollNames'] if 'showRollNames' not in fields else fields.get('showRollNames') is True,
     }
     path = Path(directory) / 'shop.json'
     path.parent.mkdir(parents=True, exist_ok=True)
