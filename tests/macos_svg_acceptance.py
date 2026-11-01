@@ -53,6 +53,8 @@ def svg_file_flow(api, root):
                 if page.locator('#output-required').is_visible():
                     page.click('#output-required-skip')
                     expect(page.locator('#output-required')).to_be_hidden()
+                    # Skip reloads the document. Wait for the new page's handlers and API state.
+                    expect(page.locator('body')).to_have_attribute('data-ready', '1', timeout=60000)
                 if page.locator('#feedback-welcome').is_visible():
                     page.click('#feedback-dismiss')
                 if page.locator('#setup').is_visible():
@@ -62,7 +64,10 @@ def svg_file_flow(api, root):
                 print('SVG_STAGE: material-open', flush=True)
                 page.click('#edit-material')
                 print('SVG_STAGE: material-fields', flush=True)
+                expect(page.locator('#material-dialog')).to_be_visible()
+                page.fill('#preset-name', 'CI synthetic SVG stock')
                 page.select_option('#unit', 'mm')
+                page.fill('#roll', '110')
                 page.fill('#width', '100')
                 print('SVG_STAGE: material-save', flush=True)
                 page.click('#save-material')

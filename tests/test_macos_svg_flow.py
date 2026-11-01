@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -45,10 +46,23 @@ class FreshMacSvgFlowTests(unittest.TestCase):
     url = web_fixture.WebMvpTests.url
 
     def test_unpaired_fresh_material_svg_flow_uses_real_controls(self):
-        api = SourceAPI(self.url())
+        original_get = web_fixture.server.Handler.do_GET
+        def delayed_session(handler):
+            # A slow bootstrap makes the real Skip/reload transition observable.
+            if handler.path == '/api/session':
+                time.sleep(0.35)
+            return original_get(handler)
         with patch.dict(os.environ, {'EZ_NEST_DEV':'0', 'EZ_NEST_OUTPUT_GATE_OPEN':'0', 'EZ_NEST_DEV_NO_OUTPUT':'0'}), \
-                patch.object(svg, 'ORIGIN', self.url()):
+                patch.object(svg, 'ORIGIN', self.url()), \
+                patch.object(web_fixture.server.Handler, 'do_GET', delayed_session):
+            api = SourceAPI(self.url())
+            self.assertEqual(api.request('/api/materials')[1]['materials'], [])
             exported = svg.svg_file_flow(api, Path(self.tmp.name))
+            stock = api.request('/api/materials')[1]['materials']
+            self.assertEqual(len(stock), 1)
+            self.assertEqual(stock[0]['profile']['preset-name'], 'CI synthetic SVG stock')
+            self.assertEqual(stock[0]['profile']['unit'], 'mm')
+            self.assertEqual(float(stock[0]['profile']['width']), 100)
         self.assertEqual(exported['format'], 'svg')
         self.assertTrue(exported['bytes'])
         status, sharing = api.request('/api/telemetry/output')
