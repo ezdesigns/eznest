@@ -19,7 +19,9 @@ SVG = b'''<svg xmlns="http://www.w3.org/2000/svg" width="80mm" height="40mm" vie
 
 def local_browser_url(url):
     parsed = urlsplit(url)
-    return parsed.scheme == 'http' and parsed.netloc == '127.0.0.1:8765'
+    target = urlsplit(ORIGIN)
+    return (parsed.scheme == target.scheme == 'http' and parsed.netloc == target.netloc
+            and parsed.hostname == '127.0.0.1' and parsed.username is None and parsed.password is None)
 
 
 def svg_file_flow(api, root):
@@ -34,6 +36,7 @@ def svg_file_flow(api, root):
     os.environ.clear(); os.environ.update(browser_env)
     try:
         with sync_playwright() as playwright:
+            print('SVG_STAGE: browser-start', flush=True)
             browser = playwright.chromium.launch(channel='chrome', headless=True, env=browser_env)
             try:
                 context = browser.new_context(viewport={'width':1280,'height':900},
@@ -43,8 +46,10 @@ def svg_file_flow(api, root):
                 # Deny WebSocket egress as well; this application uses ordinary HTTP.
                 context.route_web_socket('**/*', lambda websocket: websocket.close())
                 page = context.new_page()
+                print('SVG_STAGE: page-load', flush=True)
                 page.goto(ORIGIN + '/?view=simple', wait_until='domcontentloaded')
                 expect(page.locator('body')).to_have_attribute('data-ready', '1', timeout=60000)
+                print('SVG_STAGE: optional-output', flush=True)
                 if page.locator('#output-required').is_visible():
                     page.click('#output-required-skip')
                     expect(page.locator('#output-required')).to_be_hidden()
@@ -54,14 +59,19 @@ def svg_file_flow(api, root):
                     page.select_option('#setup-units', 'mm')
                     page.click('#setup-save')
                     expect(page.locator('#setup')).to_be_hidden()
+                print('SVG_STAGE: material-open', flush=True)
                 page.click('#edit-material')
+                print('SVG_STAGE: material-fields', flush=True)
                 page.select_option('#unit', 'mm')
                 page.fill('#width', '100')
+                print('SVG_STAGE: material-save', flush=True)
                 page.click('#save-material')
                 expect(page.locator('#material-dialog')).not_to_be_visible()
                 page.select_option('#nesting-effort', '5')
+                print('SVG_STAGE: file-import', flush=True)
                 page.set_input_files('#file', str(source))
                 expect(page.locator('#start-nesting')).to_be_enabled(timeout=30000)
+                print('SVG_STAGE: nest', flush=True)
                 page.click('#start-nesting')
                 expect(page.locator('#gate')).to_contain_text(re.compile('cuts ok', re.I), timeout=90000)
                 state = completed_state(api)
@@ -71,6 +81,7 @@ def svg_file_flow(api, root):
                         and any(job.get('revision') == hashlib.sha256(SVG).hexdigest()
                                 for job in state['job'].get('productionJobs', [])),
                         'SVG file import identity or artwork is missing.')
+                print('SVG_STAGE: export', flush=True)
                 page.click('#export')
                 page.select_option('#save-destination', 'download')
                 page.select_option('#save-format', 'pack')
