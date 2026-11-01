@@ -24,15 +24,6 @@
     <button id="output-link-reconnect" type="button" role="menuitem">Reconnect (new code)</button>
     <button id="output-link-disconnect" type="button" role="menuitem">Disconnect</button>
   </div>
-  <form id="output-link-form" class="output-link-form" hidden>
-    <label for="output-link-code">Pairing code from OUTPUT</label>
-    <div class="output-link-row">
-      <input id="output-link-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="XXXXX-XXXXX">
-      <button id="output-link-submit" class="primary" type="submit">Connect</button>
-    </div>
-    <p id="output-link-error" class="lan-note" role="alert" hidden></p>
-    <p class="hint"><a id="output-link-open" href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Open OUTPUT to get a code</a> · <button id="output-link-cancel" type="button" class="link">Cancel</button></p>
-  </form>
 </div>
 <button id="stock-open" type="button" class="top-button" aria-label="Inventory" aria-haspopup="dialog">
   <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -69,20 +60,26 @@
   <div>
     <p><strong id="output-required-title">Connect to OUTPUT (optional)</strong> <span class="hint">Nesting works without it. Connect any time in Settings.</span></p>
     <p id="output-required-note" class="hint"></p>
-    <div id="output-setup-waiting" class="setup-shop-waiting" hidden>
-      <p class="hint">Approve in your browser. The code there should match:</p>
-      <p id="output-setup-match" class="setup-shop-code" aria-live="polite"></p>
-      <p id="output-setup-wait" class="hint" role="status">Waiting…</p>
-      <p class="hint"><a id="output-setup-reopen" href="#" target="_blank" rel="noopener noreferrer">Open again</a> · <button id="output-setup-cancel" class="link" type="button">Cancel</button></p>
-    </div>
   </div>
   <div class="output-required-actions">
-    <button id="output-required-connect" type="button" class="primary" hidden>Set up your shop</button>
-    <button id="output-required-code" type="button" class="link">Have a pairing code?</button>
+    <button id="output-required-code" type="button" class="primary">Set up your shop</button>
     <button id="output-required-skip" type="button" class="link">Skip</button>
   </div>
 </div>
 <p id="output-banner" class="hint" hidden></p>
+<dialog id="setup-shop" class="setup-shop" aria-labelledby="setup-shop-title">
+  <form id="output-link-form" class="output-link-form">
+    <h2 id="setup-shop-title">Set up your shop</h2>
+    <p class="hint">In OUTPUT, click <strong>Add a computer</strong>. Then enter the code here.</p>
+    <label for="output-link-code">Enter the code from OUTPUT</label>
+    <div class="output-link-row">
+      <input id="output-link-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="XXXXX-XXXXX">
+      <button id="output-link-submit" class="primary" type="submit">Connect</button>
+    </div>
+    <p id="output-link-error" class="lan-note" role="alert" hidden></p>
+    <p class="hint"><a id="output-link-open" href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Open OUTPUT</a> · <button id="output-link-cancel" type="button" class="link">Cancel</button></p>
+  </form>
+</dialog>
 <dialog id="settings" aria-labelledby="settings-title">
   <div class="panel">
     <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title">Settings</h2><p class="hint">Set up once. Your material choices stay with the job.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
@@ -161,15 +158,8 @@
           <button id="output-check-now" class="link" type="button" hidden>Check now</button>
         </div>
         <button id="output-reconnect" class="link" type="button" hidden>Reconnect with a new code</button>
-        <button id="output-setup-settings" type="button" class="primary" hidden>Set up your shop</button>
-        <div id="output-setup-settings-waiting" class="setup-shop-waiting" hidden>
-          <p class="hint">Approve in your browser. The code there should match:</p>
-          <p id="output-setup-settings-match" class="setup-shop-code" aria-live="polite"></p>
-          <p id="output-setup-settings-wait" class="hint" role="status">Waiting…</p>
-          <p class="hint"><button id="output-setup-settings-cancel" class="link" type="button">Cancel</button></p>
-        </div>
         <div id="output-pair-form">
-          <label>Pairing code
+          <label>Code from OUTPUT
             <input id="output-pair-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="text" aria-describedby="output-connect-status">
           </label>
           <button id="output-pair" class="primary" type="button" disabled>Connect</button>
