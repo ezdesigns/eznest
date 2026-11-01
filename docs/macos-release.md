@@ -112,14 +112,16 @@ Do not overwrite an unrelated application or adopt existing user data. Confirm
 launchd uses the limited `_eznest` account and normal mode, then use a clearly
 labeled test shop to verify:
 
-1. Unpaired API access works while the browser shows the Connect screen; an
-   OUTPUT account produces a one-time pairing code.
+1. Unpaired API access works. A fresh browser shows **Connect to OUTPUT
+   (optional)**; **Skip** opens the workspace and is remembered in that
+   browser. An OUTPUT account produces a one-time pairing code.
 2. The installed host pairs, appears in that shop and advances a successful
    check-in timestamp, with activity sharing off.
 3. Restart the service and verify another fresh successful check-in, then import,
    nest and export synthetic SVG/PDF work.
-4. Owner revocation updates connection status; the next page load shows the
-   Connect screen. API access remains available with normal request validation.
+4. Owner revocation updates connection status; the next page load shows
+   **Connect to OUTPUT (optional)** in a browser that has not chosen **Skip**.
+   API access remains available with normal request validation.
    Revoke only this test host, preserve other bindings, and remove transient
    credentials.
 5. Verify install/uninstall and required service/update recovery checks from

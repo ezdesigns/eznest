@@ -300,6 +300,8 @@ The inventory plug-in of the Shop Connector is coming with the Shop Connector (P
 
 OUTPUT sharing is optional and **off** by default. Nesting, stock, and saving a file do not use it. Nothing is sent until someone on the host pairs this computer and then turns sharing on. Designer PCs cannot pair, disconnect, or change that consent.
 
+On first open, while this computer is not connected, the page shows **Connect to OUTPUT (optional)**. **Skip** opens the workspace and is remembered in that browser. **Have a pairing code?** is the pairing path on the host. **Set up your shop** stays hidden. `output_remote.READY` defaults to false, so browser-approval routes and stock-summary upload stay closed. A shop setting cannot turn that flag on. **Skip** works with that flag left false.
+
 Leave this off unless the owner asked for it.
 
 **Join OUTPUT network** (`outputNetwork` in `shop.json`) is a different switch. It is hidden, it stays off, and it sends nothing. Do not confuse it with the steps below.

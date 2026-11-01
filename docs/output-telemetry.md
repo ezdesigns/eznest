@@ -1,8 +1,12 @@
 # OUTPUT sharing
 
-The API allows nesting, stock, and export without an OUTPUT connection. The
-browser still shows the Connect screen described in
-[OUTPUT pairing](output-pairing.md). Activity sharing is a second step. It
+The API allows nesting, stock, and export without an OUTPUT connection.
+Connecting to OUTPUT is optional. The browser shows **Connect to OUTPUT
+(optional)** until this browser chooses **Skip** or the host connects, as
+described in [OUTPUT pairing](output-pairing.md). `output_remote.READY`
+defaults to false, so browser-approval routes and stock-summary upload stay
+off. **Skip** works with that flag left false.
+Activity sharing is a second step. It
 stays off until the host agrees. The host exchanges a pairing code for an
 `osa_` credential, stores it in `output-credential.bin` in the host data
 directory, and then shows the consent screen. Launch settings still take precedence:
@@ -44,9 +48,12 @@ credential, activate a receiver, or establish public end-to-end delivery.
 
 ## Stock summary
 
-Share stock summary with OUTPUT is a separate host setting. It stays off until
-the host turns it on in Settings. Nothing is sent unless this computer is paired
-and that setting is on. `--shop-test` sends nothing.
+Share stock summary with OUTPUT is a separate host setting. The Settings
+control stays hidden (`STOCK_SHARE_ENDPOINT_READY` is false in `web.js`).
+`output_remote.READY` defaults to false, and a shop setting cannot turn it on.
+While it is false, the API refuses `shareStockSummary` and no stock summary
+is sent. Nothing is sent unless this computer is paired, that setting is
+on, and `output_remote.READY` is true. `--shop-test` sends nothing.
 
 The summary uses `eznest-stock/1`. Each roll has an opaque key, an optional
 plain-text name, width in inches, length left in feet, reserved length in feet,
