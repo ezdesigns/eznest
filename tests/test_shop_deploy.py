@@ -233,7 +233,7 @@ class ShopDeployTests(unittest.TestCase):
                 self.assertIn('guest wifi', status['warning'].casefold())
                 self.assertFalse(status['updates'])
                 self.assertEqual(status['outputTelemetryUrl'], 'https://output.jeezlabs.io/api/shop/telemetry')
-                self.assertEqual(status['version'], '1.0.0-rc.5')
+                self.assertEqual(status['version'], server.VERSION)
                 self.assertIn(r'\\RIP\Example RIP Input', status['hotFolderDefault'])
             finally:
                 server.WORK, server.PORT, server.HOST, server.LAN = old
