@@ -13,8 +13,8 @@ cannot publish. The planner reads the version from the checked commit and uses
 newer than every published supported application version. Stable versions use
 GitHub's latest designation; alpha/beta/rc versions remain prereleases.
 
-The current `1.0.0-rc.5` already exists: merging this workflow does not republish
-it or create a release. A subsequent version-bump PR activates the build path.
+The initial workflow rollout kept the already published `1.0.0-rc.5` unchanged.
+A subsequent version-bump PR activates the build path; existing versions remain a no-op.
 
 ## Platform gates
 

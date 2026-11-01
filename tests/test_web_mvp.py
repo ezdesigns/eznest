@@ -1615,7 +1615,7 @@ class WebMvpTests(unittest.TestCase):
                 self.wait_ready(page)
                 page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
                 page.click('#settings-updates > summary')
-                self.assertEqual(page.locator('#app-version').inner_text(), '1.0.0-rc.5')
+                self.assertEqual(page.locator('#app-version').inner_text(), server.VERSION)
                 self.assertFalse(page.locator('#updates').is_checked())
                 self.assertTrue(page.locator('#update').is_hidden())
                 page.locator('#updates').check()

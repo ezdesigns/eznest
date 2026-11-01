@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.0.0-rc.6
+
+- Use one local entry with full and simple views, shared Inventory, and OUTPUT styling.
+- Connecting to OUTPUT stays optional, and existing sharing/update defaults stay off.
+- Release Windows and the signed/notarized Apple-Silicon Mac preview together after CI and installed-package checks. Existing published versions are never overwritten.
+- Mac remains experimental for new macOS 26 test installations with synthetic files and updates off; this release does not establish production printing, upgrades or normal uninstall.
+
 - The OUTPUT check-in record stays closed until a live check-in or pairing
   succeeds, and it is bound to the shop credential. A current unsigned record
   from the previous build is signed on the first load. A revoked credential
