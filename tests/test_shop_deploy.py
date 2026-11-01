@@ -339,18 +339,24 @@ class ShopDeployTests(unittest.TestCase):
             self.assertTrue(shop_deploy.release_url_allowed(
                 'https://github.com/example/nest/releases/download/v1/eznest-setup.exe', repo='example/nest'))
 
-    def test_windows_workflows_keep_ci_unsigned_and_gate_tag_publishing(self):
+    def test_windows_workflows_keep_ci_unsigned_and_gate_dual_platform_publishing(self):
         root = Path(__file__).resolve().parents[1]
         installer = (root / '.github/workflows/windows-installer.yml').read_text(encoding='utf-8')
         tests = (root / '.github/workflows/test.yml').read_text(encoding='utf-8')
         self.assertNotIn('WINDOWS_CERT_BASE64', installer)
         self.assertNotIn('secrets.', installer)
-        build, publish = installer.split('\n  publish:', 1)
-        self.assertNotIn('contents: write', build)
-        self.assertNotIn('gh release', build)
-        self.assertIn("if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')", publish)
+        self.assertNotIn('contents: write', installer)
+        self.assertNotIn('gh release', installer)
+        self.assertNotIn('\n  publish:', installer)
+        release = (root / '.github/workflows/auto-release.yml').read_text(encoding='utf-8')
+        plan, publish = release.split('\n  plan:', 1)[1].split('\n  publish:', 1)
+        self.assertIn("github.event.workflow_run.event == 'push'", plan)
+        self.assertIn("github.event.workflow_run.head_branch == 'main'", plan)
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", plan)
         self.assertIn('environment: eznest-release', publish)
-        self.assertIn('needs: installer', publish)
+        self.assertIn('needs: [plan, windows, macos]', publish)
+        self.assertIn('contents: write', publish)
+        self.assertIn('tools/auto_release.py publish', publish)
         self.assertIn('version.json', installer)
         self.assertIn('installer_update.py --write-sidecars', installer)
         self.assertIn('tests/test_shop_scripts.ps1', tests)
