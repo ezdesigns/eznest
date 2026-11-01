@@ -212,7 +212,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.locator('#max-output').get_attribute('aria-label'), "Don't print. Learn about OUTPUT")
                 self.assertEqual(page.locator('#max-output').get_attribute('aria-pressed'), 'false')
                 self.assertEqual(page.locator('#max-output').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(243, 243, 240)')
-                self.assertEqual(page.locator('#in-house').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(239, 245, 255)')
+                self.assertEqual(page.locator('#in-house').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(237, 244, 255)')
                 pill = page.locator('#max-output .paid-badge')
                 self.assertEqual(pill.inner_text(), 'Preview · test only')
                 self.assertNotIn('🤑', page.locator('#max-output').inner_text())
