@@ -673,6 +673,7 @@ class Handler(BaseHTTPRequestHandler):
         static['/web.css'] = ('web.css', 'text/css')
         static['/web.js'] = ('web.js', 'text/javascript')
         static['/tester-results.js'] = ('tester-results.js', 'text/javascript')
+        static['/fonts/Archivo.ttf'] = ('fonts/Archivo.ttf', 'font/ttf')
         static['/fonts/rajdhani-700.woff2'] = ('fonts/rajdhani-700.woff2', 'font/woff2')
         static['/fonts/red-hat-display-400.woff2'] = ('fonts/red-hat-display-400.woff2', 'font/woff2')
         static['/fonts/red-hat-display-700.woff2'] = ('fonts/red-hat-display-700.woff2', 'font/woff2')

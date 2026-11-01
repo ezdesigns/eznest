@@ -105,12 +105,10 @@ class GreekCapitalTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which('node'), 'node not installed')
     def test_browser_and_server_fold_names_the_same_way(self):
-        source = (ROOT / 'web.js').read_text(encoding='utf-8')
-        start = source.index('const ROLL_LOOK_ALIKE_CAPITALS')
-        end = source.index('const ROLL_LIMITS')
+        source = (ROOT / 'material-profile.js').read_text(encoding='utf-8')
         samples = [a for a, _, _ in GREEK_AND_CYRILLIC] + [b for _, b, _ in GREEK_AND_CYRILLIC] + [
             'Stra\u00dfe', 'D\u0131\u015fl\u0131k', '\u0130nk', 'Gloss\u00a0vinyl', '\uff27loss', 'A\u200bB', 'Glo\u0455s']
-        script = source[start:end] + '\nconsole.log(JSON.stringify(JSON.parse(process.argv[1]).map(rollNameKey)));'
+        script = source + '\nconsole.log(JSON.stringify(JSON.parse(process.argv[1]).map(rollNameKey)));'
         # Node writes UTF-8 even when Python's default pipe encoding is a Windows code page.
         out = subprocess.run(['node', '-e', script, json.dumps(samples)], capture_output=True, text=True, encoding='utf-8', check=True).stdout
         self.assertEqual(json.loads(out), [inventory.name_key(s) for s in samples])
