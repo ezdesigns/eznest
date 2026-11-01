@@ -5,41 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ez Nest</title>
 <link rel="stylesheet" href="/web.css">
+<link rel="stylesheet" href="/app-theme.css">
+<link rel="stylesheet" href="/inventory-panel.css">
 </head>
 <body data-step="drop">
-<header class="shop-header">
-  <strong>Ez Nest</strong>
+<header class="shop-header app-header">
+  <strong class="brand">EZNest<small>NESTING FOR PRINT SHOPS</small></strong>
+  <a id="mode-switch" class="top-button" href="/">Full mode</a>
   <button id="logout" type="button" class="link" hidden>Log out</button>
-</header>
-<dialog id="pin-gate" aria-labelledby="pin-title">
-  <form id="pin-form">
-    <h2 id="pin-title">Shop PIN</h2>
-    <p id="pin-note" class="hint"></p>
-    <label>PIN
-      <input id="pin-input" type="password" autocomplete="current-password" minlength="8" maxlength="64">
-    </label>
-    <button id="pin-submit" class="primary" type="submit">Continue</button>
-    <p id="pin-error" class="lan-note" hidden></p>
-  </form>
-</dialog>
-<div id="output-required" class="output-required" role="status" hidden>
-  <div>
-    <p><strong id="output-required-title">Connect to OUTPUT (optional)</strong> <span class="hint">Nesting works without it. Connect any time in Settings.</span></p>
-    <p id="output-required-note" class="hint"></p>
-    <div id="output-setup-waiting" class="setup-shop-waiting" hidden>
-      <p class="hint">Approve in your browser. The code there should match:</p>
-      <p id="output-setup-match" class="setup-shop-code" aria-live="polite"></p>
-      <p id="output-setup-wait" class="hint" role="status">Waiting…</p>
-      <p class="hint"><a id="output-setup-reopen" href="#" target="_blank" rel="noopener noreferrer">Open again</a> · <button id="output-setup-cancel" class="link" type="button">Cancel</button></p>
-    </div>
-  </div>
-  <div class="output-required-actions">
-    <button id="output-required-connect" type="button" class="primary" hidden>Set up your shop</button>
-    <button id="output-required-code" type="button" class="link">Have a pairing code?</button>
-    <button id="output-required-skip" type="button" class="link">Skip</button>
-  </div>
-</div>
-<p id="output-banner" class="hint" hidden></p>
 <div id="top-actions" class="top-actions">
 <div id="output-link" class="output-link">
 <button id="output-dot" type="button" class="top-button output-dot" title="Connect to OUTPUT" aria-label="Connect to OUTPUT"><span class="status-circle" aria-hidden="true"></span></button>
@@ -80,6 +53,36 @@
   <span>Settings</span>
 </button>
 </div>
+</header>
+<dialog id="pin-gate" aria-labelledby="pin-title">
+  <form id="pin-form">
+    <h2 id="pin-title">Shop PIN</h2>
+    <p id="pin-note" class="hint"></p>
+    <label>PIN
+      <input id="pin-input" type="password" autocomplete="current-password" minlength="8" maxlength="64">
+    </label>
+    <button id="pin-submit" class="primary" type="submit">Continue</button>
+    <p id="pin-error" class="lan-note" hidden></p>
+  </form>
+</dialog>
+<div id="output-required" class="output-required" role="status" hidden>
+  <div>
+    <p><strong id="output-required-title">Connect to OUTPUT (optional)</strong> <span class="hint">Nesting works without it. Connect any time in Settings.</span></p>
+    <p id="output-required-note" class="hint"></p>
+    <div id="output-setup-waiting" class="setup-shop-waiting" hidden>
+      <p class="hint">Approve in your browser. The code there should match:</p>
+      <p id="output-setup-match" class="setup-shop-code" aria-live="polite"></p>
+      <p id="output-setup-wait" class="hint" role="status">Waiting…</p>
+      <p class="hint"><a id="output-setup-reopen" href="#" target="_blank" rel="noopener noreferrer">Open again</a> · <button id="output-setup-cancel" class="link" type="button">Cancel</button></p>
+    </div>
+  </div>
+  <div class="output-required-actions">
+    <button id="output-required-connect" type="button" class="primary" hidden>Set up your shop</button>
+    <button id="output-required-code" type="button" class="link">Have a pairing code?</button>
+    <button id="output-required-skip" type="button" class="link">Skip</button>
+  </div>
+</div>
+<p id="output-banner" class="hint" hidden></p>
 <dialog id="settings" aria-labelledby="settings-title">
   <div class="panel">
     <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title">Settings</h2><p class="hint">Set up once. Your material choices stay with the job.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
@@ -234,25 +237,7 @@
     <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
   </div>
 </dialog>
-<dialog id="stock" aria-labelledby="stock-title">
-  <div class="panel">
-    <div class="dialog-heading"><div><h2 id="stock-title" class="settings-title">Inventory</h2><p class="hint">Rolls in stock in the shop</p></div><button id="stock-close" class="dialog-close" type="button" aria-label="Close inventory">×</button></div>
-    <section id="stock-job" class="stock-job" aria-label="Current job" hidden>
-      <h3>This job</h3>
-      <p id="stock-job-text"></p>
-    </section>
-    <svg class="stock-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
-      <linearGradient id="roll-ok"><stop offset="0" stop-color="#b8b6ae"/><stop offset=".32" stop-color="#f6f5f0"/><stop offset=".7" stop-color="#e4e2da"/><stop offset="1" stop-color="#b8b6ae"/></linearGradient>
-      <linearGradient id="roll-low"><stop offset="0" stop-color="#d9a49b"/><stop offset=".32" stop-color="#f8ece9"/><stop offset=".7" stop-color="#efd7d1"/><stop offset="1" stop-color="#d9a49b"/></linearGradient>
-    </defs></svg>
-    <p id="stock-empty" class="stock-empty" hidden>No materials yet. Add your first roll.</p>
-    <ul id="stock-list" class="stock-shelf" role="listbox" aria-label="Rolls in stock" aria-orientation="horizontal"></ul>
-    <p id="stock-legend" class="stock-legend" hidden>Tap a roll to see it. Taller roll = wider material. Fatter roll = more left.</p>
-    <section id="stock-panel" class="stock-panel" hidden></section>
-    <p id="stock-status" role="status" aria-live="polite" class="hint"></p>
-    <div class="stock-actions"><button id="stock-add" class="primary" type="button">Add roll</button></div>
-  </div>
-</dialog>
+
 <main>
   <div class="workspace-grid">
   <section class="canvas-area" aria-label="Layout">
@@ -580,7 +565,6 @@
       <p>My computer lets you choose a folder. Default print folder uses the folder saved in Settings. Check the file in your print software before printing.</p>
     </details>
     <a id="report" class="workspace" target="_blank" rel="noopener noreferrer" href="https://github.com/ezdesigns/eznest/issues/new?template=tester-problem.yml">Report a problem</a>
-    <a class="workspace" href="/">Full workspace</a>
   </div>
 </details>
 <button id="feedback-open" type="button" aria-label="Send feedback"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2Z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M7 9h10M7 13h7" stroke="currentColor" stroke-width="1.8"/></svg><span>Feedback</span></button>
@@ -607,6 +591,8 @@
 <script src="/cut-mapping.js"></script>
 <script src="/shop-profiles.js"></script>
 <script src="/tester-results.js"></script>
+<script src="/material-profile.js"></script>
+<script src="/inventory-panel.js"></script>
 <script src="/web.js"></script>
 </body>
 </html>

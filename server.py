@@ -482,6 +482,12 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.send(403, {'error': 'Invalid host'})
         path = self.route_path()
+        if path == '/web':
+            # Older installers and Illustrator links keep working at the one app entry.
+            query = urlparse(self.path).query
+            target = '/?view=simple' + ('&' + query if query else '')
+            return self.send(307, b'', 'text/plain; charset=utf-8',
+                             extra_headers=(('Location', target),))
         if path == '/api/session':
             if not self.browser_site_ok():
                 return self.send(403, {'error': 'Invalid session'})
@@ -653,17 +659,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, json.loads(source.read_text(encoding='utf-8-sig')))
             except Exception:
                 return self.send(400, {'error': 'Illustrator capture could not be read.'})
-        static = {'/': ('production.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
+        view = parse_qs(urlparse(self.path).query).get('view', [''])[0]
+        workspace = 'web.html' if view == 'simple' else 'production.html'
+        static = {'/': (workspace, 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
         static.update({'/svg-io.js': ('svg-io.js', 'text/javascript'), '/sample-artwork.svg': ('sample-artwork.svg', 'image/svg+xml')})
         static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css')})
         static['/production-features.js']=('production-features.js','text/javascript')
         static['/layout-comparison.js']=('layout-comparison.js','text/javascript')
         static['/cut-mapping.js']=('cut-mapping.js','text/javascript')
         static['/shop-profiles.js'] = ('shop-profiles.js','text/javascript')
-        static['/web'] = ('web.html', 'text/html')
+        for asset in ('app-theme.css', 'inventory-panel.css', 'material-profile.js', 'inventory-panel.js', 'queue-inventory.js'):
+            static['/' + asset] = (asset, 'text/css' if asset.endswith('.css') else 'text/javascript')
         static['/web.css'] = ('web.css', 'text/css')
         static['/web.js'] = ('web.js', 'text/javascript')
         static['/tester-results.js'] = ('tester-results.js', 'text/javascript')
+        static['/fonts/Archivo.ttf'] = ('fonts/Archivo.ttf', 'font/ttf')
         static['/fonts/rajdhani-700.woff2'] = ('fonts/rajdhani-700.woff2', 'font/woff2')
         static['/fonts/red-hat-display-400.woff2'] = ('fonts/red-hat-display-400.woff2', 'font/woff2')
         static['/fonts/red-hat-display-700.woff2'] = ('fonts/red-hat-display-700.woff2', 'font/woff2')

@@ -212,7 +212,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.locator('#max-output').get_attribute('aria-label'), "Don't print. Learn about OUTPUT")
                 self.assertEqual(page.locator('#max-output').get_attribute('aria-pressed'), 'false')
                 self.assertEqual(page.locator('#max-output').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(243, 243, 240)')
-                self.assertEqual(page.locator('#in-house').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(239, 245, 255)')
+                self.assertEqual(page.locator('#in-house').evaluate('n => getComputedStyle(n).backgroundColor'), 'rgb(237, 244, 255)')
                 pill = page.locator('#max-output .paid-badge')
                 self.assertEqual(pill.inner_text(), 'Preview · test only')
                 self.assertNotIn('🤑', page.locator('#max-output').inner_text())
@@ -702,13 +702,16 @@ class WebMvpTests(unittest.TestCase):
             )
             raise AssertionError('Shop page was not ready. ' + detail) from None
 
-    def test_desktop_workspace_remains_the_front_page(self):
+    def test_one_local_app_has_full_and_simple_modes(self):
         with urlopen(self.url() + '/', timeout=10) as response:
             desktop = response.read().decode()
         with urlopen(self.url() + '/web', timeout=10) as response:
             page = response.read().decode()
-        self.assertIn('Nest selected jobs', desktop)
-        self.assertIn('href="/web"', desktop)
+        self.assertIn('Jobs to print', desktop)
+        self.assertIn('href="/?view=simple">Simple mode', desktop)
+        with urlopen(self.url() + '/?view=simple', timeout=10) as response:
+            self.assertEqual(response.read().decode(), page)
+        self.assertIn('href="/">Full mode', page)
         self.assertIn('Upload your print here', page)
         self.assertIn('Stop · keep best', page)
         self.assertIn('id="files"', page)
@@ -717,6 +720,121 @@ class WebMvpTests(unittest.TestCase):
         self.assertNotIn('id="nest"', page)
         self.assertIn('/svg-io.js', page)
         self.assertNotIn('<script>', page.lower().split('<body', 1)[-1].replace('src=', ''))
+
+    def test_inventory_shelf_is_shared_across_modes_and_updates_one_ledger(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_page(viewport={'width': 1280, 'height': 900})
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            def styles():
+                return page.evaluate("""() => {
+                    const read = (selector, keys) => {
+                        const s = getComputedStyle(document.querySelector(selector));
+                        return keys.map(key => s[key]);
+                    };
+                    return [read('body', ['fontFamily','color','backgroundColor']),
+                            read('.app-header', ['padding','backgroundColor']),
+                            read('#stock', ['fontFamily','backgroundColor','borderRadius']),
+                            read('#stock-title', ['fontSize','fontWeight']),
+                            read('#stock-add', ['backgroundColor','borderRadius','fontSize'])];
+                }""")
+            try:
+                page.goto(self.url() + '/')
+                page.get_by_role('button', name='Inventory', exact=True).click()
+                expect(page.get_by_role('dialog', name='Inventory', exact=True)).to_be_visible()
+                page.get_by_role('button', name='Add roll', exact=True).click()
+                for key, value in [('name','Shared gloss'),('roll','54'),('width','51.5'),('left','100'),('full','150'),('cost','300')]:
+                    page.fill('#roll-f-' + key, value)
+                page.get_by_role('button', name='Save roll', exact=True).click()
+                expect(page.locator('#stock-status')).to_contain_text('Added Shared gloss')
+                expect(page.locator('#stock-list [role=option]')).to_have_count(1)
+                page.get_by_role('button', name='Close details', exact=True).click()
+                page.evaluate('document.fonts.ready')
+                self.assertTrue(page.evaluate("""document.fonts.check('600 15px "OUTPUT Shop"')"""))
+                full_styles = styles()
+                self.assertIn('OUTPUT Shop', full_styles[0][0])
+                self.assertEqual(full_styles[0][1:], ['rgb(24, 33, 54)', 'rgb(255, 255, 255)'])
+                self.assertEqual(full_styles[4][0], 'rgb(0, 108, 245)')
+                page.screenshot(path=str(SCREENSHOTS / 'shared-inventory-full-desktop.png'))
+                page.click('#stock-close')
+                page.screenshot(path=str(SCREENSHOTS / 'shared-style-full-desktop.png'))
+                page.click('#mode-switch')
+                self.wait_ready(page)
+                if page.locator('#setup').is_visible(): page.click('#setup-dismiss')
+                page.click('#stock-open')
+                expect(page.locator('#stock-list [role=option]')).to_have_count(1)
+                expect(page.locator('#stock-list')).to_contain_text('Shared gloss')
+                self.assertEqual(full_styles, styles())
+                page.screenshot(path=str(SCREENSHOTS / 'shared-inventory-simple-desktop.png'))
+                page.set_viewport_size({'width':390,'height':844})
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'),390)
+                page.screenshot(path=str(SCREENSHOTS / 'shared-inventory-simple-mobile.png'))
+                page.set_viewport_size({'width':1280,'height':900})
+                page.locator('#stock-list [role=option]').click()
+                page.get_by_role('button', name='Edit', exact=True).click()
+                page.fill('#roll-f-left','75')
+                page.get_by_role('button', name='Save', exact=True).click()
+                expect(page.locator('#stock-status')).to_contain_text('75 ft left')
+                page.click('#stock-close')
+                page.screenshot(path=str(SCREENSHOTS / 'shared-style-simple-desktop.png'))
+                page.click('#mode-switch')
+                page.click('#stock-open')
+                expect(page.locator('#stock-list')).to_contain_text('75 ft')
+                page.set_viewport_size({'width':390,'height':844})
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'),390)
+                page.screenshot(path=str(SCREENSHOTS / 'shared-inventory-full-mobile.png'))
+                page.set_viewport_size({'width':1280,'height':900})
+                page.locator('#stock-list [role=option]').click()
+                page.get_by_role('button', name='Use for this job', exact=True).click()
+                expect(page.locator('#preset option:checked')).to_have_text('Shared gloss')
+                self.assertAlmostEqual(float(page.input_value('#quick-width')),51.5)
+                self.assertEqual(errors, [])
+            finally:
+                browser.close()
+
+    def test_mode_switches_warn_before_leaving_work_and_fit_mobile(self):
+        from playwright.sync_api import sync_playwright, expect
+        artwork = Path(__file__).resolve().parents[1] / 'sample-artwork.svg'
+        with sync_playwright() as playwright:
+            browser = launch_browser(playwright)
+            page = browser.new_page(viewport={'width': 1280, 'height': 900})
+            try:
+                page.goto(self.url() + '/')
+                full = page.get_by_role('link', name='Simple mode', exact=True)
+                expect(full).to_be_visible()
+                page.screenshot(path=str(SCREENSHOTS / 'mode-full-desktop.png'))
+                page.set_viewport_size({'width': 390, 'height': 844})
+                expect(full).to_be_visible()
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), 390)
+                page.screenshot(path=str(SCREENSHOTS / 'mode-full-mobile.png'))
+                full.click()
+                self.wait_ready(page)
+                self.assertEqual(page.url, self.url() + '/?view=simple')
+                back = page.get_by_role('link', name='Full mode', exact=True)
+                expect(back).to_be_visible()
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), 390)
+                page.screenshot(path=str(SCREENSHOTS / 'mode-simple-mobile.png'))
+                page.set_viewport_size({'width': 1280, 'height': 900})
+                page.screenshot(path=str(SCREENSHOTS / 'mode-simple-desktop.png'))
+                page.set_input_files('#file', str(artwork))
+                page.wait_for_function('() => !importing && kits.length === 1')
+                page.once('dialog', lambda dialog: dialog.dismiss())
+                back.click()
+                self.assertEqual(page.url, self.url() + '/?view=simple')
+                self.assertEqual(page.evaluate('kits.length'), 1)
+                page.once('dialog', lambda dialog: dialog.accept())
+                back.click()
+                expect(page.get_by_role('link', name='Simple mode', exact=True)).to_be_visible()
+                page.set_input_files('#files', str(artwork))
+                page.wait_for_function('() => !importing && queue.length === 1')
+                page.once('dialog', lambda dialog: dialog.dismiss())
+                page.get_by_role('link', name='Simple mode', exact=True).click()
+                self.assertEqual(page.url, self.url() + '/')
+                self.assertEqual(page.evaluate('queue.length'), 1)
+            finally:
+                browser.close()
 
     def open_page(self, playwright, shots=False):
         browser = launch_browser(playwright)

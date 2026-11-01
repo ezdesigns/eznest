@@ -438,6 +438,10 @@ $('preset').onchange=()=>{preferences.active=$('preset').value;renderPresets();i
 
 $('show-labels').onchange=renderLayout;$('job-colors').onchange=renderLayout;$('show-all').onclick=()=>{highlightJob='';renderLayout();};
 
+$('mode-switch').onclick=event=>{
+  if(busy||saving||importing){event.preventDefault();status('Finish the current operation before switching modes.',true);return;}
+  if(queue.length&&!window.confirm('Switch to simple mode? Save your work first. Jobs are not transferred between modes, and unsaved changes may be lost.'))event.preventDefault();
+};
 $('settings-open').onclick=()=>{fillSettings();$('settings').showModal();};$('settings-close').onclick=()=>$('settings').close();
 
 $('units').onchange=()=>{const next=$('units').value;for(const key of ['width','maxLength','gap','margin','sheet-length'])setDimensionField(key,readDimensionField(key),next);settingsUnit=next;for(const label of document.querySelectorAll('.field-unit'))label.textContent=next;};

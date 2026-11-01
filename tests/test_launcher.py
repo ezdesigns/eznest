@@ -33,6 +33,14 @@ class LauncherTests(unittest.TestCase):
             self.assertEqual(launcher.main(),0)
             browser.assert_not_called()
 
+    def test_default_and_legacy_web_flag_open_the_same_main_workspace(self):
+        for flags in ([], ['--web']):
+            response = io.BytesIO(json.dumps({'app': 'eznest', 'version': launcher.VERSION}).encode())
+            with self.subTest(flags=flags), patch.object(sys, 'argv', ['eznest', *flags]), \
+                 patch.object(launcher, 'urlopen', return_value=response), patch('webbrowser.open') as browser:
+                self.assertEqual(launcher.main(), 0)
+                browser.assert_called_once_with('http://127.0.0.1:8765/')
+
     def test_wrong_version_not_reused(self):
         response=io.BytesIO(b'{"app":"eznest","version":"old"}')
         with patch.object(sys,'argv',['eznest','--no-browser']),patch.object(launcher,'urlopen',return_value=response):

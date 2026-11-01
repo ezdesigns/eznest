@@ -436,6 +436,7 @@ body[data-step="confirm"] #layout-options { display: none; }
 .piece-card details { font-size: 11px; color: var(--muted); }
 .piece-card details summary { font-weight: 400; }
 .piece-card details span { display: block; margin-top: 6px; }
+.shop-header #mode-switch { text-decoration: none; border: 1px solid #d8d8d2; }
 .corner-actions { position: fixed; right: 22px; bottom: 20px; z-index: 4; display: flex; align-items: center; gap: 10px; }
 #feedback-open { position: static; display: flex; align-items: center; gap: 8px; border: 1px solid #d9dedf; border-radius: 28px; padding: 12px 17px; background: #fff; box-shadow: 0 3px 18px #0002; font-size: 13px; }
 #feedback-welcome { position: fixed; right: 22px; bottom: 84px; z-index: 4; width: min(280px, calc(100vw - 44px)); padding: 18px 35px 18px 18px; border: 1px solid #d9dedf; border-radius: 14px; background: #fff; box-shadow: 0 4px 24px #0002; font-size: 13px; }
@@ -643,91 +644,11 @@ body[data-step="sent"] #inventory-open { display: block; }
 .output-link-row button { min-height: 38px; padding: 6px 14px; }
 .output-link-form .hint { font-size: 12px; }
 
-/* Inventory dialog: same frame as Settings. */
-#stock { width: min(620px, calc(100vw - 32px)); max-height: 90dvh; padding: 24px; border: 1px solid #ddd; border-radius: 14px; color: var(--ink); }
-#stock::backdrop { background: #1c243855; }
-#stock .panel { text-align: left; }
-.stock-job { margin-bottom: 14px; padding: 12px 14px; border: 1px solid #d6e3f2; border-radius: 10px; background: #f3f7fc; }
-.stock-job h3 { margin: 0 0 4px; font-size: 13px; }
-.stock-job p { font-size: 13px; }
-.stock-empty { padding: 28px 16px; border: 1px dashed #cfcfc8; border-radius: 10px; text-align: center; color: var(--muted); }
-.stock-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
-.stock-shelf { --slot: 88px; --rowh: 240px; --lab: 56px; list-style: none; margin: 0; padding: 4px 0 6px; display: grid; grid-template-columns: repeat(auto-fill, var(--slot)); grid-auto-rows: var(--rowh); justify-content: start;
-  background-image: linear-gradient(to bottom, transparent calc(var(--rowh) - var(--lab) - 4px), #8d8d86 calc(var(--rowh) - var(--lab) - 4px), #8d8d86 calc(var(--rowh) - var(--lab) - 1px), #e3e3dc calc(var(--rowh) - var(--lab) - 1px), #e3e3dc calc(var(--rowh) - var(--lab) + 1px), transparent calc(var(--rowh) - var(--lab) + 1px));
-  background-size: 100% var(--rowh); background-position: 0 4px; }
-.stock-shelf:empty { display: none; }
-.stock-slot { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; cursor: pointer; outline: none; border-radius: 10px; }
-.stock-slot svg { display: block; overflow: visible; transition: transform .2s ease-out; }
-.stock-slot[aria-selected="true"] svg { transform: translateY(-8px); }
-.stock-slot:focus-visible { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #1d4f91; }
-.stock-label { height: var(--lab); width: 100%; padding: 5px 4px 0; text-align: center; line-height: 1.2; }
-.stock-qty { height: 22px; width: 100%; text-align: center; line-height: 22px; transition: transform .2s ease-out; }
-.stock-qty b { display: block; font-size: 14px; white-space: nowrap; }
-.stock-slot[aria-selected="true"] .stock-qty { transform: translateY(-8px); }
-.stock-label { display: flex; flex-direction: column; align-items: center; }
-/* Name: up to two lines, always the space of two, so every size line in a row sits at the same height. */
-.stock-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; width: 100%; height: 2.4em; font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--ink); overflow: hidden; overflow-wrap: anywhere; }
-.stock-slot.one-line .stock-name { height: 1.2em; -webkit-line-clamp: 1; }
-.stock-size { margin-top: 2px; font-size: 11px; line-height: 14px; color: var(--muted); white-space: nowrap; }
-.stock-qty b.unknown { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: -.01em; }
-.stock-slot.low .stock-qty b { color: #b42318; }
-.stock-slot[aria-selected="true"] .stock-qty b { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 2px; }
-.stock-slot.draft { cursor: default; }
-.stock-slot.draft .stock-qty b { color: var(--muted); }
-.stock-slot.in-use::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: calc(var(--lab) - 1px); height: 4px; border-radius: 2px; background: #1d4f91; }
-.stock-pill { position: absolute; bottom: calc(var(--lab) + 12px); left: 50%; transform: translateX(-50%); padding: 1px 8px; border-radius: 999px; background: #e8f0fa; color: #1d4f91; font-size: 12px; font-weight: 700; white-space: nowrap; }
-.stock-legend { margin: 2px 0 12px; font-size: 12px; color: var(--muted); }
-.stock-panel { position: sticky; bottom: 0; margin: 4px 0 6px; padding: 14px 16px; border: 1px solid #d6d6cf; border-radius: 12px; background: #fff; box-shadow: 0 -6px 16px #1c1c1c14; }
-.stock-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.stock-panel h3 { margin: 0; font-size: 16px; }
-.stock-sub { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
-.stock-x { border: 0; background: none; padding: 4px; min-height: 0; color: var(--muted); border-radius: 6px; line-height: 0; cursor: pointer; }
-.stock-left { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-top: 8px; font-size: 14px; }
-.stock-len { border: 0; background: none; padding: 0; min-height: 0; font: 700 18px "Red Hat Display", sans-serif; color: var(--ink); cursor: pointer; text-decoration: underline dotted #8d8d86; text-underline-offset: 4px; }
-.stock-low { padding: 2px 8px; border-radius: 999px; background: #fde8e3; color: #971b12; font-size: 12px; font-weight: 700; }
-.stock-selected { color: #1d4f91; font-size: 13px; font-weight: 700; }
-.stock-check { margin: 10px 0 0; font-size: 14px; font-weight: 700; color: #15803d; }
-.stock-check[data-ok="0"] { color: #b42318; }
-.stock-check[data-ok="warn"] { color: #8a6100; }
-.stock-row-actions { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 12px; }
-.stock-row-actions button { min-height: 34px; padding: 4px 12px; font-size: 13px; }
-.roll-form { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 4px 18px; align-items: start; margin-top: 8px; }
-.roll-preview { text-align: center; }
-.roll-preview svg { display: block; margin: 0 auto; overflow: visible; }
-.roll-fields { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.roll-row { display: flex; gap: 10px; }
-.roll-row > .roll-field { flex: 1; min-width: 0; }
-.roll-field { display: flex; flex-direction: column; gap: 3px; }
-.roll-label { font-size: 13px; font-weight: 700; }
-.roll-field .measure { display: flex; align-items: center; border: 1.5px solid #c9c9c2; border-radius: 8px; background: #fff; height: 38px; padding-right: 10px; }
-.roll-field .measure:focus-within { border-color: var(--ink); }
-.roll-field .measure.invalid { border-color: #b42318; }
-.roll-field input { flex: 1; width: 100%; min-width: 0; border: 0; background: none; font: 400 15px "Red Hat Display", sans-serif; padding: 0 10px; height: 100%; outline: none; }
-.roll-field .measure span { font-size: 13px; color: var(--muted); }
-.roll-field .hint { font-size: 12px; }
-.roll-error { font-size: 12.5px; color: #b42318; }
-.roll-units { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
-.roll-units button { min-height: 28px; padding: 2px 10px; border: 1px solid #c9c9c2; border-radius: 999px; background: #f4f4ef; font-size: 13px; }
-.roll-units button[aria-pressed="true"] { border-color: var(--ink); background: #fff; font-weight: 700; color: var(--ink); }
-.stock-form-error:empty { display: none; }
-.stock-form-error { margin: 0; color: #b42318; font-size: 13px; }
-.roll-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-top: 12px; }
-.roll-actions .quiet { color: var(--muted); font-weight: 400; }
-.roll-actions .roll-remove { margin-left: auto; color: #971b12; }
-@media (max-width: 600px) {
-  .stock-shelf { --slot: 72px; --rowh: 222px; }
-  .roll-form { grid-template-columns: 1fr; }
-  .stock-panel { margin: 4px -8px 0; border-radius: 14px 14px 0 0; }
-}
-@media (prefers-reduced-motion: reduce) { .stock-slot svg, .stock-qty { transition: none; } }
-.stock-actions { margin-top: 14px; display: flex; justify-content: flex-end; }
-#stock-status:empty { display: none; }
-#stock-status { margin-top: 10px; }
 @media (max-width: 720px) {
   .top-actions { top: 12px; right: 12px; gap: 6px; }
   .top-button { padding: 6px 8px; }
   #stock-open span, #settings-open span { display: none; }
-  .shop-header { padding-right: 0; flex-wrap: wrap; }
+  .shop-header { padding-right: 148px; flex-wrap: wrap; row-gap: 8px; }
   .shop-header strong { line-height: 36px; }
   .output-link-menu, .output-link-form { position: fixed; top: 58px; left: 12px; right: 12px; width: auto; }
 }
@@ -753,19 +674,3 @@ body[data-step="sent"] #inventory-open { display: block; }
 .job-panel #start-over-idle:disabled { color: #929ba7; background: #f7f7f4; opacity: 1; }
 /* The status circle is the only visible OUTPUT control; the old buttons stay as hidden click targets. */
 #output-link-connect, #output-link-status { display: none !important; }
-
-/* Inventory: every control is at least 44 x 44 to click or tap; the look stays the same. */
-#stock .dialog-close { flex-basis: 44px; width: 44px; min-height: 44px; margin: -6px -10px 0 0; }
-.stock-x { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; margin: -10px -12px -6px 0; }
-.stock-len { min-height: 44px; min-width: 44px; padding: 0 4px; margin-left: -4px; }
-#stock button.link, .stock-row-actions button, .roll-units button { min-height: 44px; min-width: 44px; }
-.roll-actions { align-items: center; }
-
-/* The shelf scrolls in its own area and the details card is docked under it, so the card
-   never sits on top of a roll or its label. */
-#stock[open] { display: flex; flex-direction: column; overflow: hidden; }
-#stock .panel { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
-#stock .panel > * { flex: none; }
-#stock .panel > .stock-shelf { flex: 0 1 auto; min-height: calc(var(--rowh) + 12px); overflow-y: auto; overscroll-behavior: contain; background-attachment: local; }
-#stock .panel > .stock-shelf:empty { min-height: 0; }
-#stock .panel > .stock-panel { position: static; max-height: 62%; overflow-y: auto; box-shadow: none; }
