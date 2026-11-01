@@ -45,6 +45,8 @@ class FakeGitHub:
             return {'object': {'sha': self.tip}}
         if method == 'GET' and '/assets?' in path:
             return copy.deepcopy(self.assets)
+        if method == 'GET' and path.endswith('/releases/7'):
+            return copy.deepcopy(self.rows[0])
         self.writes.append((method, path, data))
         if method == 'POST':
             row = {**data, 'id': 7}
@@ -183,6 +185,32 @@ class PublicationTests(unittest.TestCase):
         self.assertTrue(self.api.rows[0]['draft'])
         self.assertFalse(any(w[0]=='PATCH' for w in self.api.writes))
 
+    def test_main_advancing_during_upload_leaves_a_private_draft(self):
+        def upload(tag, path):
+            self.api.upload(tag, path)
+            self.api.tip = OTHER
+        state = release.publish(self.api, event(), VERSION, self.root, upload=upload)
+        self.assertFalse(state['should_release'])
+        self.assertTrue(self.api.rows[0]['draft'])
+        self.assertFalse(any(w[0] == 'PATCH' for w in self.api.writes))
+
+    def test_draft_or_tag_mutation_during_upload_blocks_publication(self):
+        for field, value in [('target_commitish', OTHER), ('tag_name', 'v0.0.1'), ('draft', False)]:
+            self.api = FakeGitHub()
+            def upload(tag, path):
+                self.api.upload(tag, path)
+                self.api.rows[0][field] = value
+            with self.subTest(field=field), self.assertRaises(release.ReleaseError):
+                release.publish(self.api, event(), VERSION, self.root, upload=upload)
+            self.assertFalse(any(w[0] == 'PATCH' for w in self.api.writes))
+        self.api = FakeGitHub()
+        def upload(tag, path):
+            self.api.upload(tag, path)
+            self.api.tag = OTHER
+        self.assertFalse(release.publish(self.api, event(), VERSION, self.root, upload=upload)['should_release'])
+        self.assertTrue(self.api.rows[0]['draft'])
+        self.assertFalse(any(w[0] == 'PATCH' for w in self.api.writes))
+
     def test_stale_commit_is_rechecked_after_builds(self):
         self.api.tip=OTHER
         self.assertFalse(self.publish()['should_release'])
@@ -288,6 +316,14 @@ class OfflineAcceptanceTests(unittest.TestCase):
             with patch.object(acceptance,'LocalAPI') as api, self.assertRaises(acceptance.AcceptanceError):
                 acceptance.offline(root)
             api.assert_not_called()
+
+    def test_svg_acceptance_opens_the_simple_view_with_its_controls(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / 'tests/macos_svg_acceptance.py').read_text()
+        self.assertIn("page.goto(ORIGIN + '/?view=simple'", source)
+        simple = (root / 'web.html').read_text()
+        for control in ('edit-material', 'start-nesting', 'save-destination'):
+            self.assertIn('id="' + control + '"', simple)
 
     def test_release_workflow_keeps_secrets_and_write_access_out_of_pr_jobs(self):
         root=Path(__file__).resolve().parents[1]

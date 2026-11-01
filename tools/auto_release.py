@@ -190,6 +190,14 @@ def publish(github, event, version, directory, *, upload=None):
     for file in files:
         if observed.get(file.name, {}).get('digest') != 'sha256:' + digest(file):
             raise ReleaseError('Uploaded asset verification failed; release remains a draft.')
+    # Uploads can take minutes. Re-read mutable release/main/tag state at the public boundary.
+    current = github.request('GET', f'repos/{REPO}/releases/{release_id}')
+    if (not current.get('draft') or current.get('tag_name') != tag
+            or current.get('target_commitish') != state['sha']):
+        raise ReleaseError('Draft identity changed during upload; preserve it for inspection.')
+    state = plan(github, event, version)
+    if not state['should_release']:
+        return state  # In particular, leave an old-main candidate private.
     # Published versions are immutable for this workflow. Missing/different assets never get clobbered.
     github.request('PATCH', f'repos/{REPO}/releases/{release_id}', {
         'draft': False, 'prerelease': '-' in version,
