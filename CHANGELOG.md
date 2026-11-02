@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.0.0-rc.9
+
+- Use one OUTPUT pairing dialog for Settings, the header, the optional connection banner and reconnect. Keep sharing off until separate consent, show retryable errors, and prevent duplicate submissions.
+- Preserve existing signed-check-in and revocation history when upgrading from earlier builds, so a later unsigned record cannot reopen a revoked connection.
+- Require a valid Windows installer signature for release builds. Dual-platform publication remains blocked until Windows installer signing is configured; unsigned test installers are not release artifacts.
+- Keep the existing Mac Apple-Silicon/macOS 26 preview scope, with updates off and no new physical-printing or live OUTPUT acceptance claim.
+
 ## 1.0.0-rc.8
 
 - Publish the native Mac desktop client under a newer version so evaluation hosts with an earlier rc.7 test package can use the normal administrator upgrade path. The installer still requires the same publisher and architecture, a strictly newer version, and completion or explicit discard of unfinished work.
