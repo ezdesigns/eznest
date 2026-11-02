@@ -83,6 +83,8 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     var loaded: (() -> Void)?
     var downloadFinished: (() -> Void)?
     var failed: ((String) -> Void)?
+    var popupCreated: (() -> Void)?
+    var pendingPopupCount: Int { popups.count }
     #endif
 
     init(configuration: DesktopConfiguration?) {
@@ -255,8 +257,16 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         let popup = WKWebView(frame: .zero, configuration: configuration)
         popup.navigationDelegate = self
+        popup.uiDelegate = self
         popups[ObjectIdentifier(popup)] = popup
+        #if EZNEST_DESKTOP_TESTING
+        popupCreated?()
+        #endif
         return popup
+    }
+
+    func webViewDidClose(_ webView: WKWebView) {
+        popups.removeValue(forKey: ObjectIdentifier(webView))
     }
 
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
@@ -322,7 +332,15 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if popups.removeValue(forKey: ObjectIdentifier(webView)) != nil { return }
         if (error as NSError).code != NSURLErrorCancelled { showError("The workspace could not be loaded. Please try again.") }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        if popups.removeValue(forKey: ObjectIdentifier(webView)) != nil { return }
+        if webView === self.webView && (error as NSError).code != NSURLErrorCancelled {
+            showError("The workspace could not be loaded. Please try again.")
+        }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

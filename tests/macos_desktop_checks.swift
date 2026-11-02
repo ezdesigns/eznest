@@ -11,6 +11,8 @@ import WebKit
     var picker = false
     var save = false
     var finished = false
+    var popupCreations = 0
+    var popupClicks = 0
 
     init(origin: URL, pid: Int, folder: URL, mode: String) {
         self.folder = folder; self.mode = mode
@@ -31,6 +33,7 @@ import WebKit
             self.check(url.absoluteString == "https://output.jeezlabs.io/workspace", "unexpected external URL")
             self.externalCount += 1
         }
+        app.popupCreated = { [weak self] in self?.popupCreations += 1 }
         app.pickFiles = { [weak self] parameters in
             guard let self else { return nil }
             self.check(parameters.allowsMultipleSelection, "multiple-file picker contract")
@@ -86,6 +89,7 @@ import WebKit
     }
 
     func clickPopup() {
+        popupClicks += 1
         js("(() => {const r=document.querySelector('#popup').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()") { value in
             guard let coordinates = value as? [Double], coordinates.count == 2 else {
                 self.check(false, "popup button position"); return
@@ -108,7 +112,11 @@ import WebKit
     }
 
     func waitForPopup() {
-        if externalCount == 1 {
+        if popupClicks == 1 && popupCreations == 1 && app.pendingPopupCount == 0 {
+            check(externalCount == 0, "closed popup must not open a browser")
+            clickPopup()
+        } else if popupClicks == 2 && externalCount == 1 {
+            check(popupCreations == 2, "closed blank popup can be retried")
             check(app.webView.url?.host == "127.0.0.1", "external popup must not replace workspace")
             js("document.querySelector('#external').click()")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
