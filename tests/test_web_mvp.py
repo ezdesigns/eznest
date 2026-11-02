@@ -1007,7 +1007,7 @@ class WebMvpTests(unittest.TestCase):
                 with ZipFile(io.BytesIO(first)) as archive:
                     artwork = archive.read('artwork.svg').decode('utf-8')
                 self.assertIn('CutContour_Kiss-cut', artwork)
-                self.assertIn('M0 0L62 55H0Z', artwork)
+                self.assertIn('M0 10L20 0H86Q96 0 96 10V16H74V27H57V40H26Q18 40 16 34L13 24H0Z', artwork)
                 self.assertIn('#dd38b8', artwork)
                 self.assertNotIn('#D92F00', artwork)
                 self.assertIn('clipPath', artwork)
