@@ -517,8 +517,6 @@ body:has(#settings-support[open]) #feedback-welcome { display: none; }
 #output-connect { display: grid; gap: 8px; margin: 4px 0 16px; padding-bottom: 12px; border-bottom: 1px solid #e7e7e1; }
 #output-connect h3 { margin: 0; font-size: 15px; }
 #output-connect label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; }
-#output-pair-code { width: 100%; min-height: 36px; padding: 0 10px; border: 1px solid #5c5c58; border-radius: 8px; background: #fff; color: #1c1c1c; font-weight: 400; }
-#output-pair-code::placeholder { color: #5c5c58; }
 #output-connect-shop { margin: 0; }
 .connect-success { margin: 0; padding: 12px 14px; border-radius: 10px; background: #f3f3f0; font-size: 15px; font-weight: 700; }
 .connect-status-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

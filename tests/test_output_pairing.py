@@ -641,7 +641,6 @@ class DialogCopyTests(unittest.TestCase):
         self.assertIn('#max-output .paid-badge { position: static; margin-top: 2px; padding: 0; border-radius: 0; background: transparent;', css)
         self.assertNotIn('#f3fbf6', css)
         self.assertIn('#output-connect-status.error { color: #D92F00; }', css)
-        self.assertRegex(css, r'#output-pair-code \{[^}]*border: 1px solid #5c5c58;[^}]*background: #fff;[^}]*color: #1c1c1c;')
         self.assertIn("const OUTPUT_WAITLIST_URL = new URL('waitlist', OUTPUT_WEBSITE_URL).href;", script)
         self.assertIn('https://output.jeezlabs.io/', script)
         self.assertIn('id="output-pair"', html)
@@ -651,6 +650,78 @@ class DialogCopyTests(unittest.TestCase):
 
 class OutputScreenTests(unittest.TestCase):
     """Browser check for the popup and the host connect control."""
+
+    def test_settings_pair_and_reconnect_share_one_dialog_and_request(self):
+        import time
+        import test_web_mvp
+        import output_gate
+        from playwright.sync_api import expect, sync_playwright
+        helper = test_web_mvp.WebMvpTests(methodName='runTest')
+        helper.setUp()
+        try:
+            with patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS': '', 'EZ_NEST_OUTPUT_TOKEN': ''}), sync_playwright() as playwright:
+                browser = test_web_mvp.launch_browser(playwright)
+                try:
+                    for width in (1280, 390):
+                        context = browser.new_context(viewport={'width': width, 'height': 900})
+                        context.add_init_script("localStorage.setItem('eznest-setup-skipped', '1')")
+                        page = context.new_page()
+                        page.goto(helper.url() + '/web')
+                        helper.wait_ready(page)
+                        # First viewport pairs, second viewport exercises the same reconnect entry.
+                        page.click('#settings-open')
+                        page.locator('#settings-telemetry').evaluate('node => node.open = true')
+                        entry = '#output-pair' if width == 1280 else '#output-reconnect'
+                        expect(page.locator(entry)).to_be_enabled()
+                        with context.expect_page() as opened:
+                            page.click(entry)
+                        opened.value.close()
+                        expect(page.locator('#output-link-code')).to_be_focused()
+                        self.assertEqual(page.locator('#output-pair-code, #output-pair-form').count(), 0)
+                        page.fill('#output-link-code', CODE)
+
+                        def accept(*_args, **_kwargs):
+                            time.sleep(0.2)
+                            return {'credential': TOKEN, 'shopName': 'North Shop'}
+
+                        with patch.object(output_pairing, 'exchange', side_effect=accept) as exchange, \
+                                patch.object(output_gate, '_post', return_value=(200, b'{}')):
+                            page.evaluate("() => { const form = document.querySelector('#output-link-form'); form.requestSubmit(); form.requestSubmit(); }")
+                            expect(page.locator('#setup-shop')).not_to_be_visible()
+                            expect(page.locator('#output-connect-shop')).to_have_text('Connected to North Shop.')
+                            self.assertEqual(exchange.call_count, 1)
+                        expect(page.locator('#output-pair')).to_be_hidden()
+                        expect(page.locator('#telemetry-agree')).to_be_enabled()
+                        self.assertFalse(page.locator('#telemetry-agree').is_checked())
+                        expect(page.locator('#telemetry-enable')).to_be_disabled()
+                        self.assertNotIn(TOKEN, page.locator('body').inner_text())
+                        with context.expect_page() as opened:
+                            page.click('#output-reconnect')
+                        opened.value.close()
+                        expect(page.locator('#output-link-reconnect-note')).to_be_visible()
+                        page.fill('#output-link-code', CODE)
+                        with patch.object(output_pairing, 'exchange', side_effect=output_pairing.PairingError('expired', output_pairing.EXPIRED)):
+                            page.click('#output-link-submit')
+                            expect(page.locator('#output-link-error')).to_have_text(output_pairing.EXPIRED)
+                        self.assertEqual(page.input_value('#output-link-code'), '')
+                        page.screenshot(path=str(ROOT / '.local' / f'pairing-shared-{width}.png'))
+                        box = page.locator('#setup-shop').bounding_box()
+                        self.assertGreaterEqual(box['x'], 0)
+                        self.assertLessEqual(box['x'] + box['width'], width)
+                        page.keyboard.press('Escape')
+                        expect(page.locator('#setup-shop')).not_to_be_visible()
+                        expect(page.locator('#output-connect-shop')).to_have_text('Connected to North Shop.')
+                        with context.expect_page() as opened:
+                            page.click('#output-reconnect')
+                        opened.value.close()
+                        self.assertEqual(page.input_value('#output-link-code'), '')
+                        expect(page.locator('#output-link-error')).to_be_hidden()
+                        page.click('#output-link-cancel')
+                        context.close()
+                finally:
+                    browser.close()
+        finally:
+            helper.tearDown()
 
     def test_popup_and_connect_failure_are_visible(self):
         import test_web_mvp
@@ -686,23 +757,25 @@ class OutputScreenTests(unittest.TestCase):
                     page.click('#settings-open')
                     page.locator('#settings-telemetry').evaluate('node => node.open = true')
                     page.wait_for_function("() => !document.querySelector('#output-pair').disabled")
-                    expect(page.locator('#output-pair-form')).to_be_visible()
-                    page.fill('#output-pair-code', '7k4np-qrx2m')
+                    with page.context.expect_page() as opened:
+                        page.click('#output-pair')
+                    opened.value.close()
+                    expect(page.locator('#setup-shop')).to_be_visible()
+                    page.fill('#output-link-code', '7k4np-qrx2m')
 
                     def disabled(*_args, **_kwargs):
                         raise output_pairing.PairingError('disabled', output_pairing.DISABLED)
 
                     with patch.object(output_pairing, 'exchange', side_effect=disabled):
-                        page.click('#output-pair')
-                        page.wait_for_function("() => document.querySelector('#output-connect-status').classList.contains('error')")
-                    message = page.locator('#output-connect-status').inner_text()
+                        page.click('#output-link-submit')
+                        expect(page.locator('#output-link-error')).to_be_visible()
+                    message = page.locator('#output-link-error').inner_text()
                     self.assertEqual(message, output_pairing.DISABLED)
-                    self.assertEqual(page.input_value('#output-pair-code'), '7k4np-qrx2m')
+                    self.assertEqual(page.input_value('#output-link-code'), '7k4np-qrx2m')
                     self.assertNotIn('osa_', page.locator('#settings-telemetry').inner_text())
-                    self.assertEqual(page.locator('#output-connect-status').evaluate('n => getComputedStyle(n).color'), 'rgb(217, 47, 0)')
                     page.screenshot(path=str(shots / 'output-connect-error-desktop.png'))
                     page.set_viewport_size({'width': 390, 'height': 844})
-                    page.locator('#output-connect').scroll_into_view_if_needed()
+                    page.locator('#setup-shop').scroll_into_view_if_needed()
                     page.screenshot(path=str(shots / 'output-connect-error-mobile.png'))
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), 390)
                 finally:
