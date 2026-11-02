@@ -1,6 +1,7 @@
 name: Windows installer
 
 # CI produces unsigned test installers and never reads publisher credentials.
+# Release builds (workflow_call from auto-release, or v* tags) fail unless the installer is signed.
 # version.json is the only version number. build_windows.py passes it to Inno Setup.
 # Release publication is owned by auto-release.yml after both platforms pass.
 # workflow_dispatch uploads the same exe as an artifact and does not publish a release.
@@ -13,6 +14,11 @@ on:
         description: 'Checked main commit selected by the release planner'
         required: true
         type: string
+      require_signed:
+        description: 'Fail unless eznest-setup.exe has a valid Authenticode signature'
+        required: false
+        default: true
+        type: boolean
   workflow_dispatch:
   pull_request:
   push:
@@ -130,6 +136,18 @@ jobs:
           $actual = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
           if ($expected -ne $actual -or $sidecar -ne $actual) { throw "Checksum does not match eznest-setup.exe" }
           if ((Get-Content $pin -Raw | ConvertFrom-Json).version -ne $version) { throw "BUILD.json version does not match version.json" }
+
+      - name: Require a signed installer for release builds
+        if: ${{ inputs.require_signed == true || startsWith(github.ref, 'refs/tags/v') }}
+        shell: pwsh
+        run: |
+          $setup = "installer\Output\eznest-setup.exe"
+          $sig = Get-AuthenticodeSignature -FilePath $setup
+          Write-Output "Signature status: $($sig.Status)"
+          if ($sig.Status -ne 'Valid' -or -not $sig.SignerCertificate) {
+            throw "Release builds require a code-signed eznest-setup.exe (status: $($sig.Status))."
+          }
+          Write-Output "Signed by: $($sig.SignerCertificate.Subject)"
 
       - name: Upload the installer artifact
         if: success()
