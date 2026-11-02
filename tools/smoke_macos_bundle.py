@@ -75,11 +75,18 @@ try:
                 session=start(folder/'data')
                 assert session['app']=='eznest'
                 page=browser.new_page(viewport={'width':1280,'height':900},accept_downloads=True)
-                page.goto(URL+'/web')
+                page.goto(URL+'/?view=simple')
                 page.wait_for_function("() => document.body.dataset.ready === '1'")
-                page.click('#edit-material');page.select_option('#unit','mm');page.fill('#width','220');page.click('#save-material')
+                if page.locator('#feedback-welcome').is_visible():
+                    page.click('#feedback-dismiss')
+                page.click('#edit-material')
+                page.fill('#preset-name', 'CI synthetic frozen stock')
+                page.select_option('#unit','mm')
+                page.fill('#roll','230')
+                page.fill('#width','220')
+                page.click('#save-material')
+                page.wait_for_function("() => !document.querySelector('#material-dialog').open")
                 page.wait_for_function("() => !document.querySelector('#save-material').disabled")
-                page.locator('#layout-options').evaluate('n=>n.open=true')
                 page.select_option('#nesting-effort','5')
                 source=ROOT/'sample-artwork.svg'
                 if kind=='pdf':

@@ -72,6 +72,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     private(set) var window: NSWindow!
     private(set) var webView: WKWebView!
     private var downloads: [ObjectIdentifier: WKDownload] = [:]
+    private var popups: [ObjectIdentifier: WKWebView] = [:]
     private var probe: URLSessionDataTask?
     private var network: URLSession!
 
@@ -96,6 +97,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
         network = URLSession(configuration: settings, delegate: NoRedirects(), delegateQueue: nil)
         let preferences = WKWebViewConfiguration()
         preferences.applicationNameForUserAgent = "EZNestDesktop"
+        preferences.preferences.javaScriptCanOpenWindowsAutomatically = false
         webView = WKWebView(frame: .zero, configuration: preferences)
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -214,6 +216,16 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let configuration, let url = action.request.url else { decisionHandler(.cancel); return }
+        if popups[ObjectIdentifier(webView)] != nil {
+            if url.absoluteString == "about:blank" {
+                decisionHandler(.allow)
+            } else {
+                openExternal(url)
+                decisionHandler(.cancel)
+                popups.removeValue(forKey: ObjectIdentifier(webView))
+            }
+            return
+        }
         let fromWorkspace = configuration.contains(action.sourceFrame.securityOrigin)
         if action.shouldPerformDownload && fromWorkspace &&
             (configuration.contains(url) || url.scheme == "blob") {
@@ -235,16 +247,21 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        // window.open() is used only by explicit OUTPUT/help actions. A blank
-        // popup returns nil so the existing UI uses its checked URL fallback.
-        if let origin = self.configuration, origin.contains(action.sourceFrame.securityOrigin),
-           let url = action.request.url { openExternal(url) }
-        return nil
+        // WebKit permits this only from a user gesture because automatic JS
+        // windows are disabled. Preserve the blank handle across OUTPUT's async
+        // checked-URL request; no external page is rendered in the app.
+        guard let origin = self.configuration, origin.contains(action.sourceFrame.securityOrigin),
+              popups.isEmpty else { return nil }
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        let popup = WKWebView(frame: .zero, configuration: configuration)
+        popup.navigationDelegate = self
+        popups[ObjectIdentifier(popup)] = popup
+        return popup
     }
 
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping ([URL]?) -> Void) {
-        guard configuration?.contains(frame.securityOrigin) == true else { completionHandler(nil); return }
+        guard webView === self.webView, configuration?.contains(frame.securityOrigin) == true else { completionHandler(nil); return }
         #if EZNEST_DESKTOP_TESTING
         if let pickFiles { completionHandler(pickFiles(parameters)); return }
         #endif
@@ -257,14 +274,14 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
-        guard configuration?.contains(frame.securityOrigin) == true else { completionHandler(); return }
+        guard webView === self.webView, configuration?.contains(frame.securityOrigin) == true else { completionHandler(); return }
         let alert = NSAlert(); alert.messageText = "EZNest"; alert.informativeText = message
         alert.beginSheetModal(for: window) { _ in completionHandler() }
     }
 
     func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
                  initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
-        guard configuration?.contains(frame.securityOrigin) == true else { completionHandler(false); return }
+        guard webView === self.webView, configuration?.contains(frame.securityOrigin) == true else { completionHandler(false); return }
         let alert = NSAlert(); alert.messageText = "EZNest"; alert.informativeText = message
         alert.addButton(withTitle: "Continue"); alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window) { answer in completionHandler(answer == .alertFirstButtonReturn) }
@@ -300,7 +317,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         #if EZNEST_DESKTOP_TESTING
-        loaded?()
+        if webView === self.webView { loaded?() }
         #endif
     }
 

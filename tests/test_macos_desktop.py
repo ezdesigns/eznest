@@ -46,7 +46,7 @@ class DesktopBuildTests(unittest.TestCase):
             self.assertEqual(backend.read_bytes(), b'synthetic backend')
             self.assertEqual((app / 'Contents/MacOS/eznest-desktop').read_bytes(), b'synthetic native')
             self.assertEqual([call.args[0][-1] for call in run.call_args_list],
-                             [str(app / 'Contents/MacOS/eznest-desktop'), str(app)])
+                             [str(backend), str(app / 'Contents/MacOS/eznest-desktop'), str(app)])
 
     def test_native_source_changes_invalidate_build_fingerprint(self):
         with tempfile.TemporaryDirectory() as folder:

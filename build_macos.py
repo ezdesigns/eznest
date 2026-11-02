@@ -189,9 +189,9 @@ def add_desktop_client(app, out, arch, identity):
     info.update(CFBundleExecutable='eznest-desktop', CFBundleName='EZNest',
                 CFBundleDisplayName='EZNest', LSUIElement=False)
     info_path.write_bytes(plistlib.dumps(info))
-    # PyInstaller already signed all backend code. Sign the new client, then
-    # reseal the enclosing bundle after the final metadata/resource changes.
-    for target in (destination, app):
+    # The old main executable's signature includes Info.plist. Re-sign it after
+    # changing the Finder entry, then sign the new main and enclosing bundle.
+    for target in (app / 'Contents/MacOS/eznest', destination, app):
         subprocess.run(['/usr/bin/codesign', '--force', '--options', 'runtime',
                         '--sign', identity or '-', str(target)], check=True)
 

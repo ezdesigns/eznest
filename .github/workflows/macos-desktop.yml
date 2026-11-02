@@ -8,8 +8,6 @@ on:
       - 'macos_service_config.py'
       - 'tests/*macos*'
       - '.github/workflows/macos-desktop.yml'
-  push:
-    branches: ['codex/macos-desktop-window']
 
 permissions:
   contents: read

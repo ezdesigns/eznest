@@ -72,17 +72,51 @@ import WebKit
             _ = app.applicationShouldHandleReopen(NSApp, hasVisibleWindows: false)
             check(app.window.isVisible, "Finder/Dock reopen")
             stage = 1
-            js("document.querySelector('#file').click()")
-            waitForImport()
+            js("setTimeout(() => window.open('https://output.jeezlabs.io/workspace'), 0)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                self.check(self.externalCount == 0, "unsolicited popup must not open a browser")
+                self.js("document.querySelector('#file').click()")
+                self.waitForImport()
+            }
         } else if stage == 2 {
             check(app.webView.url?.query == "view=simple", "mode navigation stays in app")
             stage = 3
-            js("document.querySelector('#bad').click(); document.querySelector('#external').click()")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                self.check(self.externalCount == 1, "only explicit HTTPS link leaves app")
-                self.check(self.app.webView.url?.host == "127.0.0.1", "blocked external/file navigation")
+            js("document.querySelector('#bad').click()")
+            clickPopup()
+        }
+    }
+
+    func clickPopup() {
+        js("(() => {const r=document.querySelector('#popup').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()") { value in
+            guard let coordinates = value as? [Double], coordinates.count == 2 else {
+                self.check(false, "popup button position"); return
+            }
+            // Native events in this disposable CI window exercise WebKit's real
+            // user-gesture gate; JavaScript .click() must not stand in for it.
+            let view = self.app.webView!
+            let point = view.convert(NSPoint(x: coordinates[0], y: view.bounds.height - coordinates[1]), to: nil)
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                guard let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: self.app.window.windowNumber,
+                    context: nil, eventNumber: 1, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) else {
+                    self.check(false, "native click event"); return
+                }
+                NSApp.sendEvent(event)
+            }
+            self.waitForPopup()
+        }
+    }
+
+    func waitForPopup() {
+        if externalCount == 1 {
+            check(app.webView.url?.host == "127.0.0.1", "external popup must not replace workspace")
+            js("document.querySelector('#external').click()")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.check(self.externalCount == 2, "explicit external link")
                 self.js("document.querySelector('#download').click()")
             }
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.waitForPopup() }
         }
     }
 

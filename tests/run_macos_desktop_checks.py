@@ -15,9 +15,11 @@ HTML = b'''<!doctype html><title>EZNest native window checks</title>
 <a id="external" href="https://output.jeezlabs.io/workspace">OUTPUT</a>
 <a id="bad" href="file:///etc/passwd">Blocked URL fixture</a>
 <button id="download">Save synthetic file</button>
+<button id="popup">Connect OUTPUT</button>
 <script>
 document.querySelector('#file').onchange=async event=>{document.body.dataset.imported=await event.target.files[0].text()};
 document.querySelector('#download').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['EZNest native export'],{type:'text/plain'}));a.download='native-export.txt';document.body.append(a);a.click();a.remove()};
+document.querySelector('#popup').onclick=()=>{const p=window.open('', '_blank');setTimeout(()=>{if(p)p.location.href='https://output.jeezlabs.io/workspace'},40)};
 </script>'''
 
 
