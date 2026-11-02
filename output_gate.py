@@ -9,7 +9,9 @@ once, by pairing.
 
 The check-in record is signed with a key derived from the shop credential.
 A record from the previous build has no signature. If it is otherwise
-current, the first load signs it and the offline grace continues. Any other
+current, the first load signs it and the offline grace continues. That
+upgrade happens only on a computer that has never kept a signed record or a
+revocation (output-checkin-history.json notes both). Any other
 missing, unreadable, or mismatched record stays closed until a live check-in
 or pairing succeeds. A check-in time ahead of this computer is not current.
 Revoked credentials are part of the signed record.
@@ -39,6 +41,7 @@ CHECK_IN_MAX_AGE = CHECK_IN_MAX_AGE_DAYS * DAY_SECONDS
 OFFLINE_BANNER_AFTER = OFFLINE_BANNER_AFTER_DAYS * DAY_SECONDS
 STATE_NAME = 'output-checkin.json'
 REVOCATION_NAME = 'output-revocations.json'
+HISTORY_NAME = 'output-checkin-history.json'
 RELEASE_MARKER = '.eznest-release'
 DEV_BANNER = 'DEV MODE: not connected to OUTPUT'
 
@@ -121,6 +124,27 @@ def _state_path(directory):
 
 def _revocation_path(directory):
     return Path(directory) / REVOCATION_NAME
+
+
+def _history_path(directory):
+    return Path(directory) / HISTORY_NAME
+
+
+def _read_history(directory):
+    """A one-way note that this computer has used signed check-ins, plus revoked fingerprints."""
+    path = _history_path(directory)
+    if not path.exists():
+        return None
+    payload = _read_json(path)
+    return {'revoked': _fingerprint_list(payload.get('revoked'))}
+
+
+def _note_history(directory, revoked):
+    found = set(revoked)
+    before = _read_history(directory)
+    if before:
+        found.update(before['revoked'])
+    _write_json(_history_path(directory), {'v': 1, 'signed': True, 'revoked': sorted(found)})
 
 
 def _read_json(path):
@@ -213,6 +237,9 @@ def _stored_revoked(directory):
     raw = _read_state(directory)
     if isinstance(raw, dict):
         found.update(_fingerprint_list(raw.get('revoked')))
+    history = _read_history(directory)
+    if history:
+        found.update(history['revoked'])
     return found
 
 
@@ -228,6 +255,7 @@ def _write_signed(directory, token, *, last_ok, attempt, reason, also=()):
     })
     stored = dict(body)
     stored['mac'] = _mac(token, body)
+    _note_history(directory, body['revoked'])
     _write_state(directory, stored)
 
 
@@ -268,6 +296,9 @@ def _legacy_last_ok(raw, stamp):
 
 def _migrate_unsigned(directory, token, stamp):
     if not token or _known_revoked(directory, token):
+        return
+    # Only a computer that has never kept a signed check-in or a revocation is upgrading.
+    if _history_path(directory).exists() or _revocation_path(directory).exists():
         return
     raw = _read_state(directory)
     last = _legacy_last_ok(raw, stamp)
