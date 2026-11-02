@@ -14,6 +14,8 @@ def main():
         raise RuntimeError('Only a disposable hosted Windows runner may start this browser probe.')
     root = Path(os.environ['RUNNER_TEMP']).resolve(strict=True) / 'rc8-consent-probe'
     root.mkdir(exist_ok=False)
+    # Match unittest discovery's checkout import path when invoked as a script.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from playwright.sync_api import Page
     import test_telemetry_consent
     original = Page.wait_for_function
