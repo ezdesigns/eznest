@@ -21,7 +21,8 @@ def build(out, architecture, *, testing=False):
             '-module-cache-path', str(out / 'module-cache'),
             '-framework', 'AppKit', '-framework', 'WebKit', str(source)]
     if testing:
-        args += ['-D', 'EZNEST_DESKTOP_TESTING', str(ROOT / 'tests/macos_desktop_checks.swift')]
+        args += ['-D', 'EZNEST_DESKTOP_TESTING', str(ROOT / 'tests/macos_desktop_checks.swift'),
+                 str(ROOT / 'tests/macos_workspace_checks.swift')]
     subprocess.run([*args, '-o', str(executable)], check=True, timeout=180)
     if not executable.is_file() or executable.is_symlink():
         raise RuntimeError('The native desktop executable was not produced.')

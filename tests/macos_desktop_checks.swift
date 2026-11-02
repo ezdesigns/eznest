@@ -164,7 +164,11 @@ import WebKit
 @main struct NativeVerifier {
     @MainActor static func main() {
         let args = CommandLine.arguments
-        guard args.count == 5, let origin = URL(string: args[1]), let pid = Int(args[2]) else { exit(2) }
+        guard (5...6).contains(args.count), let origin = URL(string: args[1]), let pid = Int(args[2]) else { exit(2) }
+        if args[4] == "workspace", args.count == 6 {
+            NativeWorkspaceChecks.run(origin: origin, pid: pid, folder: URL(fileURLWithPath: args[3]), version: args[5])
+            return
+        }
         let checks = DesktopChecks(origin: origin, pid: pid, folder: URL(fileURLWithPath: args[3]), mode: args[4])
         let app = NSApplication.shared
         app.delegate = checks.app
