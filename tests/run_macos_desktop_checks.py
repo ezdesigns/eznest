@@ -16,6 +16,7 @@ HTML = b'''<!doctype html><title>EZNest native window checks</title>
 <a id="bad" href="file:///etc/passwd">Blocked URL fixture</a>
 <button id="download">Save synthetic file</button>
 <button id="popup">Connect OUTPUT</button>
+<button id="update" onclick="location.href='eznest-update://install'">Request checked update</button>
 <script>
 // This executes from page startup, not from WKWebView.evaluateJavaScript,
 // whose host-injected scripts can carry a synthetic WebKit user gesture.

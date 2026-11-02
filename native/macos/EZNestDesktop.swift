@@ -85,6 +85,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     var failed: ((String) -> Void)?
     var popupCreated: (() -> Void)?
     var pendingPopupCount: Int { popups.count }
+    var updateRequested: (() -> Void)?
     #endif
 
     init(configuration: DesktopConfiguration?) {
@@ -229,7 +230,11 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
             return
         }
         let fromWorkspace = configuration.contains(action.sourceFrame.securityOrigin)
-        if action.shouldPerformDownload && fromWorkspace &&
+        if webView === self.webView && fromWorkspace && action.sourceFrame.isMainFrame &&
+            url.absoluteString == "eznest-update://install" {
+            requestUpdate()
+            decisionHandler(.cancel)
+        } else if action.shouldPerformDownload && fromWorkspace &&
             (configuration.contains(url) || url.scheme == "blob") {
             decisionHandler(.download)
         } else if configuration.contains(url) {
@@ -333,6 +338,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if popups.removeValue(forKey: ObjectIdentifier(webView)) != nil { return }
+        guard webView === self.webView else { return }
         if (error as NSError).code != NSURLErrorCancelled { showError("The workspace could not be loaded. Please try again.") }
     }
 
@@ -345,6 +351,14 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
 
     func application(_ application: NSApplication, open urls: [URL]) {
         guard urls.count == 1, urls[0].absoluteString == "eznest-update://install" else { return }
+        requestUpdate()
+    }
+
+    private func requestUpdate() {
+        #if EZNEST_DESKTOP_TESTING
+        updateRequested?()
+        return
+        #else
         // Preserve the existing separately authorized update request; no URLs,
         // paths or shell commands are forwarded from a page to the helper.
         let process = Process()
@@ -352,6 +366,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
         process.arguments = ["--request-macos-update"]
         process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
         do { try process.run() } catch { showError("The update request could not be opened.") }
+        #endif
     }
 }
 

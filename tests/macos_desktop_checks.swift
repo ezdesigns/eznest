@@ -13,6 +13,7 @@ import WebKit
     var finished = false
     var popupCreations = 0
     var popupClicks = 0
+    var updateRequests = 0
 
     init(origin: URL, pid: Int, folder: URL, mode: String) {
         self.folder = folder; self.mode = mode
@@ -34,6 +35,7 @@ import WebKit
             self.externalCount += 1
         }
         app.popupCreated = { [weak self] in self?.popupCreations += 1 }
+        app.updateRequested = { [weak self] in self?.updateRequests += 1 }
         app.pickFiles = { [weak self] parameters in
             guard let self else { return nil }
             self.check(parameters.allowsMultipleSelection, "multiple-file picker contract")
@@ -121,7 +123,15 @@ import WebKit
             js("document.querySelector('#external').click()")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 self.check(self.externalCount == 2, "explicit external link")
-                self.js("document.querySelector('#download').click()")
+                self.js("location.href='eznest-update://install?file=/tmp/untrusted.pkg'")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self.check(self.updateRequests == 0, "reject update URL arguments")
+                    self.js("document.querySelector('#update').click()")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        self.check(self.updateRequests == 1, "fixed update action preserved without a browser")
+                        self.js("document.querySelector('#download').click()")
+                    }
+                }
             }
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.waitForPopup() }
