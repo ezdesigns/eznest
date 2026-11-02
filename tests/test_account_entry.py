@@ -122,7 +122,7 @@ class AccountEntryTests(unittest.TestCase):
 
     def test_both_packaged_workspaces_load_shared_entry(self):
         for name in ['production.html', 'web.html']:
-            html = (server.ROOT / name).read_text()
+            html = (server.ROOT / name).read_text(encoding='utf-8')
             self.assertIn('/account-entry.js', html)
             self.assertIn('/account-entry.css', html)
         for name in ['account-entry.js', 'account-entry.css']:
