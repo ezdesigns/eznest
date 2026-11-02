@@ -295,6 +295,11 @@ def _legacy_last_ok(raw, stamp):
 
 
 def _migrate_unsigned(directory, token, stamp):
+    raw = _read_state(directory)
+    # Older signed builds predate the history file. Preserve their evidence
+    # before an unsigned replacement or a missing credential can hide it.
+    if not _history_path(directory).exists() and (raw.get('mac') or _revocation_path(directory).exists()):
+        _note_history(directory, _stored_revoked(directory))
     if not token or _known_revoked(directory, token):
         return
     # Only a computer that has never kept a signed check-in or a revocation is upgrading.
