@@ -56,8 +56,16 @@ def stop():
         assert proc.wait(timeout=10)==0
     proc=None
 
+def ready(page):
+    page.wait_for_function("() => document.body.dataset.ready === '1'")
+    if page.locator('#output-required').is_visible():
+        with page.expect_navigation(wait_until='domcontentloaded'):
+            page.click('#output-required-skip')
+        page.wait_for_function("() => document.body.dataset.ready === '1'")
+    if page.locator('#feedback-welcome').is_visible():
+        page.click('#feedback-dismiss')
+
 def download(page,target):
-    page.evaluate('localSave=false')
     page.click('#export')
     page.select_option('#save-destination','download')
     page.select_option('#save-format','pack')
@@ -75,11 +83,16 @@ try:
                 session=start(folder/'data')
                 assert session['app']=='eznest'
                 page=browser.new_page(viewport={'width':1280,'height':900},accept_downloads=True)
-                page.goto(URL+'/web')
-                page.wait_for_function("() => document.body.dataset.ready === '1'")
-                page.click('#edit-material');page.select_option('#unit','mm');page.fill('#width','220');page.click('#save-material')
+                page.goto(URL+'/?view=simple')
+                ready(page)
+                page.click('#edit-material')
+                page.fill('#preset-name', 'CI synthetic frozen stock')
+                page.select_option('#unit','mm')
+                page.fill('#roll','230')
+                page.fill('#width','220')
+                page.click('#save-material')
+                page.wait_for_function("() => !document.querySelector('#material-dialog').open")
                 page.wait_for_function("() => !document.querySelector('#save-material').disabled")
-                page.locator('#layout-options').evaluate('n=>n.open=true')
                 page.select_option('#nesting-effort','5')
                 source=ROOT/'sample-artwork.svg'
                 if kind=='pdf':
@@ -99,7 +112,9 @@ try:
                 page.screenshot(path=str(folder/'saved.png'),full_page=True)
                 stop();start(folder/'data')
                 restored=request('/api/state');assert restored['id']==state['id'] and restored['released']
-                page.reload();page.wait_for_function("() => document.body.dataset.ready === '1'")
+                page.reload();ready(page)
+                print('FROZEN_STAGE:',kind,'restored',restored.get('status'),bool(restored.get('manifest')),
+                      page.locator('body').get_attribute('data-step'),flush=True)
                 assert download(page,folder/'restored.zip')==first
                 receipts.append({'format':kind,'pieces':len(state['result']['placements']),'sha256':hashlib.sha256(first).hexdigest(),'restartIdentical':True})
                 page.close();stop()
