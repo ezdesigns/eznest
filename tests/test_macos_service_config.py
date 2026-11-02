@@ -70,6 +70,22 @@ class MacServiceConfigTests(unittest.TestCase):
         for candidate in (current,{**current,'version':'1.0.0-beta.9'},{**current,'version':'1.1.0','teamId':'OTHERTEAM1'},{**current,'version':'1.1.0','architecture':'x86_64'}):
             with self.assertRaises(ValueError):service.upgrade_candidate(current,candidate)
 
+    def test_native_finder_entry_preserves_service_identity_and_matches_architecture(self):
+        desktop = self.app / 'Contents/MacOS/eznest-desktop'
+        info = {**self.info, 'CFBundleExecutable': 'eznest-desktop', 'EzNestShopService': True}
+        (self.app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+        with self.assertRaisesRegex(ValueError, 'missing'):
+            service.metadata(self.app)
+        desktop.write_bytes(b'\xcf\xfa\xed\xfe' + struct.pack('<I', 0x0100000C))
+        self.assertEqual(service.metadata(self.app), {'version': '1.0.0-rc.5', 'architecture': 'arm64'})
+        desktop.write_bytes(b'\xcf\xfa\xed\xfe' + struct.pack('<I', 0x01000007))
+        with self.assertRaisesRegex(ValueError, 'match the service architecture'):
+            service.metadata(self.app)
+        desktop.unlink()
+        desktop.symlink_to(self.app / 'Contents/MacOS/eznest')
+        with self.assertRaisesRegex(ValueError, 'missing'):
+            service.metadata(self.app)
+
     def test_launchd_uses_limited_user_fixed_data_and_explicit_lan(self):
         loopback=service.launch_configuration()
         self.assertEqual(loopback['UserName'],'_eznest')

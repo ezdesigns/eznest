@@ -122,8 +122,8 @@ a = Analysis([{str(out / 'macos_entry.py')!r}], pathex=[{str(root)!r}],
              excludes=['tkinter'])
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='eznest',
-          console=False, strip=False, upx=False, target_arch={arch!r},
-          argv_emulation={service_edition!r},
+          console={service_edition!r}, strip=False, upx=False, target_arch={arch!r},
+          argv_emulation=False,
           codesign_identity={codesign_identity!r}, entitlements_file=None)
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='eznest')
 app = BUNDLE(coll, name='eznest.app', bundle_identifier='io.jeezlabs.eznest',
@@ -143,6 +143,7 @@ def source_fingerprint(root=ROOT):
     paths.update(root / name for name in set(STATIC) | set(DOCUMENTS))
     for folder in ('fonts', 'licenses'):
         paths.update(path for path in (root / folder).rglob('*') if path.is_file())
+    paths.update((root / 'native/macos').glob('*.swift'))
     digest = hashlib.sha256()
     for path in sorted(paths):
         digest.update(path.relative_to(root).as_posix().encode() + b'\0')
@@ -173,6 +174,28 @@ def verify_signature(app, team):
                     '-R=' + requirement, str(app)], check=True)
 
 
+def add_desktop_client(app, out, arch, identity):
+    """Keep the headless service executable; Finder starts the native client."""
+    from build_macos_desktop import build as build_desktop
+    native = build_desktop(out / 'native', arch)
+    destination = app / 'Contents/MacOS/eznest-desktop'
+    if destination.exists():
+        raise ValueError('Do not overwrite an existing native desktop executable.')
+    shutil.copy2(native, destination)
+    import plistlib
+    info_path = app / 'Contents/Info.plist'
+    with info_path.open('rb') as handle:
+        info = plistlib.load(handle)
+    info.update(CFBundleExecutable='eznest-desktop', CFBundleName='EZNest',
+                CFBundleDisplayName='EZNest', LSUIElement=False)
+    info_path.write_bytes(plistlib.dumps(info))
+    # PyInstaller already signed all backend code. Sign the new client, then
+    # reseal the enclosing bundle after the final metadata/resource changes.
+    for target in (destination, app):
+        subprocess.run(['/usr/bin/codesign', '--force', '--options', 'runtime',
+                        '--sign', identity or '-', str(target)], check=True)
+
+
 def build(out, *, service_edition=False, codesign_identity=None):
     team = signing_team(codesign_identity)
     out, arch = preflight(out)
@@ -200,6 +223,8 @@ def build(out, *, service_edition=False, codesign_identity=None):
     app = out / 'dist' / 'eznest.app'
     if not (app / 'Contents' / 'MacOS' / 'eznest').is_file():
         raise RuntimeError('PyInstaller did not create the expected macOS application.')
+    if service_edition:
+        add_desktop_client(app, out, arch, codesign_identity)
     # Signature checks do not substitute for the separate notarization gate.
     subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(app)], check=True)
     if team:

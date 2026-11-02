@@ -1,0 +1,77 @@
+name: Mac desktop window
+
+on:
+  pull_request:
+    paths:
+      - 'native/macos/**'
+      - 'build_macos*.py'
+      - 'macos_service_config.py'
+      - 'tests/*macos*'
+      - '.github/workflows/macos-desktop.yml'
+  push:
+    branches: ['codex/macos-desktop-window']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: arm64
+      - name: Compile production desktop client
+        run: python build_macos_desktop.py --out "$RUNNER_TEMP/desktop-release" --architecture arm64
+      - name: Compile separate native integration verifier
+        run: python build_macos_desktop.py --out "$RUNNER_TEMP/desktop-checks" --architecture arm64 --testing
+      - name: Check native window, file picker, saved downloads and service boundaries
+        run: python tests/run_macos_desktop_checks.py --executable "$RUNNER_TEMP/desktop-checks/eznest-desktop" --out "$RUNNER_TEMP/desktop-result"
+      - name: Install existing frozen-build dependencies
+        run: python -m pip install -r requirements-build.txt 'playwright==1.64.1'
+      - name: Build the combined desktop and service bundle without release credentials
+        env:
+          PYINSTALLER_CONFIG_DIR: ${{ runner.temp }}/desktop-pyinstaller
+        run: python build_macos.py --service-edition --out "$RUNNER_TEMP/desktop-bundle"
+      - name: Verify bundled client and unchanged service entry
+        run: |
+          python - <<'PY'
+          import os, plistlib
+          from pathlib import Path
+          import macos_service_config
+          app = Path(os.environ['RUNNER_TEMP']) / 'desktop-bundle/dist/eznest.app'
+          info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
+          assert info['CFBundleExecutable'] == 'eznest-desktop'
+          assert info['LSUIElement'] is False
+          assert macos_service_config.metadata(app)['architecture'] == 'arm64'
+          assert (app / 'Contents/MacOS/eznest').is_file()
+          PY
+      - name: Exercise frozen SVG and PDF flows with scratch data
+        run: python tools/smoke_macos_bundle.py --bundle "$RUNNER_TEMP/desktop-bundle/dist/eznest.app" --out "$RUNNER_TEMP/desktop-bundle-smoke"
+      - name: Retain synthetic desktop proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-desktop-proof-${{ github.run_id }}
+          path: ${{ runner.temp }}/desktop-result
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Retain unnotarized desktop candidate for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-desktop-candidate-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/desktop-bundle/eznest-macos-arm64-*.zip
+            ${{ runner.temp }}/desktop-bundle/BUILD.json
+            ${{ runner.temp }}/desktop-bundle-smoke/receipt.json
+          retention-days: 7
+          if-no-files-found: error
