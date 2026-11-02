@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.0.0-rc.8
+
+- Publish the native Mac desktop client under a newer version so evaluation hosts with an earlier rc.7 test package can use the normal administrator upgrade path. The installer still requires the same publisher and architecture, a strictly newer version, and completion or explicit discard of unfinished work.
+- Keep the existing desktop window, full/simple views, shared service and Inventory. Automatic update checks remain off; Apple-Silicon/macOS 26 evaluation and other preview limits remain in effect.
+
 ## 1.0.0-rc.7
 
 - Opening the Mac shop app from Applications uses its own native window, Dock and menus. Full/simple views share the existing installed service and Inventory; startup no longer opens a browser.
