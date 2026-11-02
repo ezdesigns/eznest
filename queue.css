@@ -114,8 +114,15 @@ summary::marker { color: #7b8493; font-size: 10px; }
 .pill { font-size: 11px; color: #0053bc; border: 1px solid #c8daf5; background: #eef4ff; padding: 3px 8px; border-radius: 6px; }
 .pill[data-state=error] { border-color: #e4b9b1; color: var(--error); background: #fff1ed; }
 .pill[data-state=running] { border-color: var(--warning-line); color: var(--warning-ink); background: var(--warning-bg); }
-.canvas { background: var(--canvas); border: 1px solid #dedfe3; border-radius: 12px; flex: 1; min-height: 150px; display: flex; align-items: center; justify-content: center; padding: 25px; overflow: hidden; }
-#preview { width: 100%; height: 100%; }
+.layout-view-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: var(--muted); font-size: 12px; }
+.layout-view-tools label { display: flex; align-items: center; gap: 8px; }
+.layout-view-tools select { width: 140px; min-height: 44px; padding: 8px; }
+.canvas { background: var(--canvas); border: 1px solid #dedfe3; border-radius: 12px; flex: 0 0 auto; height: clamp(320px, 50dvh, 560px); min-height: 320px; padding: 25px; overflow: auto; }
+#preview { display: block; width: 100%; height: auto; max-width: none; }
+.canvas.fit-all { display: flex; align-items: center; justify-content: center; }
+.canvas.fit-all #preview { flex: none; height: 100%; }
+.canvas:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.canvas #empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 #empty { text-align: center; color: var(--muted); font-size: 13px; line-height: 1.6; padding: 16px; }
 #empty::before { content: ''; display: block; width: 62px; height: 72px; margin: 0 auto 20px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='62' height='72' viewBox='0 0 62 72'%3E%3Crect x='6' y='3' width='50' height='64' rx='7' fill='%23ffffff' stroke='%23aab1bd'/%3E%3Cpath d='M17 17h16v12H23v15h-6z' fill='%23c8daf5'/%3E%3Crect x='37' y='17' width='8' height='27' rx='2' fill='%23e8effb'/%3E%3Crect x='27' y='33' width='6' height='11' rx='2' fill='%23e8effb'/%3E%3Crect x='17' y='49' width='28' height='7' rx='2' fill='%23c8daf5'/%3E%3C/svg%3E") center/contain no-repeat; }
 #empty strong { display: block; font-size: 20px; color: #1c2438; font-weight: 600; letter-spacing: -.35px; margin-bottom: 7px; }

@@ -54,7 +54,8 @@ function clearPreview(){
   const formats=svgText('PDF / compatible AI with cut contours, or SVG. Original print artwork stays local.','p');formats.className='empty-format';
   $('empty').replaceChildren(svgText(hasJobs?'Your layout will appear here.':'Drop PDF, AI or SVG artwork to begin.','strong'),svgText(hasJobs?'Check the width and quantities, then select Nest.':'Choose your roll width, then nest the selected jobs.','p'),actions,formats);
 
-  for(const id of ['metrics','review-tools','completeness','job-key','export-bar','batch-status','output-check','download-confirmation'])$(id).hidden=true;
+  for(const id of ['metrics','review-tools','completeness','job-key','export-bar','batch-status','output-check','download-confirmation','layout-view-tools'])$(id).hidden=true;
+  $('layout-zoom').value='1';zoomLayout();
 
   $('result-title').textContent='Preview';highlightJob='';$('review-tools').open=false;showDestination();
 
@@ -262,6 +263,14 @@ function renderLayout(){
 
 }
 
+function zoomLayout(){
+  const stage=$('layout-canvas'),all=$('layout-zoom').value==='all';
+  stage.classList.toggle('fit-all',all);
+  $('preview').style.width=all?'100%':(Number($('layout-zoom').value)*100)+'%';
+  stage.scrollTop=0;stage.scrollLeft=0;
+}
+$('layout-zoom').onchange=zoomLayout;
+
 function showResult(state){
 
   current=state;if(!state.manifest)return;
@@ -270,7 +279,7 @@ function showResult(state){
 
   $('result-title').textContent=outputIncomplete(state)?(state.deliveryCompleted?'Working files saved':'Layout ready'):wasPrepared(state)?'Last saved layout':'Ready to save';$('batch-status').hidden=true;$('job-key').hidden=false;$('export-bar').hidden=false;
 
-  highlightJob='';
+  highlightJob='';$('layout-view-tools').hidden=false;
 
   $('completeness').replaceChildren();for(const [index,job] of m.jobs.entries()){const el=document.createElement('button');el.className='complete-job color-'+(index%colors.length);el.dataset.jobId=job.id;el.setAttribute('aria-label','Highlight '+job.name);el.onclick=()=>{highlightJob=highlightJob===job.id?'':job.id;renderLayout();};const code=document.createElement('span');code.textContent=job.code;el.append(code,document.createTextNode(`${job.name.replace(/\.svg$/i,'')} · ${job.placed}`));$('completeness').append(el);}for(const fill of state.result.fillSummary||[])if(!fill.pieces){const el=document.createElement('span');el.className='muted';el.textContent=fill.code+' · '+fill.name+': no complete set fitted';$('completeness').append(el);}$('completeness').hidden=false;
 
