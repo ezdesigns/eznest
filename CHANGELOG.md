@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.0.0-rc.7
+
+- Opening the Mac shop app from Applications uses its own native window, Dock and menus. Full/simple views share the existing installed service and Inventory; startup no longer opens a browser.
+- Import files through the native file panel and save downloaded print packs through the native save panel. Explicit OUTPUT/help actions can open an external browser; page-start popups and non-workspace navigation are blocked.
+- An offline, wrong-version or unrelated loopback service shows a native retry message instead of creating another engine or data folder. Closing the client preserves the existing background-service lifecycle.
+- Mac remains an experimental Apple-Silicon/macOS 26 preview with updates off. The desktop UI change does not establish managed upgrades, recovery, reboot/logout longevity, physical RIP/cutting or normal uninstallation.
+
 ## 1.0.0-rc.6
 
 - Use one local entry with full and simple views, shared Inventory, and OUTPUT styling.
