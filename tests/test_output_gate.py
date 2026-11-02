@@ -100,7 +100,8 @@ class GateTests(unittest.TestCase):
         self.assert_api_open(stock.sent[0], output_gate.HOST_UNPAIRED)
         solve = self.handler('/api/solve', body=b'{}')
         solve.handle_post()
-        self.assert_api_open(solve.sent[0], output_gate.HOST_UNPAIRED, expected_status=400)
+        self.assertEqual(solve.sent[0][0], 403)
+        self.assertEqual(solve.sent[0][1]['code'], 'sign_in_required')
         health = self.handler('/api/health')
         health.do_GET()
         self.assertEqual(health.sent[0][0], 200)
@@ -302,90 +303,86 @@ class GateTests(unittest.TestCase):
         self.assert_api_open(stock.sent[0], output_gate.HOST_DISCONNECTED)
         self.assertFalse(output_credential.path(server.WORK).is_file())
 
-    def test_host_page_shows_only_the_connect_screen_until_paired(self):
-        try:
-            from playwright.sync_api import expect, sync_playwright
-            import test_web_mvp
-        except ImportError:
-            self.skipTest('playwright is not installed')
-        helper = test_web_mvp.WebMvpTests(methodName='runTest')
-        helper.setUp()
+    def test_both_modes_require_server_authorization_then_share_setup(self):
+        from playwright.sync_api import expect, sync_playwright
+        import test_web_mvp
+        helper = test_web_mvp.WebMvpTests(methodName='runTest'); helper.setUp()
         try:
             with sync_playwright() as playwright:
                 browser = test_web_mvp.launch_browser(playwright)
                 try:
-                    context = browser.new_context(viewport={'width': 1280, 'height': 800})
-                    page = context.new_page()
-                    page.goto(helper.url() + '/web')
-                    # Unpaired: a plain message and one Connect action; nesting waits.
-                    page.wait_for_function("() => document.body.dataset.ready === '1'")
-                    expect(page.locator('#output-required')).to_be_visible()
-                    expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT (optional)')
-                    expect(page.locator('#output-required-code')).to_have_text('Set up your shop')
-                    self.assertEqual(page.locator('#output-setup-waiting, #output-setup-settings, #output-required-connect').count(), 0)
-                    expect(page.locator('#output-required-skip')).to_have_text('Skip')
-                    expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
-                    with page.context.expect_page() as opened:
-                        page.click('#output-required-code')
-                    opened.value.close()
-                    expect(page.locator('#setup-shop')).to_be_visible()
-                    expect(page.locator('#setup-shop-title')).to_have_text('Set up your shop')
-                    expect(page.locator('label[for=output-link-code]')).to_have_text('Enter the code from OUTPUT')
-                    expect(page.locator('#output-link-form')).to_be_visible()
-                    expect(page.locator('#output-link-code')).to_be_focused()
-                    self.assertEqual(page.locator('#output-link-code').input_value(), '')
-                    shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
-                    shots.mkdir(parents=True, exist_ok=True)
-                    page.screenshot(path=str(shots / 'output-connect-gate.png'))
-                    page.click('#output-link-cancel')
-                    page.click('#output-required-skip')
-                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
-                    self.assertEqual(page.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
-                    self.assertIsNone(page.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"))
-                    fresh = context.new_page()
-                    try:
-                        fresh.goto(helper.url() + '/web')
-                        fresh.wait_for_function("() => document.body.dataset.ready === '1'")
-                        expect(fresh.locator('#output-required')).to_be_hidden()
-                        self.assertEqual(fresh.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
-                        self.assertIsNone(fresh.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"))
-                    finally:
-                        fresh.close()
+                    context = browser.new_context(viewport={'width': 1320, 'height': 860})
+                    # The old optional skip key must not bypass first-use authorization.
+                    context.add_init_script("localStorage.setItem('eznest-setup-skipped', '1')")
+                    for path in ['/', '/?view=simple']:
+                        page = context.new_page()
+                        if 'simple' in path: page.set_viewport_size({'width': 390, 'height': 844})
+                        page.goto(helper.url() + path)
+                        expect(page.get_by_role('heading', name='Your work starts here.')).to_be_visible()
+                        if os.environ.get('EZ_NEST_ACCOUNT_SHOTS'):
+                            page.screenshot(path=str(Path(os.environ['EZ_NEST_ACCOUNT_SHOTS']) / ('welcome-mobile.png' if 'simple' in path else 'welcome-desktop.png')))
+                        page.get_by_role('button', name='Continue', exact=True).click()
+                        expect(page.locator('#account-sign-in')).to_have_attribute('href', 'https://output.jeezlabs.io/workspace?tools=eznest')
+                        self.assertIn('Privy', page.locator('#account-entry').inner_text())
+                        if os.environ.get('EZ_NEST_ACCOUNT_SHOTS'):
+                            page.screenshot(path=str(Path(os.environ['EZ_NEST_ACCOUNT_SHOTS']) / ('sign-in-mobile.png' if 'simple' in path else 'sign-in-desktop.png')))
+                        context.route('https://output.jeezlabs.io/**', lambda route: route.fulfill(body='Synthetic OUTPUT sign-in only.'))
+                        with context.expect_page() as opened:
+                            page.locator('#account-sign-in').click()
+                        opened.value.close()
+                        self.assertFalse(output_gate.account_status(server.WORK, True)['ready'])
+                        page.locator('#account-code').fill('bad-code')
+                        page.get_by_role('button', name='Connect this computer', exact=True).click()
+                        expect(page.locator('.account-entry-error')).not_to_be_empty()
+                        self.assertFalse(output_gate.account_status(server.WORK, True)['ready'])
+                        page.press('body', 'Escape'); expect(page.locator('#account-entry')).to_be_visible()
+                        page.close()
+                    page = context.new_page(); page.goto(helper.url() + '/')
+                    page.get_by_role('button', name='Continue', exact=True).click()
+                    def lose_response(route):
+                        route.fetch(); route.abort('failed')
+                    page.route('**/api/telemetry/output/pair', lose_response)
+                    response = (200, json.dumps({'outcome': 'created', 'result': {'token': TOKEN}}).encode())
+                    with patch('output_pairing._post', return_value=response), patch('output_gate.check_in'):
+                        page.locator('#account-code').fill('ABCDE-FGHJK')
+                        page.get_by_role('button', name='Connect this computer', exact=True).click()
+                        expect(page.get_by_role('heading', name='Make it yours.')).to_be_visible()
+                        if os.environ.get('EZ_NEST_ACCOUNT_SHOTS'):
+                            page.screenshot(path=str(Path(os.environ['EZ_NEST_ACCOUNT_SHOTS']) / 'computer-setup-desktop.png'))
+                    page.select_option('#account-units', 'mm')
+                    page.get_by_role('button', name='Save and start nesting', exact=True).click()
+                    expect(page.locator('#account-entry')).to_be_hidden()
+                    # A new browser context and the other mode use protected host state,
+                    # with no browser sign-in flag or live network call.
+                    fresh = browser.new_context(viewport={'width': 390, 'height': 844})
+                    mobile = fresh.new_page(); mobile.goto(helper.url() + '/?view=simple')
+                    mobile.wait_for_function("() => document.body.dataset.ready === '1'")
+                    expect(mobile.locator('#account-entry')).to_be_hidden()
+                    expect(mobile.locator('#account-open')).to_be_visible()
+                    self.assertEqual(mobile.evaluate('document.documentElement.scrollWidth <= innerWidth'), True)
+                    fresh.close(); context.close()
                 finally:
                     browser.close()
         finally:
             helper.tearDown()
 
-    def test_skip_opens_inventory_when_browser_storage_is_unavailable(self):
+    def test_blocked_browser_storage_does_not_offer_a_login_skip(self):
         from playwright.sync_api import expect, sync_playwright
         import test_web_mvp
-        helper = test_web_mvp.WebMvpTests(methodName='runTest')
-        helper.setUp()
+        helper = test_web_mvp.WebMvpTests(methodName='runTest'); helper.setUp()
         try:
             with sync_playwright() as playwright:
                 browser = test_web_mvp.launch_browser(playwright)
                 try:
-                    page = browser.new_page()
-                    page.add_init_script("""(() => {
-                      for (const method of ['getItem', 'setItem']) {
-                        const original = Storage.prototype[method];
-                        Storage.prototype[method] = function(key, ...args) {
-                          if (key === 'eznest-setup-skipped') throw new DOMException('Storage blocked', 'SecurityError');
-                          return original.call(this, key, ...args);
-                        };
-                      }
-                    })();""")
-                    page.goto(helper.url() + '/web')
-                    page.wait_for_function("() => document.body.dataset.ready === '1'")
-                    expect(page.locator('#output-required')).to_be_visible()
-                    page.evaluate('window.skipVisit = true')
-                    page.click('#output-required-skip')
-                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
-                    self.assertTrue(page.evaluate('window.skipVisit === true'))
-                    page.click('#stock-open')
-                    expect(page.locator('#stock-add')).to_be_visible()
-                    page.click('#stock-add')
-                    expect(page.locator('#roll-f-name')).to_be_visible()
+                    page = browser.new_page(viewport={'width': 390, 'height': 844})
+                    page.add_init_script("Storage.prototype.getItem = () => { throw new Error('blocked'); }; Storage.prototype.setItem = () => { throw new Error('blocked'); };")
+                    page.goto(helper.url() + '/?view=simple')
+                    expect(page.get_by_role('heading', name='Your work starts here.')).to_be_visible()
+                    page.get_by_role('button', name='Continue', exact=True).click()
+                    expect(page.locator('#account-code')).to_be_visible()
+                    expect(page.get_by_role('button', name='Skip', exact=True)).to_have_count(0)
+                    self.assertFalse(output_gate.account_status(server.WORK, True)['ready'])
+                    self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
                 finally:
                     browser.close()
         finally:
@@ -665,7 +662,8 @@ class GateTests(unittest.TestCase):
         self.assert_api_open(stock.sent[0], output_gate.HOST_UNPAIRED)
         save = self.handler('/api/materials/save?x=1', body=b'{}')
         save.handle_post()
-        self.assert_api_open(save.sent[0], output_gate.HOST_UNPAIRED, expected_status=400)
+        self.assertEqual(save.sent[0][0], 403)
+        self.assertEqual(save.sent[0][1]['code'], 'sign_in_required')
         check = self.handler('/api/telemetry/output/check-in?unused=1', body=b'{}')
         check.handle_post()
         self.assertEqual(check.sent[0][0], 200)

@@ -10,6 +10,8 @@ from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 
 import test_web_mvp as web_fixture
+import output_pairing
+import output_gate
 import macos_svg_acceptance as svg
 from test_published_macos import NoRedirect
 
@@ -45,10 +47,10 @@ class FreshMacSvgFlowTests(unittest.TestCase):
     stop = web_fixture.WebMvpTests.stop
     url = web_fixture.WebMvpTests.url
 
-    def test_unpaired_fresh_material_svg_flow_uses_real_controls(self):
+    def test_authorized_fresh_material_svg_flow_uses_real_controls(self):
         original_get = web_fixture.server.Handler.do_GET
         def delayed_session(handler):
-            # A slow bootstrap makes the real Skip/reload transition observable.
+            # A slow bootstrap exercises the shared account entry before loading work.
             if handler.path == '/api/session':
                 time.sleep(0.35)
             return original_get(handler)
@@ -57,6 +59,12 @@ class FreshMacSvgFlowTests(unittest.TestCase):
                 patch.object(web_fixture.server.Handler, 'do_GET', delayed_session):
             api = SourceAPI(self.url())
             self.assertEqual(api.request('/api/materials')[1]['materials'], [])
+            self.assertEqual(api.request('/api/solve', {})[0], 403)
+            response = (200, json.dumps({'outcome': 'created', 'result': {'token': 'osa_' + 'C' * 43}}).encode())
+            with patch.object(output_pairing, '_post', return_value=response), patch.object(output_gate, 'check_in'):
+                self.assertEqual(api.request('/api/telemetry/output/pair', {'code': 'ABCDE-FGHJK'})[0], 200)
+            self.assertTrue(api.request('/api/session')[1]['account']['ready'])
+            self.assertEqual(api.request('/api/setup', {'printer': 'Synthetic', 'units': 'mm', 'thru': 'CutContour_Thru-cut', 'kiss': 'CutContour_Kiss-cut', 'hotFolder': ''})[0], 200)
             exported = svg.svg_file_flow(api, Path(self.tmp.name))
             stock = api.request('/api/materials')[1]['materials']
             self.assertEqual(len(stock), 1)
@@ -67,5 +75,5 @@ class FreshMacSvgFlowTests(unittest.TestCase):
         self.assertTrue(exported['bytes'])
         status, sharing = api.request('/api/telemetry/output')
         self.assertEqual(status, 200)
-        self.assertFalse(sharing['configured'])
+        self.assertTrue(sharing['configured'])
         self.assertFalse(sharing['enabled'])

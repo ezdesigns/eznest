@@ -471,6 +471,7 @@ class Handler(BaseHTTPRequestHandler):
             'tls': TLS,
             'outputConnection': output_gate.public_status(WORK, local),
             'outputLink': output_gate.link_status(WORK, local),
+            'account': output_gate.account_status(WORK, local),
         }
         if local:
             body['token'] = TOKEN
@@ -671,6 +672,8 @@ class Handler(BaseHTTPRequestHandler):
             static['/' + asset] = (asset, 'text/css' if asset.endswith('.css') else 'text/javascript')
         static['/web.css'] = ('web.css', 'text/css')
         static['/web.js'] = ('web.js', 'text/javascript')
+        static['/account-entry.js'] = ('account-entry.js', 'text/javascript')
+        static['/account-entry.css'] = ('account-entry.css', 'text/css')
         static['/tester-results.js'] = ('tester-results.js', 'text/javascript')
         static['/fonts/Archivo.ttf'] = ('fonts/Archivo.ttf', 'font/ttf')
         static['/fonts/rajdhani-700.woff2'] = ('fonts/rajdhani-700.woff2', 'font/woff2')
@@ -781,6 +784,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._logout()
         if not self.authenticated():
             return self.send(403, {'error': 'Invalid session'})
+        # Bootstrap and repair keep their Host/Origin/token/PIN boundaries.
+        # Read-only APIs remain available for recovery and preserving old work.
+        account_bootstrap = path in (
+            '/api/telemetry/output/pair', '/api/telemetry/output/check-in',
+            '/api/telemetry/output/disconnect', '/api/shutdown', '/api/cancel',
+            '/api/telemetry/output/revoke',
+            '/api/pin', '/api/pin/alert/ack', '/api/macos-service/claim',
+            '/api/macos-service/cancel',
+        ) or path == '/api/update' or path.startswith('/api/update/')
+        if not account_bootstrap and not output_gate.account_status(WORK, self.loopback_client())['ready']:
+            self._discard_request_body()
+            return self.send(403, {'code': 'sign_in_required', 'error': 'Sign in with your OUTPUT account and authorize this computer before using EZNest.'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
             if not 0 <= size <= request_limit(path):

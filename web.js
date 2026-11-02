@@ -178,7 +178,7 @@ function fetchJson(path, ms) {
       const body = await response.json().catch(() => ({}));
       if (body.code === 'connect_required') {
         showOutputRequired(true);
-        throw Error('Connect to OUTPUT in Settings. Nesting works without it.');
+        throw Error('Sign in through Account to authorize this computer.');
       }
       throw Error('Request failed.');
     }
@@ -261,7 +261,7 @@ async function api(path, data, file) {
   if (!response.ok) {
     const gated = body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/');
     if (gated) showOutputRequired(true);
-    const error = Error(gated ? 'Connect to OUTPUT in Settings. Nesting works without it.' : body.error || 'Request failed.');
+    const error = Error(gated ? 'Sign in through Account to authorize this computer.' : body.error || 'Request failed.');
     error.code = body.code;
     if (path === '/api/document/import' || path === '/api/document/import-file') {
       error.guideReview = body.guideReview; error.cutReview = body.cutReview;
@@ -1939,8 +1939,8 @@ function showOutputService(shop) {
   const note = $('output-url-note');
   if (note) {
     note.textContent = locked
-      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Activity sharing stays off until you agree. Connecting to OUTPUT is optional.'
-      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree. Connecting to OUTPUT is optional.';
+      ? 'EZ_NEST_OUTPUT_URL is set for this run and overrides the saved address. Activity sharing stays off until you agree. Local nesting works offline after first authorization.'
+      : 'Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree. Local nesting works offline after first authorization.';
   }
 }
 
@@ -2518,11 +2518,13 @@ async function connectOutput() {
   }
 }
 async function disconnectOutput() {
-  if (!window.confirm('Disconnect this computer from OUTPUT? Nesting, saving, and stock keep working on this computer.')) return;
+  if (!window.confirm('Disconnect this computer? You will need to sign in through OUTPUT and enter a new code before nesting again. Your local files and inventory are kept.')) return;
   $('output-disconnect').disabled = true;
   try {
     renderOutputSharing(await api('/api/telemetry/output/disconnect', {}));
     await refreshOutputLink();
+    if ($('settings').open) $('settings').close();
+    await EZNAccountEntry.ensure(true);
   } catch (error) {
     $('output-connect-status').textContent = error.message;
     $('output-connect-status').classList.add('error');
@@ -2563,6 +2565,7 @@ async function changeOutputSharing(enable) {
 }
 
 async function boot() {
+  await EZNAccountEntry.ensure();
   closeSettingsFolds();
   await ensureLibraries();
   const stored = prefs();
@@ -2645,7 +2648,7 @@ let outputRequired = false;
 let outputRequiredLocal = true;
 function renderOutputRequired(session) {
   outputRequiredLocal = session?.localPC !== false;
-  showOutputRequired(session?.outputConnection?.ok === false);
+  showOutputRequired(false); // The shared account entry owns first-use authorization.
   showOutputBanner(session);
 }
 let setupSkippedThisVisit = false;
@@ -2664,7 +2667,7 @@ function showOutputRequired(required) {
 function showOutputBanner(session) {
   const banner = $('output-banner');
   if (!banner) return;
-  const text = session && session.outputConnection && session.outputConnection.banner;
+  const text = session?.account?.ready ? '' : session?.outputConnection?.banner;
   banner.hidden = !text;
   banner.textContent = text || '';
 }
@@ -3450,7 +3453,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// --- OUTPUT link control (header). Connecting is optional; nothing here blocks nesting.
+// Legacy connection controls reuse the host credential; shared Account owns first-use authorization.
 let outputLink = null;
 let outputLinkLocal = true;
 function agoText(seconds) {
@@ -3551,7 +3554,7 @@ async function checkOutputLink() {
 }
 async function disconnectOutputLink() {
   closeOutputLinkMenu();
-  if (!window.confirm('Disconnect this computer from OUTPUT? Nesting, saving, and stock keep working on this computer.')) return;
+  if (!window.confirm('Disconnect this computer? You will need to sign in through OUTPUT and enter a new code before nesting again. Your local files and inventory are kept.')) return;
   try {
     renderOutputSharing(await api('/api/telemetry/output/disconnect', {}));
   } catch (failure) {

@@ -748,6 +748,9 @@ class WebMvpTests(unittest.TestCase):
         # Boot sets this only after the shop stylesheet is on the page and the
         # session call has returned. An empty status line was that signal never arriving.
         try:
+            page.wait_for_function("() => document.body.dataset.ready === '1' || (document.querySelector('#account-entry[open] #account-units') && document.querySelector('#account-entry button[type=submit]:not(:disabled)'))")
+            if page.locator('#account-entry[open] #account-units').count():
+                page.get_by_role('button', name='Save and start nesting', exact=True).click()
             page.wait_for_function("() => document.body.dataset.ready === '1'")
             # Most tests exercise the browser fallback; chooser coverage opts in.
             page.evaluate('localSave = false')
@@ -1988,6 +1991,7 @@ class WebMvpTests(unittest.TestCase):
                         'app': 'eznest', 'version': 'test', 'localPC': False, 'authenticated': False,
                         'pinConfigured': state['configured'], 'pinWeak': False, 'localSave': False,
                         'setupComplete': True, 'setupDismissed': True,
+                        'account': {'ready': True, 'devMode': False},  # host already authorized; exercise LAN PIN separately
                         'outputConnection': {'ok': True, 'state': 'ok', 'message': '', 'banner': None, 'devMode': False, 'canPair': False, 'canCheckIn': False},
                     }))
                 page.route('**/api/session', fulfill)

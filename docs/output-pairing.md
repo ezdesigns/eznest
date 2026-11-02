@@ -1,29 +1,39 @@
-# OUTPUT pairing
+# OUTPUT account and computer setup
 
-The Ez Nest API allows nesting, sending, and stock changes without an OUTPUT
-connection. Connecting to OUTPUT is optional. When `outputConnection.ok` is
-false in `/api/session`, the browser shows **Connect to OUTPUT (optional)**
-until this browser chooses **Skip** or the host connects. **Skip** stores
-`eznest-setup-skipped` in that browser's localStorage, and later loads open
-the workspace. If that write fails, **Skip** lasts for the current visit
-only. The header still offers **Connect to OUTPUT**. On the
-shop computer, paste a one-time pairing code from
-<https://output.jeezlabs.io/outpost/ez-nest> (**Have a pairing code?**).
-Designer PCs cannot pair. If they have not chosen **Skip**, they see "Ask the
-shop computer to connect to OUTPUT."
+Full and simple modes share the same welcome, account and computer-setup flow.
+First use requires signing in to OUTPUT with its existing Privy account and
+redeeming the one-time computer code issued there. The account entry is
+<https://output.jeezlabs.io/workspace?tools=eznest>. Opening that page does not
+complete sign-in in EZNest: only successful code redemption authorizes this
+computer. There is no second Privy app, account database or password in EZNest.
+The local app stores the existing protected shop credential, not the user's
+Privy JWT, email OTP or browser cookies. This is computer authorization through
+the signed-in shop owner, not a new personal Privy session in the desktop app.
 
-`output_remote.READY` defaults to false. A shop setting cannot turn it on.
-While it is false, browser-approval routes return 403 and stock-summary
-upload stays off. **Skip** works with the flag left false. The page keeps
-**Set up your shop** hidden (`OUTPUT_APPROVE_ENDPOINT_READY` is false in
-`web.js`). Pairing with a code still works.
+`/api/session.account.ready` is the shared entry's authority. Before first
+successful authorization, product mutations return `403 sign_in_required`.
+Read-only job/inventory APIs stay available for recovery under their existing
+Host/PIN checks. Pairing, check-in, disconnect, PIN management, privacy revoke,
+cancel, shutdown and update/repair keep their existing access checks and remain
+available. A browser localStorage skip cannot authorize product mutations.
+Designer PCs must still pass the shop PIN; they cannot pair for the host.
 
-Sharing activity, and sharing capacity with the OUTPUT network, are separate
-and stay off until someone on the host opts in.
+After authorization, the host completes local printer-label, units and cut-spot
+setup. Existing settings and work are retained. The setup completion is saved
+on the host and shared between both modes. The Account button can reopen the
+connection details. A labeled source-only development opt-out remains available;
+installed builds ignore it.
 
-The public pages are <https://output.jeezlabs.io/> and the waitlist at
-<https://output.jeezlabs.io/waitlist>. Pairing, disconnect, and check-in are
-accepted only from `127.0.0.1` on the host.
+A valid protected credential plus its signed check-in receipt permits subsequent
+local offline work without an age limit. An explicit disconnect, a known
+revocation, an altered receipt or a future timestamp requires authorization
+again. Offline computers cannot discover a server-side revocation until they
+reconnect. No local files or inventory are deleted on disconnect or revocation.
+
+Sharing activity and sharing capacity are separate and stay off until the host
+opts in. `output_remote.READY` still defaults to false: no unfinished browser
+approval or stock-upload endpoint is enabled by this change. The existing code
+exchange is used instead. No production provider settings are changed.
 
 ## What OUTPUT sees
 
@@ -46,61 +56,28 @@ It is not the account connection.
 OUTPUT is pre-revenue. Where that product moves money, the money is Solana
 devnet test tokens. Ez Nest does not send a price.
 
-## What happens
+## Connection and offline status
 
-1. While `outputConnection.ok` is false, a browser that has not chosen
-   **Skip** shows **Connect to OUTPUT (optional)**. `/api/session` reports
-   `outputConnection.code: connect_required`. Other API routes do not reject
-   requests because of that status. Host, session, PIN, and host-only checks
-   still apply. **Skip** hides the screen in this browser. The session status
-   stays in `/api/session`.
-2. The host operator pastes a pairing code. The code is not logged or shown
-   again.
-3. Ez Nest sends that code to the pair endpoint and receives a scoped shop key.
-4. The host stores the key. The browser opens the workspace. Activity is not
-   uploaded yet.
-5. After **Enable sharing**, new local activity can be delivered as
-   `eznest-observation/1` events. That consent is still optional.
+1. Welcome → OUTPUT account sign-in → one-time computer code → local setup.
+2. A successful exchange stores the protected credential and signed receipt.
+3. The workspace opens only after the server confirms authorization. Sharing
+   remains off; earlier activity is not uploaded by the sign-in action.
+4. Later starts, including a fresh browser profile, use that protected host
+   receipt. The full and simple modes do not need separate sign-ins.
 
-Earlier activity is not uploaded for that consent. Exact quantities stay on
-the host.
-
-## Offline grace
-
-`CHECK_IN_MAX_AGE_DAYS` is 14. After a successful pairing or check-in, Ez Nest
-keeps the browser workspace open when OUTPUT cannot be reached. The check-in
-record is bound to the shop credential. A missing or unreadable record keeps
-a browser that has not chosen **Skip** on **Connect to OUTPUT (optional)**
-until a live check-in succeeds. A check-in record written by the previous build has no
-signature. If the credential is still present, the time is not ahead of this
-computer, and the record is under 14 days old, the first load signs it and
-the offline grace continues. Any other unsigned record keeps a browser that
-has not chosen **Skip** on **Connect to OUTPUT (optional)**. A time ahead of this computer is not a current check-in.
-A banner appears after 3 days offline. After 14 days without a successful
-check-in, the next page load shows **Connect to OUTPUT (optional)** in a
-browser that has not chosen **Skip**, until a check-in succeeds.
-If OUTPUT says the credential is unpaired or revoked, the stored credential
-is removed and stays revoked. A browser that has not chosen **Skip** shows
-**Connect to OUTPUT (optional)** on the next page load.
-These connection states do not block API access.
-
-Check-in is `POST /api/shop/agent/check-in` with `{"appVersion":"..."}` only.
-The computer name and installation id are not sent again. A missing route or
-a network failure counts as unreachable, not as an unpaired computer. A
-response that says the credential is unpaired or revoked does.
+The older `outputConnection` field still describes network check-in freshness:
+its 14-day freshness window and 3-day banner are not the local account gate.
+The common entry uses `account.ready`, so a stale connection does not prevent
+local nesting. A missing check-in route is unreachable, not a revocation.
+Check-in sends only `appVersion`, not the computer name or installation id again.
 
 ## Dev mode
 
-`EZ_NEST_DEV_NO_OUTPUT=1` and `EZ_NEST_OUTPUT_GATE_OPEN=1` are honored only
-when the process is a source checkout started in dev mode (`--dev`, which
-sets `EZ_NEST_DEV=1`). The page shows `DEV MODE: not connected to OUTPUT`
-while the first of those is set. Installed Windows and macOS builds, and the
-container image, ignore those variables. Those builds show **Connect to
-OUTPUT (optional)**, including **Skip**, when the host is not connected.
-API access does not require these variables.
-
-Disconnect is host-only. It clears the paired credential. A browser that has
-not chosen **Skip** shows **Connect to OUTPUT (optional)** again.
+`EZ_NEST_DEV_NO_OUTPUT=1` and `EZ_NEST_OUTPUT_GATE_OPEN=1` are honored only by a
+source checkout started with `--dev`. The Account label identifies development
+mode. Installed Windows/macOS builds and the container image ignore those flags
+and require server-confirmed computer authorization. This opt-out is not a
+production sign-in or a way to test a real Privy session.
 
 ## Endpoints
 
@@ -201,5 +178,5 @@ are not uploaded.
 
 ## Known limits
 
-- OUTPUT check-in responses are not signed receipts. This build does not
-  check a signed receipt.
+- OUTPUT check-in responses are not server-signed receipts. EZNest checks a
+  local MAC on its stored check-in record; that is not a server signature.

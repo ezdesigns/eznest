@@ -49,12 +49,6 @@ def svg_file_flow(api, root):
                 print('SVG_STAGE: page-load', flush=True)
                 page.goto(ORIGIN + '/?view=simple', wait_until='domcontentloaded')
                 expect(page.locator('body')).to_have_attribute('data-ready', '1', timeout=60000)
-                print('SVG_STAGE: optional-output', flush=True)
-                if page.locator('#output-required').is_visible():
-                    page.click('#output-required-skip')
-                    expect(page.locator('#output-required')).to_be_hidden()
-                    # Skip reloads the document. Wait for the new page's handlers and API state.
-                    expect(page.locator('body')).to_have_attribute('data-ready', '1', timeout=60000)
                 if page.locator('#feedback-welcome').is_visible():
                     page.click('#feedback-dismiss')
                 if page.locator('#setup').is_visible():

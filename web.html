@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/web.css">
 <link rel="stylesheet" href="/app-theme.css">
 <link rel="stylesheet" href="/inventory-panel.css">
-</head>
+<link rel="stylesheet" href="/account-entry.css"><script src="/account-entry.js"></script></head>
 <body data-step="drop">
 <header class="shop-header app-header">
   <strong class="brand">EZNest<small>NESTING FOR PRINT SHOPS</small></strong>
@@ -58,7 +58,7 @@
 </dialog>
 <div id="output-required" class="output-required" role="status" hidden>
   <div>
-    <p><strong id="output-required-title">Connect to OUTPUT (optional)</strong> <span class="hint">Nesting works without it. Connect any time in Settings.</span></p>
+    <p><strong id="output-required-title">Sign in to OUTPUT</strong> <span class="hint">Authorize this computer once, then nest offline.</span></p>
     <p id="output-required-note" class="hint"></p>
   </div>
   <div class="output-required-actions">
@@ -167,7 +167,7 @@
         <button id="output-disconnect" class="link" type="button" hidden>Disconnect</button>
       </div>
       <h3>What OUTPUT sees</h3>
-      <p>Connecting to OUTPUT is optional. Nesting, saving, and stock work without it. The connection is separate from sharing activity.</p>
+      <p>Sign in through OUTPUT and authorize this computer before first use. Local nesting then works offline. Activity sharing is a separate choice.</p>
       <p>Sent when you connect: this computer's name and this installation id, once, in the pairing request. Later check-ins send the app version. The shop credential authenticates those HTTPS requests. OUTPUT also sees this computer's IP address on those requests.</p>
       <p>Sent only after <strong>Enable sharing</strong>, and only for new activity: a stable installation id, opaque layout and request ids, the exact event time, the app version, the event type, a standard material category, and the measurement ranges below. Measured stock readings already on this host can be included. Earlier activity is excluded. A failed delivery is retried with the same event id. The shop stock ledger stays here.</p>
       <p>Never sent: artwork, files or filenames, customer names or contacts, job codes, roll ids, custom material names, exact dimensions, quantities, stock contents, or search time. These are local observations; “printed” means an explicit operator confirmation, not independent proof of physical printing.</p>
@@ -179,7 +179,7 @@
       <label>OUTPUT service address
         <input id="output-url" type="url" inputmode="url" maxlength="200" spellcheck="false" autocapitalize="none" placeholder="https://output.jeezlabs.io" aria-describedby="output-url-note">
       </label>
-      <p id="output-url-note" class="hint">Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree here. Connecting to OUTPUT is optional.</p>
+      <p id="output-url-note" class="hint">Leave blank for https://output.jeezlabs.io. Change it only on this computer. Another address has to match EZ_NEST_OUTPUT_URL, set when Ez Nest starts. Activity sharing stays off until you agree here. Local nesting works offline after first authorization.</p>
       <p>Destination: <code id="output-destination">https://output.jeezlabs.io/api/shop/telemetry</code></p>
       <details><summary>Exact JSON fields (illustrative event)</summary><pre id="telemetry-preview" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
       <p>Stopping prevents further requests after any in-flight request finishes. It does not delete records already received by OUTPUT. Re-enabling excludes all activity recorded before the new consent.</p>
@@ -205,7 +205,7 @@
     <p class="hint">Off during beta. To turn checks on, check this box and start Ez Nest with <code>EZ_NEST_UPDATES=1</code>. Ez Nest keeps a download only when its SHA-256 matches the published checksum. Installing that file is still a separate click.</p>
     <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
     <label class="check" hidden><input id="output-network" type="checkbox"> Share capacity with the OUTPUT network</label>
-    <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Connecting this computer to OUTPUT is optional and is not this switch.</p>
+    <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Account authorization is separate from this switch.</p>
     <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
     <p id="update-note" class="hint" hidden></p>
     <button id="update-cancel" type="button" class="link" hidden>Cancel waiting update</button>

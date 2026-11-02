@@ -1,22 +1,15 @@
-"""Require a shop host to be connected to OUTPUT.
+"""OUTPUT network freshness and protected local computer authorization.
 
-Nesting, sending, and stock stay closed until this computer has a shop
-credential and a current check-in. After a successful pairing or check-in,
-an unreachable OUTPUT does not stop the shop until CHECK_IN_MAX_AGE_DAYS
-have passed. A banner appears after OFFLINE_BANNER_AFTER_DAYS. The check-in
-body is only the app version. The computer name and installation id are sent
-once, by pairing.
+The 14-day check-in window describes the remote connection. Local work uses
+account_status: after first successful computer authorization, a valid protected
+credential and signed receipt permit offline work without an age limit. Explicit
+disconnect, known revocation or an altered/future receipt requires authorization
+again. The UI never treats opening OUTPUT or a browser skip flag as proof.
 
-The check-in record is signed with a key derived from the shop credential.
-A record from the previous build has no signature. If it is otherwise
-current, the first load signs it and the offline grace continues. That
-upgrade happens only on a computer that has never kept a signed record or a
-revocation (output-checkin-history.json notes both). Any other
-missing, unreadable, or mismatched record stays closed until a live check-in
-or pairing succeeds. A check-in time ahead of this computer is not current.
-Revoked credentials are part of the signed record.
-
-The credential is never written here, logged, or returned to the browser.
+Check-in sends only appVersion. Computer name and installation id are sent once
+by pairing. Credentials are never logged or returned to the browser. The local
+MAC is not a server-signed check-in response. Existing source-only developer
+opt-outs remain unavailable in installed builds.
 """
 import hashlib
 import hmac
@@ -583,6 +576,27 @@ def run(directory, stop):
 SEEN_RECENTLY = DAY_SECONDS
 
 
+def account_status(directory, local, now=None):
+    """Authorization of this computer, not a browser's Privy session.
+
+    OUTPUT requires its existing Privy owner session to issue the one-time
+    computer code. Its redemption writes a protected credential and signed
+    check-in receipt. The receipt permits subsequent offline local work without
+    an age limit. Known revocation, tampering, a future timestamp or explicit
+    disconnect still requires authorization again.
+    """
+    dev = dev_escape() or gate_opt_out()
+    token, _source = _token(directory)
+    with LOCK:
+        verdict = _verdict(directory, token, _stamp(now))
+    return {
+        'ready': bool(dev or verdict['open']), 'devMode': bool(dev),
+        'canConnect': bool(local) and _uploads() not in ('0', '1'),
+        'connectUrl': shop_deploy.output_base_url(directory) + '/workspace?tools=eznest',
+        'state': 'development' if dev else verdict['state'],
+    }
+
+
 def link_status(directory, local, now=None):
     """Browser-safe OUTPUT link for the header control. Never gates nesting.
 
@@ -596,7 +610,7 @@ def link_status(directory, local, now=None):
     view = {
         'state': 'unpaired', 'shopName': info.get('shopName'), 'lastCheckInAt': None,
         'secondsSinceCheckIn': None, 'canPair': bool(local) and _uploads() not in ('0', '1'),
-        'connectUrl': base + '/outpost/ez-nest',
+        'connectUrl': base + '/workspace?tools=eznest',
     }
     with LOCK:
         raw = _read_state(directory)
