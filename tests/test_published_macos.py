@@ -335,9 +335,14 @@ def install(root, expected):
     verify_installed_identity()
     require(session['outputConnection']['ok'] is False
             and session['outputConnection']['devMode'] is False
+            and session['account']['ready'] is False
+            and session['account']['devMode'] is False
             and api.request('/api/state')[0] == 200,
             'Fresh installed connection status or unpaired API access is incorrect.')
-    receipt.update(installed=True, unpairedApiOpen=True)
+    status, blocked = api.request('/api/solve', {})
+    require(status == 403 and blocked.get('code') == 'sign_in_required',
+            'A fresh installed host must require first authorization.')
+    receipt.update(installed=True, unpairedApiOpen=True, firstAuthorizationRequired=True)
     write_json(root / 'eznest-macos-acceptance.json', receipt)
     print('INSTALL_PASS: signed downloaded package installed as a limited, unpaired service.')
 
@@ -465,16 +470,68 @@ def preview_settings(api):
             'Installed service is not listening exclusively on IPv4 loopback.')
 
 
+def authorize_offline_fixture(root):
+    """CI-only disk fixture, never live sign-in or a product authorization bypass.
+
+    Own the disposable VM before touching service files. The installed executable
+    remains unchanged; its OUTPUT origin is temporarily confined to a closed
+    loopback port before a synthetic credential is written. Source helpers only
+    create the protected fixture, not the installed service under test.
+    """
+    require(runner_guard() == root.resolve(), 'Fixture requires the owned hosted runner.')
+    ownership = json.loads((root / 'eznest-macos-owned.json').read_text())
+    receipt = json.loads((root / 'eznest-macos-acceptance.json').read_text())
+    require(ownership.get('runId') == os.environ['GITHUB_RUN_ID']
+            and ownership.get('installerSettled') is True
+            and receipt.get('installed') is True
+            and receipt.get('firstAuthorizationRequired') is True
+            and receipt.get('paired') is False
+            and not receipt.get('syntheticAuthorization'),
+            'A fresh, settled installation owned by this CI run is required.')
+    source = str(Path(__file__).resolve().parents[1])
+    command(['/usr/bin/sudo', '-n', '/bin/launchctl', 'bootout', 'system/' + LABEL])
+    result = sudo_python(
+        "import os, pathlib, plistlib, pwd, sys, time; "
+        "p=pathlib.Path('/Library/LaunchDaemons/io.jeezlabs.eznest.plist'); "
+        "assert p.is_file() and not p.is_symlink() and p.stat().st_uid==0; "
+        "v=plistlib.loads(p.read_bytes()); "
+        "assert v['UserName']==v['GroupName']=='_eznest' and not v.get('EnvironmentVariables'); "
+        "v['EnvironmentVariables']={'EZ_NEST_OUTPUT_URL':'https://127.0.0.1:1'}; "
+        "p.write_bytes(plistlib.dumps(v)); "
+        "u=pwd.getpwnam('_eznest'); assert 350 <= u.pw_uid < 500; "
+        "os.setgroups([]); os.setgid(u.pw_gid); os.setuid(u.pw_uid); "
+        f"sys.path.insert(0, {source!r}); "
+        "import output_credential, output_gate; "
+        "d=pathlib.Path('/Library/Application Support/eznest'); "
+        "assert not output_credential.path(d).exists(); "
+        "output_credential.save(d, 'osa_'+'C'*43, 'Synthetic offline CI fixture'); "
+        "output_gate.note_paired(d, now=int(time.time())-120*86400); "
+        "print('CI_AUTH_FIXTURE_PASS')")
+    require(result.stdout.strip() == 'CI_AUTH_FIXTURE_PASS', 'Synthetic fixture was not created.')
+    receipt['syntheticAuthorization'] = True
+    write_json(root / 'eznest-macos-acceptance.json', receipt)
+    command(['/usr/bin/sudo', '-n', '/bin/launchctl', 'bootstrap', 'system', str(DAEMON)])
+    api = LocalAPI(); session = api.healthy()
+    require(session['account']['ready'] is True and session['account']['devMode'] is False
+            and session['account']['connectUrl'] == 'https://127.0.0.1:1/workspace?tools=eznest',
+            'Installed offline authorization or loopback OUTPUT confinement failed.')
+    require(api.request('/api/setup', {'printer':'Synthetic CI', 'units':'mm',
+            'thru':'CutContour_Thru-cut', 'kiss':'CutContour_Kiss-cut', 'hotFolder':''})[0] == 200,
+            'Authorized installed setup failed.')
+    return api
+
+
 def offline(root):
-    """Local release acceptance; no pairing code, remote shop or account is used."""
+    """Installed local flows with a synthetic disk receipt; no live Privy claim."""
     receipt_path = root / 'eznest-macos-acceptance.json'
     receipt = json.loads(receipt_path.read_text())
     require(receipt.get('installed') is True and receipt.get('unpairedApiOpen') is True
             and receipt.get('paired') is False, 'A fresh unpaired owned installation is required.')
-    api = LocalAPI(); api.session()
+    api = authorize_offline_fixture(root)
+    receipt = json.loads(receipt_path.read_text())
     status, sharing = api.request('/api/telemetry/output')
-    require(status == 200 and sharing.get('configured') is False and sharing.get('enabled') is False,
-            'Offline acceptance must remain unpaired with sharing disabled.')
+    require(status == 200 and sharing.get('configured') is True and sharing.get('enabled') is False,
+            'Synthetic offline acceptance must keep sharing disabled.')
     preview_settings(api)
     print('OFFLINE_STAGE: pdf', flush=True)
     exports = [pdf_file_flow(api)]
@@ -485,12 +542,14 @@ def offline(root):
     before = api.session()['pid']
     command(['/usr/bin/sudo', '-n', '/bin/launchctl', 'kickstart', '-k', 'system/' + LABEL])
     require(api.healthy()['pid'] != before, 'The service process did not restart.')
+    require(api.session()['account']['ready'] is True,
+            'Offline authorization did not survive service restart.')
     verify_persistence(api, exports)
     preview_settings(api)
     receipt.update(offlineFileFlows=True, restarted=True, nested=True, persistenceVerified=True,
                    sharingOff=True, updatesOff=True, loopbackOnly=True)
     write_json(receipt_path, receipt)
-    print('OFFLINE_PASS: local PDF/SVG export and restart persistence; no remote pairing claim.')
+    print('OFFLINE_PASS: installed PDF/SVG and restart with synthetic offline authorization; no live sign-in claim.')
 
 
 def connect(root):
@@ -499,6 +558,7 @@ def connect(root):
             'An owner-approved one-time test-shop code is required.')
     receipt = json.loads((root / 'eznest-macos-acceptance.json').read_text())
     require(receipt['installed'] and receipt['unpairedApiOpen'], 'Installed acceptance evidence is incomplete.')
+    require(not receipt.get('syntheticAuthorization'), 'Live pairing requires a fresh installation without a CI fixture.')
     api = LocalAPI(); api.session()
     status, value = api.request('/api/telemetry/output/pair', {'code': code})
     require(status == 200 and value.get('configured') is True and value.get('enabled') is False,
@@ -552,11 +612,13 @@ def verify_revoked(root):
             time.sleep(120)
     require(status == 200 and value.get('state') == 'revoked' and value.get('ok') is False,
             'Owner revocation was not observed within the check-in budget.')
-    require(api.request('/api/state')[0] == 200 and api.request('/api/solve', {})[0] == 400,
-            'Revoked OUTPUT connection blocked API access or bypassed request validation.')
+    status, blocked = api.request('/api/solve', {})
+    require(api.request('/api/state')[0] == 200 and status == 403
+            and blocked.get('code') == 'sign_in_required',
+            'Revoked authorization must preserve reads and require sign-in for nesting.')
     receipt['revoked'] = True
     write_json(root / 'eznest-macos-acceptance.json', receipt)
-    print('REVOCATION_PASS: owner revocation was reported; the installed API remains accessible.')
+    print('REVOCATION_PASS: owner revocation relocked nesting; local work remains readable.')
 
 
 # Fixed paths only; preflight + run-specific marker establish exclusive VM ownership.

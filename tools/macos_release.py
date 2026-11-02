@@ -144,10 +144,13 @@ def finalize(out):
     accepted = json.loads((Path(os.environ['RUNNER_TEMP']) / 'eznest-macos-acceptance.json').read_text())
     if (accepted.get('version') != receipt['version'] or accepted.get('sha256') != receipt['sha256']
             or not all(accepted.get(k) is True for k in
-                       ('installed', 'offlineFileFlows', 'persistenceVerified', 'restarted',
+                       ('installed', 'firstAuthorizationRequired', 'syntheticAuthorization',
+                        'offlineFileFlows', 'persistenceVerified', 'restarted',
                         'sharingOff', 'updatesOff', 'loopbackOnly', 'cleanup'))):
         raise ValueError('Installed Mac acceptance or owned cleanup is incomplete.')
-    receipt.update(installed=True, offlineFileFlows=True, restartPersistence=True, cleanup=True)
+    receipt.update(installed=True, firstAuthorizationRequired=True,
+                   authorizationFixture='synthetic-protected-receipt-loopback-only',
+                   liveSignInVerified=False, offlineFileFlows=True, restartPersistence=True, cleanup=True)
     receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
 
 

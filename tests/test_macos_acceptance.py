@@ -115,6 +115,56 @@ class MacAcceptanceVerifierTests(unittest.TestCase):
             acceptance.cleanup(Path(folder))
             privileged.assert_not_called()
 
+    def test_offline_fixture_rejects_local_machine_before_privileged_operations(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {}, clear=True), \
+                patch.object(acceptance, 'command') as command, \
+                patch.object(acceptance, 'sudo_python') as privileged:
+            with self.assertRaises(acceptance.AcceptanceError):
+                acceptance.authorize_offline_fixture(Path(folder))
+            command.assert_not_called(); privileged.assert_not_called()
+
+    def test_offline_fixture_requires_same_run_settled_fresh_installation(self):
+        for marker in ({'runId':'12', 'installerSettled':False},
+                       {'runId':'99', 'installerSettled':True}):
+            with self.subTest(marker=marker), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                (root/'eznest-macos-owned.json').write_text(json.dumps(marker))
+                (root/'eznest-macos-acceptance.json').write_text(json.dumps({
+                    'installed':True, 'firstAuthorizationRequired':True, 'paired':False}))
+                with patch.dict(os.environ, {'GITHUB_RUN_ID':'12'}), \
+                        patch.object(acceptance, 'runner_guard', return_value=root.resolve()), \
+                        patch.object(acceptance, 'command') as command, \
+                        patch.object(acceptance, 'sudo_python') as privileged:
+                    with self.assertRaises(acceptance.AcceptanceError):
+                        acceptance.authorize_offline_fixture(root)
+                    command.assert_not_called(); privileged.assert_not_called()
+
+    def test_offline_receipt_preserves_synthetic_provenance_and_cannot_be_live_pairing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); path = root/'eznest-macos-acceptance.json'
+            receipt = {'installed':True, 'unpairedApiOpen':True, 'paired':False,
+                       'firstAuthorizationRequired':True}
+            path.write_text(json.dumps(receipt))
+            api = Mock(); api.session.side_effect = [{'pid':1}, {'pid':2, 'account':{'ready':True}}]
+            api.healthy.return_value = {'pid':2}
+            api.request.return_value = (200, {'configured':True, 'enabled':False})
+            def fixture(_root):
+                path.write_text(json.dumps({**receipt, 'syntheticAuthorization':True}))
+                return api
+            with patch.object(acceptance, 'authorize_offline_fixture', side_effect=fixture), \
+                    patch.object(acceptance, 'preview_settings'), \
+                    patch.object(acceptance, 'command'), \
+                    patch.object(acceptance, 'pdf_file_flow', return_value={'format':'pdf'}), \
+                    patch('macos_svg_acceptance.svg_file_flow', return_value={'format':'svg'}), \
+                    patch.object(acceptance, 'verify_persistence'):
+                acceptance.offline(root)
+            self.assertTrue(json.loads(path.read_text())['syntheticAuthorization'])
+            with patch.dict(os.environ, {'EZ_NEST_MACOS_ACCEPTANCE_CODE':'ABCDE-FGHJK'}), \
+                    patch.object(acceptance, 'LocalAPI') as client:
+                with self.assertRaisesRegex(acceptance.AcceptanceError, 'without a CI fixture'):
+                    acceptance.connect(root)
+                client.assert_not_called()
+
     @staticmethod
     def pack(kind='svg', *, pieces=2, complete=True, batch_id='test-batch', artwork=None):
         if artwork is None:

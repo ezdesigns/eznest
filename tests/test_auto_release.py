@@ -74,7 +74,9 @@ def artifacts(root):
     win_receipt = dict(version=VERSION, commit=COMMIT, sha256=release.digest(exe))
     mac_receipt = dict(version=VERSION, commit=COMMIT, sha256=release.digest(pkg), architecture='arm64',
                        applicationNotarized=True, packageNotarized=True, packageSigned=True,
-                       installed=True, offlineFileFlows=True, restartPersistence=True, cleanup=True)
+                       installed=True, firstAuthorizationRequired=True,
+                       authorizationFixture='synthetic-protected-receipt-loopback-only',
+                       liveSignInVerified=False, offlineFileFlows=True, restartPersistence=True, cleanup=True)
     (win / 'BUILD.json').write_text(json.dumps(win_receipt))
     (win / 'manifest.json').write_text(json.dumps({**win_receipt, 'filename': exe.name}))
     (apple / 'MACOS-RELEASE.json').write_text(json.dumps(mac_receipt))
@@ -262,15 +264,19 @@ class AdditionalPublicationBoundaries(unittest.TestCase):
             root=Path(folder); artifacts(root)
             out=root/'macos'
             accepted=dict(version=VERSION,sha256=json.loads((out/'MACOS-RELEASE.json').read_text(encoding="utf-8"))['sha256'],
-                installed=True,offlineFileFlows=True,persistenceVerified=True,restarted=True,
+                installed=True,firstAuthorizationRequired=True,syntheticAuthorization=True,
+                offlineFileFlows=True,persistenceVerified=True,restarted=True,
                 sharingOff=True,updatesOff=True,loopbackOnly=True,cleanup=True)
             with patch.dict(os.environ,{'RUNNER_TEMP':str(root)}):
-                for key in ('installed','offlineFileFlows','persistenceVerified','restarted','sharingOff','updatesOff','loopbackOnly','cleanup'):
+                for key in ('installed','firstAuthorizationRequired','syntheticAuthorization','offlineFileFlows','persistenceVerified','restarted','sharingOff','updatesOff','loopbackOnly','cleanup'):
                     (root/'eznest-macos-acceptance.json').write_text(json.dumps({**accepted,key:False}))
                     with self.subTest(key=key), self.assertRaises(ValueError): mac.finalize(out)
                 (root/'eznest-macos-acceptance.json').write_text(json.dumps(accepted))
                 mac.finalize(out)
-                self.assertTrue(json.loads((out/'MACOS-RELEASE.json').read_text(encoding="utf-8"))['cleanup'])
+                finalized=json.loads((out/'MACOS-RELEASE.json').read_text(encoding="utf-8"))
+                self.assertTrue(finalized['cleanup'])
+                self.assertFalse(finalized['liveSignInVerified'])
+                self.assertEqual(finalized['authorizationFixture'], 'synthetic-protected-receipt-loopback-only')
 
     def test_mac_signing_cannot_touch_a_local_machine(self):
         values={name:'fixture' for name in mac.REQUIRED}
@@ -287,15 +293,19 @@ class OfflineAcceptanceTests(unittest.TestCase):
         import macos_svg_acceptance
         class API:
             def request(self, path, body=None):
-                if path == '/api/telemetry/output': return 200, {'configured':False,'enabled':False}
+                if path == '/api/telemetry/output': return 200, {'configured':True,'enabled':False}
                 if path == '/api/work/discard': return 200, {}
                 raise AssertionError('Unexpected API path: ' + path)
-            def session(self): return {'pid':1}
+            def session(self): return {'pid':1,'account':{'ready':True}}
             def healthy(self): return {'pid':2}
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder); receipt=root/'eznest-macos-acceptance.json'
             receipt.write_text(json.dumps({'installed':True,'unpairedApiOpen':True,'paired':False}))
-            with patch.object(acceptance,'LocalAPI',return_value=API()), \
+            def fixture(_root):
+                value=json.loads(receipt.read_text()); value['syntheticAuthorization']=True
+                receipt.write_text(json.dumps(value))
+                return API()
+            with patch.object(acceptance,'authorize_offline_fixture',side_effect=fixture), \
                  patch.object(acceptance,'preview_settings'), patch.object(acceptance,'pdf_file_flow',return_value={'format':'pdf'}), \
                  patch.object(macos_svg_acceptance,'svg_file_flow',return_value={'format':'svg'}), \
                  patch.object(acceptance,'verify_persistence') as persistence, patch.object(acceptance,'command') as command:

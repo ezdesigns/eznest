@@ -180,9 +180,10 @@ try {
     }
     Assert ($check.Status -eq 200 -and $check.Json.state -eq 'revoked' -and -not $check.Json.ok) 'Owner revocation was not observed within the bounded check-in budget.'
     Assert ((Api '/api/state').Status -eq 200) 'Revoked OUTPUT connection blocked the installed workspace.'
-    Assert ((Api '/api/solve' @{}).Status -eq 400) 'Revoked installed host did not validate the empty nesting request.'
+    $blocked = Api '/api/solve' @{}
+    Assert ($blocked.Status -eq 403 -and $blocked.Json.code -eq 'sign_in_required') 'Revoked installed nesting must require sign-in.'
     $receipt.revoked = $true; Save-Receipt $receipt
-    Write-Output 'REVOCATION_PASS: production revocation was reported; the installed API remains accessible.'
+    Write-Output 'REVOCATION_PASS: production revocation relocked nesting; local work remains readable.'
   }
 } catch {
   # Never emit exception/request/session bodies; they can contain credentials.

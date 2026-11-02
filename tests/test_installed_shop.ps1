@@ -126,6 +126,11 @@ try {
   Assert ($task.Actions[0].Arguments -notmatch '--lan') 'Fresh install enabled LAN.'
   $version = (Get-Content (Join-Path $root 'version.json') -Raw | ConvertFrom-Json).version
   Assert (Wait-ShopHealthy $version (Join-Path $app 'eznest.exe') 120) 'Installed server did not start as eznest-svc.'
+  $session = Invoke-LocalApi '/api/session'
+  Assert (-not $session.account.ready -and -not $session.account.devMode) 'Fresh installed host bypassed account authorization.'
+  $blocked = Invoke-WebRequest 'http://127.0.0.1:8765/api/solve' -Method Post -ContentType 'application/json' -Body '{}' -Headers @{'X-EZ-Token'=$script:SessionToken} -SkipHttpErrorCheck
+  Assert ($blocked.StatusCode -eq 403 -and ($blocked.Content | ConvertFrom-Json).code -eq 'sign_in_required') 'Fresh installed nesting must require sign-in.'
+  Assert ((Invoke-LocalApi '/api/state').status) 'Local recovery state is unavailable before sign-in.'
   $savedShop = (Read-LockedFile $shopFile | ConvertFrom-Json)
   Assert (-not $savedShop.lan -and -not $savedShop.outputNetwork -and -not $savedShop.updates) 'Installed defaults differ from selected options.'
   $listeners = Get-NetTCPConnection -LocalPort 8765 -State Listen

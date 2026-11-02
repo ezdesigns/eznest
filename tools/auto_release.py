@@ -132,7 +132,10 @@ def checked_assets(directory, version, commit):
         if binary == pkg and (receipt.get('architecture') != 'arm64'
                 or not all(receipt.get(key) is True for key in
                            ('applicationNotarized', 'packageNotarized', 'packageSigned',
-                            'installed', 'offlineFileFlows', 'restartPersistence', 'cleanup'))):
+                            'installed', 'firstAuthorizationRequired', 'offlineFileFlows',
+                            'restartPersistence', 'cleanup'))
+                or receipt.get('authorizationFixture') != 'synthetic-protected-receipt-loopback-only'
+                or receipt.get('liveSignInVerified') is not False):
             raise ReleaseError('Signed Mac acceptance evidence is incomplete.')
     manifest = win / 'manifest.json'
     digest(manifest)
@@ -154,10 +157,13 @@ def publish(github, event, version, directory, *, upload=None):
     release = next((r for r in github.releases() if r['tag_name'] == tag), None)
     if release is None:
         notes = (f'EZNest {version}\n\nSource: `{state["sha"]}`.\n\n'
-                 'Windows x64: unsigned preview; fresh-install checks passed.\n'
+                 'Windows x64: Authenticode signature and fresh-install checks passed.\n'
                  'Mac: Apple Silicon/macOS 26 experimental preview, new test installations only. '
                  'Developer ID signed, notarized and stapled; local SVG/PDF export, restart persistence '
-                 'and owned VM cleanup checked. Keep updates off. Closing the browser leaves the service running.\n\n'
+                 'and owned VM cleanup checked using a synthetic protected authorization receipt '
+                 'with OUTPUT confined to loopback. First-use authorization is required; '
+                 'live Privy sign-in is not verified by that fixture. Keep updates off. '
+                 'Closing the desktop window leaves the shop service running.\n\n'
                  'Live OUTPUT pairing/revocation remains a separate owner-run acceptance. '
                  'Production RIP/cutting, signed upgrades/rollback, reboot/logout longevity, Intel Macs '
                  'and normal end-user uninstallation are not established by this release workflow.\n\n'

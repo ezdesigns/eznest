@@ -79,6 +79,15 @@ mode. Installed Windows/macOS builds and the container image ignore those flags
 and require server-confirmed computer authorization. This opt-out is not a
 production sign-in or a way to test a real Privy session.
 
+The disposable macOS release runner first verifies that an unpaired installed
+service rejects nesting with `sign_in_required`. For local SVG/PDF and restart
+acceptance only, it stops its owned service, confines its OUTPUT origin to a
+closed loopback port, and seeds a synthetic protected credential and 120-day-old
+signed receipt as the limited service user. The installed binary still enforces
+the account gate. Release receipts identify this fixture and explicitly record
+`liveSignInVerified: false`; they do not claim real Privy sign-in or remote pairing.
+The fixture refuses non-hosted machines and installations not owned by that run.
+
 ## Endpoints
 
 The default service origin is `https://output.jeezlabs.io`. Pairing posts to
