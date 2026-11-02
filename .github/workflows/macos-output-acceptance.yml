@@ -5,17 +5,18 @@ on:
   workflow_dispatch:
     inputs:
       package_sha256:
-        description: Verified public rc.7 signed Mac package SHA-256
+        description: Verified public rc.8 signed Mac package SHA-256
         type: string
         required: true
 permissions:
   contents: read
+  actions: read
 concurrency:
-  group: rc7-signed-upgrade-${{ github.ref }}
+  group: rc8-signed-upgrade-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   upgrade:
-    if: github.repository == 'ezdesigns/eznest' && github.ref == 'refs/heads/codex/verify-rc7-upgrade'
+    if: github.repository == 'ezdesigns/eznest' && github.ref == 'refs/heads/codex/verify-rc8-upgrade'
     runs-on: macos-26
     timeout-minutes: 20
     steps:
@@ -27,20 +28,29 @@ jobs:
         with:
           python-version: '3.12'
           architecture: arm64
+      - name: Download the exact earlier signed rc.7 manual test artifact
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '13118564129'
+          run-id: '41395752839'
+          github-token: ${{ github.token }}
+          repository: ezdesigns/eznest
+          path: ${{ runner.temp }}/rc7-baseline
+          merge-multiple: true
       - name: Verify signed upgrade, retained Inventory and Applications desktop window
         env:
           EZ_NEST_PACKAGE_SHA256: ${{ inputs.package_sha256 }}
-        run: python tests/verify_rc7_upgrade.py Run
+        run: python tests/verify_rc8_upgrade.py Run
       - name: Clean up only this VM owned installation after settled Installer
         if: always()
-        run: python tests/verify_rc7_upgrade.py Cleanup
+        run: python tests/verify_rc8_upgrade.py Cleanup
       - name: Upload sanitized evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rc7-signed-upgrade-${{ github.run_id }}
+          name: rc8-signed-upgrade-${{ github.run_id }}
           path: |
-            ${{ runner.temp }}/eznest-rc7-upgrade.json
+            ${{ runner.temp }}/eznest-rc8-upgrade.json
             ${{ runner.temp }}/eznest-macos-acceptance.json
           if-no-files-found: warn
           retention-days: 7

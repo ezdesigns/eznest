@@ -6,13 +6,47 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
-import verify_rc7_upgrade as q
+import verify_rc8_upgrade as q
 
 
 class UpgradeVerifierTests(unittest.TestCase):
+    def receipt(self, root):
+        folder = root / 'rc7-baseline'; folder.mkdir()
+        value = {'version':q.BASELINE, 'commit':q.BASELINE_SOURCE, 'sha256':q.BASELINE_HASH,
+            'teamId':q.a.TEAM, 'architecture':'arm64'}
+        value.update({key:True for key in ('applicationNotarized','packageNotarized','packageSigned',
+            'installed','offlineFileFlows','restartPersistence','cleanup')})
+        (folder / 'MACOS-RELEASE.json').write_text(json.dumps(value))
+        return folder, value
+
+    def test_other_rc7_source_is_rejected_before_copy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); source, value = self.receipt(root)
+            value['commit'] = '0' * 40
+            (source / 'MACOS-RELEASE.json').write_text(json.dumps(value))
+            with self.assertRaisesRegex(q.a.AcceptanceError, 'reviewed signed test build'):
+                q.baseline(root)
+            self.assertFalse((root / f'eznest-shop-arm64-{q.BASELINE}.pkg').exists())
+
+    def test_changed_baseline_bytes_cannot_count_as_reviewed_package(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); source, _ = self.receipt(root)
+            (source / f'eznest-shop-arm64-{q.BASELINE}.pkg').write_bytes(b'changed signed package')
+            with self.assertRaisesRegex(q.a.AcceptanceError, 'checksum mismatch'):
+                q.baseline(root)
+
+    def test_linked_baseline_package_is_rejected_before_copy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); source, _ = self.receipt(root)
+            target = root / 'borrowed'; target.write_bytes(b'not owned package')
+            (source / f'eznest-shop-arm64-{q.BASELINE}.pkg').symlink_to(target)
+            with self.assertRaisesRegex(q.a.AcceptanceError, 'bounded regular file'):
+                q.baseline(root)
+            self.assertEqual(target.read_bytes(), b'not owned package')
+
     def test_local_execution_cannot_start_work(self):
         with patch.dict(os.environ, {}, clear=True), patch.object(q, 'run') as run, \
-                patch.object(q.sys, 'argv', ['verify_rc7_upgrade.py', 'Run']):
+                patch.object(q.sys, 'argv', ['verify_rc8_upgrade.py', 'Run']):
             self.assertEqual(q.main(), 1)
             run.assert_not_called()
 

@@ -1,10 +1,12 @@
-"""QA-only signed rc.6 -> rc.7 upgrade on an exclusively owned disposable VM."""
+"""QA-only signed earlier rc.7 -> rc.8 upgrade on an exclusively owned disposable VM."""
 import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import plistlib
+import stat
 import subprocess
 import sys
 import time
@@ -12,9 +14,10 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 import test_published_macos as a
 
-BASELINE = '1.0.0-rc.6'
-BASELINE_HASH = 'fa1541a5d08ab12dd43db62cc02c64b510d007db71a94ba16687a1d40c108cf6'
-CANDIDATE = '1.0.0-rc.7'
+BASELINE = '1.0.0-rc.7'
+BASELINE_HASH = '20a93f26121b0ed505e25d31068fa548cd37adedb3fbb0461ab20f3b94c65542'
+BASELINE_SOURCE = 'd4ef0355be6b315a2465dcb61938fe87077b6b95'
+CANDIDATE = '1.0.0-rc.8'
 
 
 def select(version):
@@ -45,6 +48,34 @@ def download(root, version, expected):
     a.require(size > 0 and digest.hexdigest() == expected, 'Public package checksum mismatch.')
 
 
+def baseline(root):
+    folder = root / 'rc7-baseline'
+    a.require(folder.is_dir() and not folder.is_symlink(), 'A fixed earlier rc.7 artifact is required.')
+    receipt = folder / 'MACOS-RELEASE.json'
+    a.require(receipt.is_file() and not receipt.is_symlink() and receipt.stat().st_size < 16384,
+              'Baseline artifact receipt is missing or invalid.')
+    value = json.loads(receipt.read_text())
+    a.require(value.get('version') == BASELINE and value.get('commit') == BASELINE_SOURCE
+              and value.get('sha256') == BASELINE_HASH and value.get('teamId') == a.TEAM
+              and value.get('architecture') == 'arm64'
+              and all(value.get(k) is True for k in ('applicationNotarized','packageNotarized',
+                  'packageSigned','installed','offlineFileFlows','restartPersistence','cleanup')),
+              'The baseline artifact does not match the reviewed signed test build.')
+    source = folder / f'eznest-shop-arm64-{BASELINE}.pkg'
+    info = source.lstat()
+    a.require(stat.S_ISREG(info.st_mode) and 0 < info.st_size <= 300_000_000,
+              'Baseline package must be a bounded regular file.')
+    digest = hashlib.sha256()
+    with source.open('rb') as source_file, (root / source.name).open('xb') as target:
+        size = 0
+        while chunk := source_file.read(1024 * 1024):
+            size += len(chunk)
+            a.require(size <= info.st_size, 'Baseline package changed while copying.')
+            digest.update(chunk); target.write(chunk)
+    a.require(size == info.st_size and digest.hexdigest() == BASELINE_HASH,
+              'Baseline artifact package checksum mismatch.')
+
+
 def upgrade(root, expected):
     a.verify_package(root / a.PACKAGE_NAME, expected)
     marker = root / 'eznest-macos-owned.json'
@@ -70,13 +101,19 @@ def upgrade(root, expected):
 
 
 def run(root):
-    a.require(a.VERSION == CANDIDATE, 'QA source must target rc.7.')
+    a.require(a.VERSION == CANDIDATE, 'QA source must target rc.8.')
     expected = a.valid_hash(os.environ.get('EZ_NEST_PACKAGE_SHA256'))
     a.preflight()
     print('UPGRADE_STAGE: public signed downloads', flush=True)
-    download(root, BASELINE, BASELINE_HASH); download(root, CANDIDATE, expected)
+    baseline(root); download(root, CANDIDATE, expected)
     print('UPGRADE_STAGE: baseline install', flush=True)
     select(BASELINE); a.install(root, BASELINE_HASH)
+    info = plistlib.loads((a.APP / 'Contents/Info.plist').read_bytes())
+    provenance = json.loads((a.APP / 'Contents/Resources/BUILD.json').read_text())
+    a.require(info.get('CFBundleExecutable') == 'eznest'
+              and not (a.APP / 'Contents/MacOS/eznest-desktop').exists()
+              and provenance.get('commit') == BASELINE_SOURCE,
+              'Baseline is not the earlier non-desktop rc.7 test package.')
     api = a.LocalAPI(); api.session(); a.preview_settings(api)
     profile = {'preset-name':'Synthetic upgrade roll', 'unit':'mm', 'width':'500', 'roll':'510',
         'available-length':'1000', 'roll-length':'5000', 'gap':'2', 'margin':'5',
@@ -117,12 +154,13 @@ def run(root):
     a.require(api.session()['pid'] == pid, 'Desktop launch or Quit replaced the shared backend.')
     a.require(api.request('/api/materials')[1].get('materials') == materials, 'Desktop lifecycle changed Inventory.')
     a.verify_persistence(api, exports)
-    a.write_json(root / 'eznest-rc7-upgrade.json', {'baseline':BASELINE, 'baselineSha256':BASELINE_HASH,
+    a.write_json(root / 'eznest-rc8-upgrade.json', {'baseline':BASELINE, 'baselineSha256':BASELINE_HASH,
+        'baselineSource':BASELINE_SOURCE, 'baselineArtifactId':13118564129, 'baselineRunId':41395752839,
         'version':CANDIDATE, 'sha256':expected, 'source':os.environ['GITHUB_SHA'],
         'runId':os.environ['GITHUB_RUN_ID'], 'signedUpgrade':True, 'inventoryRetained':True,
         'frozenPdfRetained':True, 'applicationsNativeWindow':True, 'noBrowserStartup':True,
         'quitPreservesBackend':True})
-    print('UPGRADE_PASS: signed rc.6 -> rc.7; Inventory/PDF retained; Applications desktop verified.')
+    print('UPGRADE_PASS: signed earlier rc.7 -> rc.8; Inventory/PDF retained; Applications desktop verified.')
 
 
 def cleanup(root):
