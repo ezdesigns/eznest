@@ -34,7 +34,9 @@ compiled only into that separate verifier. CI also builds the actual combined
 bundle and exercises its frozen SVG/PDF and restart flows with scratch data.
 
 The CI candidate is ad-hoc signed and unnotarized, for review only. It is not a
-public installer or an accepted managed upgrade. This change does not bump the
-application version, replace an installed app, publish a release, alter OUTPUT
-consent, or enable updates. Public delivery still requires the separately
-authorized signed/notarized release and installed-package acceptance.
+public installer or an accepted managed upgrade. Version rc.7 is prepared so a
+future installer can be distinct from the published rc.6 bytes. Source changes
+do not replace an installed app, publish a release, alter OUTPUT consent, or
+enable updates. Merging this new version after successful main CI triggers the
+existing dual-platform release workflow, so merge and publication require the
+owner's scoped release approval and all signed/installed-package acceptance.
