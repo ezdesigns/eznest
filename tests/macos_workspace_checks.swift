@@ -61,11 +61,15 @@ import WebKit
     func loaded() {
         if page == 0 {
             page = 1
-            wait("document.body.classList.contains('full-workspace') && typeof fullInventoryReady !== 'undefined' && fullInventoryReady") {
-                print("WORKSPACE_STAGE: full-ready")
-                self.check(self.app.window.isVisible, "full workspace native window")
-                self.screenshot("full-workspace.png") {
-                    self.js("document.querySelector('#mode-switch').click()")
+            wait("document.body.classList.contains('full-workspace') && typeof fullInventoryReady !== 'undefined'") {
+                print("WORKSPACE_STAGE: full-loaded")
+                self.js("document.querySelector('#stock-open').click()")
+                self.wait("fullInventoryReady && document.querySelector('#stock').open") {
+                    print("WORKSPACE_STAGE: full-ready")
+                    self.check(self.app.window.isVisible, "full workspace native window")
+                    self.screenshot("full-workspace.png") {
+                        self.js("document.querySelector('#stock-close').click(); document.querySelector('#mode-switch').click()")
+                    }
                 }
             }
         } else if page == 1 {
