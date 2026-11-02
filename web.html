@@ -71,6 +71,7 @@
   <form id="output-link-form" class="output-link-form">
     <h2 id="setup-shop-title">Set up your shop</h2>
     <p class="hint">In OUTPUT, click <strong>Add a computer</strong>. Then enter the code here.</p>
+    <p id="output-link-reconnect-note" class="hint" hidden>This computer stays connected until the new code is accepted.</p>
     <label for="output-link-code">Enter the code from OUTPUT</label>
     <div class="output-link-row">
       <input id="output-link-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="XXXXX-XXXXX">
@@ -158,12 +159,7 @@
           <button id="output-check-now" class="link" type="button" hidden>Check now</button>
         </div>
         <button id="output-reconnect" class="link" type="button" hidden>Reconnect with a new code</button>
-        <div id="output-pair-form">
-          <label>Code from OUTPUT
-            <input id="output-pair-code" type="text" maxlength="64" autocomplete="off" spellcheck="false" autocapitalize="none" inputmode="text" aria-describedby="output-connect-status">
-          </label>
-          <button id="output-pair" class="primary" type="button" disabled>Connect</button>
-        </div>
+        <button id="output-pair" class="primary" type="button" disabled>Set up your shop</button>
         <button id="output-disconnect" class="link" type="button" hidden>Disconnect</button>
       </div>
       <h3>What OUTPUT sees</h3>

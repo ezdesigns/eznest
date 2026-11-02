@@ -263,6 +263,7 @@ async function api(path, data, file) {
     if (gated) showOutputRequired(true);
     const error = Error(gated ? 'Sign in through Account to authorize this computer.' : body.error || 'Request failed.');
     error.code = body.code;
+    error.reason = body.reason;
     if (path === '/api/document/import' || path === '/api/document/import-file') {
       error.guideReview = body.guideReview; error.cutReview = body.cutReview;
     }
@@ -2438,7 +2439,6 @@ function restoreJob(state) {
 
 let outputSharing = null;
 let hostComputer = false;
-let reconnectOpen = false;
 let lastCheckInText = '';
 function renderOutputSharing(info) {
   outputSharing = info;
@@ -2448,20 +2448,19 @@ function renderOutputSharing(info) {
   const connected = paired || launch;
   $('output-connect-shop').hidden = !paired;
   $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
-  $('output-pair-form').hidden = (paired && !reconnectOpen) || launch || source === 'disabled';
+  $('output-pair').hidden = paired || launch || source === 'disabled';
   $('output-disconnect').hidden = !paired;
   $('output-reconnect').hidden = !paired || info.paused;
   $('output-check-now').hidden = !connected || info.paused;
-  $('output-pair').disabled = $('output-pair-form').hidden || info.paused;
+  $('output-pair').disabled = $('output-pair').hidden || info.paused;
   $('output-disconnect').disabled = !paired || info.paused;
   const connectStatus = $('output-connect-status');
   connectStatus.classList.remove('error');
   if (info.paused) connectStatus.textContent = 'Sharing is paused during installation or recovery.';
   else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.';
   else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
-  else if (paired && reconnectOpen) connectStatus.textContent = 'Paste a new pairing code. This computer stays connected until that code is accepted.';
   else if (paired) connectStatus.textContent = [lastCheckInText || 'Choose Check now to confirm the last check-in.', info.requiresConsent ? 'Review the sharing details below, then choose Enable sharing.' : ''].filter(Boolean).join(' ');
-  else connectStatus.textContent = 'This computer is not connected. Paste a pairing code from OUTPUT.';
+  else connectStatus.textContent = 'This computer is not connected. Choose Set up your shop to enter the code from OUTPUT.';
   $('telemetry-agree').checked = false;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
   $('telemetry-enable').disabled = true;
@@ -2481,40 +2480,6 @@ async function refreshOutputSharing() {
     outputSharing = null;
     $('telemetry-agree').disabled = $('telemetry-enable').disabled = $('telemetry-stop').disabled = true;
     $('telemetry-status').textContent = error.message;
-  }
-}
-async function connectOutput() {
-  const input = $('output-pair-code');
-  const status = $('output-connect-status');
-  const code = input.value.trim();
-  if (!code) {
-    status.textContent = 'Enter the code from OUTPUT.';
-    status.classList.add('error');
-    return;
-  }
-  $('output-pair').disabled = true;
-  try {
-    const response = await fetch('/api/telemetry/output/pair', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-EZ-Token': token},
-      body: JSON.stringify({code})
-    });
-    const body = await response.json();
-    if (!response.ok) {
-      const failure = Error(body.error || 'Could not connect to OUTPUT.');
-      failure.reason = body.reason;
-      throw failure;
-    }
-    input.value = '';
-    reconnectOpen = false;
-    renderOutputSharing(body);
-    refreshOutputLink().catch(() => {});
-    if (body.requiresConsent && !$('telemetry-agree').disabled) $('telemetry-agree').focus();
-  } catch (error) {
-    if (['invalid_code', 'expired', 'consumed', 'limit', 'replay', 'unexpected', 'rejected'].includes(error.reason)) input.value = '';
-    await refreshOutputSharing().catch(() => {});
-    status.textContent = error.message;
-    status.classList.add('error');
   }
 }
 async function disconnectOutput() {
@@ -3129,11 +3094,8 @@ document.addEventListener('DOMContentLoaded', () => {
   $('settings-telemetry').addEventListener('toggle', () => { if ($('settings-telemetry').open) refreshOutputSharing(); });
   $('telemetry-refresh').addEventListener('click', refreshOutputSharing);
   $('telemetry-agree').addEventListener('change', () => { $('telemetry-enable').disabled = !outputSharing || !outputSharing.configured || outputSharing.enabled || outputSharing.paused || !$('telemetry-agree').checked; });
-  $('output-pair').addEventListener('click', connectOutput);
+  $('output-pair').addEventListener('click', openOutputLinkForm);
   $('output-disconnect').addEventListener('click', disconnectOutput);
-  $('output-pair-code').addEventListener('keydown', event => {
-    if (event.key === 'Enter') { event.preventDefault(); connectOutput(); }
-  });
   $('telemetry-enable').addEventListener('click', () => changeOutputSharing(true));
   $('telemetry-stop').addEventListener('click', () => changeOutputSharing(false));
   dismissOnBackdrop($('settings'), () => { if (!$('save-settings').disabled) $('settings').close(); });
@@ -3305,11 +3267,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     $('output-check-now').disabled = false;
   });
-  $('output-reconnect').addEventListener('click', () => {
-    reconnectOpen = true;
-    if (outputSharing) renderOutputSharing(outputSharing);
-    $('output-pair-code').focus();
-  });
+  $('output-reconnect').addEventListener('click', openOutputLinkForm);
   $('setup-preset').addEventListener('click', async () => {
     try { applyEzPreset(await (await fetch('/api/shop')).json()); }
     catch (error) { status(error.message, true); }
@@ -3504,7 +3462,9 @@ function closeOutputLinkMenu() {
   $('output-link-status').setAttribute('aria-expanded', 'false');
 }
 function openOutputLinkForm() {
+  if (!outputLink?.canPair || outputSharing?.paused || $('setup-shop').open) return;
   closeOutputLinkMenu();
+  $('output-link-reconnect-note').hidden = !outputSharing?.configured;
   const url = outputLink?.connectUrl;
   if (url) window.open(url, '_blank', 'noopener,noreferrer');
   // "Set up your shop": the owner clicks Add a computer in OUTPUT and types that code here.
@@ -3521,6 +3481,7 @@ function closeOutputLinkForm() {
 }
 async function submitOutputLink(event) {
   event.preventDefault();
+  if ($('output-link-submit').disabled) return;
   const code = $('output-link-code').value.trim();
   const error = $('output-link-error');
   if (!code) { error.textContent = 'Enter the code from OUTPUT.'; error.hidden = false; return; }
@@ -3531,8 +3492,10 @@ async function submitOutputLink(event) {
     if ($('setup-shop').open) $('setup-shop').close();
     renderOutputSharing(body);
     await refreshOutputLink();
+    if ($('settings').open && body.requiresConsent && !$('telemetry-agree').disabled) $('telemetry-agree').focus();
   } catch (failure) {
-    $('output-link-code').value = '';
+    if (['invalid_code', 'expired', 'consumed', 'limit', 'replay', 'unexpected', 'rejected'].includes(failure.reason)) $('output-link-code').value = '';
+    await refreshOutputSharing();
     error.textContent = failure.message;
     error.hidden = false;
   } finally {
