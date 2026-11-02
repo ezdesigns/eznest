@@ -586,7 +586,11 @@ def account_status(directory, local, now=None):
     disconnect still requires authorization again.
     """
     dev = dev_escape() or gate_opt_out()
-    token, _source = _token(directory)
+    token, source = _token(directory)
+    # Disabling remote delivery is independent of existing local authorization.
+    # A protected credential and its valid signed receipt are still required.
+    if source == 'disabled':
+        token = output_credential.load(directory)
     with LOCK:
         verdict = _verdict(directory, token, _stamp(now))
     return {

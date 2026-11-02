@@ -6,6 +6,7 @@ Only the explicit new output directory is written. No app installation or signin
 import argparse, hashlib, io, json, os, socket, subprocess, sys, time
 from pathlib import Path
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 from zipfile import ZipFile
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT),str(ROOT/'tests')]
@@ -58,10 +59,6 @@ def stop():
 
 def ready(page):
     page.wait_for_function("() => document.body.dataset.ready === '1'")
-    if page.locator('#output-required').is_visible():
-        with page.expect_navigation(wait_until='domcontentloaded'):
-            page.click('#output-required-skip')
-        page.wait_for_function("() => document.body.dataset.ready === '1'")
     if page.locator('#feedback-welcome').is_visible():
         page.click('#feedback-dismiss')
 
@@ -82,6 +79,22 @@ try:
                 folder.mkdir()
                 session=start(folder/'data')
                 assert session['app']=='eznest'
+                assert session['account']['ready'] is False and session['account']['devMode'] is False
+                try:
+                    request('/api/solve', {})
+                    raise AssertionError('Fresh frozen host bypassed first authorization')
+                except HTTPError as error:
+                    assert error.code == 403 and json.load(error)['code'] == 'sign_in_required'
+                stop()
+                # Only this newly created scratch folder is seeded. --shop-test
+                # keeps all remote delivery off in the unchanged frozen binary.
+                # This is offline authorization proof, never live Privy sign-in.
+                import output_credential, output_gate
+                output_credential.save(folder/'data', 'osa_'+'C'*43, 'Synthetic frozen CI fixture')
+                output_gate.note_paired(folder/'data', now=int(time.time())-120*86400)
+                session=start(folder/'data')
+                assert session['account']['ready'] is True and session['account']['devMode'] is False
+                assert request('/api/telemetry/output')['enabled'] is False
                 page=browser.new_page(viewport={'width':1280,'height':900},accept_downloads=True)
                 page.goto(URL+'/?view=simple')
                 ready(page)
@@ -124,5 +137,5 @@ finally:
         proc.terminate();proc.wait(timeout=10)
     log.close()
 manifest=APP.parent.parent/'Resources'/'BUILD.json'
-(OUT/'receipt.json').write_text(json.dumps({'build':json.loads(manifest.read_text()),'executableSha256':hashlib.sha256(APP.read_bytes()).hexdigest(),'checks':receipts},indent=2)+'\n')
+(OUT/'receipt.json').write_text(json.dumps({'build':json.loads(manifest.read_text()),'executableSha256':hashlib.sha256(APP.read_bytes()).hexdigest(),'firstAuthorizationRequired':True,'authorizationFixture':'synthetic-protected-receipt-remote-disabled','liveSignInVerified':False,'checks':receipts},indent=2)+'\n')
 print(json.dumps(receipts,indent=2))

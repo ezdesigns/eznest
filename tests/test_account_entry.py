@@ -72,6 +72,17 @@ class AccountEntryTests(unittest.TestCase):
         self.assertTrue(output_gate.account_status(Path(str(server.WORK)), True)['ready'])
         self.assertEqual(self.request('/api/solve', {})[0], 400)  # body validated, not account-blocked
 
+    def test_disabling_remote_delivery_does_not_bypass_or_erase_local_authorization(self):
+        with patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS':'0'}):
+            self.assertFalse(output_gate.account_status(server.WORK, True)['ready'])
+        self.helper.pair(age_seconds=120 * 86400)
+        with patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS':'0'}):
+            self.assertTrue(output_gate.account_status(server.WORK, True)['ready'])
+            self.assertFalse(server.telemetry_sender.status(server.WORK)['enabled'])
+            self.assertEqual(self.request('/api/solve', {})[0], 400)
+            output_pairing.disconnect(server.WORK)
+            self.assertFalse(output_gate.account_status(server.WORK, True)['ready'])
+
     def test_tamper_future_and_disconnect_require_authorization_again(self):
         self.helper.pair()
         state = output_gate._read_state(server.WORK)
