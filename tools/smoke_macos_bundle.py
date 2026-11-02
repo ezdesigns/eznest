@@ -40,7 +40,7 @@ log=(OUT/'app.log').open('w')
 env={k:os.environ[k] for k in ('HOME','PATH','TMPDIR') if k in os.environ}
 def request(path,data=None):
     headers={'Content-Type':'application/json'}
-    if data is not None:headers['X-EZ-Token']=request('/api/session')['token']
+    if path != '/api/session':headers['X-EZ-Token']=request('/api/session')['token']
     with urlopen(Request(URL+path,data=None if data is None else json.dumps(data).encode(),headers=headers),timeout=15) as r:return json.load(r)
 def start(folder):
     global proc
