@@ -528,6 +528,56 @@ class GateTests(unittest.TestCase):
         os.environ['EZ_NEST_OUTPUT_TOKEN'] = TOKEN
         self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
 
+    def test_unsigned_record_is_not_upgraded_after_a_revocation(self):
+        self.pair()
+
+        def deny(_raw, _token):
+            return 401, b'{"error":{"code":"revoked"}}'
+
+        self.assertFalse(output_gate.check_in(server.WORK, transport=deny)['ok'])
+        output_gate._revocation_path(server.WORK).unlink()
+        os.environ['EZ_NEST_OUTPUT_UPLOADS'] = '1'
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = TOKEN
+        last_ok = int(time.time()) - output_gate.DAY_SECONDS
+        payload = {'v': 1, 'lastOkAt': last_ok, 'lastAttemptAt': last_ok, 'reason': ''}
+        output_gate._state_path(server.WORK).write_text(json.dumps(payload) + '\n', encoding='utf-8')
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertNotIn('mac', output_gate._state_path(server.WORK).read_text(encoding='utf-8'))
+
+    def test_unsigned_record_is_not_upgraded_once_signed_records_were_kept(self):
+        self.pair()
+        self.assertTrue(output_gate._history_path(server.WORK).is_file())
+        last_ok = int(time.time()) - output_gate.DAY_SECONDS
+        payload = {'v': 1, 'lastOkAt': last_ok, 'lastAttemptAt': last_ok, 'reason': ''}
+        output_gate._state_path(server.WORK).write_text(json.dumps(payload) + '\n', encoding='utf-8')
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+
+    def test_pre_history_signed_record_blocks_later_unsigned_upgrade(self):
+        self.pair()
+        output_gate._history_path(server.WORK).unlink()
+        self.assertTrue(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertTrue(output_gate._history_path(server.WORK).is_file())
+        self._write_legacy(int(time.time()) - output_gate.DAY_SECONDS)
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+
+    def test_pre_history_revocation_survives_removal_of_old_records(self):
+        self.pair()
+        output_gate.check_in(server.WORK, transport=lambda *_: (401, b'{"error":{"code":"revoked"}}'))
+        output_gate._history_path(server.WORK).unlink()
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        self.assertTrue(output_gate._history_path(server.WORK).is_file())
+        output_gate._revocation_path(server.WORK).unlink()
+        self._write_legacy(int(time.time()) - output_gate.DAY_SECONDS)
+        os.environ['EZ_NEST_OUTPUT_UPLOADS'] = '1'
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = TOKEN
+        self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
+        calls = []
+        def allow(*args):
+            calls.append(args)
+            return 200, b'{}'
+        self.assertFalse(output_gate.check_in(server.WORK, transport=allow)['ok'])
+        self.assertEqual(calls, [])
+
     def test_installed_module_stays_installed_without_the_release_marker(self):
         import eznest_build
         previous = eznest_build.INSTALLED
