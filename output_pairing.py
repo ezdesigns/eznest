@@ -45,7 +45,7 @@ NETWORK_ATTEMPTS = 2
 
 OFFLINE = 'OUTPUT could not be reached. Check this computer\'s internet connection and try again.'
 DISABLED = "OUTPUT isn't turned on yet for this shop. Ask the admin."
-INVALID_CODE = 'That pairing code is not valid. Ask the shop owner for a new code.'
+INVALID_CODE = 'In OUTPUT, click Add a computer for a new code.'
 EXPIRED = 'That pairing code has expired. Ask the shop owner for a new code.'
 CONSUMED = 'That pairing code was already used. Ask the shop owner for a new code.'
 RATE_LIMITED = 'OUTPUT is busy. Wait a moment and try this code again.'

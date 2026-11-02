@@ -32,7 +32,6 @@ let inventoryGen = 0; // bumped on every inventory change so an older poll answe
 let presetEditor = null;
 let activeMaterial = '';
 // OUTPUT browser approval stays closed until its receiving endpoint is available.
-const OUTPUT_APPROVE_ENDPOINT_READY = false;
 // EZ39-9: OUTPUT has no stock-summary receiving endpoint yet; keep sharing off until it ships.
 const STOCK_SHARE_ENDPOINT_READY = false;
 const MATERIAL_FIELDS = ['preset-name', 'roll', 'width', 'mark-margin', 'gap', 'margin', 'rotations', 'unit', 'sheet', 'print-layout', 'roll-length', 'roll-cost', 'available-length', 'low-stock', 'auto-bleed', 'bleed', 'cost'];
@@ -2450,8 +2449,6 @@ function renderOutputSharing(info) {
   $('output-connect-shop').hidden = !paired;
   $('output-connect-shop').textContent = !paired ? '' : (info.shopName ? 'Connected to ' + info.shopName + '.' : 'Connected to OUTPUT');
   $('output-pair-form').hidden = (paired && !reconnectOpen) || launch || source === 'disabled';
-  if ($('output-setup-settings')) $('output-setup-settings').hidden = !OUTPUT_APPROVE_ENDPOINT_READY || $('output-pair-form').hidden;
-  if (!OUTPUT_APPROVE_ENDPOINT_READY && $('output-setup-settings-waiting')) $('output-setup-settings-waiting').hidden = true;
   $('output-disconnect').hidden = !paired;
   $('output-reconnect').hidden = !paired || info.paused;
   $('output-check-now').hidden = !connected || info.paused;
@@ -2491,7 +2488,7 @@ async function connectOutput() {
   const status = $('output-connect-status');
   const code = input.value.trim();
   if (!code) {
-    status.textContent = 'Paste the pairing code from OUTPUT.';
+    status.textContent = 'Enter the code from OUTPUT.';
     status.classList.add('error');
     return;
   }
@@ -2657,88 +2654,10 @@ function setupSkipped() {
   try { return localStorage.getItem('eznest-setup-skipped') === '1'; }
   catch { return false; }
 }
-function outputApproveUrl(url) {
-  // EZ46-7: only the allowlisted OUTPUT host may be opened from a setup reply.
-  let parsed;
-  try { parsed = new URL(url); }
-  catch { return ''; }
-  const sample = $('output-link-open') && $('output-link-open').href;
-  let allowed;
-  try { allowed = new URL(sample || 'https://output.jeezlabs.io/outpost/ez-nest'); }
-  catch { return ''; }
-  if (parsed.protocol !== 'https:' || parsed.host !== allowed.host) return '';
-  return parsed.href;
-}
-function setupShopPollDelay(attempt) {
-  return [2000, 3000, 5000, 8000][Math.min(3, attempt)];
-}
-function beginShopSetup(button, waiting, match, note, error) {
-  let timer = 0;
-  let run = 0;
-  const stop = message => {
-    run += 1;
-    window.clearTimeout(timer);
-    waiting.hidden = true;
-    button.hidden = !OUTPUT_APPROVE_ENDPOINT_READY;
-    button.disabled = false;
-    if (message && error) error.textContent = message;
-  };
-  const poll = (mine, attempt) => {
-    timer = window.setTimeout(async () => {
-      if (mine !== run) return;
-      try {
-        const body = await api('/api/telemetry/output/link/check', {});
-        if (mine !== run) return;
-        if (body.state === 'connected') {
-          note.textContent = 'Connected.';
-          location.reload();
-          return;
-        }
-        if (body.state === 'pending') return poll(mine, attempt + 1);
-        stop(body.message || 'Click Set up your shop to try again.');
-      } catch (err) {
-        if (mine === run) stop(err.message);
-      }
-    }, setupShopPollDelay(attempt));
-  };
-  button.onclick = async () => {
-    if (!OUTPUT_APPROVE_ENDPOINT_READY) return;
-    if (error) error.textContent = '';
-    button.disabled = true;
-    const popup = window.open('', '_blank');
-    try {
-      const body = await api(OUTPUT_APPROVE_ENDPOINT_READY ? '/api/telemetry/output/link/start' : '', {});
-      const approve = outputApproveUrl(body.approveUrl);
-      if (!approve) throw Error('OUTPUT did not return a page on its own site.');
-      match.textContent = body.userCode;
-      const reopen = waiting.querySelector('a');
-      if (reopen) reopen.href = approve;
-      note.textContent = 'Waiting…';
-      if (popup) {
-        popup.opener = null;
-        popup.location.href = approve;
-      } else window.open(approve, '_blank', 'noopener');
-      button.hidden = true;
-      waiting.hidden = false;
-      run += 1;
-      poll(run, 0);
-    } catch (err) {
-      if (popup) popup.close();
-      stop(err.message);
-    }
-  };
-  const cancel = waiting.querySelector('button');
-  if (cancel) cancel.onclick = async () => {
-    stop('');
-    try { await api('/api/telemetry/output/link/cancel', {}); } catch { /* The request expires on its own. */ }
-  };
-}
 function showOutputRequired(required) {
   outputRequired = required === true && !setupSkipped();
   $('output-required').hidden = !outputRequired;
   $('output-required-note').textContent = outputRequiredLocal ? '' : 'Ask the shop computer to connect to OUTPUT.';
-  $('output-required-connect').hidden = !OUTPUT_APPROVE_ENDPOINT_READY || !outputRequiredLocal;
-  if (!OUTPUT_APPROVE_ENDPOINT_READY && $('output-setup-waiting')) $('output-setup-waiting').hidden = true;
   if ($('output-required-code')) $('output-required-code').hidden = !outputRequiredLocal;
   document.body.classList.toggle('output-required-on', outputRequired);
 }
@@ -3551,7 +3470,7 @@ function renderOutputLink(info, local) {
   root.dataset.state = state;
   root.hidden = !info;
   if (info?.connectUrl) $('output-link-open').href = info.connectUrl;
-  $('output-link-connect').hidden = paired || !$('output-link-form').hidden;
+  $('output-link-connect').hidden = paired || $('setup-shop').open;
   $('output-link-connect').textContent = state === 'revoked' ? 'Reconnect to OUTPUT' : 'Connect to OUTPUT';
   $('output-link-connect').disabled = !info?.canPair;
   $('output-link-connect').title = info?.canPair ? '' : 'Connect from the shop computer.';
@@ -3585,14 +3504,15 @@ function openOutputLinkForm() {
   closeOutputLinkMenu();
   const url = outputLink?.connectUrl;
   if (url) window.open(url, '_blank', 'noopener,noreferrer');
-  $('output-link-form').hidden = false;
+  // "Set up your shop": the owner clicks Add a computer in OUTPUT and types that code here.
+  if (!$('setup-shop').open) $('setup-shop').showModal();
   $('output-link-connect').hidden = true;
   $('output-link-error').hidden = true;
   $('output-link-code').value = '';
   $('output-link-code').focus();
 }
 function closeOutputLinkForm() {
-  $('output-link-form').hidden = true;
+  if ($('setup-shop').open) $('setup-shop').close();
   $('output-link-code').value = '';
   renderOutputLink(outputLink);
 }
@@ -3600,12 +3520,12 @@ async function submitOutputLink(event) {
   event.preventDefault();
   const code = $('output-link-code').value.trim();
   const error = $('output-link-error');
-  if (!code) { error.textContent = 'Paste the pairing code from OUTPUT.'; error.hidden = false; return; }
+  if (!code) { error.textContent = 'Enter the code from OUTPUT.'; error.hidden = false; return; }
   $('output-link-submit').disabled = true;
   try {
     const body = await api('/api/telemetry/output/pair', {code});
     $('output-link-code').value = '';
-    $('output-link-form').hidden = true;
+    if ($('setup-shop').open) $('setup-shop').close();
     renderOutputSharing(body);
     await refreshOutputLink();
   } catch (failure) {
@@ -3653,8 +3573,6 @@ $('output-required-skip').addEventListener('click', () => {
     boot().catch(error => status(error.message, true));
   }
 });
-beginShopSetup($('output-required-connect'), $('output-setup-waiting'), $('output-setup-match'), $('output-setup-wait'), $('output-required-note'));
-beginShopSetup($('output-setup-settings'), $('output-setup-settings-waiting'), $('output-setup-settings-match'), $('output-setup-settings-wait'), $('output-connect-status'));
 $('output-link-cancel').addEventListener('click', closeOutputLinkForm);
 $('output-link-form').addEventListener('submit', submitOutputLink);
 $('output-link-check').addEventListener('click', checkOutputLink);
@@ -3669,8 +3587,8 @@ document.addEventListener('click', event => { if (!event.target.closest('#output
 document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
   if (!$('output-link-menu').hidden) { closeOutputLinkMenu(); $('output-link-status').focus(); }
-  else if (!$('output-link-form').hidden && event.target.closest('#output-link-form')) closeOutputLinkForm();
 });
+$('setup-shop').addEventListener('close', () => { $('output-link-code').value = ''; renderOutputLink(outputLink); });
 
 const inventoryPanel = EZNInventoryPanel.create({
   get profiles() { return materialProfiles; },

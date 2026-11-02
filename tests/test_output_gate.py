@@ -321,34 +321,16 @@ class GateTests(unittest.TestCase):
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
                     expect(page.locator('#output-required')).to_be_visible()
                     expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT (optional)')
-                    expect(page.locator('#output-required-connect')).to_be_hidden()
-                    expect(page.locator('#output-required-connect')).to_have_text('Set up your shop')
-                    calls = page.evaluate("""() => {
-                      const hits = [];
-                      const opened = [];
-                      const origFetch = window.fetch;
-                      const origOpen = window.open;
-                      window.fetch = function(url, options) {
-                        const target = String(url);
-                        if (target.includes('/api/telemetry/output/link/start')) hits.push(target);
-                        return origFetch.apply(this, arguments);
-                      };
-                      window.open = function(url) {
-                        opened.push(url);
-                        return {close() {}, opener: null, location: {href: ''}};
-                      };
-                      document.getElementById('output-required-connect').click();
-                      document.getElementById('output-setup-settings').click();
-                      window.fetch = origFetch;
-                      window.open = origOpen;
-                      return {hits: hits.length, opened: opened.length};
-                    }""")
-                    self.assertEqual(calls, {'hits': 0, 'opened': 0})
+                    expect(page.locator('#output-required-code')).to_have_text('Set up your shop')
+                    self.assertEqual(page.locator('#output-setup-waiting, #output-setup-settings, #output-required-connect').count(), 0)
                     expect(page.locator('#output-required-skip')).to_have_text('Skip')
                     expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
                     with page.context.expect_page() as opened:
                         page.click('#output-required-code')
                     opened.value.close()
+                    expect(page.locator('#setup-shop')).to_be_visible()
+                    expect(page.locator('#setup-shop-title')).to_have_text('Set up your shop')
+                    expect(page.locator('label[for=output-link-code]')).to_have_text('Enter the code from OUTPUT')
                     expect(page.locator('#output-link-form')).to_be_visible()
                     expect(page.locator('#output-link-code')).to_be_focused()
                     self.assertEqual(page.locator('#output-link-code').input_value(), '')
