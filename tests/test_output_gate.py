@@ -568,6 +568,8 @@ class GateTests(unittest.TestCase):
         self.assertTrue(output_gate._history_path(server.WORK).is_file())
         output_gate._revocation_path(server.WORK).unlink()
         self._write_legacy(int(time.time()) - output_gate.DAY_SECONDS)
+        os.environ['EZ_NEST_OUTPUT_UPLOADS'] = '1'
+        os.environ['EZ_NEST_OUTPUT_TOKEN'] = TOKEN
         self.assertFalse(output_gate.public_status(server.WORK, True)['ok'])
         calls = []
         def allow(*args):
