@@ -425,7 +425,29 @@ $('files').onchange=async e=>{try{await importFiles([...e.target.files]);}catch(
 
 document.addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('dragging');});document.addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('dragging');});document.addEventListener('drop',async e=>{e.preventDefault();document.body.classList.remove('dragging');if(!busy&&!saving)await importFiles([...e.dataTransfer.files]);});
 
-$('demo').onclick=async()=>{try{$('settings').close();preferences.active='demo';renderPresets();queue.forEach(e=>e.selected=false);const text=await(await fetch('/sample-artwork.svg')).text();await importText(text,'Trail graphics.svg',{id:'demo-trail',selected:true});await importText('<svg xmlns="http://www.w3.org/2000/svg" width="120mm" height="80mm" viewBox="0 0 120 80"><defs><linearGradient id="panel-ink"><stop stop-color="#803c66"/><stop offset="1" stop-color="#efab77"/></linearGradient></defs><path id="side-panel" fill="url(#panel-ink)" d="M5 5H65V23H30V45H5Z"/><rect id="name-plate" x="75" y="5" width="35" height="55" rx="8" fill="#dbc363"/></svg>','Helmet graphics.svg',{id:'demo-helmet',selected:true});for(const e of queue)if(e.id.startsWith('demo-')){EZNQueue.restorePrepared(e);e.selected=true;e.materialId='demo';e.status='ready';}await importText('<svg xmlns="http://www.w3.org/2000/svg" width="24mm" height="18mm" viewBox="0 0 24 18"><rect id="sticker" width="24" height="18" rx="4" fill="#3b8b65"/></svg>','Shop stickers.svg',{id:'demo-sticker',selected:true});const sticker=queue.find(e=>e.id==='demo-sticker');sticker.role='fill';sticker.sets=100;sticker.selected=true;sticker.materialId='demo';preferences.fillArea='gaps';renderPresets();invalidate();status('Example: two required jobs plus stickers to fill the spare space.');}catch(e){status(e.message,true);}};
+$('demo').onclick=async()=>{
+  try{
+    $('settings').close();preferences.active='demo';renderPresets();queue.forEach(e=>e.selected=false);
+    const response=await fetch('/sample-artwork.svg');
+    if(!response.ok)throw Error('The example artwork could not be loaded. Try again.');
+    await importText(await response.text(),'Trail graphics.svg',{id:'demo-trail',selected:true});
+    await importText(`<svg xmlns="http://www.w3.org/2000/svg" width="240mm" height="170mm" viewBox="0 0 240 170">
+      <defs><linearGradient id="helmet-ink"><stop stop-color="#803c66"/><stop offset="1" stop-color="#efab77"/></linearGradient></defs>
+      <g id="swept-panel"><path id="EZN_BOUNDARY_sweep" d="M5 20Q30 0 70 6L105 0L92 22L61 28Q46 18 33 32L8 42Z" fill="url(#helmet-ink)"/><path d="M13 23Q35 9 65 14L89 9L79 17L61 20Q42 14 25 28Z" fill="#f4e3c8"/></g>
+      <g id="recessed-panel" transform="translate(125 0)"><path id="EZN_BOUNDARY_recess" d="M0 10Q0 0 10 0H68L76 14L60 24H31Q23 24 23 32V43H55L47 55H9Q0 55 0 46Z" fill="#3e7c88"/><path d="M7 12H59L49 18H25Q17 18 17 28V44H9Z" fill="#cce1d8"/></g>
+      <g id="tapered-guard" transform="translate(8 66)"><path id="EZN_BOUNDARY_taper" d="M0 0H85L70 14L47 19L34 37H9Z" fill="#cf7951"/><path d="M10 7H65L43 14L28 30H17Z" fill="#f3d49b"/></g>
+      <g id="curved-fin" transform="translate(125 70)"><path id="EZN_BOUNDARY_fin" d="M0 8Q28 -5 73 3L87 14L61 20L42 15Q25 30 0 31L12 20Z" fill="#42548f"/><path d="M16 10Q37 4 68 9L55 13L41 10Q26 23 12 24L20 17Z" fill="#e2dca9"/></g>
+      <g id="chevron" transform="translate(8 120)"><path id="EZN_BOUNDARY_chevron" d="M0 0H24L43 17L64 0H85L44 40Z" fill="#53866b"/><path d="M15 5H22L43 24L67 5H73L44 32Z" fill="#e2e8ba"/></g>
+      <g id="number-shield" transform="translate(136 116)"><path id="EZN_BOUNDARY_shield" d="M0 5L26 0L53 5L48 29L26 42L5 29Z" fill="#dbc363"/><path d="M9 11L26 7L44 11L39 25L26 33L13 25Z" fill="#453e57"/><path d="M20 14H32L25 26" fill="none" stroke="#f3e8bd" stroke-width="3"/></g>
+    </svg>`,'Helmet graphics.svg',{id:'demo-helmet',selected:true});
+    for(const [id,sets] of [['demo-trail',4],['demo-helmet',2]]){
+      const entry=queue.find(e=>e.id===id);EZNQueue.restorePrepared(entry);entry.sets=sets;entry.role='required';entry.selected=true;entry.materialId='demo';entry.status='ready';
+    }
+    await importText('<svg xmlns="http://www.w3.org/2000/svg" width="12mm" height="9mm" viewBox="0 0 12 9"><path id="sticker" d="M2 0H10L12 2V7L10 9H2L0 7V2Z" fill="#3b8b65"/></svg>','Shop stickers.svg',{id:'demo-sticker',selected:true});
+    const sticker=queue.find(e=>e.id==='demo-sticker');EZNQueue.restorePrepared(sticker);sticker.role='fill';sticker.sets=100;sticker.selected=true;sticker.materialId='demo';preferences.fillArea='gaps';
+    renderPresets();invalidate();status('Example: 28 required pieces across 10 shapes, plus small stickers for leftover space. Nest, then compare another fit using the same jobs.');
+  }catch(e){status(e.message,true);}
+};
 
 $('nest').onclick=()=>startNest();$('improve').onclick=()=>improve();$('cancel').onclick=async()=>{clearTimeout(autoTimer);autoAttempts=5;try{await api('/api/cancel',{});}catch(e){status(e.message,true);}};
 

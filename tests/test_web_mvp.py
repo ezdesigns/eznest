@@ -633,6 +633,57 @@ class WebMvpTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_fixture_shutdown_waits_for_inflight_request(self):
+        entered, release, closing, stopped = (threading.Event() for _ in range(4))
+        failures = []
+        original_close = self.service.server_close
+        address = self.url() + '/api/health'
+
+        def delayed_request(handler):
+            entered.set()
+            if not release.wait(10):
+                raise RuntimeError('The test did not release its request.')
+            handler.send(200, {'ok': True})
+
+        def request():
+            try:
+                with urlopen(address, timeout=10) as response:
+                    response.read()
+            except Exception as error:
+                failures.append(error)
+
+        def close():
+            closing.set()
+            original_close()
+
+        def stop():
+            try:
+                self.stop()
+            except Exception as error:
+                failures.append(error)
+            finally:
+                stopped.set()
+
+        with patch.object(server.Handler, 'do_GET', delayed_request), \
+             patch.object(self.service, 'server_close', close):
+            client = threading.Thread(target=request)
+            closer = threading.Thread(target=stop)
+            client.start()
+            try:
+                self.assertTrue(entered.wait(5))
+                closer.start()
+                self.assertTrue(closing.wait(5))
+                self.assertFalse(stopped.wait(0.2), 'Temporary data must outlive active request handlers.')
+            finally:
+                release.set()
+                client.join(timeout=10)
+                if closer.ident is not None:
+                    closer.join(timeout=10)
+            self.assertFalse(client.is_alive())
+            self.assertFalse(closer.is_alive())
+            self.assertEqual(failures, [])
+            self.assertTrue(stopped.is_set())
+
     def setUp(self):
         self.old = (server.WORK, server.PORT, server.HOST, copy.deepcopy(server.STATE), server.PROCESS)
         self.old_output = server.OUTPUT
@@ -647,7 +698,13 @@ class WebMvpTests(unittest.TestCase):
         self.start()
 
     def start(self):
-        self.service = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+        class TestHandler(server.Handler):
+            # Browsers may pre-open idle sockets across a server restart.
+            timeout = 5
+
+        self.service = server.ThreadingHTTPServer(('127.0.0.1', 0), TestHandler)
+        # Join request handlers before removing their SQLite-backed temporary data.
+        self.service.daemon_threads = False
         server.PORT = self.service.server_port
         self.thread = threading.Thread(target=self.service.serve_forever, daemon=True)
         self.thread.start()
@@ -1007,7 +1064,7 @@ class WebMvpTests(unittest.TestCase):
                 with ZipFile(io.BytesIO(first)) as archive:
                     artwork = archive.read('artwork.svg').decode('utf-8')
                 self.assertIn('CutContour_Kiss-cut', artwork)
-                self.assertIn('M0 0L62 55H0Z', artwork)
+                self.assertIn('M0 10L20 0H86Q96 0 96 10V16H74V27H57V40H26Q18 40 16 34L13 24H0Z', artwork)
                 self.assertIn('#dd38b8', artwork)
                 self.assertNotIn('#D92F00', artwork)
                 self.assertIn('clipPath', artwork)
