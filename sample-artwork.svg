@@ -1,21 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="240mm" height="160mm" viewBox="0 0 240 160">
+<svg xmlns="http://www.w3.org/2000/svg" width="260mm" height="180mm" viewBox="0 0 260 180">
+  <title>Trail graphics — curved four-piece decal kit</title>
+  <desc>Original demonstration artwork in millimeters: a recessed side fairing, helmet crest, stepped guard and curved accent. Each complete part has one closed outer boundary.</desc>
   <defs>
-    <clipPath id="panel-clip"><path d="M0 0H68V23H25V67H0Z"/></clipPath>
-    <linearGradient id="panel-ink" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#27685d"/><stop offset="1" stop-color="#badb74"/></linearGradient>
+    <clipPath id="panel-clip"><path d="M0 12Q0 0 14 0H84Q104 0 108 14L100 28H66Q58 28 58 36V48L34 62H8Q0 62 0 54V42H20Q30 42 30 32V25H0Z"/></clipPath>
+    <linearGradient id="panel-ink" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#173d41"/><stop offset="1" stop-color="#4d9985"/></linearGradient>
+    <linearGradient id="crest-ink" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#efae61"/><stop offset="1" stop-color="#cc653d"/></linearGradient>
   </defs>
-  <g id="clipped-panel" transform="translate(10 10)" clip-path="url(#panel-clip)">
-    <rect x="-5" y="-5" width="80" height="80" fill="url(#panel-ink)"/>
-    <path d="M-5 60L70 -5M-5 78L80 -5" stroke="#f1eee4" stroke-width="7"/>
-    <path d="M0 0H68V23H25V67H0Z" fill="none" stroke="#dd38b8" stroke-width="0.15"/>
+  <g id="clipped-panel" data-name="Recessed side fairing" transform="translate(12 16)" clip-path="url(#panel-clip)">
+    <rect x="-2" y="-2" width="114" height="68" fill="url(#panel-ink)"/>
+    <path d="M-10 58L70 -10H88L8 68ZM20 68L110 -9V9L42 68Z" fill="#e5edbc"/>
+    <path d="M-8 47L57 -8M44 69L115 8" fill="none" stroke="#eeb66e" stroke-width="2"/>
+    <path d="M8 10H38M8 15H27M72 18H94" fill="none" stroke="#d3e3d8" stroke-width="1.2"/>
+    <path d="M0 12Q0 0 14 0H84Q104 0 108 14L100 28H66Q58 28 58 36V48L34 62H8Q0 62 0 54V42H20Q30 42 30 32V25H0Z" fill="none" stroke="#dd38b8" stroke-width="0.15"/>
   </g>
-  <g id="rounded-badge" transform="translate(95 12)">
-    <path id="EZN_BOUNDARY_badge" d="M0 17C0 -5 66 -5 66 17V51H0Z" fill="#5262ba" stroke="#dd38b8" stroke-width="0.15"/>
-    <circle cx="33" cy="26" r="15" fill="#f5c168"/>
-    <path d="M22 27L30 35L45 19" fill="none" stroke="#253a35" stroke-width="4"/>
+  <g id="rounded-badge" data-name="Helmet crest" transform="translate(154 12)">
+    <path id="EZN_BOUNDARY_badge" d="M4 13Q0 4 12 2L30 0Q34 12 38 0L58 2Q72 4 68 16L61 29L70 38Q62 55 35 66Q8 55 0 38L9 29Z" fill="url(#crest-ink)" stroke="#dd38b8" stroke-width="0.15"/>
+    <path d="M12 17L29 10L35 22L42 10L58 17L51 28L59 38Q48 50 35 56Q22 50 11 38L19 28Z" fill="#253f44"/>
+    <circle cx="35" cy="35" r="12" fill="#e9deb1"/>
+    <path d="M25 39L33 29L37 34L42 27L48 39Z" fill="#376e67"/>
+    <path d="M27 44H43" stroke="#d67b45" stroke-width="1.5"/>
   </g>
-  <g id="triangular-panel" transform="translate(12 93)">
-    <path id="CutContour_Kiss-cut" d="M0 0L62 55H0Z" fill="#eb9f62" stroke="#dd38b8" stroke-width="0.15"/>
-    <path d="M6 17L40 48H6Z" fill="#823e49"/>
+  <g id="triangular-panel" data-name="Stepped fork guard" transform="translate(12 108)">
+    <path id="CutContour_Kiss-cut" d="M0 10L20 0H86Q96 0 96 10V16H74V27H57V40H26Q18 40 16 34L13 24H0Z" fill="#536ab0" stroke="#dd38b8" stroke-width="0.15"/>
+    <path d="M5 12L24 4H86L73 12H48L22 34L18 23H5Z" fill="#dbe4e0"/>
+    <path d="M31 33L50 17H67V23H51L39 34Z" fill="#efb66a"/>
+    <path d="M56 7H78M48 11H68" stroke="#536ab0" stroke-width="1.2"/>
   </g>
-  <rect id="small-label" x="105" y="100" width="72" height="25" rx="6" fill="#81c6c5" stroke="#dd38b8" stroke-width="0.15" transform="rotate(-8 140 113)"/>
+  <g id="small-label" data-name="Swept visor accent" transform="translate(148 111) rotate(-8 42 15)">
+    <path id="EZN_BOUNDARY_accent" d="M0 14Q18 0 42 3L79 0Q86 0 84 7L76 17L55 20Q47 13 39 21L12 28Q1 30 0 22Z" fill="#d8c86e" stroke="#dd38b8" stroke-width="0.15"/>
+    <path d="M7 16Q24 7 41 10L73 6L68 11L43 15Q30 11 11 22Z" fill="#254b50"/>
+    <path d="M16 18L28 14M54 9L64 8" stroke="#f4edcf" stroke-width="1.2"/>
+  </g>
 </svg>
