@@ -45,7 +45,7 @@ def metadata(bundle):
         info = plistlib.loads(info_path.read_bytes())
     except (ValueError, plistlib.InvalidFileException) as error:
         raise ValueError('Application metadata is invalid.') from error
-    if not isinstance(info, dict) or info.get('CFBundleIdentifier') != LABEL or info.get('CFBundleExecutable') != 'eznest':
+    if not isinstance(info, dict) or info.get('CFBundleIdentifier') != LABEL or info.get('CFBundleExecutable') not in ('eznest', 'eznest-desktop'):
         raise ValueError('This is not the expected Ez Nest application.')
     version = info.get('EzNestVersion')
     version_key(version)
@@ -58,6 +58,15 @@ def metadata(bundle):
     architecture = CPU_TYPES.get(struct.unpack('<I',header[4:])[0])
     if architecture is None:
         raise ValueError('Unsupported Mac executable architecture.')
+    if info['CFBundleExecutable'] == 'eznest-desktop':
+        desktop = bundle / 'Contents/MacOS/eznest-desktop'
+        if desktop.is_symlink() or not desktop.is_file() or info.get('EzNestShopService') is not True:
+            raise ValueError('The native desktop client is missing or not a shop service bundle.')
+        with desktop.open('rb') as handle:
+            native_header = handle.read(8)
+        if (len(native_header) != 8 or native_header[:4] != b'\xcf\xfa\xed\xfe'
+                or CPU_TYPES.get(struct.unpack('<I', native_header[4:])[0]) != architecture):
+            raise ValueError('The desktop client must match the service architecture.')
     return {'version':version, 'architecture':architecture}
 
 

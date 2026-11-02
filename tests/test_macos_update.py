@@ -192,7 +192,8 @@ class MacUpdateTests(unittest.TestCase):
         for enabled in (False,True):
             spec=build_macos.bundle_spec(Path('/source'),Path('/build'),'arm64','1.0.0',service_edition=enabled)
             self.assertEqual('CFBundleURLTypes' in spec,enabled)
-            self.assertIn('argv_emulation='+repr(enabled),spec)
+            self.assertIn('argv_emulation=False',spec)
+            self.assertIn('console='+repr(enabled),spec)
 
     @unittest.skipUnless(os.name=='posix','Mac interactive client credentials')
     def test_interactive_client_rechecks_bytes_and_publisher_before_installer(self):

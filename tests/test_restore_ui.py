@@ -503,6 +503,10 @@ class InventoryShelfTests(unittest.TestCase):
                     page.fill('#roll-f-roll', '54')
                     page.keyboard.press('Enter')
                     expect(page.locator('.stock-slot')).to_have_count(3)
+                    # The shelf updates during the async save. Wait for its completed details panel,
+                    # so this closes details rather than cancelling the still-saving add form.
+                    expect(page.locator('#stock-panel h3')).to_have_text('Clear laminate')
+                    expect(page.locator('#stock-panel form')).to_have_count(0)
                     page.click('#stock-panel .stock-x')
                     self.snap(page, 'three-rolls', width)
                     low.click()

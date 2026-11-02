@@ -476,9 +476,11 @@ def offline(root):
     require(status == 200 and sharing.get('configured') is False and sharing.get('enabled') is False,
             'Offline acceptance must remain unpaired with sharing disabled.')
     preview_settings(api)
+    print('OFFLINE_STAGE: pdf', flush=True)
     exports = [pdf_file_flow(api)]
     require(api.request('/api/work/discard', {})[0] == 200, 'Could not start the SVG test job.')
     from macos_svg_acceptance import svg_file_flow
+    print('OFFLINE_STAGE: svg', flush=True)
     exports.append(svg_file_flow(api, root))
     before = api.session()['pid']
     command(['/usr/bin/sudo', '-n', '/bin/launchctl', 'kickstart', '-k', 'system/' + LABEL])
@@ -514,9 +516,11 @@ def connect(root):
             'Activity sharing unexpectedly enabled.')
     receipt['sharingOff'] = True
     preview_settings(api)
+    print('OFFLINE_STAGE: pdf', flush=True)
     exports = [pdf_file_flow(api)]
     require(api.request('/api/work/discard', {})[0] == 200, 'Could not start the SVG test job.')
     from macos_svg_acceptance import svg_file_flow
+    print('OFFLINE_STAGE: svg', flush=True)
     exports.append(svg_file_flow(api, root))
     before = api.session()['pid']; time.sleep(2)
     command(['/usr/bin/sudo', '-n', '/bin/launchctl', 'kickstart', '-k', 'system/' + LABEL])

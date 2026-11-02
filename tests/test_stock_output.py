@@ -74,7 +74,7 @@ class ProjectionTests(unittest.TestCase):
         self.assertEqual(payload['schema'], 'eznest-stock/1')
         self.assertEqual(payload['unit'], 'ft')
         self.assertEqual(payload['snapshotAt'], '2026-01-01T00:00:00.000000Z')
-        self.assertEqual(payload['appVersion'], '1.0.0-rc.5')
+        self.assertEqual(payload['appVersion'], stock_output.VERSION)
         self.assertEqual(uuid.UUID(payload['requestId']).version, 5)
         roll = payload['rolls'][0]
         self.assertEqual(set(roll), set(stock_output.ROLL_KEYS))
