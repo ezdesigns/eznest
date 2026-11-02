@@ -72,7 +72,6 @@ import WebKit
             _ = app.applicationShouldHandleReopen(NSApp, hasVisibleWindows: false)
             check(app.window.isVisible, "Finder/Dock reopen")
             stage = 1
-            js("setTimeout(() => window.open('https://output.jeezlabs.io/workspace'), 0)")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 self.check(self.externalCount == 0, "unsolicited popup must not open a browser")
                 self.js("document.querySelector('#file').click()")
@@ -94,7 +93,8 @@ import WebKit
             // Native events in this disposable CI window exercise WebKit's real
             // user-gesture gate; JavaScript .click() must not stand in for it.
             let view = self.app.webView!
-            let point = view.convert(NSPoint(x: coordinates[0], y: view.bounds.height - coordinates[1]), to: nil)
+            let y = view.isFlipped ? coordinates[1] : view.bounds.height - coordinates[1]
+            let point = view.convert(NSPoint(x: coordinates[0], y: y), to: nil)
             for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
                 guard let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
                     timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: self.app.window.windowNumber,

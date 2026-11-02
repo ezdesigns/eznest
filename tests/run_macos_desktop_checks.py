@@ -17,6 +17,9 @@ HTML = b'''<!doctype html><title>EZNest native window checks</title>
 <button id="download">Save synthetic file</button>
 <button id="popup">Connect OUTPUT</button>
 <script>
+// This executes from page startup, not from WKWebView.evaluateJavaScript,
+// whose host-injected scripts can carry a synthetic WebKit user gesture.
+if(!location.search)setTimeout(()=>window.open('https://output.jeezlabs.io/workspace'),100);
 document.querySelector('#file').onchange=async event=>{document.body.dataset.imported=await event.target.files[0].text()};
 document.querySelector('#download').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['EZNest native export'],{type:'text/plain'}));a.download='native-export.txt';document.body.append(a);a.click();a.remove()};
 document.querySelector('#popup').onclick=()=>{const p=window.open('', '_blank');setTimeout(()=>{if(p)p.location.href='https://output.jeezlabs.io/workspace'},40)};
