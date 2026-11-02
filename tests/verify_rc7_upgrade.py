@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -88,6 +89,16 @@ def run(root):
               'Baseline synthetic inventory is incorrect.')
     print('UPGRADE_STAGE: baseline inventory and frozen PDF', flush=True)
     exports = [a.pdf_file_flow(api)]
+    # Match the real "I saved the ZIP" action after a verified download. A
+    # frozen export alone is deliberately busy until its delivery is confirmed.
+    saved = root / 'synthetic-baseline-pdf.zip'
+    with saved.open('xb') as target:
+        target.write(exports[0]['bytes'])
+    a.require(hashlib.sha256(saved.read_bytes()).hexdigest() == exports[0]['sha256'],
+              'Synthetic baseline download was not saved intact.')
+    a.require(api.request('/api/delivery/complete', {'id':exports[0]['id']})[0] == 200
+              and api.request('/api/state')[1].get('deliveryCompleted') is True,
+              'Confirm the saved synthetic export before attempting an upgrade.')
     print('UPGRADE_STAGE: candidate upgrade', flush=True)
     select(CANDIDATE); upgrade(root, expected)
     api = a.LocalAPI(); api.healthy(); a.verify_installed_identity(); a.preview_settings(api)
@@ -114,12 +125,33 @@ def run(root):
     print('UPGRADE_PASS: signed rc.6 -> rc.7; Inventory/PDF retained; Applications desktop verified.')
 
 
+def cleanup(root):
+    # Keep the existing ownership/settled-installer gates and exact cleanup
+    # program. On failure expose only its static source line, never raw stderr.
+    original = a.sudo_python
+    def bounded_cleanup(source):
+        if source != a.CLEANUP:
+            return original(source)
+        result = subprocess.run(['/usr/bin/sudo', '-n', sys.executable, '-I', '-c', source],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30, env=a.SAFE_ENV)
+        if result.returncode:
+            lines = re.findall(r'File "<string>", line ([0-9]+)', result.stderr[-4096:])
+            print('CI_CLEANUP_STATIC_FAILURE_LINES: ' + ','.join(lines), flush=True)
+        a.require(result.returncode == 0, 'Owned VM cleanup failed; VM teardown must contain it.')
+        return result
+    a.sudo_python = bounded_cleanup
+    try:
+        a.cleanup(root)
+    finally:
+        a.sudo_python = original
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('phase', choices=['Run', 'Cleanup']); args = parser.parse_args()
     try:
         root = a.runner_guard()
-        if args.phase == 'Cleanup': a.cleanup(root)
+        if args.phase == 'Cleanup': cleanup(root)
         else: run(root)
     except a.AcceptanceError as error:
         print(str(error), file=sys.stderr); return 1
