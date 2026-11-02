@@ -18,6 +18,7 @@ func require(_ condition: Bool, _ message: String) {
 require(NSRunningApplication.runningApplications(withBundleIdentifier: "io.jeezlabs.eznest").isEmpty,
         "Existing desktop client prevents ownership.")
 let before = browserPIDs()
+require(before.isEmpty, "A running browser prevents proving no browser startup.")
 var browserLaunched = false
 let observer = workspace.notificationCenter.addObserver(
     forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { note in
