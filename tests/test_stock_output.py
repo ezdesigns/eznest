@@ -10,13 +10,16 @@ import threading
 import time
 import unittest
 import uuid
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import URLError
 
 import opt_out  # noqa: F401
 import material_inventory as inventory
 import output_credential
+import output_link
 import output_remote
 import shop_auth
 import shop_deploy
@@ -457,6 +460,10 @@ class SettingsTests(unittest.TestCase):
         server.LAN = False
         shop_auth.reset_for_tests()
         shop_deploy.clear_name_cache()
+        # Connection setup keeps one pending attempt per data directory.
+        # A previous test's entry must not satisfy this directory.
+        output_link.ATTEMPTS.clear()
+        self.addCleanup(output_link.ATTEMPTS.clear)
         self.addCleanup(self.restore)
         inventory.save(server.WORK, 'roll-a', profile(), 0)
 
@@ -528,25 +535,88 @@ class SettingsTests(unittest.TestCase):
         self.assertIs(shop_deploy.load_shop(server.WORK)['shareStockSummary'], False)
         self.assertIs(shop_deploy.load_shop(server.WORK)['showRollNames'], False)
 
-    def test_share_true_and_link_routes_are_rejected_without_calling_output(self):
+    def test_stock_share_stays_off_while_connection_setup_uses_its_own_route(self):
+        # output_remote.READY false still refuses stock-summary upload.
+        # /api/telemetry/output/link/start is host connection setup, not that
+        # gate. The link transport is injected here: a live OUTPUT reply, a
+        # cached output_link.ATTEMPTS entry, or EZ_NEST_OUTPUT_UPLOADS left by
+        # another test must not decide this result.
         self.assertIs(output_remote.READY, False)
-        calls = []
+        output_link.ATTEMPTS.clear()
+        stock_calls = []
 
         def boom(*args, **kwargs):
-            calls.append(args)
-            raise AssertionError('network')
+            stock_calls.append(args)
+            raise AssertionError('stock network')
 
-        with patch.object(stock_output, 'deliver', side_effect=boom), \
-             patch('urllib.request.build_opener', side_effect=boom):
+        link_id = '12345678-1234-4234-8234-123456789abc'
+        body = json.dumps({'outcome': 'ok', 'result': {
+            'linkId': link_id,
+            'state': 'pending',
+            'userCode': 'ABCD-2345',
+            'expiresAt': (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+        }}).encode()
+
+        class Response:
+            status = 200
+
+            def read(self, _n):
+                return body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        class Opener:
+            def open(self, request, timeout):
+                link_calls.append((request.full_url, timeout))
+                return Response()
+
+        link_calls = []
+        env = {'EZ_NEST_OUTPUT_UPLOADS': '', 'EZ_NEST_OUTPUT_TOKEN': '', 'EZ_NEST_OUTPUT_URL': ''}
+        with patch.dict(os.environ, env), \
+             patch.object(stock_output, 'deliver', side_effect=boom), \
+             patch('urllib.request.build_opener', return_value=Opener()):
             denied = self.handler('/api/shop', body=json.dumps({'onyxPc': False, 'lan': False, 'shareStockSummary': True}).encode())
             denied.handle_post()
             self.assertEqual(denied.sent[0][0], 403)
             self.assertIs(shop_deploy.load_shop(server.WORK)['shareStockSummary'], False)
-            for path in ('/api/telemetry/output/link/start', '/api/telemetry/output/link/check', '/api/telemetry/output/link/cancel'):
-                blocked = self.handler(path, body=b'{}')
-                blocked.handle_post()
-                self.assertNotEqual(blocked.sent[0][0], 200, path)
-        self.assertEqual(calls, [])
+            started = self.handler('/api/telemetry/output/link/start', body=b'{}')
+            started.handle_post()
+            self.assertEqual(started.sent[0][0], 200)
+            self.assertEqual(started.sent[0][1]['state'], 'pending')
+            self.assertEqual(started.sent[0][1]['userCode'], 'ABCD-2345')
+            self.assertNotIn('code', started.sent[0][1])
+            stored = output_link.ATTEMPTS[output_link._key(server.WORK)]
+            self.assertNotIn(stored['code'], json.dumps(started.sent[0][1]))
+            self.assertEqual(link_calls, [('https://output.jeezlabs.io/api/shop/agent/link', 10)])
+            self.assertIs(shop_deploy.load_shop(server.WORK)['shareStockSummary'], False)
+            legacy = self.handler('/api/telemetry/output/link/check', body=b'{}')
+            legacy.handle_post()
+            self.assertEqual(legacy.sent[0][0], 404)
+            missing = self.handler('/api/telemetry/output/link/cancel', body=b'{}')
+            missing.handle_post()
+            self.assertEqual(missing.sent[0][0], 400)
+            self.assertEqual(link_calls, [('https://output.jeezlabs.io/api/shop/agent/link', 10)])
+            cancelled = self.handler('/api/telemetry/output/link/cancel', body=json.dumps({'attemptId': started.sent[0][1]['attemptId']}).encode())
+            cancelled.handle_post()
+            self.assertEqual(cancelled.sent[0][0], 200)
+            self.assertEqual(cancelled.sent[0][1]['state'], 'cancelled')
+            self.assertIs(shop_deploy.load_shop(server.WORK)['shareStockSummary'], False)
+        self.assertEqual(stock_calls, [])
+
+        # A transport failure is a local refusal, not a pass that depends on OUTPUT being down.
+        output_link.ATTEMPTS.clear()
+        with patch.dict(os.environ, env), \
+             patch.object(stock_output, 'deliver', side_effect=boom), \
+             patch('urllib.request.build_opener', side_effect=URLError('offline')):
+            offline = self.handler('/api/telemetry/output/link/start', body=b'{}')
+            offline.handle_post()
+            self.assertEqual(offline.sent[0][0], 400)
+            self.assertIs(shop_deploy.load_shop(server.WORK)['shareStockSummary'], False)
+        self.assertEqual(stock_calls, [])
 
 
 class ScreenTests(unittest.TestCase):

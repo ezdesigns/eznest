@@ -9,11 +9,12 @@ import re
 import secrets
 import threading
 import time
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, build_opener
+from urllib.request import Request
 
 import output_pairing
 import output_gate
@@ -44,7 +45,9 @@ def _post(directory, raw):
         raise output_pairing.PairingError('offline', output_pairing.OFFLINE)
     request = Request(url, data=raw, headers={'Content-Type': 'application/json', 'Accept': 'application/json'}, method='POST')
     try:
-        with build_opener(NoRedirect()).open(request, timeout=10) as response:
+        # Look up build_opener on each call. A test that patches
+        # urllib.request.build_opener must actually block this request.
+        with urllib.request.build_opener(NoRedirect()).open(request, timeout=10) as response:
             return response.status, response.read(16385)
     except HTTPError as error:
         try:
