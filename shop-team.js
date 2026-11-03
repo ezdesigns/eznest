@@ -37,21 +37,29 @@ window.EZNShop = (() => {
   function label() {
     const open = document.getElementById('shop-team-open');
     open.textContent = session.shopIdentity?.name || 'Your shop';
+    open.title = session.shopIdentity?.name || 'Your shop';
+    open.setAttribute('aria-haspopup', 'dialog');
   }
   async function created() { await updateSession(); finish(); }
   function welcome() {
     reset('Welcome to Ez Nest');
-    node('p', 'Create one shop to keep your team and material stock together.', content);
-    button('Create a shop', () => {
-      reset('Create your shop');
-      const name = input('Shop name', 'Your print shop'); name.id = 'team-shop-name';
-      node('p', 'Existing materials on this PC stay in your shop. This does not turn on network or OUTPUT sharing.', content);
-      if (session.pinConfigured) node('p', 'This replaces shared PIN access. Invite current teammates again after creating the shop.', content);
-      button('Create shop', async () => { await request('/api/shop-members/create', {name: name.value}); await created(); }, content, true).id = 'team-create';
-      button('Back', welcome); name.focus();
-    }, content, true);
-    button('Join a shop', joinAddress);
-    button('Use this PC for now', finish);
+    node('p', 'Less wasted material. More room for your next job.', content);
+    const name = input('What’s your print shop called?', 'Your print shop'); name.id = 'team-shop-name';
+    name.required = true; name.autocomplete = 'organization';
+    node('p', 'Keep your materials together under one shop name. You can invite your team later.', content);
+    if (session.pinConfigured) node('p', 'This replaces shared PIN access. Invite current teammates again after creating the shop.', content);
+    const create = button('Start nesting', async () => {
+      name.value = name.value.trim();
+      if (!name.reportValidity()) return;
+      await request('/api/shop-members/create', {name: name.value}); await created();
+    }, content, true); create.id = 'team-create';
+    name.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); create.click(); }
+    });
+    button('Not now', finish).className = 'team-text-button';
+    const existing = node('div', '', content); existing.className = 'team-existing';
+    button('Already have a shop on another PC?', joinAddress, existing).className = 'team-text-button';
+    name.focus();
   }
   function joinAddress() {
     reset('Open your shop');
@@ -138,6 +146,7 @@ window.EZNShop = (() => {
       });
       const parent = document.querySelector('.header-tools, .top-actions') || document.querySelector('header');
       button('Your shop', open, parent).id = 'shop-team-open'; label();
+      document.getElementById('shop-team-open').classList.add('top-button');
       if ((session.localPC && !session.shopIdentity?.created) || (!session.localPC && session.shopIdentity?.created && !session.authenticated)) {
         const waiting = new Promise(resolve => { done = resolve; }); await open(); return waiting;
       }

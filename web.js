@@ -2462,7 +2462,7 @@ function renderOutputSharing(info) {
   else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.';
   else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
   else if (paired) connectStatus.textContent = [lastCheckInText || 'Choose Check now to confirm the last check-in.', info.requiresConsent ? 'Review the sharing details below, then choose Enable sharing.' : ''].filter(Boolean).join(' ');
-  else connectStatus.textContent = 'This computer is not connected. Choose Set up your shop to enter the code from OUTPUT.';
+  else connectStatus.textContent = 'This computer is not connected. Choose Connect this computer to use your existing OUTPUT shop.';
   $('telemetry-agree').checked = false;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
   $('telemetry-enable').disabled = true;
@@ -2624,8 +2624,7 @@ function setupSkipped() {
 function showOutputRequired(required) {
   outputRequired = required === true && !setupSkipped();
   $('output-required').hidden = !outputRequired;
-  $('output-required-note').textContent = outputRequiredLocal ? '' : 'Ask the shop computer to connect to OUTPUT.';
-  if ($('output-required-code')) $('output-required-code').hidden = !outputRequiredLocal;
+  $('output-required-note').textContent = '';
   document.body.classList.toggle('output-required-on', outputRequired);
 }
 function showOutputBanner(session) {
@@ -3461,18 +3460,22 @@ function closeOutputLinkMenu() {
   $('output-link-menu').hidden = true;
   $('output-link-status').setAttribute('aria-expanded', 'false');
 }
-function openOutputLinkForm() {
-  if (!outputLink?.canPair || outputSharing?.paused || $('setup-shop').open) return;
+function openOutputLinkForm(event) {
+  if ($('setup-shop').open) return;
   closeOutputLinkMenu();
   $('output-link-reconnect-note').hidden = !outputSharing?.configured;
-  const url = outputLink?.connectUrl;
-  if (url) window.open(url, '_blank', 'noopener,noreferrer');
-  // "Set up your shop": the owner clicks Add a computer in OUTPUT and types that code here.
+  const canConnect = outputLink?.canPair && !outputSharing?.paused;
+  $('output-connect-fields').hidden = !canConnect;
+  $('output-connect-help').hidden = !!canConnect;
+  $('output-connect-help').textContent = !outputLinkLocal ? 'Connect from the shop’s host PC. You can explore OUTPUT from here.' : 'OUTPUT is turned off for this run. You can still explore the pilot.';
+  const connecting = ['output-pair', 'output-reconnect', 'output-link-reconnect'].includes(event?.currentTarget?.id);
+  $('output-connect-details').open = connecting || !!outputSharing?.configured;
   if (!$('setup-shop').open) $('setup-shop').showModal();
   $('output-link-connect').hidden = true;
   $('output-link-error').hidden = true;
   $('output-link-code').value = '';
-  $('output-link-code').focus();
+  if (canConnect && $('output-connect-details').open) $('output-link-code').focus();
+  else $('output-explore').focus();
 }
 function closeOutputLinkForm() {
   if ($('setup-shop').open) $('setup-shop').close();
