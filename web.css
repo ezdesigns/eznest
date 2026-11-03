@@ -714,6 +714,8 @@ body[data-step="sent"] #inventory-open { display: block; }
 #output-browser-match { display: block; font: 700 26px monospace; letter-spacing: 3px; margin: 14px 0; }
 #output-browser-open { display: inline-block; margin-top: 12px; }
 #output-browser-open[hidden] { display: none; }
+#output-browser-cancel { display: block; margin-top: 16px; }
+#setup-shop:has(#output-browser-waiting:not([hidden])) :is(.output-intro, .output-benefits, #output-browser-start, #output-explore, .output-link-form > .hint, #output-connect-details) { display: none; }
 #output-connect-details { border-top: 1px solid #e2e5e9; padding-top: 16px; }
 #output-connect-details summary { cursor: pointer; font-size: 14px; }
 #output-connect-fields { display: grid; gap: 12px; margin-top: 16px; }
