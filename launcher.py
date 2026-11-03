@@ -1,5 +1,6 @@
 """Portable entry point, also reused by the source launcher."""
 import argparse
+import hashlib
 import json
 import os
 import ssl
@@ -48,12 +49,26 @@ def main():
     parser.add_argument('--tls-cert', default=None, help='Certificate for optional local HTTPS')
     parser.add_argument('--tls-key', default=None, help='Private key for optional local HTTPS')
     parser.add_argument('--data-dir', type=Path)
+    parser.add_argument('--local-only', action='store_true', help='Use a separate per-user folder, with network and OUTPUT sharing off')
     parser.add_argument('--isolated', action='store_true', help='Require a separate data folder and refuse an existing server')
     parser.add_argument('--shop-test', action='store_true', help='Start a separate local trial with TEST output and updates off')
     parser.add_argument('--dev', action='store_true', help='Source checkout only. Labels dev mode. EZ_NEST_DEV_NO_OUTPUT=1 is ignored without it.')
     parser.add_argument('--update-confirm', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--shop-service', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.local_only:
+        if args.lan or args.data_dir or args.shop_test or args.shop_service:
+            raise ValueError('Local-only mode cannot use shop service, LAN, test mode, or a custom data folder.')
+        local = os.environ.get('LOCALAPPDATA')
+        if not local:
+            raise ValueError('Windows could not locate your local app data folder.')
+        args.data_dir = Path(local) / 'eznest-local'
+        args.isolated = True
+        os.environ['EZ_NEST_UPDATES'] = '0'
+        os.environ['EZ_NEST_OUTPUT_UPLOADS'] = '0'
+        os.environ['EZ_NEST_LOCAL_ID'] = hashlib.sha256(os.path.normcase(str(args.data_dir.resolve())).encode()).hexdigest()
+    else:
+        os.environ.pop('EZ_NEST_LOCAL_ID', None)
     import macos_service_runtime
     # The ordinary app opens the one installed host. It must never create a
     # second per-user stock database when the system service is offline.
@@ -98,7 +113,8 @@ def main():
     if existing is not None:
         if args.shop_service:
             raise RuntimeError('The shop service port is already in use; no second host was started.')
-        if args.isolated:
+        same_local = args.local_only and existing.get('localDataId') == os.environ.get('EZ_NEST_LOCAL_ID')
+        if args.isolated and not same_local:
             raise RuntimeError(f'Port {args.port} is already in use. This isolated test will not open or change the running application.')
         if existing.get('app') != 'eznest' or existing.get('version') != VERSION:
             raise RuntimeError(f'Another application or eznest version is using port {args.port}. Close it before starting this build.')
@@ -153,7 +169,7 @@ def main():
     # Do not expose development-only pages in a distributed executable.
     if getattr(sys, 'frozen', False):
         os.environ.pop('EZ_NEST_TEST_UI', None)
-    if not args.update_confirm and not args.shop_test:
+    if not args.update_confirm and not args.shop_test and not args.local_only:
         import installer_update
         if installer_update.handoff_if_pending(installer_update.install_root(), data):
             return 0

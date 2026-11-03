@@ -115,6 +115,10 @@ function Protect-DataDirectory([string]$Folder, [string]$Account) {
   & icacls.exe $Folder /inheritance:r /grant:r @inherit
   if ($LASTEXITCODE -ne 0) { throw "Could not lock down $Folder to SYSTEM, Administrators, and the shop service account." }
   foreach ($child in @(Get-ChildItem -LiteralPath $Folder -Force -Recurse)) {
+    # OUTPUT owns these protected ACLs. A retry must not take ownership,
+    # rewrite permissions, or read a credential created by another identity.
+    if ($child.DirectoryName -eq [IO.Path]::GetFullPath($Folder) -and
+        $child.Name -in @('output-credential.bin', 'output-credential.bin.tmp')) { continue }
     $grant = if ($child.PSIsContainer) { $inherit } else { $object }
     & icacls.exe $child.FullName /inheritance:r /grant:r @grant
     if ($LASTEXITCODE -ne 0) { throw "Could not lock down $($child.FullName) to SYSTEM, Administrators, and the shop service account." }
@@ -171,16 +175,8 @@ if (-not $TlsCert -and -not $TlsKey) {
   Write-Host 'Before you enable it, create the certificate and run: icacls C:\ProgramData\eznest\eznest-key.pem /inheritance:r /grant:r *S-1-5-18:(R) *S-1-5-32-544:(R) eznest-svc:(R)'
   Write-Host 'To enable HTTPS later:'
   Write-Host ('  ' + $httpsLater)
-  $ask = $env:EZ_NEST_HTTPS_PROMPT -eq '1'
-  if (-not $ask -and $env:EZ_NEST_HTTPS_PROMPT -ne '0' -and $env:GITHUB_ACTIONS -ne 'true' -and $env:CI -ne 'true') {
-    try { $ask = [Environment]::UserInteractive -and -not [Console]::IsInputRedirected } catch { $ask = $false }
-  }
-  if ($ask) {
-    $choice = Read-Host 'Press Enter to continue with HTTP, or type HTTPS to stop and use the command above'
-    if ($choice -eq 'HTTPS') {
-      throw 'Stopped before changing this PC. HTTP is still the default. Rerun with -TlsCert and -TlsKey when the key is restricted.'
-    }
-  }
+  # Inno runs this helper hidden. Never wait for console input, even when
+  # Windows reports an interactive session. TLS is selected with parameters.
 }
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 $onyx = $OnyxPc -eq '1'
@@ -288,8 +284,7 @@ if ($boot) {
     throw "The eznest startup task is registered but did not start ($startError). The limited account needs 'Log on as a batch job'. Sign out and back in, or restart this PC, then run the installer again."
   }
 }
-Write-Host 'Connect this computer to OUTPUT before the shop nests.'
-Write-Host 'Open http://127.0.0.1:8765/web and paste a pairing code from https://output.jeezlabs.io/outpost/ez-nest.'
-Write-Host 'Activity sharing stays off until Enable sharing. This installer does not ask for or store a pairing code.'
+Write-Host 'Open http://127.0.0.1:8765/web to start nesting. Connecting to OUTPUT is optional; choose Skip for local use.'
+Write-Host 'Activity sharing stays off until Enable sharing.'
 
 

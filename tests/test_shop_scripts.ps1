@@ -4,6 +4,7 @@ $sandbox = Join-Path ([IO.Path]::GetTempPath()) ('eznest-script-tests-' + [guid]
 New-Item -ItemType Directory -Path $sandbox | Out-Null
 $global:eznestTestCalls = [Collections.Generic.List[string]]::new()
 function Assert($value, $message) { if (-not $value) { throw $message } }
+function global:Read-Host { throw 'Hidden setup must never ask for console input' }
 # These mocks prevent the actual scripts from changing any account, ACL, task,
 # firewall rule, or profile on the developer's PC or CI runner.
 function global:schtasks.exe { $global:eznestTestCalls.Add('task ' + ($args -join ' ')); $global:LASTEXITCODE = 0 }
@@ -31,7 +32,9 @@ function global:Register-ScheduledTask {
 function global:Start-ScheduledTask { param($TaskName, $TaskPath); $global:eznestTestCalls.Add('start ' + $TaskName) }
 function global:Remove-CimInstance { throw 'Unexpected profile deletion' }
 try {
-    $env:EZ_NEST_HTTPS_PROMPT = '0'
+    $env:EZ_NEST_HTTPS_PROMPT = '1'
+    $credential = Join-Path $sandbox 'output-credential.bin'
+    [IO.File]::WriteAllText($credential, 'synthetic-test-only')
     $source = Get-Content (Join-Path $root 'installer/install-shop.ps1') -Raw
     # Inject two system-boundary fakes after function definitions, leaving the
     # installer's argument parsing and orchestration unchanged.
@@ -42,6 +45,8 @@ function Grant-BatchLogon([string]$Account) { $global:eznestTestCalls.Add("batch
     $source = $source.Replace("`$ErrorActionPreference = 'Stop'", $fakes + "`n`$ErrorActionPreference = 'Stop'")
     $installer = [scriptblock]::Create($source)
     & $installer -DataDir $sandbox -App (Join-Path $sandbox 'eznest.exe') -StartAtBoot 1
+    Assert (-not ($global:eznestTestCalls | Where-Object { $_ -match '^acl .*output-credential' })) 'Retry must leave the app-managed credential ACL alone.'
+    Assert ([IO.File]::ReadAllText($credential) -eq 'synthetic-test-only') 'Retry must preserve credential bytes.'
     $shop = Get-Content (Join-Path $sandbox 'shop.json') -Raw | ConvertFrom-Json
     Assert (-not $shop.lan -and -not $shop.outputNetwork) 'Network defaults must be off.'
     Assert ($shop.updates -eq $false) 'Update checks default off.'
