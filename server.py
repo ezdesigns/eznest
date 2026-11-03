@@ -485,6 +485,7 @@ class Handler(BaseHTTPRequestHandler):
             'outputLink': output_gate.link_status(WORK, local),
         }
         if local:
+            body['localDataId'] = os.environ.get('EZ_NEST_LOCAL_ID')
             body['token'] = TOKEN
             body['pinAlert'] = shop_auth.alert_status()
         return body
