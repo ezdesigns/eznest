@@ -44,6 +44,10 @@
 <button id="logout" type="button" class="link" hidden>Log out</button>
 </div>
 </header>
+<aside id="shop-update-notice" class="shop-update-notice" aria-live="polite" hidden>
+  <span id="shop-update-message"></span>
+  <button id="shop-update-action" type="button">Update shop</button>
+</aside>
 <dialog id="pin-gate" aria-labelledby="pin-title">
   <form id="pin-form">
     <h2 id="pin-title">Shop PIN</h2>
@@ -57,18 +61,39 @@
 </dialog>
 <div id="output-required" class="output-required" role="status" hidden>
   <div>
-    <p><strong id="output-required-title">Connect to OUTPUT (optional)</strong> <span class="hint">Nesting works without it. Connect any time in Settings.</span></p>
+    <p><strong id="output-required-title">Take on more work with OUTPUT</strong></p>
+    <p class="hint">Need another shop’s machines? Have room on yours? Explore the OUTPUT pilot.</p>
     <p id="output-required-note" class="hint"></p>
   </div>
   <div class="output-required-actions">
-    <button id="output-required-code" type="button" class="primary">Set up your shop</button>
-    <button id="output-required-skip" type="button" class="link">Skip</button>
+    <button id="output-required-code" type="button" class="primary">Explore OUTPUT</button>
+    <button id="output-required-skip" type="button" class="link">Not now</button>
   </div>
 </div>
 <p id="output-banner" class="hint" hidden></p>
 <dialog id="setup-shop" class="setup-shop" aria-labelledby="setup-shop-title">
   <form id="output-link-form" class="output-link-form">
-    <h2 id="setup-shop-title">Set up your shop</h2>
+    <h2 id="setup-shop-title">More possibilities for your shop</h2>
+    <p class="output-intro">Ez Nest helps you fit more on a roll. OUTPUT is building a network to help you take on more work.</p>
+    <div class="output-benefits">
+      <div><h3>Send work out</h3><p>Explore partner shops for jobs beyond your equipment or capacity.</p></div>
+      <div><h3>Bring work in</h3><p>Explore making jobs for other shops when your machines have room.</p></div>
+    </div>
+    <button id="output-browser-start" type="button" class="primary output-explore" hidden>Continue with OUTPUT</button>
+    <section id="output-browser-waiting" aria-label="Approve this computer" hidden>
+      <p>Sign in to OUTPUT, choose your shop, and approve this computer. Check that this number matches:</p>
+      <strong id="output-browser-match"></strong>
+      <p id="output-browser-status" class="hint" role="status"></p>
+      <a id="output-browser-open" target="_blank" rel="noopener noreferrer" hidden>Open OUTPUT ↗</a>
+      <button id="output-browser-cancel" type="button" class="link">Cancel connection</button>
+    </section>
+    <p id="output-browser-error" class="lan-note" role="alert" hidden></p>
+    <a id="output-explore" class="output-explore-more" href="https://output.jeezlabs.io/" target="_blank" rel="noopener noreferrer">Explore the OUTPUT pilot ↗</a>
+    <p class="hint">Pilot preview. Production ordering is not available yet. Exploring does not connect this PC or share your files.</p>
+    <details id="output-connect-details">
+    <summary>Use a pairing code instead</summary>
+    <p id="output-connect-help" class="hint" hidden></p>
+    <div id="output-connect-fields">
     <p class="hint">In OUTPUT, click <strong>Add a computer</strong>. Then enter the code here.</p>
     <p id="output-link-reconnect-note" class="hint" hidden>This computer stays connected until the new code is accepted.</p>
     <label for="output-link-code">Enter the code from OUTPUT</label>
@@ -77,7 +102,10 @@
       <button id="output-link-submit" class="primary" type="submit">Connect</button>
     </div>
     <p id="output-link-error" class="lan-note" role="alert" hidden></p>
-    <p class="hint"><a id="output-link-open" href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Open OUTPUT</a> · <button id="output-link-cancel" type="button" class="link">Cancel</button></p>
+    <p class="hint"><a id="output-link-open" href="https://output.jeezlabs.io/outpost/ez-nest" target="_blank" rel="noopener noreferrer">Add this computer in OUTPUT ↗</a></p>
+    </div>
+    </details>
+    <button id="output-link-cancel" type="button" class="link">Back to nesting</button>
   </form>
 </dialog>
 <dialog id="settings" aria-labelledby="settings-title">
@@ -158,7 +186,7 @@
           <button id="output-check-now" class="link" type="button" hidden>Check now</button>
         </div>
         <button id="output-reconnect" class="link" type="button" hidden>Reconnect with a new code</button>
-        <button id="output-pair" class="primary" type="button" disabled>Set up your shop</button>
+        <button id="output-pair" class="primary" type="button" disabled>Connect this computer</button>
         <button id="output-disconnect" class="link" type="button" hidden>Disconnect</button>
       </div>
       <h3>What OUTPUT sees</h3>
@@ -197,7 +225,7 @@
     <details id="settings-updates" class="settings-section">
       <summary>App updates</summary>
     <label class="check"><input id="updates" type="checkbox"> Check for updates</label>
-    <p class="hint">Off during beta. To turn checks on, check this box and start Ez Nest with <code>EZ_NEST_UPDATES=1</code>. Ez Nest keeps a download only when its SHA-256 matches the published checksum. Installing that file is still a separate click.</p>
+    <p class="hint">Get a notice when a new version is available. Update on the host PC after saving your work; everyone using that shop address gets the new version. Separately installed copies update separately.</p>
     <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
     <label class="check" hidden><input id="output-network" type="checkbox"> Share capacity with the OUTPUT network</label>
     <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Connecting this computer to OUTPUT is optional and is not this switch.</p>

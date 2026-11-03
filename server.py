@@ -16,6 +16,7 @@ import ssl
 import workload
 import output_gate
 import output_pairing
+import output_link
 import output_remote
 import telemetry
 import telemetry_sender
@@ -557,7 +558,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, info)
             import installer_update
             refresh = parse_qs(urlparse(self.path).query).get('refresh', ['0'])[0] == '1'
-            if refresh:
+            if refresh and self.loopback_client():
                 info = peek_latest(WORK, VERSION)
             else:
                 info = {'ok': True, 'current': VERSION, 'updateAvailable': False, 'latest': VERSION, 'message': '', 'error': None}
@@ -569,6 +570,7 @@ class Handler(BaseHTTPRequestHandler):
             with OPERATIONS:
                 info.update(UPDATE_QUEUE.status())
             info['localPC'] = self.loopback_client()
+            info['checksEnabled'] = updates_allowed(WORK)
             info['serverPid'] = os.getpid()
             info['managedResult'] = installer_update.read_json(WORK/'updates'/'managed-result.json')
             info['notes'] = installer_update.current_notes(ROOT, VERSION)
@@ -580,6 +582,8 @@ class Handler(BaseHTTPRequestHandler):
                 info['error'] = None
             elif info.get('staged'):
                 info['message'] = 'A checked update is saved. Automatic installation is unavailable for this installation. The current app stays running.'
+            if info.get('staged') and info.get('portableSupported'):
+                info['message'] = 'Update ready. Save the current job, then update on the host PC. Everyone using this host will get the new version.'
             if info.get('queued'):
                 info['message'] = 'Update approved. Finish sending the current job or choose Start over. You can cancel before installation starts.'
             elif info.get('staged') and info['managedSupported']:
@@ -919,6 +923,22 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(200, output_pairing.connect(WORK, data.get('code'), paused=telemetry_paused()))
                     except output_pairing.PairingError as error:
                         return self.send(400, {'error': str(error), 'reason': error.reason})
+                if path.startswith('/api/telemetry/output/link/'):
+                    action = path.rsplit('/', 1)[-1]
+                    if action == 'start' and data:
+                        raise ValueError('Starting a connection takes no additional data.')
+                    if action in ('status', 'cancel') and (set(data) != {'attemptId'} or not isinstance(data['attemptId'], str)):
+                        raise ValueError('Choose the current connection request.')
+                    try:
+                        if action == 'start':
+                            return self.send(200, output_link.start(WORK, paused=telemetry_paused()))
+                        if action == 'status':
+                            return self.send(200, output_link.status(WORK, data['attemptId'], paused=telemetry_paused()))
+                        if action == 'cancel':
+                            return self.send(200, output_link.cancel(WORK, data['attemptId']))
+                    except output_pairing.PairingError as error:
+                        return self.send(400, {'error': str(error), 'reason': error.reason})
+                    return self.send(404, {'error': 'Connection action not found.'})
                 if path == '/api/telemetry/output/disconnect':
                     if data:
                         raise ValueError('Disconnect takes no additional data.')
@@ -951,6 +971,25 @@ class Handler(BaseHTTPRequestHandler):
                 import installer_update
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Approve updates on the server PC.'})
+                if path == '/api/update/install':
+                    if not installer_update.updates_enabled(WORK):
+                        raise ValueError('Updates are off.')
+                    if not installer_update.local_state(WORK, installer_update.install_root()).get('portableSupported'):
+                        raise ValueError('Use the approved installer for this installation.')
+                    pending = installer_update.pending_state(WORK)
+                    if not pending or pending.get('channel') != load_shop(WORK)['channel']:
+                        raise ValueError('Download an update for the selected channel first.')
+                    if UPDATE_QUEUE.status()['queued']:
+                        raise ValueError('An update is already waiting.')
+                    with LOCK:
+                        if STATE.get('status') == 'running' or (STATE.get('status') == 'ready' and not STATE.get('deliveryCompleted')):
+                            raise ValueError('Save the current print file or choose Start over before updating.')
+                        persist_state()
+                    result = installer_update.begin_apply(WORK, installer_update.install_root())
+                    UPDATE_QUEUE.stopping = True
+                    self.send(200, result)
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
+                    return
                 if path == '/api/update/cancel':
                     UPDATE_QUEUE.cancel()
                     return self.send(200, {'ok': True, 'message': 'Update cancelled. The app stays running.'})
@@ -1118,6 +1157,8 @@ class Handler(BaseHTTPRequestHandler):
                 stock_output.note_change(WORK)
                 return self.send(200, saved)
             if path == '/api/update':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Download and approve updates on the shop host PC.'})
                 if macos_service_runtime.active():
                     if not self.loopback_client():
                         return self.send(403, {'error':'Download and approve updates on the shop Mac.'})
@@ -1128,9 +1169,12 @@ class Handler(BaseHTTPRequestHandler):
                 with LOCK:
                     if STATE.get('status') == 'running':
                         raise ValueError('Stop the current search before updating.')
+                    if data.get('when') == 'now' and STATE.get('status') == 'ready' and not STATE.get('deliveryCompleted'):
+                        raise ValueError('Save the current print file or choose Start over before updating.')
                 import installer_update
                 result = pull_latest(WORK, VERSION, when=data.get('when') or 'restart', install_root=installer_update.install_root())
                 if result.get('restarting'):
+                    UPDATE_QUEUE.stopping = True
                     self.send(200, result)
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return

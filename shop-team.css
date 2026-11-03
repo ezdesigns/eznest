@@ -10,4 +10,10 @@
 #shop-team-dialog .team-person { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 #shop-team-dialog [role=status] { color: #a32c26; }
 #team-invitation { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
-#shop-team-open { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#shop-team-open { display: block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#shop-team-dialog .team-text-button { border: 0; background: transparent; color: #526173; padding: 10px 0; text-decoration: underline; text-underline-offset: 3px; }
+#shop-team-dialog .team-existing { margin-top: 16px; border-top: 1px solid #e5e9ee; }
+#shop-team-dialog .team-existing button { margin-bottom: 0; font-size: 13px; }
+@media (max-width: 720px) {
+  #shop-team-open { max-width: min(150px, 40vw); }
+}

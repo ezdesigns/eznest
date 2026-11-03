@@ -66,7 +66,7 @@ function installSettingsHelp() {
     'staging-folder': ['Extra copy folder', 'Choose where the extra copy is saved. This does not replace the main destination.'],
     'onyx-pc': ['This PC runs ONYX', 'Changes the suggested output folder for this PC. It does not install ONYX or move your files.'],
     'lan': ['Other computers can connect', 'Shows whether this app was started with --lan. The box is disabled because the startup task controls it. A saved setting cannot open the shop network. The installer applies Shop network only on a fresh install. Change it later by running install-shop.ps1 again with -Lan 1 or -Lan 0 and -StartAtBoot 1, then restart.'],
-    'updates': ['Look for app updates', 'Off during beta. Check this box and start Ez Nest with EZ_NEST_UPDATES=1. A download is kept only when its SHA-256 matches. Installing is still a separate click.'],
+    'updates': ['Look for app updates', 'Check for new releases. Nothing installs until you choose to update on the host PC. Your shop inventory and settings stay here.'],
     'test-channel': ['Include test versions', 'When update checks are enabled, also show releases still being tested. Leave off for normal shop use.'],
     'allow-undo': ['Undo send', 'Lets you remove a sent pack while it is still in the output folder. This cannot stop a job that ONYX has already picked up.'],
     'preset-name': ['Material name', 'The name on the material button. Save separate materials when rolls need different widths or spacing.'],
@@ -2475,7 +2475,7 @@ function renderOutputSharing(info) {
   else if (launch) connectStatus.textContent = 'This computer uses OUTPUT launch settings. A pairing code is not used while those settings are present.';
   else if (source === 'disabled') connectStatus.textContent = 'OUTPUT delivery is turned off for this run.';
   else if (paired) connectStatus.textContent = [lastCheckInText || 'Choose Check now to confirm the last check-in.', info.requiresConsent ? 'Review the sharing details below, then choose Enable sharing.' : ''].filter(Boolean).join(' ');
-  else connectStatus.textContent = 'This computer is not connected. Choose Set up your shop to enter the code from OUTPUT.';
+  else connectStatus.textContent = 'This computer is not connected. Choose Connect this computer to use your existing OUTPUT shop.';
   $('telemetry-agree').checked = false;
   $('telemetry-agree').disabled = !info.configured || info.enabled || info.paused;
   $('telemetry-enable').disabled = true;
@@ -2631,7 +2631,8 @@ function setupSkipped() {
   catch { return false; }
 }
 function showOutputRequired() {
-  // Pairing stays in Settings and the status dot. It does not sit on the home screen or block nesting.
+  // The matching-code dialog stays on the status dot and in Settings.
+  // It does not sit on the home screen or block nesting.
   outputRequired = false;
   const box = $('output-required');
   if (box) box.hidden = true;
@@ -2987,20 +2988,49 @@ let updateInfo = {};
 let updateWasQueued = false;
 let updateVersion = null;
 let updateServerPid = null;
+let updateInFlight = false;
+let shopVersionChanged = false;
+function updateRefreshNeedsReview() {
+  return busy || saving || importing || kits.length > 0 || !!document.querySelector('dialog[open]')
+    || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+}
+function receiveUpdate(info) {
+  if ((info.current && updateVersion && info.current !== updateVersion)
+      || (updateWasQueued && info.serverPid && updateServerPid && info.serverPid !== updateServerPid)) {
+    shopVersionChanged = true;
+    if (!updateRefreshNeedsReview()) { location.reload(); return; }
+  }
+  showUpdate(info);
+}
 function showUpdate(info) {
   updateInfo = info || {};
   if (info?.current && !updateVersion) updateVersion = info.current;
   if (info?.serverPid && !updateServerPid) updateServerPid = info.serverPid;
   updateWasQueued = updateWasQueued || !!info?.queued;
   $('update-cancel').hidden = !info?.queued || !info?.localPC;
-  $('update').disabled = !!info?.queued || !!info?.busy;
+  $('update').disabled = !!info?.queued || !!info?.busy || updateInFlight || info?.localPC === false;
   const note = $('update-note');
   $('update').textContent = info?.managedSupported && info?.staged ? 'Install when finished' : info?.applyOnRestart ? 'Install now' : 'Check for update';
   if (info?.updateAvailable && !info.staged) $('update').textContent = 'Download ' + info.latest;
   if (info?.platform === 'macos' && info?.staged) $('update').textContent = 'Open Mac installer';
   if (info?.busy) $('update').textContent = 'Checking update…';
+  if (info?.portableSupported && (info.staged || info.updateAvailable)) $('update').textContent = 'Update shop';
+  if (updateInFlight) $('update').textContent = 'Preparing update…';
+  const notice = $('shop-update-notice');
+  const action = $('shop-update-action');
+  notice.hidden = !(shopVersionChanged || updateWasQueued || info?.rollback || info?.updateAvailable || info?.staged);
+  action.hidden = !shopVersionChanged && (!info?.localPC || (!info?.portableSupported && !info?.managedSupported));
+  action.disabled = !shopVersionChanged && $('update').disabled;
+  action.textContent = shopVersionChanged ? 'Refresh app' : $('update').textContent;
+  $('shop-update-message').textContent = shopVersionChanged
+    ? 'Your shop has been updated. Refresh when you’re ready to use the new version.'
+    : info?.rollback ? 'The update could not start. Your previous version has been restored.'
+    : updateInFlight ? 'Preparing the shop update. This page will reconnect when it is ready.'
+    : info?.queued || updateWasQueued ? 'Shop update in progress. This page will reconnect when it is ready.'
+    : info?.localPC ? `Ez Nest ${info?.stagedVersion || info?.latest || ''} is ready. Updating this host updates everyone using this shop address.`
+    : 'A shop update is available. Ask the person at the host PC to install it.';
   $('settings-open').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
-  if (info?.managedSupported && info?.staged && !info.localPC) {
+  if (info?.localPC === false && (info.staged || info.updateAvailable)) {
     note.hidden = false;
     note.textContent = 'The update is ready. Approve installation on the PC running Ez Nest.';
     $('update').disabled = true;
@@ -3030,7 +3060,7 @@ async function refreshUpdate(remote) {
     $('notes-body').textContent = parts.map(entry => entry.body || '').filter(Boolean).join('\n\n');
   } catch { /* What's new stays empty if the changelog is missing. */ }
   try {
-    showUpdate(await (await fetch(remote ? '/api/update?refresh=1' : '/api/update')).json());
+    receiveUpdate(await (await fetch(remote ? '/api/update?refresh=1' : '/api/update')).json());
   } catch { /* The gear still has Update. */ }
 }
 
@@ -3290,6 +3320,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   $('update').addEventListener('click', async () => {
+    if (updateInFlight || updateInfo.localPC === false) return;
+    if (updateInfo.portableSupported && !updateInfo.staged && !updateInfo.updateAvailable) {
+      updateInFlight = true;
+      showUpdate(updateInfo);
+      try { await refreshUpdate(true); }
+      finally { updateInFlight = false; showUpdate(updateInfo); }
+      return;
+    }
     if (updateInfo.managedSupported && updateInfo.staged) {
       if (!updateInfo.localPC) return;
       updateWasQueued = true;
@@ -3300,13 +3338,17 @@ document.addEventListener('DOMContentLoaded', () => {
         : 'Approve the Windows prompt. The helper will wait until work is finished. If no prompt opens, use Update eznest in the Windows Start menu.';
       return;
     }
-    const installNow = $('update').textContent === 'Install now';
+    const installNow = !!updateInfo.portableSupported || $('update').textContent === 'Install now';
+    const portableStaged = updateInfo.portableSupported && updateInfo.staged;
+    updateInFlight = true;
+    showUpdate(updateInfo);
     try {
-      const result = await api('/api/update', {when: installNow ? 'now' : 'restart'});
+      const result = await api(portableStaged ? '/api/update/install' : '/api/update', {when: installNow ? 'now' : 'restart'});
       // Mac verification/download continues in the background. Keep its
       // progress in Settings without replacing the current job's status.
       if (result.platform !== 'macos') status(result.message);
-      showUpdate(result);
+      updateWasQueued = updateWasQueued || !!result.restarting;
+      showUpdate({...updateInfo, ...result});
       if (!result.restarting) await refreshUpdate();
       if (result.restarting) {
         $('update-note').hidden = false;
@@ -3319,7 +3361,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       status(error.message, true);
+    } finally {
+      updateInFlight = false;
+      showUpdate(updateInfo);
     }
+  });
+  $('shop-update-action').addEventListener('click', () => {
+    if (shopVersionChanged) {
+      if (updateRefreshNeedsReview() && !window.confirm('Refresh to the updated app? Unsaved changes on this page will be lost.')) return;
+      location.reload();
+    } else $('update').click();
   });
   $('update-cancel').addEventListener('click', async () => {
     try { await api('/api/update/cancel', {}); updateWasQueued = false; await refreshUpdate(); }
@@ -3330,12 +3381,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch('/api/update');
       if (!response.ok) return;
       const info = await response.json();
-      if (updateWasQueued && ((info.serverPid && updateServerPid && info.serverPid !== updateServerPid) || (info.current && info.current !== updateVersion))) {
-        // Reload only after an approved update, never during ordinary editing.
-        location.reload();
-        return;
-      }
-      showUpdate(info);
+      receiveUpdate(info);
     } catch {
       if (updateWasQueued) {
         $('update-note').hidden = false;
@@ -3470,19 +3516,94 @@ function closeOutputLinkMenu() {
   $('output-link-menu').hidden = true;
   $('output-link-status').setAttribute('aria-expanded', 'false');
 }
-function openOutputLinkForm() {
-  if (!outputLink?.canPair || outputSharing?.paused || $('setup-shop').open) return;
+function openOutputLinkForm(event) {
+  if ($('setup-shop').open) return;
   closeOutputLinkMenu();
   $('output-link-reconnect-note').hidden = !outputSharing?.configured;
-  const url = outputLink?.connectUrl;
-  if (url) window.open(url, '_blank', 'noopener,noreferrer');
-  // "Set up your shop": the owner clicks Add a computer in OUTPUT and types that code here.
+  const canConnect = outputLink?.canPair && !outputSharing?.paused;
+  $('output-browser-start').hidden = !canConnect;
+  $('output-browser-error').hidden = true;
+  $('output-connect-fields').hidden = !canConnect;
+  $('output-connect-help').hidden = !!canConnect;
+  $('output-connect-help').textContent = !outputLinkLocal ? 'Connect from the shop’s host PC. You can explore OUTPUT from here.' : 'OUTPUT is turned off for this run. You can still explore the pilot.';
+  const connecting = ['output-pair', 'output-reconnect', 'output-link-reconnect'].includes(event?.currentTarget?.id);
+  $('output-connect-details').open = connecting || !!outputSharing?.configured;
   if (!$('setup-shop').open) $('setup-shop').showModal();
   $('output-link-connect').hidden = true;
   $('output-link-error').hidden = true;
   $('output-link-code').value = '';
-  $('output-link-code').focus();
+  if (canConnect && $('output-connect-details').open) $('output-link-code').focus();
+  else (canConnect ? $('output-browser-start') : $('output-explore')).focus();
 }
+let browserAttempt = null, browserTimer = null, browserGeneration = 0;
+function stopBrowserConnection() {
+  browserGeneration++;
+  clearTimeout(browserTimer);
+  const old = browserAttempt; browserAttempt = null;
+  $('output-browser-waiting').hidden = true;
+  $('output-browser-start').disabled = false;
+  $('output-browser-match').textContent = '';
+  $('output-browser-open').hidden = true;
+  $('output-link-submit').disabled = false;
+  if (old) api('/api/telemetry/output/link/cancel', {attemptId: old}).catch(() => {});
+}
+async function startBrowserConnection() {
+  if (!outputLink?.canPair || outputSharing?.paused || $('output-browser-start').disabled) return;
+  stopBrowserConnection();
+  const generation = browserGeneration;
+  // Open during the click. If blocked, the explicit link below is the fallback.
+  const popup = window.open('about:blank', '_blank');
+  if (popup) popup.opener = null;
+  $('output-browser-start').disabled = true;
+  $('output-link-submit').disabled = true;
+  $('output-browser-error').hidden = true;
+  try {
+    const info = await api('/api/telemetry/output/link/start', {});
+    if (generation !== browserGeneration) {
+      if (popup) popup.close();
+      await api('/api/telemetry/output/link/cancel', {attemptId: info.attemptId}); return;
+    }
+    browserAttempt = info.attemptId;
+    const url = new URL(info.approvalUrl);
+    const origin = new URL(outputLink.connectUrl).origin;
+    if (url.protocol !== 'https:' || url.origin !== origin || url.pathname !== '/outpost/ez-nest/approve' || !/^[0-9a-f-]{36}$/.test(url.searchParams.get('link') || '') || [...url.searchParams.keys()].some(key => key !== 'link') || url.hash || url.username || url.password) throw Error('OUTPUT returned an invalid connection address.');
+    $('output-browser-match').textContent = info.userCode;
+    $('output-browser-status').textContent = 'Waiting for your approval in OUTPUT. Sharing stays off.';
+    $('output-browser-waiting').hidden = false;
+    $('output-browser-open').href = url.href; $('output-browser-open').hidden = false;
+    if (popup) popup.location.replace(url.href);
+    else $('output-browser-status').textContent = 'Your browser blocked the window. Choose Open OUTPUT below to continue.';
+    browserTimer = setTimeout(() => pollBrowserConnection(generation), 3000);
+  } catch (error) {
+    if (popup) popup.close();
+    if (generation !== browserGeneration) return;
+    stopBrowserConnection();
+    $('output-browser-error').textContent = error.message;
+    $('output-browser-error').hidden = false;
+  }
+}
+async function pollBrowserConnection(generation) {
+  if (!browserAttempt || generation !== browserGeneration) return;
+  try {
+    const info = await api('/api/telemetry/output/link/status', {attemptId: browserAttempt});
+    if (generation !== browserGeneration) return;
+    if (info.state === 'connected') {
+      browserAttempt = null; stopBrowserConnection(); closeOutputLinkForm();
+      await refreshOutputSharing(); await refreshOutputLink(); return;
+    }
+    if (!['pending', 'connecting'].includes(info.state)) throw Error(info.state === 'denied' ? 'Connection declined in OUTPUT. Nothing was connected.' : 'This request ended. Check your connection in Settings or start again.');
+    const minutes = Math.ceil(info.expiresIn / 60);
+    $('output-browser-status').textContent = info.state === 'connecting' ? 'Approved. Finishing your connection to OUTPUT…' : `Waiting for your approval in OUTPUT. About ${minutes} min left. Sharing stays off.`;
+    browserTimer = setTimeout(() => pollBrowserConnection(generation), Math.max(3000, Number(info.pollAfter || 3) * 1000));
+  } catch (error) {
+    if (generation !== browserGeneration) return;
+    stopBrowserConnection();
+    $('output-browser-error').textContent = error.message;
+    $('output-browser-error').hidden = false;
+  }
+}
+$('output-browser-start').addEventListener('click', startBrowserConnection);
+$('output-browser-cancel').addEventListener('click', stopBrowserConnection);
 function closeOutputLinkForm() {
   if ($('setup-shop').open) $('setup-shop').close();
   $('output-link-code').value = '';
@@ -3563,7 +3684,7 @@ document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
   if (!$('output-link-menu').hidden) { closeOutputLinkMenu(); $('output-link-status').focus(); }
 });
-$('setup-shop').addEventListener('close', () => { $('output-link-code').value = ''; renderOutputLink(outputLink); });
+$('setup-shop').addEventListener('close', () => { stopBrowserConnection(); $('output-link-code').value = ''; renderOutputLink(outputLink); });
 
 const inventoryPanel = EZNInventoryPanel.create({
   get profiles() { return materialProfiles; },
@@ -3585,5 +3706,10 @@ const inventoryPanel = EZNInventoryPanel.create({
 for (const id of ['thru-name', 'kiss-name']) $(id).addEventListener('input', renderCutLineNote);
 renderCutLineNote();
 
-// Header status circle: click reuses the existing connect flow (or the connected menu).
-$('output-dot')?.addEventListener('click', event => { event.stopPropagation(); ($('output-link-status').hidden ? $('output-link-connect') : $('output-link-status')).click(); });
+// Header status circle: open the connection dialog, or the menu once connected.
+// The Connect button can be disabled when pairing is off; the dialog still explains that.
+$('output-dot')?.addEventListener('click', event => {
+  event.stopPropagation();
+  if ($('output-link-status').hidden) openOutputLinkForm(event);
+  else $('output-link-status').click();
+});

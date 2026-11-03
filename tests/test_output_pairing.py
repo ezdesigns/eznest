@@ -673,9 +673,8 @@ class OutputScreenTests(unittest.TestCase):
                         page.locator('#settings-telemetry').evaluate('node => node.open = true')
                         entry = '#output-pair' if width == 1280 else '#output-reconnect'
                         expect(page.locator(entry)).to_be_enabled()
-                        with context.expect_page() as opened:
-                            page.click(entry)
-                        opened.value.close()
+                        page.click(entry)
+                        self.assertEqual(len(context.pages), 1)
                         expect(page.locator('#output-link-code')).to_be_focused()
                         self.assertEqual(page.locator('#output-pair-code, #output-pair-form').count(), 0)
                         page.fill('#output-link-code', CODE)
@@ -695,9 +694,7 @@ class OutputScreenTests(unittest.TestCase):
                         self.assertFalse(page.locator('#telemetry-agree').is_checked())
                         expect(page.locator('#telemetry-enable')).to_be_disabled()
                         self.assertNotIn(TOKEN, page.locator('body').inner_text())
-                        with context.expect_page() as opened:
-                            page.click('#output-reconnect')
-                        opened.value.close()
+                        page.click('#output-reconnect')
                         expect(page.locator('#output-link-reconnect-note')).to_be_visible()
                         page.fill('#output-link-code', CODE)
                         with patch.object(output_pairing, 'exchange', side_effect=output_pairing.PairingError('expired', output_pairing.EXPIRED)):
@@ -711,9 +708,7 @@ class OutputScreenTests(unittest.TestCase):
                         page.keyboard.press('Escape')
                         expect(page.locator('#setup-shop')).not_to_be_visible()
                         expect(page.locator('#output-connect-shop')).to_have_text('Connected to North Shop.')
-                        with context.expect_page() as opened:
-                            page.click('#output-reconnect')
-                        opened.value.close()
+                        page.click('#output-reconnect')
                         self.assertEqual(page.input_value('#output-link-code'), '')
                         expect(page.locator('#output-link-error')).to_be_hidden()
                         page.click('#output-link-cancel')
@@ -758,9 +753,7 @@ class OutputScreenTests(unittest.TestCase):
                     page.click('#settings-open')
                     page.locator('#settings-telemetry').evaluate('node => node.open = true')
                     page.wait_for_function("() => !document.querySelector('#output-pair').disabled")
-                    with page.context.expect_page() as opened:
-                        page.click('#output-pair')
-                    opened.value.close()
+                    page.click('#output-pair')
                     expect(page.locator('#setup-shop')).to_be_visible()
                     page.fill('#output-link-code', '7k4np-qrx2m')
 

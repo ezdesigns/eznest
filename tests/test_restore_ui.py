@@ -264,11 +264,12 @@ class RestoreUiTests(unittest.TestCase):
         self.assertEqual(round(page.locator('#start-over-idle').bounding_box()['height']), round(page.locator('#start-nesting').bounding_box()['height']))
         self.assertEqual(round(page.locator('#output-dot').bounding_box()['height']), 36)
         expect(page.locator('#output-dot')).to_have_attribute('title', 'Connect to OUTPUT')
-        # Pairing stays on the status dot. The home screen does not ask to connect.
         expect(page.locator('#output-required')).to_be_hidden()
         self.final(page, 'not-connected', width)
+        page.click('#output-dot')
+        page.locator('#output-connect-details summary').click()
         with context.expect_page() as tab:
-            page.click('#output-dot')
+            page.click('#output-link-open')
         self.assertTrue(tab.value.url.endswith('/outpost/ez-nest'), tab.value.url)
         tab.value.close()
         expect(page.locator('#output-link-code')).to_be_visible()
@@ -365,9 +366,8 @@ class RestoreUiTests(unittest.TestCase):
         page.once('dialog', lambda d: d.accept())
         page.click('#output-link-disconnect')
         expect(page.locator('#output-dot')).not_to_have_class(re.compile('connected'))
-        with context.expect_page() as tab:
-            page.click('#output-dot')
-        tab.value.close()
+        page.click('#output-dot')
+        page.locator('#output-connect-details summary').click()
         page.fill('#output-link-code', CODE)
         page.click('#output-link-submit')
         expect(page.locator('#output-dot')).to_have_class(re.compile('connected'))

@@ -196,7 +196,10 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--out',type=Path,required=True,help='Dedicated new build directory outside the source folder')
     parser.add_argument('--portable-only',action='store_true',help='Build the portable app without compiling an installer')
+    parser.add_argument('--shop-portable',action='store_true',help='Package a user-mode host with public ZIP updates (requires --portable-only)')
     args=parser.parse_args();out=args.out.resolve()
+    if args.shop_portable and not args.portable_only:
+        raise ValueError('Use --portable-only with --shop-portable. The protected installer is a separate edition.')
     if sys.platform!='win32' or sys.version_info[:2]!=(3,12) or struct.calcsize('P')!=8:raise RuntimeError('Build with 64-bit Python 3.12 on Windows.')
     check_build_directory(out)
     for requirement in (ROOT/'requirements.txt').read_text().splitlines():
@@ -208,7 +211,7 @@ def main():
         pinned_distribution(name, version)
     out.mkdir(parents=True,exist_ok=True)
     if (out/'dist'/'eznest').exists():raise ValueError('The output already contains a build. Choose a new directory.')
-    command=[sys.executable,'-m','PyInstaller','--noconfirm','--onedir','--windowed','--name','eznest','--icon',str(ROOT/'assets'/'eznest.ico'),'--distpath',str(out/'dist'),'--workpath',str(out/'work'),'--specpath',str(out),'--collect-all','spyrrow','--collect-all','pypdfium2','--collect-all','pypdfium2_raw','--hidden-import','installer_update','--hidden-import','output_pairing','--hidden-import','output_credential','--hidden-import','output_gate','--exclude-module','tkinter']
+    command=[sys.executable,'-m','PyInstaller','--noconfirm','--onedir','--windowed','--name','eznest','--icon',str(ROOT/'assets'/'eznest.ico'),'--distpath',str(out/'dist'),'--workpath',str(out/'work'),'--specpath',str(out),'--collect-all','spyrrow','--collect-all','pypdfium2','--collect-all','pypdfium2_raw','--hidden-import','installer_update','--hidden-import','output_pairing','--hidden-import','output_link','--hidden-import','output_credential','--hidden-import','output_gate','--exclude-module','tkinter']
     for name in STATIC:command+=['--add-data',f'{ROOT/name}{os.pathsep}.']
     command+=['--add-data',f'{ROOT/"fonts"}{os.pathsep}fonts']
     for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer','defusedxml']:command+=['--copy-metadata',name]
@@ -233,11 +236,15 @@ def main():
     shutil.copy2(Path(sys.base_prefix)/'LICENSE.txt',licenses/'Python-LICENSE.txt')
     manifest={name:metadata.version(name) for name in ['spyrrow','shapely','numpy','pypdf','pypdfium2','pillow','charset-normalizer','defusedxml','pyinstaller','pyinstaller-hooks-contrib']}
     manifest['python']=sys.version;manifest['app']=json.loads((ROOT/'version.json').read_text())
+    manifest['commit']=git_commit()
     # Portable dependency list. The setup pin (version, commit, exe sha256) is installer/Output/BUILD.json.
     (release/'BUILD.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     print(f'Portable app: {release}')
     if os.environ.get('WINDOWS_CERT_BASE64', '').strip():
         subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ROOT/'installer'/'sign-payload.ps1'), '-App', str(release/'eznest.exe')], check=True)
+    if args.shop_portable:
+        from tools.package_shop_portable import package
+        print(f'Shop download: {package(release, out / "download")}')
     if not args.portable_only:compile_setup(release)
 
 

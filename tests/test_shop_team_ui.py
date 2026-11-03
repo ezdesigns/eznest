@@ -1,4 +1,5 @@
 import opt_out
+import os
 import time
 import unittest
 from unittest.mock import patch
@@ -38,6 +39,10 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 page.reload()
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()
                 expect(page.locator('#shop-team-open')).to_have_text('Test Print Shop')
+                expect(page.locator('#shop-team-open')).to_have_attribute('title', 'Test Print Shop')
+                page.goto(self.fixture.url() + '/?view=full')
+                expect(page.locator('#shop-team-open')).to_have_text('Test Print Shop')
+                self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
             finally:
                 browser.close()
 
@@ -75,6 +80,45 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 page.get_by_role('button', name='Cancel unused invites').click()
                 expect(page.locator('#team-invitation')).to_be_hidden()
                 self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
+            finally:
+                browser.close()
+
+    def test_output_discovery_works_with_connection_off_on_desktop_and_phone(self):
+        from playwright.sync_api import sync_playwright, expect
+        import output_credential
+        name = 'Northside Print and Graphics Studio'
+        shop_members.create(server.WORK, name)
+        with patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS': '0', 'EZ_NEST_DEV': '0', 'EZ_NEST_OUTPUT_GATE_OPEN': '0', 'EZ_NEST_DEV_NO_OUTPUT': '0'}), sync_playwright() as pw:
+            browser = test_web_mvp.launch_browser(pw)
+            try:
+                for width in (1280, 390):
+                    context = browser.new_context(viewport={'width': width, 'height': 900})
+                    context.route('https://output.jeezlabs.io/**', lambda route: route.fulfill(body='OUTPUT pilot'))
+                    page = context.new_page()
+                    page.goto(self.fixture.url() + '/?view=simple')
+                    page.wait_for_function("() => document.body.dataset.ready === '1'")
+                    expect(page.locator('#output-required')).to_be_hidden()
+                    expect(page.locator('#shop-team-open')).to_have_text(name)
+                    expect(page.locator('#shop-team-open')).to_have_attribute('title', name)
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
+                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS / f'output-invitation-{width}.png'), full_page=True)
+                    page.click('#output-dot')
+                    expect(page.locator('#output-explore')).to_be_focused()
+                    expect(page.locator('#output-link-code')).to_be_hidden()
+                    self.assertEqual(len(context.pages), 1)
+                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS / f'output-discovery-{width}.png'), full_page=True)
+                    with context.expect_page() as opened:
+                        page.click('#output-explore')
+                    self.assertEqual(opened.value.url, 'https://output.jeezlabs.io/')
+                    opened.value.close()
+                    page.locator('#output-connect-details summary').click()
+                    expect(page.locator('#output-connect-help')).to_contain_text('turned off')
+                    expect(page.locator('#output-link-submit')).to_be_hidden()
+                    page.click('#output-link-cancel')
+                    expect(page.locator('#setup-shop')).not_to_be_visible()
+                    self.assertFalse(output_credential.path(server.WORK).exists())
+                    self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
+                    context.close()
             finally:
                 browser.close()
 

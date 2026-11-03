@@ -44,7 +44,11 @@ window.EZNShop = (() => {
   async function updateSession() { session = await request('/api/session'); label(); }
   function label() {
     const shopButton = document.getElementById('shop-team-open');
-    shopButton.textContent = session.shopIdentity?.name || 'Your shop';
+    const name = session.shopIdentity?.name || 'Your shop';
+    shopButton.textContent = name;
+    shopButton.title = name;
+    shopButton.setAttribute('aria-haspopup', 'dialog');
+    shopButton.classList.add('top-button');
     const parent = shopButton.parentElement;
     let invite = document.getElementById('shop-invite-open');
     const show = !!(session.localPC && session.shopIdentity?.created);
@@ -163,6 +167,7 @@ window.EZNShop = (() => {
       const parent = document.querySelector('.header-tools, .top-actions') || document.querySelector('header');
       const shopButton = button('Your shop', open, parent);
       shopButton.id = 'shop-team-open';
+      shopButton.classList.add('top-button');
       const logout = document.getElementById('logout');
       if (logout && logout.parentElement === parent) parent.insertBefore(shopButton, logout);
       label();

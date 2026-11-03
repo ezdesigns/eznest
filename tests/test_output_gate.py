@@ -302,7 +302,7 @@ class GateTests(unittest.TestCase):
         self.assert_api_open(stock.sent[0], output_gate.HOST_DISCONNECTED)
         self.assertFalse(output_credential.path(server.WORK).is_file())
 
-    def test_host_page_shows_only_the_connect_screen_until_paired(self):
+    def test_host_can_explore_output_without_pairing_or_blocking_nesting(self):
         try:
             from playwright.sync_api import expect, sync_playwright
             import test_web_mvp
@@ -317,19 +317,28 @@ class GateTests(unittest.TestCase):
                     context = browser.new_context(viewport={'width': 1280, 'height': 800})
                     page = context.new_page()
                     page.goto(helper.url() + '/web')
-                    # Unpaired: the home screen is usable. Pairing stays on the status dot.
+                    # OUTPUT stays off the home screen. The status dot opens the same dialog.
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
                     expect(page.locator('#output-required')).to_be_hidden()
                     expect(page.locator('#start-nesting')).to_be_visible()
                     expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
-                    with page.context.expect_page() as opened:
-                        page.click('#output-dot')
+                    page.click('#output-dot')
+                    self.assertEqual(len(context.pages), 1)
+                    expect(page.locator('#output-browser-start')).to_be_focused()
+                    expect(page.locator('#output-link-code')).to_be_hidden()
+                    expect(page.locator('#output-explore')).to_have_attribute('href', 'https://output.jeezlabs.io/')
+                    self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
+                    context.route('https://output.jeezlabs.io/**', lambda route: route.fulfill(body='OUTPUT pilot'))
+                    with context.expect_page() as opened:
+                        page.click('#output-explore')
+                    self.assertEqual(opened.value.url, 'https://output.jeezlabs.io/')
                     opened.value.close()
+                    self.assertFalse(output_credential.path(server.WORK).exists())
+                    page.locator('#output-connect-details summary').click()
                     expect(page.locator('#setup-shop')).to_be_visible()
-                    expect(page.locator('#setup-shop-title')).to_have_text('Set up your shop')
+                    expect(page.locator('#setup-shop-title')).to_have_text('More possibilities for your shop')
                     expect(page.locator('label[for=output-link-code]')).to_have_text('Enter the code from OUTPUT')
                     expect(page.locator('#output-link-form')).to_be_visible()
-                    expect(page.locator('#output-link-code')).to_be_focused()
                     self.assertEqual(page.locator('#output-link-code').input_value(), '')
                     shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
                     shots.mkdir(parents=True, exist_ok=True)
