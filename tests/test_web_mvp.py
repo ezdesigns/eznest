@@ -798,7 +798,8 @@ class WebMvpTests(unittest.TestCase):
             detail = page.evaluate(
                 "() => JSON.stringify({ready: document.body && document.body.dataset.ready || '',"
                 " alarm: getComputedStyle(document.documentElement).getPropertyValue('--alarm').trim(),"
-                " status: (document.querySelector('#status') || {}).textContent || ''})"
+                " status: (document.querySelector('#status') || {}).textContent || '',"
+                " shop: (document.querySelector('#shop-team-dialog[open] #shop-team-title') || {}).textContent || ''})"
             )
             raise AssertionError('Shop page was not ready. ' + detail) from None
 
