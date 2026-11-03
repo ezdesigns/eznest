@@ -2585,8 +2585,6 @@ async function boot() {
   } else if (!session.localPC) {
     $('logout').hidden = false;
   }
-  // The shop gate is done. Later inventory and job lookups must not hold the page blank.
-  document.body.dataset.ready = '1';
   await refreshInventory().catch(() => {});
   if (inventoryReady && !legacyRollUnconfirmed() && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
   if (inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) applyMaterial(true);
