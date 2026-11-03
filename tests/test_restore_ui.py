@@ -177,6 +177,8 @@ class RestoreUiTests(unittest.TestCase):
         self.tmp.cleanup()
         self.tmp = tempfile.TemporaryDirectory()
         server.WORK = Path(self.tmp.name)
+        import shop_members
+        shop_members.create(server.WORK, 'Browser test shop')
         server.OUTPUT = server.OutputFolder(server.WORK / 'output-folder.json')
         server.STATE.clear()
         server.STATE.update(status='idle')
