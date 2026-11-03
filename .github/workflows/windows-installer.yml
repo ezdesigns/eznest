@@ -163,5 +163,8 @@ jobs:
 
       - name: Test actual fresh install on disposable Windows runner
         shell: pwsh
-        run: pwsh -NoProfile -File tests/test_installed_shop.ps1
+        run: |
+          pwsh -NoProfile -File tests/test_installed_local.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File tests/test_installed_shop.ps1
 
