@@ -147,7 +147,9 @@ end;
 
 function OpenServicePage: Boolean;
 begin
-  Result := (not ShopSetupFailed) and (not LocalMode);
+  { Only fresh host setup guarantees a running service. Upgrades must launch
+    the app so stopped/manual legacy installations also start. }
+  Result := (not ShopSetupFailed) and (not LocalMode) and IsFreshInstall;
 end;
 
 function OpenStandalonePage: Boolean;
