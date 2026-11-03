@@ -95,3 +95,6 @@ rehearsal tests replacement and rollback on a disposable folder on one Windows P
 It is not proof of a second physical PC, reboot persistence or a public release
 download. Complete those pilot checks before broad rollout. Source builds do not
 enable this edition: only a packaged host with its edition marker uses this feed.
+Rollback restores application files, not database schema migrations. Release
+changes to shop databases must remain readable by the previous app; rehearse with
+an existing synthetic stock database and outstanding reservations before publishing.

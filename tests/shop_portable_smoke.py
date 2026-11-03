@@ -15,6 +15,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import installer_update
+import material_inventory
 
 
 def main():
@@ -33,6 +34,12 @@ def main():
     baseline = json.loads((app/'version.json').read_text())['version']
     inventory = b'synthetic stock that must survive both operations'
     (data/'stock-rehearsal.bin').write_bytes(inventory)
+    profile = {'preset-name': 'Synthetic rehearsal roll', 'unit': 'mm', 'width': '500', 'roll': '510',
+               'available-length': '1000', 'roll-length': '5000', 'gap': '2', 'margin': '5',
+               'mark-margin': '0', 'sheet': '1000', 'rotations': '0,90,180,270', 'auto-bleed': '0',
+               'bleed': '0', 'cost': '', 'roll-cost': '', 'low-stock': '200', 'print-layout': 'sections'}
+    material_inventory.save(data, 'test-roll', profile, 0)
+    expected_stock = material_inventory.reserve(data, 'test-roll', 'synthetic-job', 200, 500, 'synthetic-layout')
     (data/'shop.json').write_text('{"updates":true,"channel":"test","outputNetwork":false}')
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
@@ -85,11 +92,13 @@ def main():
     try:
         first = wait_version(baseline)
         assert first['portableSupported'] and first['localPC']
+        assert request('/api/materials') == expected_stock
         stage('99.0.0-rc.1')
         assert request('/api/update/install', {})['restarting']
         updated = wait_version('99.0.0-rc.1')
         assert updated['serverPid'] != first['serverPid']
         assert (data/'stock-rehearsal.bin').read_bytes() == inventory
+        assert request('/api/materials') == expected_stock
         # Let the success helper finish before staging the next rehearsal.
         deadline = time.monotonic()+30
         while (data/'updates'/'backup').exists() and time.monotonic() < deadline: time.sleep(.25)
@@ -103,6 +112,7 @@ def main():
             time.sleep(.25)
         else: raise TimeoutError('Rollback did not restart the prior host.')
         assert (data/'stock-rehearsal.bin').read_bytes() == inventory
+        assert request('/api/materials') == expected_stock
         assert json.loads((data/'shop.json').read_text())['outputNetwork'] is False
         result = {'ok': True, 'baseVersion': baseline, 'update': True, 'rollback': True,
                   'samePort': True, 'inventoryPreserved': True, 'outputOff': True}

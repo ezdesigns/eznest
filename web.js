@@ -3310,6 +3310,13 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('update').addEventListener('click', async () => {
     if (updateInFlight || updateInfo.localPC === false) return;
+    if (updateInfo.portableSupported && !updateInfo.staged && !updateInfo.updateAvailable) {
+      updateInFlight = true;
+      showUpdate(updateInfo);
+      try { await refreshUpdate(true); }
+      finally { updateInFlight = false; showUpdate(updateInfo); }
+      return;
+    }
     if (updateInfo.managedSupported && updateInfo.staged) {
       if (!updateInfo.localPC) return;
       updateWasQueued = true;
