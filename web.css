@@ -721,3 +721,9 @@ body[data-step="sent"] #inventory-open { display: block; }
   .output-required-actions { flex-direction: row; align-items: center; gap: 12px; }
   .output-benefits { grid-template-columns: 1fr; }
 }
+/* One shop host supplies the app to every connected designer. */
+.shop-update-notice { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:12px 24px; padding:12px 16px; border:1px solid #bad7fa; border-radius:10px; background:#eff6ff; color:#173b66; }
+.shop-update-notice[hidden] { display:none; }
+.shop-update-notice button { flex-shrink:0; border:0; border-radius:8px; padding:10px 16px; background:#0878ed; color:white; font:inherit; font-weight:600; cursor:pointer; }
+.shop-update-notice button:disabled { opacity:.55; cursor:wait; }
+@media(max-width:540px) { .shop-update-notice { align-items:flex-start; flex-direction:column; } }
