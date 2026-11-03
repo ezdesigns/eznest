@@ -689,6 +689,9 @@ class WebMvpTests(unittest.TestCase):
         self.old_output = server.OUTPUT
         self.tmp = tempfile.TemporaryDirectory()
         server.WORK = Path(self.tmp.name)
+        if getattr(self, 'seed_shop', True):
+            import shop_members
+            shop_members.create(server.WORK, 'Browser test shop')
         server.OUTPUT = server.OutputFolder(server.WORK / 'output-folder.json')
         server.STATE.clear()
         server.STATE.update(status='idle')
@@ -698,7 +701,7 @@ class WebMvpTests(unittest.TestCase):
         self.start()
 
     def start(self):
-        class TestHandler(server.Handler):
+        class TestHandler(getattr(self, 'handler_type', server.Handler)):
             # Browsers may pre-open idle sockets across a server restart.
             timeout = 5
 

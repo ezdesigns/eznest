@@ -121,7 +121,8 @@ def main():
     saved = load_shop(data)
     if args.lan:
         import shop_auth
-        if shop_auth.pin_configured(data):
+        import shop_members
+        if shop_auth.pin_configured(data) or shop_members.configured(data):
             host, lan = '0.0.0.0', True
             os.environ.pop('EZ_NEST_LAN_WAITING', None)
         else:

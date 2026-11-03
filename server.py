@@ -24,6 +24,7 @@ import material_inventory
 import macos_service_runtime
 import illustrator_bridge
 import shop_auth
+import shop_members
 from import_limits import request_limit
 import print_export
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -159,6 +160,7 @@ def shop_status():
             pass
     running = LAN and HOST == '0.0.0.0'
     name = host_name()
+    named_shop = shop_members.configured(WORK)
     return {
         'version': VERSION,
         'buildId': build_id,
@@ -182,11 +184,12 @@ def shop_status():
         'runningLan': running,
         'restart': saved['lan'] != running,
         'lanWaiting': os.environ.get('EZ_NEST_LAN_WAITING') == 'pin' and not running,
+        'shopCreated': named_shop,
         'port': PORT,
         'name': name,
         'addresses': lan_addresses(),
         'url': f'http://{name}:{PORT}/web',
-        'warning': WARNING,
+        'warning': 'Invite teammates from Your shop. Joined members can use shared stock and send jobs. Keep guest WiFi separate.' if named_shop else WARNING,
         'hotFolderDefault': default_hot_folder(saved['onyxPc']),
         'shareStockSummary': saved['shareStockSummary'],
         'showRollNames': saved['showRollNames'],
@@ -398,6 +401,12 @@ class Handler(BaseHTTPRequestHandler):
             return False
 
     def cookie_ok(self):
+        try:
+            if shop_members.configured(WORK):
+                token = shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.COOKIE)
+                return shop_members.member(WORK, token) is not None
+        except (OSError, sqlite3.Error):
+            return False
         if not shop_auth.lan_sessions_allowed(WORK):
             # PIN removed, damaged or replaced while running: no shop-network session stays valid.
             return False
@@ -469,10 +478,13 @@ class Handler(BaseHTTPRequestHandler):
             'pinConfigured': shop_auth.pin_configured(WORK),
             'pinWeak': shop_auth.pin_is_weak(WORK),
             'tls': TLS,
+            'shopIdentity': shop_members.status(WORK),
+            'shopNetwork': LAN,
             'outputConnection': output_gate.public_status(WORK, local),
             'outputLink': output_gate.link_status(WORK, local),
         }
         if local:
+            body['shopAddress'] = f'{"https" if TLS else "http"}://{host_name()}:{PORT}/' if LAN else None
             body['token'] = TOKEN
             body['pinAlert'] = shop_auth.alert_status()
         return body
@@ -497,12 +509,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Open health on the shop computer.'})
                 return self.send(200, {'ok': True, 'app': 'eznest'})
             if not self.loopback_client() and not self.authenticated():
-                return self.send(403, {'error': 'Enter the shop PIN on this computer.'})
+                note = 'Open Your shop to join with a new invitation.' if shop_members.configured(WORK) else 'Enter the shop PIN on this computer.'
+                return self.send(403, {'error': note})
             if not self.loopback_client() and (path == '/api/shop' or path == '/api/folder' or path.startswith('/api/folder/')):
                 return self.send(403, {'error': 'Open this on the shop computer.'})
         if path == '/api/changelog':
             import installer_update
             return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
+        if path == '/api/shop-members':
+            try:
+                return self.send(200, shop_members.status(WORK, admin=self.loopback_client()))
+            except (OSError, sqlite3.Error):
+                return self.send(503, {'error': 'Shop access is unavailable. Check the host PC.'})
         if path == '/api/update':
             if macos_service_runtime.active():
                 import macos_update
@@ -671,6 +689,8 @@ class Handler(BaseHTTPRequestHandler):
             static['/' + asset] = (asset, 'text/css' if asset.endswith('.css') else 'text/javascript')
         static['/web.css'] = ('web.css', 'text/css')
         static['/web.js'] = ('web.js', 'text/javascript')
+        static['/shop-team.js'] = ('shop-team.js', 'text/javascript')
+        static['/shop-team.css'] = ('shop-team.css', 'text/css')
         static['/tester-results.js'] = ('tester-results.js', 'text/javascript')
         static['/fonts/Archivo.ttf'] = ('fonts/Archivo.ttf', 'font/ttf')
         static['/fonts/rajdhani-700.woff2'] = ('fonts/rajdhani-700.woff2', 'font/woff2')
@@ -743,6 +763,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.handle_post()
 
     def _login(self):
+        if shop_members.configured(WORK):
+            return self.send(403, {'error': 'Use an invitation from the shop host to join this shop.'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
         except ValueError:
@@ -767,14 +789,48 @@ class Handler(BaseHTTPRequestHandler):
         return self.send(200, {'ok': True, 'authenticated': True}, extra_headers=[('Set-Cookie', shop_auth.cookie_header(sid, secure=TLS))])
 
     def _logout(self):
+        shop_members.logout(WORK, shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.COOKIE))
         shop_auth.revoke_session(shop_auth.read_cookie(self.headers.get('Cookie') if self.headers else None))
-        return self.send(200, {'ok': True}, extra_headers=[('Set-Cookie', shop_auth.clear_cookie_header(secure=TLS))])
+        return self.send(200, {'ok': True}, extra_headers=[('Set-Cookie', shop_auth.clear_cookie_header(secure=TLS)), ('Set-Cookie', shop_members.cookie('', secure=TLS))])
+
+    def _membership(self, path):
+        if path != '/api/shop-members/join' and not (self.loopback_client() and self.token_ok()):
+            return self.send(403, {'error': 'Manage the shop and invitations on the host PC.'})
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 <= size <= 4000:
+                raise ValueError('Shop request is too large.')
+            data = json.loads(self.rfile.read(size) or b'{}')
+            if not isinstance(data, dict):
+                raise ValueError('Supply a shop request.')
+            if path == '/api/shop-members/join':
+                result = shop_members.join(WORK, data.get('code'), data.get('name'), self.client_ip())
+                if 'error' in result:
+                    return self.send(result['status'], {'error': result['error']})
+                return self.send(200, {'ok': True, 'member': result['member']}, extra_headers=[('Set-Cookie', shop_members.cookie(result['token'], secure=TLS))])
+            if path == '/api/shop-members/create':
+                return self.send(200, shop_members.create(WORK, data.get('name')))
+            if path == '/api/shop-members/invite':
+                if not LAN:
+                    return self.send(409, {'error': 'Set up this PC as a shop host and restart with shop network enabled before inviting teammates.'})
+                return self.send(200, shop_members.invite(WORK))
+            if path == '/api/shop-members/revoke':
+                return self.send(200, shop_members.revoke(WORK, data.get('id')))
+            if path == '/api/shop-members/cancel-invites':
+                return self.send(200, shop_members.cancel_invites(WORK))
+            return self.send(404, {'error': 'Shop action not found.'})
+        except (ValueError, TypeError):
+            return self.send(400, {'error': 'Check the shop name, teammate name, or invitation and try again.'})
+        except (OSError, sqlite3.Error):
+            return self.send(503, {'error': 'Shop access is unavailable. Check the host PC.'})
 
     def handle_post(self):
         global PROCESS
         if not self.allowed() or not self.browser_site_ok():
             return self.send(403, {'error': 'Invalid session'})
         path = self.route_path()
+        if path.startswith('/api/shop-members/'):
+            return self._membership(path)
         if path == '/api/login':
             return self._login()
         if path == '/api/logout':
@@ -1303,8 +1359,8 @@ def check_updates(stop):
 
 def serve(open_browser=False, page='/'):
     configure_tls(os.environ.get('EZ_NEST_TLS_CERT'), os.environ.get('EZ_NEST_TLS_KEY'))
-    if HOST not in ('127.0.0.1', '::1') and not shop_auth.pin_configured(WORK):
-        raise RuntimeError('Set a shop PIN on this computer before opening the shop network.')
+    if HOST not in ('127.0.0.1', '::1') and not (shop_auth.pin_configured(WORK) or shop_members.configured(WORK)):
+        raise RuntimeError('Create your shop or set a shop PIN on this computer before opening the shop network.')
     restore_state()
     import installer_update
     service = LocalServer((HOST, PORT), Handler)

@@ -1949,7 +1949,9 @@ function showRestart(shop) {
   const note = $('lan-restart');
   if (shop && shop.lanWaiting) {
     note.hidden = false;
-    note.textContent = 'Shop network is waiting for a shop PIN. Set the PIN on this computer, then restart Ez Nest.';
+    note.textContent = shop.shopCreated
+      ? 'Your shop is ready. Restart the shop host to open its configured shop network.'
+      : 'Create your shop on this computer, then restart the shop host. Existing shops can still use their shop PIN.';
     return;
   }
   if (!shop || !shop.restart) {
@@ -2550,17 +2552,17 @@ async function boot() {
   $('allow-hold').checked = stored.hold === true;
   await ensureLibraries();
   await ensureStyles();
-  let session = await fetchJsonRetry('/api/session');
+  let session = await EZNShop.start();
   hostComputer = session.localPC === true;
   token = session.token || '';
   localSave = session.localSave === true;
   renderOutputLink(session.outputLink, session.localPC);
   renderOutputRequired(session);
-  if (session.localPC && session.pinWeak) {
+  if (session.localPC && session.pinWeak && !session.shopIdentity?.created) {
     await requireHostPinReset();
     session = await fetchJsonRetry('/api/session');
   }
-  if (session.localPC && $('shop-pin')) {
+  if (session.localPC && $('shop-pin') && !session.shopIdentity?.created) {
     $('shop-pin').hidden = false;
     showPinNotices(session);
   } else if (!session.localPC && !session.authenticated) {
