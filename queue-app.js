@@ -460,7 +460,8 @@ $('preset').onchange=()=>{preferences.active=$('preset').value;renderPresets();i
 
 $('show-labels').onchange=renderLayout;$('job-colors').onchange=renderLayout;$('show-all').onclick=()=>{highlightJob='';renderLayout();};
 
-$('mode-switch').onclick=event=>{
+const modeSwitch=$('mode-switch');
+if(modeSwitch)modeSwitch.onclick=event=>{
   if(busy||saving||importing){event.preventDefault();status('Finish the current operation before switching modes.',true);return;}
   if(queue.length&&!window.confirm('Switch to simple mode? Save your work first. Jobs are not transferred between modes, and unsaved changes may be lost.'))event.preventDefault();
 };

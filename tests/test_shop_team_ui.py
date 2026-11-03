@@ -46,7 +46,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
             browser = test_web_mvp.launch_browser(pw)
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             try:
-                page.goto(self.fixture.url() + '/')
+                page.goto(self.fixture.url() + '/?view=full')
                 expect(page.get_by_role('heading', name='Welcome to Ez Nest')).to_be_visible()
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-welcome.png'))
                 page.get_by_role('button', name='Use this PC for now').click()
