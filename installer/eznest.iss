@@ -14,7 +14,7 @@
 #define MyAppPublisher "EZ Designs"
 
 [Messages]
-FinishedLabel=Setup has finished installing eznest on this computer.%n%nOpen the page on this PC and choose Connect to OUTPUT. Paste a pairing code from https://output.jeezlabs.io/outpost/ez-nest. The shop cannot nest until that connection is in place. Activity sharing stays off until Enable sharing. This installer does not ask for a pairing code.
+FinishedLabel=Setup has finished installing eznest on this computer.%n%nOpen eznest to start nesting. Connecting to OUTPUT is optional: choose Skip for local use. Sharing stays off until you enable it.
 
 [Setup]
 AppId={{A7E2C1D4-9B55-4E18-8C3A-6F0E2B9D4A11}
@@ -42,7 +42,7 @@ RestartApplications=no
 
 [Tasks]
 Name: "desktopicon"; Description: "Desktop shortcut"; GroupDescription: "Shortcuts:"
-Name: "startatboot"; Description: "Start eznest when Windows starts"; GroupDescription: "Shop server:"; Flags: checkedonce
+Name: "startatboot"; Description: "Start eznest when Windows starts (shared shop host)"; GroupDescription: "Optional shop server; leave off for local use:"; Flags: unchecked
 Name: "lan"; Description: "Shop network (other PCs on this network)"; GroupDescription: "Shop server:"; Flags: unchecked
 Name: "onyxpc"; Description: "This PC runs ONYX"; GroupDescription: "Shop server:"; Flags: unchecked
 Name: "checkupdates"; Description: "Check for app updates (also set EZ_NEST_UPDATES=1)"; GroupDescription: "Shop server:"; Flags: unchecked
@@ -54,10 +54,10 @@ Source: "uninstall-shop.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{src}\BUILD.json"; DestDir: "{app}"; Flags: external skipifsourcedoesntexist
 
 [Icons]
-Name: "{commondesktop}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""; Tasks: desktopicon
-Name: "{group}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""
+Name: "{commondesktop}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "{code:LaunchArguments}"; Tasks: desktopicon
+Name: "{group}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "{code:LaunchArguments}"
 Name: "{group}\Stop eznest"; Filename: "{app}\Stop EZ Nest.cmd"
-Name: "{group}\Update eznest"; Filename: "{app}\eznest.exe"; Parameters: "--request-shop-update"
+Name: "{group}\Update eznest"; Filename: "{app}\eznest.exe"; Parameters: "--request-shop-update"; Check: ServiceMode
 
 [Registry]
 Root: HKLM; Subkey: "Software\Classes\eznest-update"; ValueType: string; ValueData: "URL:eznest update"; Flags: uninsdeletekey
@@ -66,16 +66,17 @@ Root: HKLM; Subkey: "Software\Classes\eznest-update\shell\open\command"; ValueTy
 
 [Run]
 Filename: "http://127.0.0.1:8765/web"; Description: "Open eznest"; Flags: shellexec postinstall skipifsilent; Check: OpenServicePage
-Filename: "{app}\eznest.exe"; Parameters: "--web --data-dir ""{commonappdata}\eznest"""; Description: "Open eznest"; Flags: nowait postinstall skipifsilent; Check: OpenStandalonePage
+Filename: "{app}\eznest.exe"; Parameters: "{code:LaunchArguments}"; Description: "Open eznest"; Flags: nowait postinstall skipifsilent; Check: OpenStandalonePage
 
 [UninstallRun]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\uninstall-shop.ps1"" -DataDir ""{commonappdata}\eznest"""; Flags: runhidden waituntilterminated; RunOnceId: "UninstallShop"
+Filename: "powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ""{app}\uninstall-shop.ps1"" -DataDir ""{commonappdata}\eznest"""; Flags: runhidden waituntilterminated; RunOnceId: "UninstallShop"; Check: UninstallService
 
 [Code]
 var
   ExistingInstall: Boolean;
   ShopSetupFailed: Boolean;
   RetryShopSetup: Boolean;
+  InstalledLocalMode: Boolean;
 
 function OnyxFlag(Param: String): String;
 begin
@@ -109,9 +110,46 @@ begin
   Result := (not ExistingInstall) or RetryShopSetup;
 end;
 
+function LocalMode: Boolean;
+begin
+  if IsFreshInstall then Result := not WizardIsTaskSelected('startatboot')
+  else Result := InstalledLocalMode;
+end;
+
+function LaunchArguments(Param: String): String;
+begin
+  if LocalMode then Result := '--web --local-only'
+  else Result := '--web --data-dir "' + ExpandConstant('{commonappdata}\eznest') + '"';
+end;
+
+function ServiceMode: Boolean;
+begin
+  Result := not LocalMode;
+end;
+
+function UninstallService: Boolean;
+var
+  Mode: Cardinal;
+begin
+  Result := not (RegQueryDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'LocalDataMode', Mode) and (Mode = 1));
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (CurPageID = wpSelectTasks) and IsFreshInstall and LocalMode and
+      (WizardIsTaskSelected('lan') or WizardIsTaskSelected('onyxpc') or WizardIsTaskSelected('checkupdates')) then
+  begin
+    MsgBox('Local use keeps shop network, ONYX setup, and automatic updates off. Clear those options, or select Start eznest when Windows starts to set up a shop host.', mbInformation, MB_OK);
+    Result := False;
+  end;
+end;
+
 function OpenServicePage: Boolean;
 begin
-  Result := (not ShopSetupFailed) and IsFreshInstall and WizardIsTaskSelected('startatboot');
+  { Only fresh host setup guarantees a running service. Upgrades must launch
+    the app so stopped/manual legacy installations also start. }
+  Result := (not ShopSetupFailed) and (not LocalMode) and IsFreshInstall;
 end;
 
 function OpenStandalonePage: Boolean;
@@ -122,9 +160,11 @@ end;
 function InitializeSetup: Boolean;
 var
   SetupComplete: Cardinal;
+  LocalDataMode: Cardinal;
 begin
   { Capture before Setup writes its own uninstall registration. }
   ExistingInstall := IsUpgrade;
+  InstalledLocalMode := RegQueryDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'LocalDataMode', LocalDataMode) and (LocalDataMode = 1);
   RetryShopSetup := RegQueryDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'ShopSetupComplete', SetupComplete) and (SetupComplete = 0);
   Log('Existing installation at start: ' + IntToStr(Ord(ExistingInstall)));
   Result := True;
@@ -144,8 +184,18 @@ begin
   begin
     ShopSetupFailed := True;
     RegWriteDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'ShopSetupComplete', 0);
+    if LocalMode then
+    begin
+      { Resolve the signed-in user's folder at runtime, not the elevated admin's.
+        Do not call the service helper or touch existing ProgramData here. }
+      RegWriteDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'LocalDataMode', 1);
+      RegWriteDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'ShopSetupComplete', 1);
+      ShopSetupFailed := False;
+      Exit;
+    end;
+    RegWriteDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'LocalDataMode', 0);
     Log('Configuring fresh shop; selected tasks: ' + WizardSelectedTasks(False));
-    Arguments := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\install-shop.ps1') +
+    Arguments := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\install-shop.ps1') +
       '" -DataDir "' + ExpandConstant('{commonappdata}\eznest') + '" -App "' +
       ExpandConstant('{app}\eznest.exe') + '" -OnyxPc ' + OnyxFlag('') +
       ' -Lan ' + LanFlag('') + ' -StartAtBoot ' + BootFlag('') + ' -Updates ' + UpdatesFlag('');
