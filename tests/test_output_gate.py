@@ -327,7 +327,7 @@ class GateTests(unittest.TestCase):
                     expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
                     page.click('#output-required-code')
                     self.assertEqual(len(context.pages), 1)
-                    expect(page.locator('#output-explore')).to_be_focused()
+                    expect(page.locator('#output-browser-start')).to_be_focused()
                     expect(page.locator('#output-link-code')).to_be_hidden()
                     expect(page.locator('#output-explore')).to_have_attribute('href', 'https://output.jeezlabs.io/')
                     self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])

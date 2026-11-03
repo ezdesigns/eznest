@@ -3465,6 +3465,8 @@ function openOutputLinkForm(event) {
   closeOutputLinkMenu();
   $('output-link-reconnect-note').hidden = !outputSharing?.configured;
   const canConnect = outputLink?.canPair && !outputSharing?.paused;
+  $('output-browser-start').hidden = !canConnect;
+  $('output-browser-error').hidden = true;
   $('output-connect-fields').hidden = !canConnect;
   $('output-connect-help').hidden = !!canConnect;
   $('output-connect-help').textContent = !outputLinkLocal ? 'Connect from the shop’s host PC. You can explore OUTPUT from here.' : 'OUTPUT is turned off for this run. You can still explore the pilot.';
@@ -3475,8 +3477,77 @@ function openOutputLinkForm(event) {
   $('output-link-error').hidden = true;
   $('output-link-code').value = '';
   if (canConnect && $('output-connect-details').open) $('output-link-code').focus();
-  else $('output-explore').focus();
+  else (canConnect ? $('output-browser-start') : $('output-explore')).focus();
 }
+let browserAttempt = null, browserTimer = null, browserGeneration = 0;
+function stopBrowserConnection() {
+  browserGeneration++;
+  clearTimeout(browserTimer);
+  const old = browserAttempt; browserAttempt = null;
+  $('output-browser-waiting').hidden = true;
+  $('output-browser-start').disabled = false;
+  $('output-browser-match').textContent = '';
+  $('output-browser-open').hidden = true;
+  $('output-link-submit').disabled = false;
+  if (old) api('/api/telemetry/output/link/cancel', {attemptId: old}).catch(() => {});
+}
+async function startBrowserConnection() {
+  if (!outputLink?.canPair || outputSharing?.paused || $('output-browser-start').disabled) return;
+  stopBrowserConnection();
+  const generation = browserGeneration;
+  // Open during the click. If blocked, the explicit link below is the fallback.
+  const popup = window.open('about:blank', '_blank');
+  if (popup) popup.opener = null;
+  $('output-browser-start').disabled = true;
+  $('output-link-submit').disabled = true;
+  $('output-browser-error').hidden = true;
+  try {
+    const info = await api('/api/telemetry/output/link/start', {});
+    if (generation !== browserGeneration) {
+      if (popup) popup.close();
+      await api('/api/telemetry/output/link/cancel', {attemptId: info.attemptId}); return;
+    }
+    browserAttempt = info.attemptId;
+    const url = new URL(info.approvalUrl);
+    const origin = new URL(outputLink.connectUrl).origin;
+    if (url.protocol !== 'https:' || url.origin !== origin || url.pathname !== '/outpost/ez-nest/approve' || !/^[0-9a-f-]{36}$/.test(url.searchParams.get('link') || '') || [...url.searchParams.keys()].some(key => key !== 'link') || url.hash || url.username || url.password) throw Error('OUTPUT returned an invalid connection address.');
+    $('output-browser-match').textContent = info.userCode;
+    $('output-browser-status').textContent = 'Waiting for your approval in OUTPUT. Sharing stays off.';
+    $('output-browser-waiting').hidden = false;
+    $('output-browser-open').href = url.href; $('output-browser-open').hidden = false;
+    if (popup) popup.location.replace(url.href);
+    else $('output-browser-status').textContent = 'Your browser blocked the window. Choose Open OUTPUT below to continue.';
+    browserTimer = setTimeout(() => pollBrowserConnection(generation), 3000);
+  } catch (error) {
+    if (popup) popup.close();
+    if (generation !== browserGeneration) return;
+    stopBrowserConnection();
+    $('output-browser-error').textContent = error.message;
+    $('output-browser-error').hidden = false;
+  }
+}
+async function pollBrowserConnection(generation) {
+  if (!browserAttempt || generation !== browserGeneration) return;
+  try {
+    const info = await api('/api/telemetry/output/link/status', {attemptId: browserAttempt});
+    if (generation !== browserGeneration) return;
+    if (info.state === 'connected') {
+      browserAttempt = null; stopBrowserConnection(); closeOutputLinkForm();
+      await refreshOutputSharing(); await refreshOutputLink(); return;
+    }
+    if (!['pending', 'connecting'].includes(info.state)) throw Error(info.state === 'denied' ? 'Connection declined in OUTPUT. Nothing was connected.' : 'This request ended. Check your connection in Settings or start again.');
+    const minutes = Math.ceil(info.expiresIn / 60);
+    $('output-browser-status').textContent = info.state === 'connecting' ? 'Approved. Finishing your connection to OUTPUT…' : `Waiting for your approval in OUTPUT. About ${minutes} min left. Sharing stays off.`;
+    browserTimer = setTimeout(() => pollBrowserConnection(generation), Math.max(3000, Number(info.pollAfter || 3) * 1000));
+  } catch (error) {
+    if (generation !== browserGeneration) return;
+    stopBrowserConnection();
+    $('output-browser-error').textContent = error.message;
+    $('output-browser-error').hidden = false;
+  }
+}
+$('output-browser-start').addEventListener('click', startBrowserConnection);
+$('output-browser-cancel').addEventListener('click', stopBrowserConnection);
 function closeOutputLinkForm() {
   if ($('setup-shop').open) $('setup-shop').close();
   $('output-link-code').value = '';
@@ -3557,7 +3628,7 @@ document.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
   if (!$('output-link-menu').hidden) { closeOutputLinkMenu(); $('output-link-status').focus(); }
 });
-$('setup-shop').addEventListener('close', () => { $('output-link-code').value = ''; renderOutputLink(outputLink); });
+$('setup-shop').addEventListener('close', () => { stopBrowserConnection(); $('output-link-code').value = ''; renderOutputLink(outputLink); });
 
 const inventoryPanel = EZNInventoryPanel.create({
   get profiles() { return materialProfiles; },
