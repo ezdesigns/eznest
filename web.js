@@ -3066,7 +3066,8 @@ function syncWelcome() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  $('mode-switch').addEventListener('click', event => {
+  const modeSwitch = $('mode-switch');
+  if (modeSwitch) modeSwitch.addEventListener('click', event => {
     if (busy || saving || importing) {
       event.preventDefault(); status('Finish the current operation before switching modes.', true); return;
     }

@@ -17,7 +17,7 @@ class ExampleTests(unittest.TestCase):
                 browser = test_web_mvp.launch_browser(playwright)
                 try:
                     page = browser.new_page(viewport={'width': 1440, 'height': 1000})
-                    page.goto(fixture.url())
+                    page.goto(fixture.url() + '/?view=full')
                     page.wait_for_function("() => token.length > 0")
                     page.set_input_files('#files', str(Path(__file__).parents[1] / 'sample-artwork.svg'))
                     page.wait_for_function("() => queue.length === 1 && queue[0].status === 'ready'")

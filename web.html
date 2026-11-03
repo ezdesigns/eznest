@@ -5,13 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ez Nest</title>
 <link rel="stylesheet" href="/web.css">
-<link rel="stylesheet" href="/app-theme.css">
 <link rel="stylesheet" href="/inventory-panel.css">
 </head>
 <body data-step="drop">
-<header class="shop-header app-header">
-  <strong class="brand">EZNest<small>NESTING FOR PRINT SHOPS</small></strong>
-  <a id="mode-switch" class="top-button" href="/">Full mode</a>
+<header class="shop-header">
+  <strong>eznest</strong>
   <button id="logout" type="button" class="link" hidden>Log out</button>
 <div id="top-actions" class="top-actions">
 <div id="output-link" class="output-link">
@@ -351,9 +349,9 @@
     <h2><span class="step-number">3</span> Where will you print?</h2>
     <div class="output-modes" aria-label="Where to print">
       <button id="in-house" class="nest-mode" type="button" aria-pressed="true">In-house</button>
-      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Learn about OUTPUT">
+      <button id="max-output" type="button" aria-pressed="false" aria-haspopup="dialog" aria-controls="max-output-dialog" aria-label="Don't print. Still get paid. Learn about OUTPUT">
         <strong>Don't print</strong>
-        <span class="paid-badge">Preview · test only</span>
+        <span class="paid-badge">Still get paid <span class="paid-emoji">🤑</span></span>
       </button>
     </div>
     <div class="effort-heading"><button id="effort-help" class="help-label" type="button">Nesting effort</button><span class="hint">More time may find a tighter fit.</span></div>
