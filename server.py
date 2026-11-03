@@ -480,11 +480,11 @@ class Handler(BaseHTTPRequestHandler):
             'tls': TLS,
             'shopIdentity': shop_members.status(WORK),
             'shopNetwork': LAN,
+            'shopAddress': f'{"https" if TLS else "http"}://{host_name()}:{PORT}/' if local and LAN else None,
             'outputConnection': output_gate.public_status(WORK, local),
             'outputLink': output_gate.link_status(WORK, local),
         }
         if local:
-            body['shopAddress'] = f'{"https" if TLS else "http"}://{host_name()}:{PORT}/' if LAN else None
             body['token'] = TOKEN
             body['pinAlert'] = shop_auth.alert_status()
         return body
