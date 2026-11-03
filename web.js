@@ -66,7 +66,7 @@ function installSettingsHelp() {
     'staging-folder': ['Extra copy folder', 'Choose where the extra copy is saved. This does not replace the main destination.'],
     'onyx-pc': ['This PC runs ONYX', 'Changes the suggested output folder for this PC. It does not install ONYX or move your files.'],
     'lan': ['Other computers can connect', 'Shows whether this app was started with --lan. The box is disabled because the startup task controls it. A saved setting cannot open the shop network. The installer applies Shop network only on a fresh install. Change it later by running install-shop.ps1 again with -Lan 1 or -Lan 0 and -StartAtBoot 1, then restart.'],
-    'updates': ['Look for app updates', 'Off during beta. Check this box and start Ez Nest with EZ_NEST_UPDATES=1. A download is kept only when its SHA-256 matches. Installing is still a separate click.'],
+    'updates': ['Look for app updates', 'Check for new releases. Nothing installs until you choose to update on the host PC. Your shop inventory and settings stay here.'],
     'test-channel': ['Include test versions', 'When update checks are enabled, also show releases still being tested. Leave off for normal shop use.'],
     'allow-undo': ['Undo send', 'Lets you remove a sent pack while it is still in the output folder. This cannot stop a job that ONYX has already picked up.'],
     'preset-name': ['Material name', 'The name on the material button. Save separate materials when rolls need different widths or spacing.'],
@@ -2977,20 +2977,49 @@ let updateInfo = {};
 let updateWasQueued = false;
 let updateVersion = null;
 let updateServerPid = null;
+let updateInFlight = false;
+let shopVersionChanged = false;
+function updateRefreshNeedsReview() {
+  return busy || saving || importing || kits.length > 0 || !!document.querySelector('dialog[open]')
+    || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+}
+function receiveUpdate(info) {
+  if ((info.current && updateVersion && info.current !== updateVersion)
+      || (updateWasQueued && info.serverPid && updateServerPid && info.serverPid !== updateServerPid)) {
+    shopVersionChanged = true;
+    if (!updateRefreshNeedsReview()) { location.reload(); return; }
+  }
+  showUpdate(info);
+}
 function showUpdate(info) {
   updateInfo = info || {};
   if (info?.current && !updateVersion) updateVersion = info.current;
   if (info?.serverPid && !updateServerPid) updateServerPid = info.serverPid;
   updateWasQueued = updateWasQueued || !!info?.queued;
   $('update-cancel').hidden = !info?.queued || !info?.localPC;
-  $('update').disabled = !!info?.queued || !!info?.busy;
+  $('update').disabled = !!info?.queued || !!info?.busy || updateInFlight || info?.localPC === false;
   const note = $('update-note');
   $('update').textContent = info?.managedSupported && info?.staged ? 'Install when finished' : info?.applyOnRestart ? 'Install now' : 'Check for update';
   if (info?.updateAvailable && !info.staged) $('update').textContent = 'Download ' + info.latest;
   if (info?.platform === 'macos' && info?.staged) $('update').textContent = 'Open Mac installer';
   if (info?.busy) $('update').textContent = 'Checking update…';
+  if (info?.portableSupported && (info.staged || info.updateAvailable)) $('update').textContent = 'Update shop';
+  if (updateInFlight) $('update').textContent = 'Preparing update…';
+  const notice = $('shop-update-notice');
+  const action = $('shop-update-action');
+  notice.hidden = !(shopVersionChanged || updateWasQueued || info?.rollback || info?.updateAvailable || info?.staged);
+  action.hidden = !shopVersionChanged && (!info?.localPC || (!info?.portableSupported && !info?.managedSupported));
+  action.disabled = !shopVersionChanged && $('update').disabled;
+  action.textContent = shopVersionChanged ? 'Refresh app' : $('update').textContent;
+  $('shop-update-message').textContent = shopVersionChanged
+    ? 'Your shop has been updated. Refresh when you’re ready to use the new version.'
+    : info?.rollback ? 'The update could not start. Your previous version has been restored.'
+    : updateInFlight ? 'Preparing the shop update. This page will reconnect when it is ready.'
+    : info?.queued || updateWasQueued ? 'Shop update in progress. This page will reconnect when it is ready.'
+    : info?.localPC ? `Ez Nest ${info?.stagedVersion || info?.latest || ''} is ready. Updating this host updates everyone using this shop address.`
+    : 'A shop update is available. Ask the person at the host PC to install it.';
   $('settings-open').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
-  if (info?.managedSupported && info?.staged && !info.localPC) {
+  if (info?.localPC === false && (info.staged || info.updateAvailable)) {
     note.hidden = false;
     note.textContent = 'The update is ready. Approve installation on the PC running Ez Nest.';
     $('update').disabled = true;
@@ -3020,7 +3049,7 @@ async function refreshUpdate(remote) {
     $('notes-body').textContent = parts.map(entry => entry.body || '').filter(Boolean).join('\n\n');
   } catch { /* What's new stays empty if the changelog is missing. */ }
   try {
-    showUpdate(await (await fetch(remote ? '/api/update?refresh=1' : '/api/update')).json());
+    receiveUpdate(await (await fetch(remote ? '/api/update?refresh=1' : '/api/update')).json());
   } catch { /* The gear still has Update. */ }
 }
 
@@ -3280,6 +3309,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   $('update').addEventListener('click', async () => {
+    if (updateInFlight || updateInfo.localPC === false) return;
+    if (updateInfo.portableSupported && !updateInfo.staged && !updateInfo.updateAvailable) {
+      updateInFlight = true;
+      showUpdate(updateInfo);
+      try { await refreshUpdate(true); }
+      finally { updateInFlight = false; showUpdate(updateInfo); }
+      return;
+    }
     if (updateInfo.managedSupported && updateInfo.staged) {
       if (!updateInfo.localPC) return;
       updateWasQueued = true;
@@ -3290,13 +3327,17 @@ document.addEventListener('DOMContentLoaded', () => {
         : 'Approve the Windows prompt. The helper will wait until work is finished. If no prompt opens, use Update eznest in the Windows Start menu.';
       return;
     }
-    const installNow = $('update').textContent === 'Install now';
+    const installNow = !!updateInfo.portableSupported || $('update').textContent === 'Install now';
+    const portableStaged = updateInfo.portableSupported && updateInfo.staged;
+    updateInFlight = true;
+    showUpdate(updateInfo);
     try {
-      const result = await api('/api/update', {when: installNow ? 'now' : 'restart'});
+      const result = await api(portableStaged ? '/api/update/install' : '/api/update', {when: installNow ? 'now' : 'restart'});
       // Mac verification/download continues in the background. Keep its
       // progress in Settings without replacing the current job's status.
       if (result.platform !== 'macos') status(result.message);
-      showUpdate(result);
+      updateWasQueued = updateWasQueued || !!result.restarting;
+      showUpdate({...updateInfo, ...result});
       if (!result.restarting) await refreshUpdate();
       if (result.restarting) {
         $('update-note').hidden = false;
@@ -3309,7 +3350,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       status(error.message, true);
+    } finally {
+      updateInFlight = false;
+      showUpdate(updateInfo);
     }
+  });
+  $('shop-update-action').addEventListener('click', () => {
+    if (shopVersionChanged) {
+      if (updateRefreshNeedsReview() && !window.confirm('Refresh to the updated app? Unsaved changes on this page will be lost.')) return;
+      location.reload();
+    } else $('update').click();
   });
   $('update-cancel').addEventListener('click', async () => {
     try { await api('/api/update/cancel', {}); updateWasQueued = false; await refreshUpdate(); }
@@ -3320,12 +3370,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch('/api/update');
       if (!response.ok) return;
       const info = await response.json();
-      if (updateWasQueued && ((info.serverPid && updateServerPid && info.serverPid !== updateServerPid) || (info.current && info.current !== updateVersion))) {
-        // Reload only after an approved update, never during ordinary editing.
-        location.reload();
-        return;
-      }
-      showUpdate(info);
+      receiveUpdate(info);
     } catch {
       if (updateWasQueued) {
         $('update-note').hidden = false;

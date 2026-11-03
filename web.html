@@ -44,6 +44,10 @@
 </button>
 </div>
 </header>
+<aside id="shop-update-notice" class="shop-update-notice" aria-live="polite" hidden>
+  <span id="shop-update-message"></span>
+  <button id="shop-update-action" type="button">Update shop</button>
+</aside>
 <dialog id="pin-gate" aria-labelledby="pin-title">
   <form id="pin-form">
     <h2 id="pin-title">Shop PIN</h2>
@@ -212,7 +216,7 @@
     <details id="settings-updates" class="settings-section">
       <summary>App updates</summary>
     <label class="check"><input id="updates" type="checkbox"> Check for updates</label>
-    <p class="hint">Off during beta. To turn checks on, check this box and start Ez Nest with <code>EZ_NEST_UPDATES=1</code>. Ez Nest keeps a download only when its SHA-256 matches the published checksum. Installing that file is still a separate click.</p>
+    <p class="hint">Get a notice when a new version is available. Update on the host PC after saving your work; everyone using that shop address gets the new version. Separately installed copies update separately.</p>
     <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
     <label class="check" hidden><input id="output-network" type="checkbox"> Share capacity with the OUTPUT network</label>
     <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Connecting this computer to OUTPUT is optional and is not this switch.</p>

@@ -1,0 +1,47 @@
+name: Shop host portable build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Install pinned dependencies and browser driver
+        run: python -m pip install -r requirements.txt -r requirements-build.txt playwright
+      - name: Test source
+        run: python -m unittest discover -f -s tests -p "test_*.py"
+      - name: Check interface
+        run: node --check web.js
+      - name: Build user-mode host
+        run: python build_windows.py --portable-only --shop-portable --out C:\eznest-portable-build
+      - name: Rehearse frozen update and rollback with new synthetic shop data
+        run: python tests/shop_portable_smoke.py --zip C:\eznest-portable-build\download\eznest-shop-windows.zip --work C:\eznest-portable-rehearsal
+      - name: Keep checked download files
+        uses: actions/upload-artifact@v4
+        with:
+          name: shop-host-download
+          path: C:\eznest-portable-build\download\*
+          if-no-files-found: error
+      - name: Keep acceptance receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: shop-host-update-receipt
+          path: C:\eznest-portable-rehearsal\RESULT.json
+          if-no-files-found: error
