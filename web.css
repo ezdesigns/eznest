@@ -23,6 +23,7 @@
   color-scheme: light;
   --ink: #1c1c1c;
   --muted: #5c5c58;
+  --font-sans: "Red Hat Display", "Segoe UI", sans-serif;
   --alarm: #D92F00;
   --canvas: #9a9a9a;
   --thru: #00B7FF;
@@ -503,10 +504,25 @@ body:has(#settings-support[open]) #feedback-welcome { display: none; }
 .output-modes > * > span { font-size: 12px; color: var(--muted); margin-top: 3px; }
 .output-modes .soon { font-size: 10px; font-weight: 400; color: var(--muted); margin-left: 6px; }
 #layout-options, .output-modes, #max-output, .job-panel { overflow: visible; }
-.output-modes { padding-bottom: 0; }
+.output-modes { padding-bottom: 16px; }
 .output-modes > button.nest-mode::after { content: "✓"; position: absolute; top: 6px; left: 8px; font-size: 12px; font-weight: 700; line-height: 1; color: currentColor; }
-#max-output .paid-badge { position: static; margin-top: 2px; padding: 0; border-radius: 0; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; line-height: 1.2; white-space: nowrap; box-shadow: none; transform: none; }
+#max-output { position: relative; background: #f3fbf6; border-color: #b7dcc6; color: #111; }
+#max-output strong { color: #111; font-weight: 700; }
+#max-output .paid-badge { position: absolute; right: -6px; bottom: -11px; z-index: 1; padding: 3px 8px; border-radius: 999px; background: #15803D; color: #fff; font-size: 11px; font-weight: 700; line-height: 1.2; white-space: nowrap; box-shadow: 0 0 0 2px #fff; transform: rotate(5deg) translateY(-3px); }
 #max-output .paid-emoji { font-style: normal; font-variant-emoji: emoji; }
+.output-modes.choice-seen #max-output .paid-badge { transform: rotate(5deg) translateY(0); transition: transform 400ms ease; }
+#max-output:hover, #max-output:focus { background: #e7f6ec; border-color: #b7dcc6; transform: translateY(-1px); transition: transform 150ms ease; }
+.output-modes.choice-seen #max-output:hover .paid-badge,
+.output-modes.choice-seen #max-output:focus .paid-badge { transform: rotate(3deg); transition: transform 150ms ease; }
+#max-output:focus-visible { outline: 2px solid #111; outline-offset: 2px; }
+#max-output[aria-pressed="true"] { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #15803D; }
+@media (prefers-reduced-motion: reduce) {
+  #max-output, #max-output:hover, #max-output:focus { transform: none; transition: none; }
+  #max-output .paid-badge,
+  .output-modes.choice-seen #max-output .paid-badge,
+  .output-modes.choice-seen #max-output:hover .paid-badge,
+  .output-modes.choice-seen #max-output:focus .paid-badge { transform: rotate(5deg); transition: none; }
+}
 .effort-heading { margin: 16px 0 8px; font-size: 13px; font-weight: 700; }
 .effort-heading .hint { display: block; margin-top: 4px; font-size: 12px; }
 #max-output-dialog { width: min(420px, calc(100vw - 32px)); max-height: 90dvh; overflow: auto; padding: 24px; border: 1px solid #ddd; border-radius: 14px; }

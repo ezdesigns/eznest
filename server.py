@@ -485,7 +485,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/web':
             # Older installers and Illustrator links keep working at the one app entry.
             query = urlparse(self.path).query
-            target = '/?view=simple' + ('&' + query if query else '')
+            target = '/' + ('?' + query if query else '')
             return self.send(307, b'', 'text/plain; charset=utf-8',
                              extra_headers=(('Location', target),))
         if path == '/api/session':
@@ -660,7 +660,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return self.send(400, {'error': 'Illustrator capture could not be read.'})
         view = parse_qs(urlparse(self.path).query).get('view', [''])[0]
-        workspace = 'web.html' if view == 'simple' else 'production.html'
+        workspace = 'production.html' if view == 'full' else 'web.html'
         static = {'/': (workspace, 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
         static.update({'/svg-io.js': ('svg-io.js', 'text/javascript'), '/sample-artwork.svg': ('sample-artwork.svg', 'image/svg+xml')})
         static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css')})
