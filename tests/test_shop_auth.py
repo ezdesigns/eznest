@@ -85,15 +85,36 @@ class ShopAuthTests(unittest.TestCase):
         shop_deploy.clear_name_cache()
         with patch('shop_deploy.lan_addresses', return_value=['192.168.1.50']):
             shop_deploy.clear_name_cache()
-            missing = self.handler('/api/session', headers={'Origin': None})
-            missing.do_GET()
-            self.assertEqual(missing.sent[0][0], 403)
+            # Plain HTTP from another computer omits Origin and Sec-Fetch-Site on GET.
+            plain = self.handler('/api/session', headers={'Origin': None, 'Sec-Fetch-Site': None})
+            plain.do_GET()
+            self.assertEqual(plain.sent[0][0], 200)
+            self.assertNotIn('token', plain.sent[0][1])
+            self.assertFalse(plain.sent[0][1]['authenticated'])
+            opaque = self.handler('/api/session', headers={'Origin': 'null'})
+            opaque.do_GET()
+            self.assertEqual(opaque.sent[0][0], 403)
+            self.assertEqual(opaque.sent[0][1]['error'], 'Invalid session')
             cross = self.handler('/api/session', headers={'Sec-Fetch-Site': 'cross-site', 'Origin': 'https://evil.example'})
             cross.do_GET()
             self.assertEqual(cross.sent[0][0], 403)
             posted = self.handler('/api/login', body=b'{"pin":"123456"}', headers={'Origin': None, 'Sec-Fetch-Site': None})
             posted.handle_post()
             self.assertEqual(posted.sent[0][0], 403)
+
+    def test_a_running_search_tells_the_other_person_someone_else_is_nesting(self):
+        previous = dict(server.STATE)
+        server.STATE.clear()
+        server.STATE.update(status='running')
+        try:
+            item = self.handler('/api/solve', body=b'{}', ip='127.0.0.1', host='127.0.0.1:8765',
+                                headers={'X-EZ-Token': server.TOKEN, 'Origin': 'http://127.0.0.1:8765'})
+            item.handle_post()
+            self.assertEqual(item.sent[0][0], 400)
+            self.assertEqual(item.sent[0][1]['error'], 'Someone else is nesting. Wait until they finish.')
+        finally:
+            server.STATE.clear()
+            server.STATE.update(previous)
 
     def test_host_header_rejects_other_private_addresses(self):
         shop_deploy.clear_name_cache()

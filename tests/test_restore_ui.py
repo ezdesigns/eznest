@@ -264,21 +264,18 @@ class RestoreUiTests(unittest.TestCase):
         self.assertEqual(round(page.locator('#start-over-idle').bounding_box()['height']), round(page.locator('#start-nesting').bounding_box()['height']))
         self.assertEqual(round(page.locator('#output-dot').bounding_box()['height']), 36)
         expect(page.locator('#output-dot')).to_have_attribute('title', 'Connect to OUTPUT')
-        # Unpaired: one plain message, nesting waits until OUTPUT is connected.
-        expect(page.locator('#output-required')).to_be_visible()
-        expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT (optional)')
-        expect(page.locator('#output-required-skip')).to_be_visible()
+        # Pairing stays on the status dot. The home screen does not ask to connect.
+        expect(page.locator('#output-required')).to_be_hidden()
         self.final(page, 'not-connected', width)
         with context.expect_page() as tab:
-            page.click('#output-required-code')
+            page.click('#output-dot')
         self.assertTrue(tab.value.url.endswith('/outpost/ez-nest'), tab.value.url)
         tab.value.close()
         expect(page.locator('#output-link-code')).to_be_visible()
         self.shot(page, f'after-connect-code-{width}.png')
         page.fill('#output-link-code', CODE)
-        with page.expect_navigation():
-            page.click('#output-link-submit')
-        self.wait_ready(page)
+        page.click('#output-link-submit')
+        expect(page.locator('#setup-shop')).to_be_hidden()
         expect(page.locator('#output-required')).to_be_hidden()
         if page.locator('#setup').is_visible():
             page.click('#setup-save')

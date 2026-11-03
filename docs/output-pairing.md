@@ -1,16 +1,10 @@
 # OUTPUT pairing
 
 The Ez Nest API allows nesting, sending, and stock changes without an OUTPUT
-connection. Connecting to OUTPUT is optional. When `outputConnection.ok` is
-false in `/api/session`, the browser shows **Connect to OUTPUT (optional)**
-until this browser chooses **Skip** or the host connects. **Skip** stores
-`eznest-setup-skipped` in that browser's localStorage, and later loads open
-the workspace. If that write fails, **Skip** lasts for the current visit
-only. The header still offers **Connect to OUTPUT**. On the
-shop computer, paste a one-time pairing code from
-<https://output.jeezlabs.io/outpost/ez-nest> (**Have a pairing code?**).
-Designer PCs cannot pair. If they have not chosen **Skip**, they see "Ask the
-shop computer to connect to OUTPUT."
+connection. Connecting to OUTPUT is optional. The home screen does not show a
+Connect to OUTPUT banner, and nesting does not wait for a connection. On the
+shop computer, open Settings or the status dot and paste a one-time pairing
+code from <https://output.jeezlabs.io/outpost/ez-nest>. Designer PCs cannot pair.
 
 `output_remote.READY` defaults to false. A shop setting cannot turn it on.
 While it is false, browser-approval routes return 403 and stock-summary

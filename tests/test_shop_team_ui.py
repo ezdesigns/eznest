@@ -1,4 +1,5 @@
 import opt_out
+import time
 import unittest
 from unittest.mock import patch
 
@@ -30,8 +31,8 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()
                 page.locator('#shop-team-open').click()
                 expect(page.get_by_role('heading', name='Test Print Shop')).to_be_visible()
-                expect(page.locator('#shop-team-dialog')).to_contain_text('This PC is local only')
-                expect(page.get_by_role('button', name='Create invitation')).to_have_count(0)
+                expect(page.locator('#shop-team-dialog')).to_contain_text('shop network')
+                expect(page.get_by_role('button', name='Invite someone')).to_have_count(0)
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-local.png'))
                 page.get_by_role('button', name='Done', exact=True).click()
                 page.reload()
@@ -65,11 +66,14 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 page.goto(self.fixture.url() + '/?view=simple')
                 page.locator('#shop-team-open').click()
                 expect(page.locator('#shop-team-dialog code')).to_contain_text('http://TEST-SHOP:')
-                page.get_by_role('button', name='Create invitation', exact=True).click()
+                page.get_by_role('button', name='Invite someone', exact=True).click()
                 expect(page.locator('#team-invitation')).to_contain_text('Expires in 15 minutes')
+                code_box = page.locator('#team-invitation').bounding_box()
+                done_box = page.get_by_role('button', name='Done', exact=True).bounding_box()
+                self.assertLessEqual(code_box['y'], done_box['y'])
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-host.png'))
-                page.get_by_role('button', name='Cancel unused invitations').click()
-                expect(page.locator('#team-invitation')).to_have_count(0)
+                page.get_by_role('button', name='Cancel unused invites').click()
+                expect(page.locator('#team-invitation')).to_be_hidden()
                 self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
             finally:
                 browser.close()
@@ -109,10 +113,83 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 stock = page.evaluate("fetch('/api/materials').then(r=>r.json())")
                 self.assertEqual(stock['materials'][0]['onHandMm'], 1000)
                 page.locator('#shop-team-open').click()
-                expect(page.locator('#shop-team-dialog')).to_contain_text('Ask the host')
+                expect(page.locator('#shop-team-dialog')).to_contain_text('Ask the shop computer')
+                expect(page.locator('#logout')).to_have_text('Log out')
+                logout = page.locator('#logout').bounding_box()
+                self.assertGreaterEqual(logout['width'], 48)
+                self.assertLessEqual(logout['x'] + logout['width'], 390)
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-joined-mobile.png'))
                 member = shop_members.status(server.WORK, admin=True)['members'][0]
                 shop_members.revoke(server.WORK, member['id'])
-                self.assertEqual(page.evaluate("fetch('/api/materials').then(r=>r.status)"), 403)
+                removed = page.evaluate("fetch('/api/materials').then(async r => ({status: r.status, body: await r.json()}))")
+                self.assertEqual(removed['status'], 403)
+                self.assertEqual(removed['body']['error'], 'Your access was removed.')
+                page.reload()
+                expect(page.get_by_text('Your access was removed. Ask for a new invite.')).to_be_visible()
             finally:
                 browser.close()
+
+    def test_plain_http_from_another_address_opens_join(self):
+        """A second computer on plain HTTP, not this machine's loopback."""
+        import socket
+        import threading
+        from urllib.request import urlopen
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect(('192.0.2.1', 9))
+            host_ip = probe.getsockname()[0]
+        except OSError:
+            self.skipTest('no second address')
+        finally:
+            probe.close()
+        if host_ip.startswith('127.'):
+            self.skipTest('only loopback')
+        shop_members.create(server.WORK, 'Lan Shop')
+        code = shop_members.invite(server.WORK)['code']
+        self.fixture.stop()
+        service = server.ThreadingHTTPServer(('0.0.0.0', 0), server.Handler)
+        service.daemon_threads = False
+        port = service.server_port
+        thread = threading.Thread(target=service.serve_forever, daemon=True)
+        old_lan = server.LAN
+        server.LAN = True
+        server.PORT = port
+        thread.start()
+        try:
+            address = f'http://{host_ip}:{port}'
+            with patch('shop_deploy.lan_addresses', return_value=[host_ip]):
+                import shop_deploy
+                shop_deploy.clear_name_cache()
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    try:
+                        with urlopen(address + '/api/session', timeout=0.2) as response:
+                            if response.status == 200:
+                                break
+                    except OSError:
+                        time.sleep(0.02)
+                else:
+                    self.fail('second address did not accept the session request')
+                from playwright.sync_api import sync_playwright, expect
+                with sync_playwright() as pw:
+                    browser = test_web_mvp.launch_browser(pw)
+                    page = browser.new_page(viewport={'width': 1280, 'height': 900})
+                    try:
+                        page.goto(address + '/?view=simple')
+                        expect(page.get_by_role('heading', name='Join Lan Shop')).to_be_visible()
+                        expect(page.locator('#output-required')).to_be_hidden()
+                        page.locator('#team-member-name').fill('Other PC')
+                        page.locator('#team-code').fill(code)
+                        page.locator('#team-join').click()
+                        expect(page.locator('#shop-team-dialog')).not_to_be_visible()
+                        session = page.evaluate("fetch('/api/session').then(r => r.json())")
+                        self.assertTrue(session['authenticated'])
+                        self.assertFalse(session['localPC'])
+                        self.assertNotIn('token', session)
+                    finally:
+                        browser.close()
+        finally:
+            server.LAN = old_lan
+            service.shutdown()
+            service.server_close()
+            thread.join(timeout=5)

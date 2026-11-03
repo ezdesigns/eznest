@@ -12,7 +12,7 @@ The shop host is a 64-bit PC running Windows 10 or Windows 11. Each designer PC 
 
 **Uninstall.** Uninstall removes the program, the startup task, the `eznest-svc` account, and the firewall rule. `%ProgramData%\eznest` stays on the host, including `materials.sqlite3`. The RIP hot folder stays too. Details are under [Uninstall](#uninstall).
 
-**Data stays in the shop.** Artwork, nest files, and stock records stay on the host. The API allows nesting without OUTPUT. When `/api/session` reports the host is not connected, the browser shows **Connect to OUTPUT (optional)** until this browser chooses **Skip** or the host connects. **Skip** is remembered in that browser. **Set up your shop** stays hidden. `output_remote.READY` defaults to false, and browser-approval routes stay closed. Connecting sends this computer's name and installation id once, then the app version on later check-ins. Activity sharing is a separate choice and stays off until **Enable sharing** on the host. See [OUTPUT pairing](docs/output-pairing.md).
+**Data stays in the shop.** Artwork, nest files, and stock records stay on the host. The API allows nesting without OUTPUT. The home screen does not show a Connect to OUTPUT banner. Pair from Settings or the status dot when you want to. `output_remote.READY` defaults to false, and browser-approval routes stay closed. Connecting sends this computer's name and installation id once, then the app version on later check-ins. Activity sharing is a separate choice and stays off until **Enable sharing** on the host. See [OUTPUT pairing](docs/output-pairing.md).
 
 **Trademark.** Ez Nest is a project of EZ Designs. The software is [Apache-2.0](LICENSE). Third-party notices stay in [THIRD_PARTY.md](THIRD_PARTY.md) and `licenses/`.
 
@@ -124,9 +124,9 @@ If an update rolled back, include `helper.log` and leave customer files out of i
 
 ## Privacy and telemetry
 
-Artwork, nests, and stock records stay on the shop host. The local API no longer requires an OUTPUT connection. **Skip** on **Connect to OUTPUT (optional)** opens the workspace and is remembered in that browser. Connecting to OUTPUT is optional. Browser-approval routes and stock-summary upload stay closed while `output_remote.READY` is false. **Set up your shop** stays hidden. Nesting does not upload artwork. Activity sharing stays **off** until the host opts in.
+Artwork, nests, and stock records stay on the shop host. The local API no longer requires an OUTPUT connection. The home screen does not show a Connect to OUTPUT banner, and nesting does not wait for one. Pair from Settings or the status dot. Browser-approval routes and stock-summary upload stay closed while `output_remote.READY` is false. Nesting does not upload artwork. Activity sharing stays **off** until the host opts in.
 
-A paired host, or `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN`, can turn on activity sharing with **Enable sharing** after a current OUTPUT check-in. `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off and does not by itself satisfy the connection. **Stop sharing** stops later activity sends. **Disconnect** removes the paired credential. A browser that has not chosen **Skip** shows **Connect to OUTPUT (optional)** again. Neither deletes records the service already accepted.
+A paired host, or `EZ_NEST_OUTPUT_UPLOADS=1` with `EZ_NEST_OUTPUT_TOKEN`, can turn on activity sharing with **Enable sharing** after a current OUTPUT check-in. `EZ_NEST_OUTPUT_UPLOADS=0`, including `--shop-test`, turns delivery off and does not by itself satisfy the connection. **Stop sharing** stops later activity sends. **Disconnect** removes the paired credential. Pair again from Settings or the status dot. Neither deletes records the service already accepted.
 
 The consented payload is the `eznest-observation/1` projection described in [OUTPUT sharing](docs/output-telemetry.md). The local proposal, which is not itself uploaded, is in [the telemetry contract](docs/telemetry-contract.md). A consented event can include:
 
@@ -174,7 +174,7 @@ Only `--lan` opens a non-loopback listener, and only after the PIN exists. A sav
 
 ## OUTPUT
 
-Connecting to OUTPUT is optional. On first run the browser shows **Connect to OUTPUT (optional)**. Paste a pairing code from <https://output.jeezlabs.io/outpost/ez-nest>, or choose **Skip** to open the workspace in that browser. **Skip** is remembered there. Nesting, sending, and stock stay available. Designer PCs that have not chosen **Skip** see a message to ask the shop computer to connect. **Set up your shop** stays hidden. `output_remote.READY` defaults to false, and browser-approval routes stay closed. See [OUTPUT pairing](docs/output-pairing.md).
+Connecting to OUTPUT is optional. First run opens create-a-shop or join-with-an-invite. Pair later from Settings or the status dot with a code from <https://output.jeezlabs.io/outpost/ez-nest>. Nesting, sending, and stock stay available without that connection. Designer PCs cannot pair. `output_remote.READY` defaults to false, and browser-approval routes stay closed. See [OUTPUT pairing](docs/output-pairing.md).
 
 **Enable sharing** is still optional and off until the host agrees. **Share capacity with the OUTPUT network** is a different opt-in, also off, and it does not send capacity or availability. Customer artwork stays on the host. The service address is documented under [Privacy and telemetry](#privacy-and-telemetry).
 
