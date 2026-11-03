@@ -163,8 +163,25 @@ jobs:
 
       - name: Test actual fresh install on disposable Windows runner
         shell: pwsh
-        run: |
-          pwsh -NoProfile -File tests/test_installed_local.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File tests/test_installed_shop.ps1
+        run: pwsh -NoProfile -File tests/test_installed_shop.ps1
 
+
+  local-acceptance:
+    name: Local install, update and uninstall
+    needs: installer
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out tested source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Download the built installer
+        uses: actions/download-artifact@v4
+        with:
+          name: eznest-setup
+          path: installer/Output
+      - name: Test local installation on a separate clean Windows runner
+        shell: pwsh
+        run: pwsh -NoProfile -File tests/test_installed_local.ps1
