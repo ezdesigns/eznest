@@ -16,6 +16,7 @@ import ssl
 import workload
 import output_gate
 import output_pairing
+import output_link
 import output_remote
 import telemetry
 import telemetry_sender
@@ -896,6 +897,22 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(200, output_pairing.connect(WORK, data.get('code'), paused=telemetry_paused()))
                     except output_pairing.PairingError as error:
                         return self.send(400, {'error': str(error), 'reason': error.reason})
+                if path.startswith('/api/telemetry/output/link/'):
+                    action = path.rsplit('/', 1)[-1]
+                    if action == 'start' and data:
+                        raise ValueError('Starting a connection takes no additional data.')
+                    if action in ('status', 'cancel') and (set(data) != {'attemptId'} or not isinstance(data['attemptId'], str)):
+                        raise ValueError('Choose the current connection request.')
+                    try:
+                        if action == 'start':
+                            return self.send(200, output_link.start(WORK, paused=telemetry_paused()))
+                        if action == 'status':
+                            return self.send(200, output_link.status(WORK, data['attemptId'], paused=telemetry_paused()))
+                        if action == 'cancel':
+                            return self.send(200, output_link.cancel(WORK, data['attemptId']))
+                    except output_pairing.PairingError as error:
+                        return self.send(400, {'error': str(error), 'reason': error.reason})
+                    return self.send(404, {'error': 'Connection action not found.'})
                 if path == '/api/telemetry/output/disconnect':
                     if data:
                         raise ValueError('Disconnect takes no additional data.')
