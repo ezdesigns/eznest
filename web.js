@@ -2015,7 +2015,8 @@ function showSetup(shop) {
     panel.hidden = true;
     return;
   }
-  panel.hidden = false;
+  // Optional printer/folder choices live in Settings, never a second onboarding gate.
+  panel.hidden = true;
   if (!$('setup-thru').value) $('setup-thru').value = $('thru-name').value;
   if (!$('setup-kiss').value) $('setup-kiss').value = $('kiss-name').value;
   $('setup-units').value = $('unit').value || 'in';
@@ -3010,13 +3011,14 @@ function showUpdate(info) {
   notice.hidden = !(shopVersionChanged || updateWasQueued || info?.rollback || info?.updateAvailable || info?.staged);
   action.hidden = !shopVersionChanged && (!info?.localPC || (!info?.portableSupported && !info?.managedSupported));
   action.disabled = !shopVersionChanged && $('update').disabled;
-  action.textContent = shopVersionChanged ? 'Refresh app' : $('update').textContent;
+  action.textContent = shopVersionChanged ? 'Refresh app' : 'View update';
+  action.title = 'Save your work, then update from this shop host. Everyone using its address gets the new version.';
   $('shop-update-message').textContent = shopVersionChanged
     ? 'Your shop has been updated. Refresh when you’re ready to use the new version.'
     : info?.rollback ? 'The update could not start. Your previous version has been restored.'
     : updateInFlight ? 'Preparing the shop update. This page will reconnect when it is ready.'
     : info?.queued || updateWasQueued ? 'Shop update in progress. This page will reconnect when it is ready.'
-    : info?.localPC ? `Ez Nest ${info?.stagedVersion || info?.latest || ''} is ready. Updating this host updates everyone using this shop address.`
+    : info?.localPC ? `Update available · ${info?.stagedVersion || info?.latest || 'Ez Nest'}`
     : 'A shop update is available. Ask the person at the host PC to install it.';
   $('settings-open').title = info?.updateAvailable ? 'Settings - update available' : 'Settings';
   if (info?.localPC === false && (info.staged || info.updateAvailable)) {
@@ -3109,6 +3111,9 @@ document.addEventListener('DOMContentLoaded', () => {
   $('preset-editor').addEventListener('change', renderInventory);
   $('inventory-reserve').addEventListener('click', () => inventoryAction('/api/materials/reserve', {id: current?.id}));
   installSettingsHelp();
+  $('help-close').addEventListener('click', () => { $('settings-support').open = false; $('settings-support').querySelector('summary').focus(); });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') $('settings-support').open = false; });
+  document.addEventListener('click', event => { if (!event.target.closest('#settings-support')) $('settings-support').open = false; });
   $('settings-open').addEventListener('click', () => {
     const dialog = $('settings');
     if (!dialog.open) dialog.showModal();
@@ -3359,7 +3364,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (shopVersionChanged) {
       if (updateRefreshNeedsReview() && !window.confirm('Refresh to the updated app? Unsaved changes on this page will be lost.')) return;
       location.reload();
-    } else $('update').click();
+    } else {
+      $('settings-open').click();
+      $('settings-updates').open = true;
+      $('settings-updates').scrollIntoView({block:'nearest'});
+      $('update').focus();
+    }
   });
   $('update-cancel').addEventListener('click', async () => {
     try { await api('/api/update/cancel', {}); updateWasQueued = false; await refreshUpdate(); }
@@ -3509,14 +3519,16 @@ function openOutputLinkForm(event) {
   if ($('setup-shop').open) return;
   closeOutputLinkMenu();
   $('output-link-reconnect-note').hidden = !outputSharing?.configured;
-  const canConnect = outputLink?.canPair && !outputSharing?.paused;
+  const connecting = ['output-pair', 'output-reconnect', 'output-link-reconnect'].includes(event?.currentTarget?.id);
+  const canConnect = connecting && outputLink?.canPair && !outputSharing?.paused;
+  $('setup-shop').dataset.mode = connecting ? 'connect' : 'explore';
+  $('output-connect-details').hidden = !connecting;
   $('output-browser-start').hidden = !canConnect;
   $('output-browser-error').hidden = true;
   $('output-connect-fields').hidden = !canConnect;
   $('output-connect-help').hidden = !!canConnect;
   $('output-connect-help').textContent = !outputLinkLocal ? 'Connect from the shop’s host PC. You can explore OUTPUT from here.' : 'OUTPUT is turned off for this run. You can still explore the pilot.';
-  const connecting = ['output-pair', 'output-reconnect', 'output-link-reconnect'].includes(event?.currentTarget?.id);
-  $('output-connect-details').open = connecting || !!outputSharing?.configured;
+  $('output-connect-details').open = connecting;
   if (!$('setup-shop').open) $('setup-shop').showModal();
   $('output-link-connect').hidden = true;
   $('output-link-error').hidden = true;

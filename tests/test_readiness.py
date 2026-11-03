@@ -132,8 +132,8 @@ class ReadinessTests(unittest.TestCase):
                         page = browser.new_page(viewport={'width': 1100, 'height': 900})
                         page.goto(fixture.url() + '/web')
                         fixture.wait_ready(page)
-                        # The one-time card stays until this computer saves or dismisses it.
-                        self.assertTrue(page.locator('#setup').is_visible())
+                        # Optional setup no longer blocks the workspace.
+                        self.assertFalse(page.locator('#setup').is_visible())
                         self.assertFalse(page.locator('#cut-line-note').is_visible())
                         self.assertIn('kiss-cut', page.locator('#cut-line-note').text_content())
                         save = """([hot, thru, kiss]) => { $('setup-printer').value = 'Customer printer'; $('setup-hot').value = hot;
@@ -159,7 +159,7 @@ class ReadinessTests(unittest.TestCase):
                         self.assertTrue(page.locator('#lan').is_disabled())
                         page.locator('#settings-delivery').evaluate('node => node.open = true')
                         self.assertTrue(page.locator('#lan-access').is_hidden())
-                        self.assertIn('Shop network access is configured when the app starts.', page.locator('#lan-access').text_content())
+                        self.assertIn('Changing network access requires restarting the host', page.locator('#lan-access').text_content())
                         page.locator('#settings-delivery').evaluate('node => node.open = false')
                         self.assertEqual(page.input_value('#cut-preset'), 'custom')
                         # Use an illustrative path in the documentation screenshot,

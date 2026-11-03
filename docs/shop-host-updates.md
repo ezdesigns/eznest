@@ -7,10 +7,12 @@ separately; this does not synchronize independent inventories.
 
 ## Operator experience
 
-1. Enable **Settings > App updates > Check for updates** once. Enable **Test
-   channel** for release candidates. Checks run at startup and every six hours.
-2. A notice appears when a newer published release is available. On the host PC,
-   choose **Update shop** after saving the current print file or starting over.
+1. New portable shop installations check automatically at startup and every six
+   hours. An existing saved opt-out and `EZ_NEST_UPDATES=0` are respected. Use
+   **Settings > App updates** to change this or include preview releases.
+2. A notice appears at the bottom left when a newer published release is
+   available. Choose **View update** to review it in Settings, then **Update shop**
+   on the host PC after saving the current print file or starting over.
 3. Ez Nest verifies the download, backs up the application, replaces its app
    files and restarts on the same port with the same data folder and network mode.
    The previous application is restored if the replacement cannot start.

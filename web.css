@@ -731,8 +731,58 @@ body[data-step="sent"] #inventory-open { display: block; }
   .output-benefits { grid-template-columns: 1fr; }
 }
 /* One shop host supplies the app to every connected designer. */
-.shop-update-notice { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:12px 24px; padding:12px 16px; border:1px solid #bad7fa; border-radius:10px; background:#eff6ff; color:#173b66; }
+.shop-update-notice { position:fixed; z-index:6; left:20px; bottom:20px; display:flex; align-items:center; gap:10px; max-width:min(480px, calc(100vw - 200px)); margin:0; padding:10px 12px; border:1px solid #bad7fa; border-radius:12px; background:#fff; color:#173b66; box-shadow:0 6px 24px #18213614; font-size:13px; }
 .shop-update-notice[hidden] { display:none; }
 .shop-update-notice button { flex-shrink:0; border:0; border-radius:8px; padding:10px 16px; background:#0878ed; color:white; font:inherit; font-weight:600; cursor:pointer; }
 .shop-update-notice button:disabled { opacity:.55; cursor:wait; }
-@media(max-width:540px) { .shop-update-notice { align-items:flex-start; flex-direction:column; } }
+@media(max-width:540px) { .shop-update-notice { left:12px; bottom:76px; max-width:calc(100vw - 24px); flex-wrap:wrap; } }
+
+/* Each dialog owns one scroll surface. Long forms must not be clipped by flex children. */
+#settings, #material-dialog { max-height:calc(100dvh - 32px); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+#settings { height:min(760px, calc(100dvh - 32px)); overflow:hidden; }
+#settings .panel { display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; }
+#settings .dialog-heading, #settings .settings-save { flex:none; }
+#settings .settings-scroll { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:0 6px 16px 0; }
+#settings .settings-save { position:static; padding:14px 0 0; margin:0; }
+.settings-summary-note { display:block; margin-top:4px; font-size:12px; font-weight:400; color:var(--muted); }
+#settings .settings-section { border:1px solid #e4e7e9; border-radius:10px; padding:14px; margin-top:12px; }
+#settings .settings-section:first-of-type { border:0; padding:0 0 8px; }
+#settings details.settings-section > summary { list-style:none; padding-right:24px; position:relative; }
+#settings details.settings-section > summary::-webkit-details-marker { display:none; }
+#settings details.settings-section > summary::after { content:'+'; position:absolute; right:0; top:0; font-size:20px; color:#637083; font-weight:400; }
+#settings details.settings-section[open] > summary::after { content:'−'; }
+#settings .privacy-details { padding:12px; background:#f7f8fa; border-radius:8px; font-size:12px; line-height:1.6; margin:14px 0; }
+#settings .privacy-details p { margin:12px 0; }
+#settings-support .help-card { width:min(370px, calc(100vw - 32px)); padding:22px; max-height:calc(100dvh - 110px); }
+#settings-support .dialog-heading { margin-bottom:12px; align-items:center; }
+.help-steps { list-style:none; counter-reset:help; margin:0 0 18px; padding:0; }
+.help-steps li { counter-increment:help; position:relative; padding:10px 0 10px 38px; font-size:13px; }
+.help-steps li::before { content:counter(help); position:absolute; left:0; top:10px; width:26px; height:26px; display:grid; place-items:center; border-radius:8px; color:#006cf5; background:#eef5ff; font-weight:700; }
+.help-steps span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+#settings-support .help-card > details { border-top:1px solid #e8ebee; padding-top:12px; }
+.top-actions #shop-team-open { margin-right:8px; border-right:1px solid #dde2e8; border-radius:0; padding-right:18px; font-weight:700; }
+.top-actions #output-link { order:4; }
+.output-brand { --output-blue:#006cf5; --output-ink:#182136; color:var(--output-ink); background:#fff; }
+#setup-shop.output-brand, #max-output-dialog.output-brand { width:min(600px, calc(100vw - 32px)); padding:32px; border:1px solid #dce1dd; border-radius:18px; box-shadow:0 22px 100px #10271926; max-height:calc(100dvh - 32px); overflow-y:auto; }
+.output-brand::backdrop { background:#18213666; backdrop-filter:blur(4px); }
+.output-wordmark { font-size:22px; font-weight:700; letter-spacing:-.8px; color:#182136; }
+.output-wordmark span { display:block; font-size:8px; letter-spacing:1.7px; font-weight:400; margin-top:2px; }
+#setup-shop.output-brand h2, #max-output-dialog.output-brand h2 { font-size:clamp(30px, 5vw, 44px); line-height:1.08; letter-spacing:-1.6px; margin:12px 0; font-weight:700; }
+.output-brand h2 em { font-style:normal; color:#006cf5; }
+#setup-shop.output-brand .output-intro { font-size:14px; line-height:1.7; color:#526173; }
+.output-brand .output-benefits { gap:16px; }
+.output-brand .output-benefits > div { padding:18px; border:1px solid #dce1dd; background:#fafbfa; border-radius:12px; }
+.output-direction { display:grid; place-items:center; width:32px; height:32px; border-radius:9px; background:#eaf2ff; color:#006cf5; font-size:24px; margin-bottom:16px; }
+.output-brand .output-benefits > div:last-child .output-direction { background:#eaf5ed; color:#28704b; }
+.output-brand .output-benefits h3 { font-size:16px; color:#182136; }
+.output-brand .output-benefits p { font-size:13px; line-height:1.6; }
+.output-brand #output-explore, .output-brand #max-output-waitlist, .output-brand #output-browser-start { display:block; text-align:center; padding:14px 20px; border-radius:8px; background:#006cf5; color:#fff; font-size:14px; font-weight:700; text-decoration:none; }
+.output-brand #output-explore:hover, .output-brand #max-output-waitlist:hover { background:#0056c8; }
+#setup-shop .output-link-form { gap:20px; }
+#max-output-dialog.output-brand > p { color:#526173; line-height:1.7; }
+.output-brand .output-points { padding:8px 0 8px 20px !important; list-style:disc !important; color:#526173; }
+.output-brand .output-actions { display:grid; gap:14px; }
+.output-brand .output-next { font-size:12px !important; color:#526173; margin:0 !important; }
+#setup-shop[data-mode=connect] h2 { font-size:30px; }
+#setup-shop[data-mode=connect] .output-benefits { display:none; }
+@media(max-width:540px) { #setup-shop.output-brand, #max-output-dialog.output-brand { padding:24px; } .output-brand .output-benefits { grid-template-columns:1fr; } .top-actions #shop-team-open { max-width:130px; margin-right:auto; padding-right:10px; } }

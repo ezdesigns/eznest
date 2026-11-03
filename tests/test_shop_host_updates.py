@@ -52,6 +52,8 @@ class ShopHostUpdateTests(unittest.TestCase):
     def test_checkbox_enables_portable_checks_but_explicit_off_wins(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(shop_deploy, 'portable_edition', return_value=True), patch.dict(os.environ):
             os.environ.pop('EZ_NEST_UPDATES', None)
+            self.assertTrue(shop_deploy.updates_allowed(temp))
+            shop_deploy.save_shop(temp, False, False, updates=False)
             self.assertFalse(shop_deploy.updates_allowed(temp))
             shop_deploy.save_shop(temp, False, False, updates=True)
             self.assertTrue(shop_deploy.updates_allowed(temp))
@@ -176,7 +178,7 @@ class ShopHostUpdateTests(unittest.TestCase):
                     info = {'current':'1.0.0','latest':'2.0.0','updateAvailable':True,'portableSupported':True,'localPC':True}
                     host.evaluate('info => showUpdate(info)', info)
                     self.assertTrue(host.locator('#shop-update-action').is_visible())
-                    self.assertEqual(host.locator('#shop-update-action').inner_text(), 'Update shop')
+                    self.assertEqual(host.locator('#shop-update-action').inner_text(), 'View update')
                     host.evaluate("() => { window.updatePosts=0; window.updateChecks=0; api=async()=>{window.updatePosts++;return {};}; refreshUpdate=async remote=>{window.updateChecks+=Number(remote);}; showUpdate({current:'1.0.0',portableSupported:true,localPC:true}); $('update').click(); }")
                     host.wait_for_function('() => !updateInFlight')
                     self.assertEqual(host.evaluate('window.updatePosts'), 0)

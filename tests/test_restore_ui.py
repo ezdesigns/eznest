@@ -269,8 +269,9 @@ class RestoreUiTests(unittest.TestCase):
         expect(page.locator('#output-required-title')).to_have_text('Take on more work with OUTPUT')
         expect(page.locator('#output-required-skip')).to_be_visible()
         self.final(page, 'not-connected', width)
-        page.click('#output-required-code')
-        page.locator('#output-connect-details summary').click()
+        page.click('#settings-open')
+        page.locator('#settings-telemetry').evaluate('n => n.open = true')
+        page.click('#output-pair')
         with context.expect_page() as tab:
             page.click('#output-link-open')
         self.assertTrue(tab.value.url.endswith('/outpost/ez-nest'), tab.value.url)

@@ -45,6 +45,7 @@
 </div>
 </header>
 <aside id="shop-update-notice" class="shop-update-notice" aria-live="polite" hidden>
+  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
   <span id="shop-update-message"></span>
   <button id="shop-update-action" type="button">Update shop</button>
 </aside>
@@ -62,7 +63,7 @@
 <div id="output-required" class="output-required" role="status" hidden>
   <div>
     <p><strong id="output-required-title">Take on more work with OUTPUT</strong></p>
-    <p class="hint">Need another shop’s machines? Have room on yours? Explore the OUTPUT pilot.</p>
+    <p class="hint">Keep the customer. Find the machines you need.</p>
     <p id="output-required-note" class="hint"></p>
   </div>
   <div class="output-required-actions">
@@ -71,13 +72,14 @@
   </div>
 </div>
 <p id="output-banner" class="hint" hidden></p>
-<dialog id="setup-shop" class="setup-shop" aria-labelledby="setup-shop-title">
+<dialog id="setup-shop" class="setup-shop output-brand" aria-labelledby="setup-shop-title">
   <form id="output-link-form" class="output-link-form">
-    <h2 id="setup-shop-title">More possibilities for your shop</h2>
+    <div class="output-wordmark">OUTPUT<span>FOR PRINT SHOPS</span></div>
+    <h2 id="setup-shop-title">Say yes to<br><em>more jobs.</em></h2>
     <p class="output-intro">Ez Nest helps you fit more on a roll. OUTPUT is building a network to help you take on more work.</p>
     <div class="output-benefits">
-      <div><h3>Send work out</h3><p>Explore partner shops for jobs beyond your equipment or capacity.</p></div>
-      <div><h3>Bring work in</h3><p>Explore making jobs for other shops when your machines have room.</p></div>
+      <div><span class="output-direction" aria-hidden="true">↗</span><h3>Send work out</h3><p>Explore partner shops for jobs beyond your equipment or capacity.</p></div>
+      <div><span class="output-direction" aria-hidden="true">↙</span><h3>Bring work in</h3><p>Explore making jobs for other shops when your machines have room.</p></div>
     </div>
     <button id="output-browser-start" type="button" class="primary output-explore" hidden>Continue with OUTPUT</button>
     <section id="output-browser-waiting" aria-label="Approve this computer" hidden>
@@ -88,8 +90,7 @@
       <button id="output-browser-cancel" type="button" class="link">Cancel connection</button>
     </section>
     <p id="output-browser-error" class="lan-note" role="alert" hidden></p>
-    <a id="output-explore" class="output-explore-more" href="https://output.jeezlabs.io/" target="_blank" rel="noopener noreferrer">Explore the OUTPUT pilot ↗</a>
-    <p class="hint">Pilot preview. Production ordering is not available yet. Exploring does not connect this PC or share your files.</p>
+    <a id="output-explore" class="output-explore-more" href="https://output.jeezlabs.io/" target="_blank" rel="noopener noreferrer">Explore OUTPUT ↗</a>
     <details id="output-connect-details">
     <summary>Use a pairing code instead</summary>
     <p id="output-connect-help" class="hint" hidden></p>
@@ -110,21 +111,22 @@
 </dialog>
 <dialog id="settings" aria-labelledby="settings-title">
   <div class="panel">
-    <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title">Settings</h2><p class="hint">Set up once. Your material choices stay with the job.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
+    <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title">Settings</h2><p class="hint">Your preferences for this computer. Roll sizes and stock live in Inventory.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
     <div id="pin-alert" class="lan-note" hidden>
       <p id="pin-alert-text"></p>
       <button id="pin-alert-ack" type="button" class="link" hidden>Reviewed</button>
     </div>
+    <div class="settings-scroll">
     <section class="settings-section" aria-labelledby="destination-title">
       <h3 id="destination-title">Where files are saved</h3>
       <p class="section-note">Choose your usual folder. You can still choose a different location when saving a job.</p>
       <div class="fields">
-      <label class="wide">Hot folder
-        <input id="hot-folder" type="text" placeholder="Hot folder path" autocomplete="off">
+      <label class="wide">Default print folder
+        <input id="hot-folder" type="text" placeholder="Optional — choose a folder when saving" autocomplete="off">
         <span id="hot-error" class="lan-note" hidden></span>
         <button id="browse-output" class="link" type="button">Choose folder…</button>
       </label>
-      <label class="check wide"><input id="staging-on" type="checkbox"> Staging folder</label>
+      <label class="check wide"><input id="staging-on" type="checkbox"> Keep a backup before sending</label>
       <label class="wide" id="staging-row" hidden>Staging folder
         <input id="staging-folder" type="text" placeholder="Off" autocomplete="off">
         <span class="hint">Optional. Off until you turn it on.</span>
@@ -132,7 +134,7 @@
       </div>
     </section>
     <details id="settings-cuts" class="settings-section">
-      <summary>Cutter setup</summary>
+      <summary>Cut lines<span class="settings-summary-note">Names your cutter recognizes</span></summary>
       <p id="cut-line-note" class="section-note">Your cutter uses these names to tell a through-cut from a kiss-cut. Now: <span id="cut-line-names"></span>. Leave them if your cuts already work.</p>
       <div class="fields">
       <label class="wide">Cut spot names
@@ -142,13 +144,13 @@
           <option value="custom">Custom</option>
         </select>
       </label>
-      <label>Thru spot
+      <label>Through-cut name
         <input id="thru-name" type="text" maxlength="80" value="CutContour_Thru-cut" spellcheck="false" autocomplete="off">
       </label>
-      <label>Kiss spot
+      <label>Kiss-cut name
         <input id="kiss-name" type="text" maxlength="80" value="CutContour_Kiss-cut" spellcheck="false" autocomplete="off">
       </label>
-      <label>Unnamed CutContour
+      <label>When the cut type is missing
         <select id="generic-cut">
           <option value="">Ask me</option>
           <option value="thru">Thru-cut</option>
@@ -159,25 +161,25 @@
       </div>
     </details>
     <details id="settings-delivery" class="settings-section">
-      <summary>Printer connection &amp; backup files</summary>
-      <p class="section-note">These controls do not change sticker quantities.</p>
+      <summary>Printer &amp; shop access<span class="settings-summary-note">Optional printer label and local network</span></summary>
+      <p class="section-note">Only change these when setting up a printer or shared shop PC.</p>
       <label class="wide">Printer
         <input id="printer" type="text" maxlength="80" autocomplete="off">
       </label>
     <p id="hot-default" class="hint"></p>
     <label class="check"><input id="onyx-pc" type="checkbox"> This PC runs ONYX</label>
-    <label class="check"><input id="allow-undo" type="checkbox"> Undo send</label>
+    <label class="check"><input id="allow-undo" type="checkbox"> Allow undo after sending to the print folder</label>
     <label class="check" hidden><input id="allow-hold" type="checkbox"> Hold for Operator</label>
     <div id="lan-access" hidden>
     <label class="check"><input id="lan" type="checkbox" disabled> Shop network</label>
-    <p class="hint">Shop network access is configured when the app starts. This box only shows whether Ez Nest was started with --lan. It stays disabled because a saved setting cannot open the shop network. To turn it on or off later, update the <code>eznest</code> startup task and restart. Choosing Shop network in the installer does that only on a fresh install.</p>
+    <p class="hint">Shows whether other shop PCs can connect. Changing network access requires restarting the host with the appropriate startup option.</p>
     <p id="lan-note" class="lan-note" hidden>Shop computers need the shop PIN before they can nest or send. Anyone on the shop LAN can Send to ONYX after that PIN. Do not share this network with guest WiFi.</p>
     <p id="lan-address" class="lan-address" hidden></p>
     <p id="lan-restart" class="hint" hidden></p>
     </div>
     </details>
     <details id="settings-telemetry" class="settings-section">
-      <summary>Share activity with OUTPUT</summary>
+      <summary>OUTPUT<span class="settings-summary-note">Connect your shop and control what you share</span></summary>
       <div id="output-connect">
         <h3>Connect to OUTPUT</h3>
         <p id="output-connect-shop" class="connect-success" role="status" hidden></p>
@@ -189,7 +191,8 @@
         <button id="output-pair" class="primary" type="button" disabled>Connect this computer</button>
         <button id="output-disconnect" class="link" type="button" hidden>Disconnect</button>
       </div>
-      <h3>What OUTPUT sees</h3>
+      <p class="section-note">Connecting and sharing are separate choices. Artwork and customer information stay here.</p>
+      <details class="privacy-details"><summary>What is shared?</summary>
       <p>Connecting to OUTPUT is optional. Nesting, saving, and stock work without it. The connection is separate from sharing activity.</p>
       <p>Sent when you connect: this computer's name and this installation id, once, in the pairing request. Later check-ins send the app version. The shop credential authenticates those HTTPS requests. OUTPUT also sees this computer's IP address on those requests.</p>
       <p>Sent only after <strong>Enable sharing</strong>, and only for new activity: a stable installation id, opaque layout and request ids, the exact event time, the app version, the event type, a standard material category, and the measurement ranges below. Measured stock readings already on this host can be included. Earlier activity is excluded. A failed delivery is retried with the same event id. The shop stock ledger stays here.</p>
@@ -206,6 +209,7 @@
       <p>Destination: <code id="output-destination">https://output.jeezlabs.io/api/shop/telemetry</code></p>
       <details><summary>Exact JSON fields (illustrative event)</summary><pre id="telemetry-preview" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
       <p>Stopping prevents further requests after any in-flight request finishes. It does not delete records already received by OUTPUT. Re-enabling excludes all activity recorded before the new consent.</p>
+      </details>
       <label class="check"><input id="telemetry-agree" type="checkbox" disabled> I agree to automatically share new activity using these fields.</label>
       <button id="telemetry-enable" type="button" disabled>Enable sharing</button>
       <button id="telemetry-stop" type="button" disabled>Stop sharing</button>
@@ -223,10 +227,10 @@
       <p id="stock-output-note" class="hint"></p>
     </details>
     <details id="settings-updates" class="settings-section">
-      <summary>App updates</summary>
-    <label class="check"><input id="updates" type="checkbox"> Check for updates</label>
+      <summary>App updates<span class="settings-summary-note">New versions for this shop host</span></summary>
+    <label class="check"><input id="updates" type="checkbox"> Automatically check for updates</label>
     <p class="hint">Get a notice when a new version is available. Update on the host PC after saving your work; everyone using that shop address gets the new version. Separately installed copies update separately.</p>
-    <label class="check"><input id="test-channel" type="checkbox"> Test channel</label>
+    <label class="check"><input id="test-channel" type="checkbox"> Include preview releases</label>
     <label class="check" hidden><input id="output-network" type="checkbox"> Share capacity with the OUTPUT network</label>
     <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Connecting this computer to OUTPUT is optional and is not this switch.</p>
     <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
@@ -247,6 +251,7 @@
       <button id="shop-pin-save" type="button" class="link">Save shop PIN</button>
       <p id="shop-pin-error" class="lan-note" hidden></p>
     </details>
+    </div>
     <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
   </div>
 </dialog>
@@ -432,11 +437,10 @@
   </div>
 
 </main>
-<dialog id="max-output-dialog" aria-labelledby="max-output-title">
-  <div class="dialog-heading"><h2 id="max-output-title">Don't print</h2><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
-  <p>This is a test preview. No real jobs or payments are sent.</p>
-  <p>OUTPUT routes the job to the best-fit print shop near you, based on what each shop can make.</p>
-  <p>You still get paid.</p>
+<dialog class="output-brand" id="max-output-dialog" aria-labelledby="max-output-title">
+  <div class="dialog-heading"><div class="output-wordmark">OUTPUT<span>FOR PRINT SHOPS</span></div><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <h2 id="max-output-title">Keep the customer.<br><em>Expand what you offer.</em></h2>
+  <p>OUTPUT is building a network of print shops. Find a partner for the work you can’t make in-house.</p>
   <p class="output-when">Use it when</p>
   <ul class="output-points">
     <li>You don't have the material or roll width</li>
@@ -444,8 +448,9 @@
     <li>You're too busy to finish on time</li>
   </ul>
   <div class="output-actions">
+    <p class="output-next">Visit OUTPUT to explore the network and register your interest.</p>
     <a id="max-output-waitlist" class="primary-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Join the waitlist</a>
-    <a id="max-output-learn" class="output-learn" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Learn more</a>
+    <a hidden id="max-output-learn" class="output-learn" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Learn more</a>
   </div>
 </dialog>
 <dialog id="cut-review" aria-labelledby="cut-review-title" aria-describedby="cut-review-summary">
@@ -560,8 +565,10 @@
 <details id="settings-support">
   <summary>Help</summary>
   <div class="help-card">
-    <h2>Help &amp; troubleshooting</h2>
-    <p class="section-note">Use these details when checking a saved job or reporting a problem.</p>
+    <div class="dialog-heading"><h2>How can we help?</h2><button id="help-close" type="button" class="dialog-close" aria-label="Close help">×</button></div>
+    <ol class="help-steps"><li><strong>Upload your print file</strong><span>Include artwork and cut lines.</span></li><li><strong>Choose a material</strong><span>Use the roll you plan to print on.</span></li><li><strong>Nest, review, save</strong><span>Check every piece before printing.</span></li></ol>
+    <details class="quick-guide"><summary>Where does my saved file go?</summary><p>Choose My computer to pick a folder. Default print folder uses the location in Settings.</p></details>
+    <details class="quick-guide"><summary>When does stock change?</summary><p>Previewing or saving a layout does not use stock. Confirm material usage after printing so the whole shop sees the amount left.</p></details>
     <details id="local-activity">
       <summary>Local activity · last 24 hours</summary>
       <p class="hint">Saved only on this PC for 90 days. No artwork or filenames.
@@ -572,10 +579,6 @@
     <details id="job-details"><summary>Job details</summary>
       <p id="job-checks" class="hint"></p>
       <p id="sheet-id" class="sheet-id" hidden aria-label="Sheet ID"></p>
-    </details>
-    <details class="quick-guide"><summary>How to nest</summary>
-      <p>Add files, choose material and effort, then Nest. Review the layout and save.</p>
-      <p>My computer lets you choose a folder. Default print folder uses the folder saved in Settings. Check the file in your print software before printing.</p>
     </details>
     <a id="report" class="workspace" target="_blank" rel="noopener noreferrer" href="https://github.com/ezdesigns/eznest/issues/new?template=tester-problem.yml">Report a problem</a>
   </div>

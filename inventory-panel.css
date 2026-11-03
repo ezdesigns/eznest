@@ -86,11 +86,9 @@
 #stock button.link, .stock-row-actions button, .roll-units button { min-height: 44px; min-width: 44px; }
 .roll-actions { align-items: center; }
 
-/* The shelf scrolls in its own area and the details card is docked under it, so the card
-   never sits on top of a roll or its label. */
-#stock[open] { display: flex; flex-direction: column; overflow: hidden; }
-#stock .panel { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; }
-#stock .panel > * { flex: none; }
-#stock .panel > .stock-shelf { flex: 0 1 auto; min-height: calc(var(--rowh) + 12px); overflow-y: auto; overscroll-behavior: contain; background-attachment: local; }
+/* One scroll surface for the shelf and roll form, including on short screens. */
+#stock[open] { display: block; max-height:calc(100dvh - 32px); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+#stock .panel { display:block; min-height:0; }
+#stock .panel > .stock-shelf { min-height:calc(var(--rowh) + 12px); overflow:visible; }
 #stock .panel > .stock-shelf:empty { min-height: 0; }
-#stock .panel > .stock-panel { position: static; max-height: 62%; overflow-y: auto; box-shadow: none; }
+#stock .panel > .stock-panel { position:static; max-height:none; overflow:visible; box-shadow:none; }

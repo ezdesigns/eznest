@@ -384,8 +384,7 @@ class WebMvpTests(unittest.TestCase):
             page=browser.new_page(viewport={'width':1280,'height':900},accept_downloads=True)
             try:
                 page.goto(self.url()+'/web'); self.wait_ready(page)
-                expect(page.locator('#setup')).to_be_visible()
-                page.click('#setup-dismiss')
+                expect(page.locator('#setup')).to_be_hidden()
                 expect(page.locator('#setup')).to_be_hidden()
                 self.assertIsNone(server.OUTPUT.root)
                 page.click('#edit-material')
@@ -1925,7 +1924,7 @@ class WebMvpTests(unittest.TestCase):
                 browser.close()
 
 
-    def test_setup_dismiss_is_remembered_on_this_computer(self):
+    def test_optional_pc_settings_do_not_block_any_browser(self):
         from playwright.sync_api import sync_playwright
         import shop_deploy
         with sync_playwright() as playwright:
@@ -1934,20 +1933,13 @@ class WebMvpTests(unittest.TestCase):
             try:
                 page.goto(self.url() + '/web', wait_until='domcontentloaded')
                 self.wait_ready(page)
-                self.assertTrue(page.locator('#setup').is_visible())
-                setup = page.locator('#setup').inner_text()
-                self.assertIn('One-time setup for this computer', setup)
-                self.assertIn('Where finished files are saved', setup)
-                self.assertIn('This PC runs ONYX', setup)
-                self.assertIn('Through-cut name', setup)
-                self.assertIn('Kiss-cut name', setup)
-                self.assertNotIn('Check your cut line names', setup)
-                box = page.locator('#setup').bounding_box()
-                panel = page.locator('.job-panel').bounding_box()
-                self.assertLessEqual(box['x'] + box['width'], panel['x'] + 2)
-                page.click('#setup-dismiss')
+                # Optional PC preferences are available without a second setup gate.
                 self.assertTrue(page.locator('#setup').is_hidden())
-                self.assertTrue(shop_deploy.load_shop(server.WORK)['setupDismissed'])
+                page.click('#settings-open')
+                self.assertTrue(page.locator('#hot-folder').is_visible())
+                page.locator('#settings-cuts > summary').click()
+                self.assertTrue(page.locator('#thru-name').is_visible())
+                page.keyboard.press('Escape')
                 page.reload()
                 self.wait_ready(page)
                 self.assertTrue(page.locator('#setup').is_hidden())

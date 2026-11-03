@@ -164,7 +164,7 @@ def load_shop(directory):
     return {
         'onyxPc': data.get('onyxPc') is True,
         'lan': data.get('lan') is True,
-        'updates': data.get('updates') is True,
+        'updates': data.get('updates', portable_edition()) is True,
         'channel': 'test' if data.get('channel') == 'test' else 'stable',
         'outputNetwork': data.get('outputNetwork') is True,
         'setupComplete': data.get('setupComplete') is True,
@@ -182,10 +182,10 @@ def load_shop(directory):
 
 
 def updates_allowed(directory=None):
-    """Background update checks stay off unless the operator opts in.
+    """Portable shops check for public releases by default; explicit opt-outs persist.
 
-    shop.json updates defaults to false. The portable shop edition needs only
-    that opt-in; other editions also require EZ_NEST_UPDATES=1. An explicit
+    A missing shop.json preference defaults on in the portable shop edition.
+    Other editions also require EZ_NEST_UPDATES=1 and an explicit opt-in. An explicit
     EZ_NEST_UPDATES=0 disables either edition. Downloads require a matching SHA-256.
     """
     if os.environ.get('EZ_NEST_UPDATES', '1' if portable_edition() else '0') == '0':
