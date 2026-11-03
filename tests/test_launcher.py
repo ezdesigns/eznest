@@ -136,6 +136,11 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(host, '0.0.0.0')
         self.assertEqual(lan, '1')
 
+    def test_shop_membership_allows_explicit_lan_without_legacy_pin(self):
+        with patch('shop_members.configured', return_value=True):
+            self.assertEqual(self._launch(['--lan', '--no-browser']), ('0.0.0.0', '1'))
+            self.assertEqual(self._launch(['--no-browser']), ('127.0.0.1', '0'))
+
     def test_lan_flag_without_a_pin_stays_on_loopback_and_waits(self):
         try:
             host, lan = self._launch(['--lan', '--no-browser'])

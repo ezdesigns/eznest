@@ -50,6 +50,7 @@ jobs:
           node --check layout-comparison.js
           node --check cut-mapping.js
           node --check web.js
+          node --check shop-team.js
           node --check tester-results.js
       - name: Test savings and feedback privacy
         run: node tests/test_tester_results.cjs

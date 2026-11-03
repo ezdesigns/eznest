@@ -1,0 +1,13 @@
+#shop-team-dialog { width: min(480px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; border: 1px solid #dce3eb; border-radius: 18px; padding: 28px; color: #1c2939; background: #fff; box-shadow: 0 20px 80px #17233b33; }
+#shop-team-dialog::backdrop { background: #15223866; }
+#shop-team-dialog h2 { margin: 0 0 16px; font-size: 24px; }
+#shop-team-dialog p { color: #526173; line-height: 1.5; margin: 0 0 14px; }
+#shop-team-dialog label { display: grid; gap: 6px; margin: 16px 0; font-weight: 600; }
+#shop-team-dialog input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #bcc9d8; border-radius: 8px; font: inherit; }
+#shop-team-dialog button { margin: 6px 8px 6px 0; padding: 10px 14px; border-radius: 8px; border: 1px solid #bcc9d8; background: #fff; color: #1c2939; }
+#shop-team-dialog button.primary { background: #0875ed; color: #fff; border-color: #0875ed; }
+#shop-team-dialog code { display: block; padding: 12px; background: #eff5fc; overflow-wrap: anywhere; }
+#shop-team-dialog .team-person { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#shop-team-dialog [role=status] { color: #a32c26; }
+#team-invitation { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+#shop-team-open { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
