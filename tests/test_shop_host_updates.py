@@ -18,6 +18,7 @@ from zipfile import ZipFile
 import installer_update
 import server
 import shop_deploy
+import update_manifest_support
 from tools.package_shop_portable import package, MARKER, ASSET
 from update_queue import UpdateQueue
 from test_installer_update import OK
@@ -59,15 +60,20 @@ class ShopHostUpdateTests(unittest.TestCase):
             self.assertFalse(shop_deploy.updates_allowed(temp))
 
     def test_release_check_download_checksum_and_explicit_install(self):
-        with tempfile.TemporaryDirectory() as temp, patch.object(shop_deploy, 'portable_edition', return_value=True), patch.dict(os.environ, {'EZ_NEST_UPDATES': '1'}):
+        with tempfile.TemporaryDirectory() as temp, patch.object(shop_deploy, 'portable_edition', return_value=True), patch.dict(os.environ, {'EZ_NEST_UPDATES': '1'}), \
+             patch('update_manifest.PUBLIC_KEY', update_manifest_support.PUBLIC):
             shop_deploy.save_shop(temp, False, False, updates=True)
             url = 'https://github.com/ezdesigns/eznest-downloads/releases/download/v2.0.0/' + ASSET
+            payload = b'synthetic ZIP download'
+            manifest_url, manifest_asset = update_manifest_support.manifest_release_asset(url)
+            document = update_manifest_support.signed_document(payload, '2.0.0', ASSET)
             release = {'tag_name': 'v2.0.0', 'assets': [
                 {'name': ASSET, 'browser_download_url': url},
-                {'name': ASSET + '.sha256', 'browser_download_url': url + '.sha256'}]}
-            payload = b'synthetic ZIP download'
+                {'name': ASSET + '.sha256', 'browser_download_url': url + '.sha256'},
+                manifest_asset]}
             pages = {shop_deploy.release_api(): json.dumps([release]).encode(), url: payload,
-                     url + '.sha256': (hashlib.sha256(payload).hexdigest() + '  ' + ASSET).encode()}
+                     url + '.sha256': (hashlib.sha256(payload).hexdigest() + '  ' + ASSET).encode(),
+                     manifest_url: update_manifest_support.manifest_bytes(document)}
             self.assertTrue(shop_deploy.peek_latest(temp, '1.0.0', ScriptedOpener(dict(pages)))['updateAvailable'])
             self.assertFalse((Path(temp)/'updates').exists())
             result = shop_deploy.pull_latest(temp, '1.0.0', opener=ScriptedOpener(dict(pages)))

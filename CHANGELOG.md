@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Shop updates install only when a signed update manifest checks out and the download matches it. A release with no manifest, or one marked as a database change, is not installed. The previous app is still restored if the new build does not start.
+
 ## 1.0.0-rc.8
 
 - Publish the native Mac desktop client under a newer version so evaluation hosts with an earlier rc.7 test package can use the normal administrator upgrade path. The installer still requires the same publisher and architecture, a strictly newer version, and completion or explicit discard of unfinished work.
