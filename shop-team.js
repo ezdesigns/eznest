@@ -35,7 +35,7 @@ window.EZNShop = (() => {
   }
   function reset(title) {
     stopTourMotion();
-    touring = false; dialog.classList.remove('team-walkthrough');
+    touring = false; dialog.classList.remove('team-walkthrough', 'team-output-tour');
     dialog.querySelector('.tour-brand-row')?.remove();
     closeButton.setAttribute('aria-label', 'Close shop');
     heading.textContent = title; content.replaceChildren(); message.textContent = '';
@@ -58,13 +58,14 @@ window.EZNShop = (() => {
   function tour(step = 0) {
     const titles = [['Fit more.', 'Waste less.'], ['Your next print,', 'in three steps.'], ['Say yes to', 'more jobs.']];
     reset(''); touring = true; dialog.classList.add('team-walkthrough');
+    if (step === 2) dialog.classList.add('team-output-tour');
     node('span', titles[step][0], heading);
     if (titles[step][1]) node('em', titles[step][1], heading);
     closeButton.setAttribute('aria-label', 'Close walkthrough');
     const brand = node('div', '', null); brand.className = 'tour-brand-row';
     const progress = node('span', `Quick tour · ${step + 1} of 3`, brand); progress.id = 'tour-progress';
     dialog.insertBefore(brand, heading);
-    function motionControl(figure, video) {
+    function motionControl(figure, video, onActive = () => {}) {
       const media = matchMedia('(prefers-reduced-motion: reduce)');
       let playing = !media.matches;
       const controls = node('div', '', content); controls.className = 'tour-motion-controls';
@@ -73,6 +74,7 @@ window.EZNShop = (() => {
       function sync() {
         const active = playing && !document.hidden;
         figure.dataset.running = String(active);
+        onActive(active);
         toggle.textContent = playing ? 'Pause animation' : 'Play animation';
         if (video) {
           if (active) video.play().catch(() => { playing = false; sync(); });
@@ -107,17 +109,55 @@ window.EZNShop = (() => {
         node('strong', title, copy); node('span', detail, copy);
       }
     } else {
-      node('p', 'Send what you can’t make. Make what other shops need.', content).className = 'tour-lead';
+      // Compact adaptation of OUTPUT's landing-demo.ts illustrated stories.
+      const stories = [
+        {name:'A rush order', job:'200 vinyl stickers by tomorrow', art:'stickers', from:'Your shop', source:'printer', to:'A nearby shop', machine:'printer', captions:['Your machines are booked for two days.', 'OUTPUT finds a shop with time today.', 'Your partner makes the stickers. You keep the customer.']},
+        {name:'A bigger job', job:'A 10-foot-wide backdrop', art:'backdrop', from:'Your shop', source:'printer', to:'A partner shop', machine:'printer', captions:['Your 54-inch printer is too narrow.', 'OUTPUT finds a wider printer.', 'Your partner makes the seamless backdrop.']},
+        {name:'A distant delivery', job:'200 event stickers in Los Angeles', art:'stickers', from:'Your shop · Austin', source:'printer', to:'A shop · Los Angeles', machine:'printer', captions:['Your customer’s event is across the country.', 'OUTPUT finds a printer near the event.', 'The local shop makes the stickers near your customer.']},
+        {name:'Your spare capacity', job:'300 stickers. Room on your printer.', art:'stickers', from:'Another print shop', source:'printer', to:'Your shop', machine:'printer', captions:['Another shop is booked. Your machine has room.', 'OUTPUT matches their job to your open time.', 'You make the job and turn spare capacity into income.']},
+        {name:'A smaller run', job:'100 business cards', art:'cards', from:'Your shop', source:'computer', to:'A digital print shop', machine:'press', captions:['You have the design and need a print partner.', 'OUTPUT finds a digital press.', 'Your partner prints and trims the cards.']},
+        {name:'A merch order', job:'100 printed T-shirts', art:'tshirts', from:'Your shop', source:'printer', to:'A screen-print shop', machine:'screenpress', captions:['You have the design, but no T-shirt press.', 'OUTPUT finds a shop that prints T-shirts.', 'Your partner prints the shirts. You keep the customer.']}
+      ];
+      let example = 0, phase = 0, active = false, timer;
+      const brief = node('div', '', content); brief.className = 'tour-story-brief';
+      const product = node('img', '', brief); product.alt = ''; product.width = 52; product.height = 48;
+      const job = node('strong', '', brief); job.id = 'tour-story-job';
       const network = node('div', '', content); network.className = 'tour-network';
-      network.setAttribute('role', 'img'); network.setAttribute('aria-label', 'Illustration of your shop connecting through OUTPUT to a print partner.');
-      for (const [index, [name, label]] of [['computer', 'Your shop'], ['output', 'Shop network'], ['printer', 'Print partner']].entries()) {
+      network.setAttribute('role', 'img');
+      const shops = [];
+      for (const [index, [name, label]] of [['printer', 'Your shop'], ['output', 'OUTPUT'], ['printer', 'Print partner']].entries()) {
         if (index) { const dots = node('div', '', network); dots.className = 'tour-transfer'; for (let n=0;n<3;n++) node('i', '', dots); }
         const shop = node('div', '', network); shop.className = 'tour-network-shop';
         const img = node('img', '', shop); img.src = '/onboarding-' + name + '.webp'; img.alt = ''; img.width = 160; img.height = 160;
         if (name === 'output') node('b', 'OUTPUT', shop).className = 'tour-output-wordmark';
-        node('span', label, shop);
+        const labelNode = node('span', label, shop); shops.push({shop, img, label:labelNode});
       }
-      motionControl(network);
+      const caption = node('p', '', content); caption.className = 'tour-story-caption';
+      const selector = node('div', '', content); selector.className = 'tour-story-selector';
+      const previous = node('button', '‹', selector); previous.type = 'button'; previous.setAttribute('aria-label', 'Previous example');
+      const current = node('span', '', selector); current.id = 'tour-story-example';
+      const next = node('button', '›', selector); next.type = 'button'; next.setAttribute('aria-label', 'Next example');
+      function renderStory() {
+        const story = stories[example];
+        product.src = '/onboarding-' + story.art + '.webp'; job.textContent = story.job;
+        shops[0].img.src = '/onboarding-' + story.source + '.webp'; shops[0].label.textContent = story.from;
+        shops[2].img.src = '/onboarding-' + story.machine + '.webp'; shops[2].label.textContent = story.to;
+        shops.forEach((part, index) => { part.shop.dataset.active = String(index === phase); });
+        network.dataset.example = String(example); network.dataset.phase = String(phase);
+        network.setAttribute('aria-label', 'Illustrated example: ' + story.from + ' connects through OUTPUT to ' + story.to + '.');
+        caption.textContent = story.captions[phase]; current.textContent = `${example + 1} / ${stories.length} · ${story.name}`;
+      }
+      function schedule() {
+        clearTimeout(timer);
+        if (active) timer = setTimeout(() => {
+          if (phase === 2) { example = (example + 1) % stories.length; phase = 0; } else phase++;
+          renderStory(); schedule();
+        }, 3600);
+      }
+      function choose(direction) { example = (example + direction + stories.length) % stories.length; phase = 0; renderStory(); schedule(); }
+      previous.onclick = () => choose(-1); next.onclick = () => choose(1);
+      renderStory();
+      motionControl(network, null, running => { active = running; schedule(); });
       const link = node('a', 'Explore OUTPUT ↗', content); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
     }
     const actions = node('div', '', content); actions.className = 'tour-actions';

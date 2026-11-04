@@ -81,6 +81,37 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 self.assertFalse(external)
             finally:browser.close()
 
+    def test_output_stories_cycle_pause_and_cleanup(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as pw:
+            browser=test_web_mvp.launch_browser(pw)
+            try:
+                page=browser.new_page(viewport={'width':390,'height':600})
+                page.goto(self.fixture.url()+'/?tour=1')
+                page.click('#tour-next');page.click('#tour-next')
+                page.clock.install()
+                page.get_by_role('button',name='Pause animation').click()
+                page.get_by_role('button',name='Play animation').click()
+                page.clock.run_for(10900)
+                expect(page.locator('.tour-network')).to_have_attribute('data-example','1')
+                page.get_by_role('button',name='Pause animation').click()
+                page.clock.run_for(20000)
+                expect(page.locator('.tour-network')).to_have_attribute('data-example','1')
+                for index in [2,3,4,5,0]:
+                    page.get_by_role('button',name='Next example').click()
+                    expect(page.locator('.tour-network')).to_have_attribute('data-example',str(index))
+                    page.wait_for_function("() => [...document.querySelectorAll('.tour-network img,.tour-story-brief img')].every(i=>i.complete && i.naturalWidth>0)")
+                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'output-story-{index}-390.png'))
+                page.get_by_role('button',name='Previous example').click()
+                expect(page.locator('#tour-story-job')).to_have_text('100 printed T-shirts')
+                page.get_by_role('button',name='Play animation').click()
+                page.evaluate("() => {window.oldStory=document.querySelector('.tour-network');}")
+                page.keyboard.press('Escape')
+                page.clock.run_for(30000)
+                self.assertEqual(page.evaluate('() => window.oldStory.dataset.example'),'5')
+                self.assertEqual(page.evaluate('() => window.oldStory.dataset.running'),'false')
+            finally:browser.close()
+
     def test_first_run_create_shop_and_return_to_materials(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as pw:
