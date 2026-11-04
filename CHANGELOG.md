@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Shop updates install only when a signed update manifest checks out and the download matches it. A release with no manifest, or one marked as a database change, is not installed. The previous app is still restored if the new build does not start.
+- A valid shop invitation is still accepted when other addresses have used the shared join-attempt count. Each address keeps its own limit.
 
 ## 1.0.0-rc.8
 
