@@ -29,8 +29,14 @@ class ShopTeamBrowserTests(unittest.TestCase):
                     for step in range(3):
                         expect(page.locator('#tour-progress')).to_have_text(f'Quick tour · {step+1} of 3')
                         if step == 0:
-                            page.wait_for_function("() => {const img=document.querySelector('.tour-illustration'); return img && img.complete && img.naturalWidth>0;}")
+                            page.wait_for_function("() => {const video=document.querySelector('.tour-illustration'); return video && video.readyState>=2 && video.currentTime>0;}")
                             self.assertTrue(page.locator('.tour-illustration').get_attribute('src').startswith('/onboarding-'))
+                            page.get_by_role('button', name='Pause animation').click()
+                            self.assertTrue(page.locator('video').evaluate('v=>v.paused'))
+                            page.get_by_role('button', name='Play animation').click()
+                            page.wait_for_function("() => !document.querySelector('video').paused")
+                        if step == 2:
+                            page.wait_for_function("() => [...document.querySelectorAll('.tour-network img')].every(i=>i.complete && i.naturalWidth>0)")
                         page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'walkthrough-{step+1}-{width}.png'))
                         if step<2:page.click('#tour-next')
                     page.click('#tour-back');expect(page.locator('#tour-progress')).to_contain_text('2 of 3')
@@ -51,6 +57,28 @@ class ShopTeamBrowserTests(unittest.TestCase):
                     expect(page.locator('#shop-team-dialog')).to_be_hidden()
                     self.assertFalse(any('/output/link' in url or '/shop-members/create' in url or '/telemetry/output/pair' in url for url in posts))
                     page.close()
+            finally:browser.close()
+
+    def test_reduced_motion_and_leaving_slide_stop_animation(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as pw:
+            browser=test_web_mvp.launch_browser(pw)
+            try:
+                page=browser.new_page(reduced_motion='reduce')
+                external=[]
+                page.on('request',lambda r:external.append(r.url) if not r.url.startswith(self.fixture.url()) else None)
+                page.goto(self.fixture.url()+'/?tour=1')
+                expect(page.get_by_role('button',name='Play animation')).to_be_visible()
+                self.assertTrue(page.locator('video').evaluate('v=>v.paused'))
+                page.evaluate('() => {window.tourVideo=document.querySelector("video");}')
+                page.get_by_role('button',name='Play animation').click()
+                page.wait_for_function('() => !window.tourVideo.paused')
+                page.click('#tour-next')
+                self.assertTrue(page.evaluate('() => window.tourVideo.paused'))
+                page.click('#tour-next')
+                expect(page.locator('.tour-network')).to_have_attribute('data-running','false')
+                page.keyboard.press('Escape')
+                self.assertFalse(external)
             finally:browser.close()
 
     def test_first_run_create_shop_and_return_to_materials(self):
