@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- A valid shop invitation is still accepted when other addresses have used the shared join-attempt count. Each address keeps its own limit.
+
 ## 1.0.0-rc.8
 
 - Publish the native Mac desktop client under a newer version so evaluation hosts with an earlier rc.7 test package can use the normal administrator upgrade path. The installer still requires the same publisher and architecture, a strictly newer version, and completion or explicit discard of unfinished work.

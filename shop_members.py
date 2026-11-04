@@ -16,6 +16,8 @@ import uuid
 DB = 'shop-members.sqlite3'
 INVITE_SECONDS = 15 * 60
 SESSION_SECONDS = 30 * 24 * 60 * 60
+SOURCE_ATTEMPTS = 10
+SHARED_ATTEMPTS = 200
 COOKIE = 'eznest_member'
 
 
@@ -105,15 +107,21 @@ def join(directory, code, name, source, now=None):
     with database(directory) as db:
         db.execute('DELETE FROM attempts WHERE expires <= ?', (now,))
         db.execute('DELETE FROM sessions WHERE expires <= ?', (now,))
-        keys = [(digest(str(source)), 10), ('global', 200)]
-        for key, limit in keys:
-            row = db.execute('SELECT count FROM attempts WHERE source=?', (key,)).fetchone()
-            if row and row['count'] >= limit:
-                return {'error': 'Too many attempts. Wait 15 minutes and ask for a new invitation.', 'status': 429}
-        for key, _ in keys:
-            db.execute('INSERT INTO attempts VALUES (?,1,?) ON CONFLICT(source) DO UPDATE SET count=count+1', (key, now + INVITE_SECONDS))
+        # Each address has its own limit. The shared count records failed
+        # attempts after the invitation is checked, so a matching invitation
+        # is still accepted.
+        source_key = digest(str(source))
+        source_row = db.execute('SELECT count FROM attempts WHERE source=?', (source_key,)).fetchone()
+        if source_row and source_row['count'] >= SOURCE_ATTEMPTS:
+            return {'error': 'Too many attempts. Wait 15 minutes and ask for a new invitation.', 'status': 429}
         row = db.execute('SELECT hash FROM invites WHERE hash=? AND expires>?', (digest(raw), now)).fetchone()
         if not row:
+            shared = db.execute('SELECT count FROM attempts WHERE source=?', ('global',)).fetchone()
+            if shared and shared['count'] >= SHARED_ATTEMPTS:
+                return {'error': 'Too many attempts. Wait 15 minutes and ask for a new invitation.', 'status': 429}
+            expires = now + INVITE_SECONDS
+            db.execute('INSERT INTO attempts VALUES (?,1,?) ON CONFLICT(source) DO UPDATE SET count=count+1', (source_key, expires))
+            db.execute('INSERT INTO attempts VALUES (?,1,?) ON CONFLICT(source) DO UPDATE SET count=count+1', ('global', expires))
             return {'error': 'That invitation is invalid, expired, or already used.', 'status': 401}
         if db.execute('SELECT COUNT(*) FROM members').fetchone()[0] >= 100:
             return {'error': 'The shop has 100 members. Ask the host to remove unused access.', 'status': 409}
@@ -122,7 +130,7 @@ def join(directory, code, name, source, now=None):
         db.execute('DELETE FROM invites WHERE hash=?', (row['hash'],))
         db.execute('INSERT INTO members VALUES (?,?,?)', (member, name, now))
         db.execute('INSERT INTO sessions VALUES (?,?,?)', (digest(token), member, now + SESSION_SECONDS))
-        db.execute('DELETE FROM attempts WHERE source=?', (keys[0][0],))
+        db.execute('DELETE FROM attempts WHERE source=?', (source_key,))
         return {'token': token, 'member': {'id': member, 'name': name}}
 
 
