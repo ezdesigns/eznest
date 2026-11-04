@@ -53,29 +53,17 @@ window.EZNShop = (() => {
   }
   function endTour() { rememberTour(); touring = false; finish(); }
   function tour(step = 0) {
-    const titles = ['Welcome to Ez Nest', 'Your file. Ready to print.', 'More ways to say yes.'];
+    const titles = ['Welcome to Ez Nest', 'Three simple steps', 'Meet OUTPUT'];
     reset(titles[step]); touring = true; dialog.classList.add('team-walkthrough');
     closeButton.setAttribute('aria-label', 'Close walkthrough');
     const progress = node('p', `Quick tour · ${step + 1} of 3`, content); progress.className = 'tour-progress'; progress.id = 'tour-progress';
     if (step === 0) {
-      node('p', 'Our free nesting tool helps you fit more on a roll and waste less material.', content);
-      const visual = node('div', '', content); visual.className = 'tour-roll'; visual.setAttribute('aria-hidden', 'true');
-      for (let i = 0; i < 6; i++) node('span', '', visual);
-      node('p', 'Bring your print-ready artwork and cut lines. Ez Nest arranges the pieces so you can review and save your layout.', content);
+      node('p', 'Free nesting for print shops. Fit more on your roll. Waste less material.', content);
     } else if (step === 1) {
       const steps = node('ol', '', content); steps.className = 'tour-steps';
-      for (const [title, text] of [
-        ['Upload your file', 'Add a PDF, SVG, or PDF-compatible Illustrator file.'],
-        ['Choose your material', 'Pick the roll you plan to use. Add rolls in Inventory.'],
-        ['Nest, review, save', 'Check the pieces and cut lines, then save your print file.']
-      ]) { const item = node('li', '', steps); node('strong', title, item); node('span', text, item); }
-      node('p', 'Working with a team? Your shop keeps people and material stock together.', content);
+      for (const title of ['Upload your print file', 'Choose your material', 'Nest, review and save']) node('li', title, steps);
     } else {
-      node('p', 'Ez Nest helps with the work you print in-house. We’re also building OUTPUT for the work beyond your equipment or capacity.', content);
-      const cards = node('div', '', content); cards.className = 'tour-output-cards';
-      for (const [title, text] of [['Send work out', 'Explore partner shops while keeping your customer.'], ['Bring work in', 'Put spare machine time to work for other shops.']]) {
-        const card = node('div', '', cards); node('strong', title, card); node('p', text, card);
-      }
+      node('p', 'Our upcoming print-shop network. Find a print partner. Take on more work. Keep your customer.', content);
       const link = node('a', 'Explore OUTPUT ↗', content); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
     }
     const actions = node('div', '', content); actions.className = 'tour-actions';

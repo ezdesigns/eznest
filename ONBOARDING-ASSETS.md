@@ -2,7 +2,7 @@
 
 ## Restored walkthrough
 
-The active walkthrough is restored to commit `f141581` at the owner's request. The later OUTPUT-style artwork and motion documented below are retained in the repository for reference, but are no longer displayed, served, or packaged in this restored version. The original three-slide welcome and intent-specific Don't print popup are active.
+The active walkthrough is restored to commit `f141581` at the owner's request. The later OUTPUT-style artwork and motion documented below are retained in the repository for reference, but are no longer displayed, served, or packaged in this restored version. The three-slide welcome is active with shortened copy and no decorative artwork. The intent-specific Don't print popup is unchanged.
 
 ## Retained design references
 
