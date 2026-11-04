@@ -161,6 +161,7 @@ function installSettingsHelp() {
   document.addEventListener('scroll', close, true);
   window.addEventListener('resize', close);
   $('settings').addEventListener('close', close);
+  $('output-settings').addEventListener('close', close);
   $('material-dialog').addEventListener('close', close);
 }
 
@@ -1876,7 +1877,7 @@ function saveShop() {
 
 function applyCutPreset() {
   const names = CUT_PRESETS[$('cut-preset').value];
-  if (!names) return;
+  if (!names) { renderCutLineNote(); return; }
   $('thru-name').value = names.thru;
   $('kiss-name').value = names.kiss;
   renderCutLineNote();
@@ -1887,6 +1888,7 @@ function matchCutPreset() {
   const kiss = $('kiss-name').value.trim();
   const match = Object.entries(CUT_PRESETS).find(([, names]) => names.thru === thru && names.kiss === kiss);
   $('cut-preset').value = match ? match[0] : 'custom';
+  renderCutLineNote();
 }
 
 function watchWidth() {
@@ -2028,6 +2030,8 @@ function showSetup(shop) {
 function renderCutLineNote() {
   const short = name => String(name || '').replace(/^CutContour_/i, '') || 'not set';
   $('cut-line-names').textContent = short($('thru-name').value) + ', ' + short($('kiss-name').value);
+  $('custom-cut-names').hidden = $('cut-preset').value !== 'custom';
+  $('cut-preset-summary').textContent = $('cut-preset').selectedOptions[0]?.textContent || 'Your cut names';
 }
 
 function applyEzPreset(shop) {
@@ -3121,7 +3125,7 @@ function dismissOnBackdrop(dialog, dismiss) {
 }
 
 function closeSettingsFolds() {
-  for (const id of ['settings-cuts', 'settings-delivery', 'settings-updates']) {
+  for (const id of ['settings-cuts', 'settings-delivery', 'settings-updates', 'settings-backup', 'settings-preview']) {
     const node = $(id);
     if (node) node.open = false;
   }
@@ -3160,6 +3164,17 @@ document.addEventListener('DOMContentLoaded', () => {
   $('show-roll-names').addEventListener('change', refreshStockPreview);
   $('share-stock-summary').addEventListener('change', refreshStockPreview);
   $('settings-close').addEventListener('click', () => $('settings').close());
+  $('output-settings-open').addEventListener('click', () => {
+    $('settings').close();
+    $('output-settings').showModal();
+    $('output-settings-title').focus({preventScroll:true});
+    refreshOutputSharing();
+  });
+  $('output-settings-close').addEventListener('click', () => $('output-settings').close());
+  $('output-settings-back').addEventListener('click', () => {
+    $('output-settings').close(); $('settings-open').click();
+  });
+  dismissOnBackdrop($('output-settings'), () => $('output-settings').close());
   $('settings-telemetry').addEventListener('toggle', () => { if ($('settings-telemetry').open) refreshOutputSharing(); });
   $('telemetry-refresh').addEventListener('click', refreshOutputSharing);
   $('telemetry-agree').addEventListener('change', () => { $('telemetry-enable').disabled = !outputSharing || !outputSharing.configured || outputSharing.enabled || outputSharing.paused || !$('telemetry-agree').checked; });

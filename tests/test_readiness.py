@@ -135,7 +135,7 @@ class ReadinessTests(unittest.TestCase):
                         # Optional setup no longer blocks the workspace.
                         self.assertFalse(page.locator('#setup').is_visible())
                         self.assertFalse(page.locator('#cut-line-note').is_visible())
-                        self.assertIn('kiss-cut', page.locator('#cut-line-note').text_content())
+                        self.assertIn('Artwork and bleed stay unchanged', page.locator('#cut-line-note').text_content())
                         save = """([hot, thru, kiss]) => { $('setup-printer').value = 'Customer printer'; $('setup-hot').value = hot;
                             $('setup-thru').value = thru; $('setup-kiss').value = kiss; $('setup-units').value = 'mm'; return saveSetup({}).catch(error => error.message); }"""
                         page.evaluate(save, [str(hot / 'missing'), 'MyThru', 'MyKiss'])

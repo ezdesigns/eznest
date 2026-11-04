@@ -113,14 +113,14 @@
 </dialog>
 <dialog id="settings" aria-labelledby="settings-title">
   <div class="panel">
-    <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title" tabindex="-1">Settings</h2><p class="hint">Your preferences for this computer. Roll sizes and stock live in Inventory.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
+    <div class="dialog-heading"><div><h2 id="settings-title" class="settings-title" tabindex="-1">Settings</h2><p class="hint">Set this once. Then upload, nest, and save.</p></div><button id="settings-close" class="dialog-close" type="button" aria-label="Close settings">×</button></div>
     <div id="pin-alert" class="lan-note" hidden>
       <p id="pin-alert-text"></p>
       <button id="pin-alert-ack" type="button" class="link" hidden>Reviewed</button>
     </div>
     <div class="settings-scroll">
     <section class="settings-section" aria-labelledby="destination-title">
-      <h3 id="destination-title" class="visually-hidden">Print files</h3>
+      <h3 id="destination-title">Saving files</h3>
       <div class="fields">
       <div class="wide save-folder-field">
         <label for="hot-folder">Default print folder</label>
@@ -131,16 +131,18 @@
         <p id="save-folder-help" class="hint">Optional. You can also choose where to save each job.</p>
         <span id="hot-error" class="lan-note" hidden></span>
       </div>
+      <details id="settings-backup" class="saving-extra wide"><summary>Keep a backup copy</summary><p class="hint">Optional: save a second copy in another folder.</p>
       <label class="check wide"><input id="staging-on" type="checkbox"> Keep an extra copy</label>
       <label class="wide" id="staging-row" hidden>Staging folder
         <input id="staging-folder" type="text" placeholder="Off" autocomplete="off">
         <span class="hint">Optional. Off until you turn it on.</span>
       </label>
+      </details>
       </div>
     </section>
     <details id="settings-cuts" class="settings-section">
-      <summary>Cut lines<span class="settings-summary-note">Names your cutter recognizes</span></summary>
-      <p id="cut-line-note" class="section-note">Match your through-cut and kiss-cut names to your print software. Current names: <span id="cut-line-names"></span>. If your cuts work, leave these as they are.</p>
+      <summary>Cut file compatibility<span id="cut-preset-summary" class="settings-summary-note">Standard cut names</span></summary>
+      <p id="cut-line-note" class="section-note">Only change this if your print software does not recognize the cut lines. Artwork and bleed stay unchanged. <span id="cut-line-names" hidden></span></p>
       <div class="fields">
       <label class="wide">Cut spot names
         <select id="cut-preset">
@@ -149,6 +151,7 @@
           <option value="custom">Use my own names</option>
         </select>
       </label>
+      <div id="custom-cut-names" class="fields wide" hidden>
       <label>Through-cut name
         <input id="thru-name" type="text" maxlength="80" value="CutContour_Thru-cut" spellcheck="false" autocomplete="off">
         <span class="hint">Cuts through the backing.</span>
@@ -157,7 +160,8 @@
         <input id="kiss-name" type="text" maxlength="80" value="CutContour_Kiss-cut" spellcheck="false" autocomplete="off">
         <span class="hint">Leaves the backing intact.</span>
       </label>
-      <label>When the cut type is missing
+      </div>
+      <label hidden>When the cut type is missing
         <select id="generic-cut">
           <option value="">Ask me</option>
           <option value="thru">Thru-cut</option>
@@ -167,7 +171,7 @@
       </label>
       </div>
     </details>
-    <details id="settings-delivery" class="settings-section">
+    <details id="settings-delivery" class="settings-section" hidden>
       <summary>Printer &amp; shop access<span class="settings-summary-note">Optional printer label and local network</span></summary>
       <p class="section-note">Only change these when setting up a printer or shared shop PC.</p>
       <label class="wide">Printer
@@ -185,8 +189,41 @@
     <p id="lan-restart" class="hint" hidden></p>
     </div>
     </details>
-    <details id="settings-telemetry" class="settings-section">
-      <summary>OUTPUT<span class="settings-summary-note">Connect your shop and control what you share</span></summary>
+    <details id="settings-updates" class="settings-section">
+      <summary>App updates<span class="settings-summary-note">Get notified when a new version is ready</span></summary>
+    <label class="check"><input id="updates" type="checkbox"> Automatically check for updates</label>
+    <p class="hint">We’ll let you know when an update is ready. You choose when to install it.</p>
+    <details id="settings-preview" class="saving-extra"><summary>Testing newer versions</summary><p class="hint">Preview releases may have unfinished features.</p><label class="check"><input id="test-channel" type="checkbox"> Include preview releases</label></details>
+    <label class="check" hidden><input id="output-network" type="checkbox"> Share capacity with the OUTPUT network</label>
+    <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Connecting this computer to OUTPUT is optional and is not this switch.</p>
+    <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
+    <p id="update-note" class="hint" hidden></p>
+    <button id="update-cancel" type="button" class="link" hidden>Cancel waiting update</button>
+    <details id="notes">
+      <summary>What's new</summary>
+      <div id="notes-body"></div>
+    </details>
+    </details>
+    <input id="seconds" type="hidden" value="30">
+    <details id="shop-pin" class="settings-section" hidden>
+      <summary>Shop PIN</summary>
+      <p class="hint">Set this on the shop computer before other PCs connect. Use 8 to 12 digits, or a passphrase of at least 10 characters with a letter. Designer computers enter it once. Ez Nest stores only a hash.</p>
+      <label>New PIN or passphrase
+        <input id="shop-pin-input" type="password" autocomplete="new-password" minlength="8" maxlength="64">
+      </label>
+      <button id="shop-pin-save" type="button" class="link">Save shop PIN</button>
+      <p id="shop-pin-error" class="lan-note" hidden></p>
+    </details>
+    </div>
+    <div class="settings-connection"><button id="output-settings-open" type="button" class="link">OUTPUT connection &amp; privacy ↗</button></div>
+    <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
+  </div>
+</dialog>
+
+<dialog id="output-settings" aria-labelledby="output-settings-title">
+  <div class="dialog-heading"><div><h2 id="output-settings-title" tabindex="-1">OUTPUT connection</h2><p class="hint">Optional. Nesting and inventory work without it.</p></div><button id="output-settings-close" type="button" class="dialog-close" aria-label="Close OUTPUT settings">×</button></div>
+    <details id="settings-telemetry" class="settings-section" open>
+      <summary hidden>OUTPUT connection and privacy</summary>
       <div id="output-connect">
         <h3>Connect to OUTPUT</h3>
         <p id="output-connect-shop" class="connect-success" role="status" hidden></p>
@@ -233,34 +270,7 @@
       <pre id="stock-output-preview" aria-label="Stock summary preview"></pre>
       <p id="stock-output-note" class="hint"></p>
     </details>
-    <details id="settings-updates" class="settings-section">
-      <summary>App updates<span class="settings-summary-note">New versions for this shop host</span></summary>
-    <label class="check"><input id="updates" type="checkbox"> Automatically check for updates</label>
-    <p class="hint">Get a notice when a new version is available. Update on the host PC after saving your work; everyone using that shop address gets the new version. Separately installed copies update separately.</p>
-    <label class="check"><input id="test-channel" type="checkbox"> Include preview releases</label>
-    <label class="check" hidden><input id="output-network" type="checkbox"> Share capacity with the OUTPUT network</label>
-    <p id="output-note" class="hint" hidden>Off. Sharing capacity and availability is a separate opt-in and does not send that information. Connecting this computer to OUTPUT is optional and is not this switch.</p>
-    <div class="version-row"><span id="app-version"></span><button id="update" type="button" class="link">Update</button></div>
-    <p id="update-note" class="hint" hidden></p>
-    <button id="update-cancel" type="button" class="link" hidden>Cancel waiting update</button>
-    <details id="notes">
-      <summary>What's new</summary>
-      <div id="notes-body"></div>
-    </details>
-    </details>
-    <input id="seconds" type="hidden" value="30">
-    <details id="shop-pin" class="settings-section" hidden>
-      <summary>Shop PIN</summary>
-      <p class="hint">Set this on the shop computer before other PCs connect. Use 8 to 12 digits, or a passphrase of at least 10 characters with a letter. Designer computers enter it once. Ez Nest stores only a hash.</p>
-      <label>New PIN or passphrase
-        <input id="shop-pin-input" type="password" autocomplete="new-password" minlength="8" maxlength="64">
-      </label>
-      <button id="shop-pin-save" type="button" class="link">Save shop PIN</button>
-      <p id="shop-pin-error" class="lan-note" hidden></p>
-    </details>
-    </div>
-    <div class="settings-save"><button id="save-settings" class="primary" type="button">Save settings</button><p id="settings-saved" role="status" aria-live="polite"></p></div>
-  </div>
+  <button id="output-settings-back" class="link" type="button">Back to Settings</button>
 </dialog>
 
 <main>

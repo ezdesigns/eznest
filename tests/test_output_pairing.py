@@ -671,7 +671,7 @@ class OutputScreenTests(unittest.TestCase):
                         helper.wait_ready(page)
                         # First viewport pairs, second viewport exercises the same reconnect entry.
                         page.click('#settings-open')
-                        page.locator('#settings-telemetry').evaluate('node => node.open = true')
+                        page.click('#output-settings-open')
                         entry = '#output-pair' if width == 1280 else '#output-reconnect'
                         expect(page.locator(entry)).to_be_enabled()
                         page.click(entry)
@@ -752,7 +752,7 @@ class OutputScreenTests(unittest.TestCase):
                     page.keyboard.press('Escape')
                     page.set_viewport_size({'width': 1280, 'height': 900})
                     page.click('#settings-open')
-                    page.locator('#settings-telemetry').evaluate('node => node.open = true')
+                    page.click('#output-settings-open')
                     page.wait_for_function("() => !document.querySelector('#output-pair').disabled")
                     page.click('#output-pair')
                     expect(page.locator('#setup-shop')).to_be_visible()
