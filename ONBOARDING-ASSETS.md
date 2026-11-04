@@ -2,6 +2,8 @@
 
 Bundled locally; onboarding makes no requests to the marketing sites.
 
+The current welcome uses an original code-native SVG drawing and three matching step icons in `shop-team.js`. Its introductory motion settles in under three seconds and respects reduced motion. It has no visible playback bar. The earlier still/video below remain bundled for provenance and compatibility but are no longer shown on the welcome. OUTPUT examples retain compact, accessible icon controls beside the previous/next arrows.
+
 - `onboarding-nest.webp`: https://eznest.jeezlabs.io/prototype/stills/hero-nest-d.webp
 - `onboarding-nest.webm`: rendered from the SVG animation at https://eznest.jeezlabs.io/prototype/nesting.html on 2026-11-04. Shows the loose-parts, rows and nesting sequence only; no automatic cut generation or hot-folder delivery. Synthetic example, not measured savings. Colorfigures attribution and MIT terms are in `LICENSE-colorfigures.txt`.
 - `onboarding-computer.webp`: optimized copy of https://output.jeezlabs.io/illustrations/print-v2/computer.png

@@ -10,6 +10,55 @@ window.EZNShop = (() => {
     if (parent) parent.append(item);
     return item;
   };
+  function svgNode(tag, attrs, parent) {
+    const item = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [key, value] of Object.entries(attrs)) item.setAttribute(key, value);
+    if (parent) parent.append(item);
+    return item;
+  }
+  function stepIcon(kind, parent) {
+    const svg = svgNode('svg', {viewBox:'0 0 48 48', width:48, height:48, 'aria-hidden':'true', class:'tour-step-icon'}, parent);
+    const ink = {fill:'#f7f7f2', stroke:'#182136', 'stroke-width':1.7, 'stroke-linejoin':'round', 'stroke-linecap':'round'};
+    if (kind === 'file') {
+      svgNode('path', {...ink, d:'M12 5h17l9 9v29H12Z'}, svg);
+      svgNode('path', {...ink, fill:'#eaf2ff', d:'M29 5v10h9M18 29l6-6 6 6M24 23v13'}, svg);
+    } else if (kind === 'roll') {
+      svgNode('path', {...ink, d:'M13 8h23v29H13c-8 0-8-12 0-12h18'}, svg);
+      svgNode('ellipse', {...ink, cx:36, cy:22.5, rx:5, ry:14.5}, svg);
+      svgNode('path', {...ink, fill:'none', stroke:'#006cf5', d:'M13 15h13m-13 5h9'}, svg);
+    } else {
+      svgNode('rect', {...ink, x:6, y:7, width:36, height:34, rx:4}, svg);
+      svgNode('rect', {x:11,y:12,width:15,height:10,rx:3,fill:'#006cf5'}, svg);
+      svgNode('circle', {cx:33,cy:17,r:5,fill:'#c7a361'}, svg);
+      svgNode('path', {d:'M12 27h13v9H12Z',fill:'#91aaa0'}, svg);
+      svgNode('path', {...ink,fill:'none',stroke:'#006cf5',d:'m28 31 4 4 7-9'}, svg);
+    }
+  }
+  function nestingDrawing(parent) {
+    const svg = svgNode('svg', {viewBox:'0 0 620 240',class:'tour-nesting-drawing',role:'img','aria-label':'Nesting illustration: pieces from a print file arrange together on a roll.'}, parent);
+    const ink = {stroke:'#182136','stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'};
+    svgNode('ellipse',{cx:365,cy:211,rx:190,ry:10,fill:'#f1f4f7'},svg);
+    svgNode('path',{...ink,d:'M48 51h58l22 23v113H48Z',fill:'#fff'},svg);
+    svgNode('path',{...ink,d:'M106 51v24h22',fill:'#edf4ff'},svg);
+    const text=svgNode('text',{x:64,y:106,fill:'#182136','font-size':16,'font-weight':700},svg);text.textContent='PDF';
+    svgNode('path',{...ink,d:'M65 122h44m-44 13h31',fill:'none',stroke:'#a4b3c4'},svg);
+    svgNode('path',{...ink,d:'M150 120h35m-9-8 11 8-11 8',fill:'none',stroke:'#006cf5'},svg);
+    svgNode('path',{...ink,d:'M212 39h300v161H212Q225 183 212 166Z',fill:'#fff'},svg);
+    svgNode('path',{...ink,d:'M499 39q17-15 34 0v161q-17 15-34 0Z',fill:'#edf4ff'},svg);
+    svgNode('ellipse',{...ink,cx:533,cy:119.5,rx:13,ry:80.5,fill:'#f7f7f2'},svg);
+    svgNode('ellipse',{cx:533,cy:119.5,rx:4,ry:42,fill:'#dce5ef'},svg);
+    const shapes = [
+      ['a','rect',{x:239,y:60,width:95,height:43,rx:13,fill:'#006cf5'}],
+      ['b','circle',{cx:365,cy:82,r:23,fill:'#c7a361'}],
+      ['c','path',{d:'M406 59h63v44h-28V83h-35Z',fill:'#91aaa0'}],
+      ['d','path',{d:'M239 120h43v27h51v31h-94Z',fill:'#91aaa0'}],
+      ['e','rect',{x:301,y:119,width:89,height:25,rx:12.5,fill:'#c7a361'}],
+      ['f','rect',{x:350,y:155,width:119,height:25,rx:10,fill:'#006cf5'}],
+      ['g','circle',{cx:432,cy:129,r:16,fill:'#5c6870'}]
+    ];
+    for (const [key,tag,attrs] of shapes) svgNode(tag,{...attrs,...ink,'stroke-width':1.3,class:'tour-nest-piece piece-'+key},svg);
+    return svg;
+  }
   async function request(path, data) {
     const response = await fetch(path, data === undefined ? {} : {
       method: 'POST', headers: {'Content-Type': 'application/json', 'X-EZ-Token': session?.token || ''}, body: JSON.stringify(data)
@@ -35,7 +84,7 @@ window.EZNShop = (() => {
   }
   function reset(title) {
     stopTourMotion();
-    touring = false; dialog.classList.remove('team-walkthrough', 'team-output-tour');
+    touring = false; dialog.classList.remove('team-walkthrough', 'team-output-tour', 'team-steps-tour');
     dialog.querySelector('.tour-brand-row')?.remove();
     closeButton.setAttribute('aria-label', 'Close shop');
     heading.textContent = title; content.replaceChildren(); message.textContent = '';
@@ -56,32 +105,32 @@ window.EZNShop = (() => {
   }
   function endTour() { rememberTour(); touring = false; finish(); }
   function tour(step = 0) {
-    const titles = [['Fit more.', 'Waste less.'], ['Your next print,', 'in three steps.'], ['Say yes to', 'more jobs.']];
+    const titles = [['Thanks for downloading', 'Ez Nest.'], ['Your next print', 'in three steps.'], ['Meet', 'OUTPUT.']];
     reset(''); touring = true; dialog.classList.add('team-walkthrough');
     if (step === 2) dialog.classList.add('team-output-tour');
+    if (step === 1) dialog.classList.add('team-steps-tour');
     node('span', titles[step][0], heading);
     if (titles[step][1]) node('em', titles[step][1], heading);
     closeButton.setAttribute('aria-label', 'Close walkthrough');
     const brand = node('div', '', null); brand.className = 'tour-brand-row';
     const progress = node('span', `Quick tour · ${step + 1} of 3`, brand); progress.id = 'tour-progress';
     dialog.insertBefore(brand, heading);
-    function motionControl(figure, video, onActive = () => {}) {
+    function motionControl(figure, onActive = () => {}, controls) {
       const media = matchMedia('(prefers-reduced-motion: reduce)');
       let playing = !media.matches;
-      const controls = node('div', '', content); controls.className = 'tour-motion-controls';
-      node('span', 'Illustrated example', controls);
-      const toggle = node('button', '', controls); toggle.type = 'button'; toggle.className = 'tour-motion-toggle';
+      const toggle = controls ? node('button', '', controls) : null;
+      if (toggle) { toggle.type = 'button'; toggle.className = 'tour-story-play'; }
       function sync() {
         const active = playing && !document.hidden;
         figure.dataset.running = String(active);
         onActive(active);
-        toggle.textContent = playing ? 'Pause animation' : 'Play animation';
-        if (video) {
-          if (active) video.play().catch(() => { playing = false; sync(); });
-          else video.pause();
+        if (toggle) {
+          toggle.textContent = playing ? 'Ⅱ' : '▶';
+          toggle.setAttribute('aria-label', playing ? 'Pause examples' : 'Play examples');
+          toggle.title = playing ? 'Pause examples' : 'Play examples';
         }
       }
-      toggle.onclick = () => { playing = !playing; sync(); };
+      if (toggle) toggle.onclick = () => { playing = !playing; sync(); };
       const preference = () => { playing = !media.matches; sync(); };
       media.addEventListener('change', preference); document.addEventListener('visibilitychange', sync);
       stopTourMotion = () => {
@@ -92,23 +141,21 @@ window.EZNShop = (() => {
       sync();
     }
     if (step === 0) {
-      node('p', 'Ez Nest fits your print pieces into a tighter layout, so you use less of your roll. Free to use. Built for print shops.', content).className = 'tour-lead';
-      const video = node('video', '', content); video.className = 'tour-illustration';
-      video.muted = true; video.loop = true; video.playsInline = true; video.preload = 'metadata';
-      video.poster = '/onboarding-nest.webp'; video.src = '/onboarding-nest.webm';
-      video.setAttribute('aria-label', 'Illustration: loose pieces move onto a roll, then turn into a tighter layout.');
-      motionControl(video, video);
+      node('p', 'Arrange your print pieces into a tighter layout and save a file ready to review for printing.', content).className = 'tour-lead';
+      node('p', 'Free to use. Built for print shops.', content).className = 'tour-free';
+      motionControl(nestingDrawing(content));
     } else if (step === 1) {
       const steps = node('ol', '', content); steps.className = 'tour-steps';
-      for (const [title, detail] of [
-        ['Add your print file', 'Use artwork you’ve prepared for printing.'],
-        ['Choose your roll', 'Its printable width and spacing guide the layout.'],
-        ['Nest, review, and save', 'Check the pieces and material used before exporting.']
+      for (const [icon, title, detail] of [
+        ['file', 'Add your print file', 'Use artwork you’ve prepared for printing.'],
+        ['roll', 'Choose your roll', 'Its printable width and spacing guide the layout.'],
+        ['layout', 'Nest, review, and save', 'Check the pieces and material used before exporting.']
       ]) {
-        const row = node('li', '', steps), copy = node('div', '', row);
+        const row = node('li', '', steps); stepIcon(icon, row); const copy = node('div', '', row);
         node('strong', title, copy); node('span', detail, copy);
       }
     } else {
+      node('p', 'Another product from the Ez Nest team, connecting print shops to send work out and bring new work in.', content).className = 'tour-output-intro';
       // Compact adaptation of OUTPUT's landing-demo.ts illustrated stories.
       const stories = [
         {name:'A rush order', job:'200 vinyl stickers by tomorrow', art:'stickers', from:'Your shop', source:'printer', to:'A nearby shop', machine:'printer', captions:['Your machines are booked for two days.', 'OUTPUT finds a shop with time today.', 'Your partner makes the stickers. You keep the customer.']},
@@ -157,7 +204,8 @@ window.EZNShop = (() => {
       function choose(direction) { example = (example + direction + stories.length) % stories.length; phase = 0; renderStory(); schedule(); }
       previous.onclick = () => choose(-1); next.onclick = () => choose(1);
       renderStory();
-      motionControl(network, null, running => { active = running; schedule(); });
+      motionControl(network, running => { active = running; schedule(); }, selector);
+      selector.append(next);
       const link = node('a', 'Explore OUTPUT ↗', content); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
     }
     const actions = node('div', '', content); actions.className = 'tour-actions';

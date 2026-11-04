@@ -30,6 +30,23 @@
 .team-walkthrough h2 span,.team-walkthrough h2 em { display:block; }
 .team-walkthrough h2 em { color:#006cf5; font-style:normal; }
 #shop-team-dialog .tour-lead { font-size:15px; line-height:1.6; margin:0 0 22px; max-width:520px; }
+#shop-team-dialog .tour-free { color:#182136; font-size:13px; font-weight:650; margin:-8px 0 12px; }
+.tour-nesting-drawing { display:block; width:100%; height:auto; overflow:visible; margin:6px 0; }
+.tour-nest-piece { transform-box:fill-box; transform-origin:center; animation:tour-nest-in 2.2s cubic-bezier(.2,.7,.2,1) both; animation-play-state:paused; }
+.tour-nesting-drawing[data-running=true] .tour-nest-piece { animation-play-state:running; }
+.piece-a { --start-x:-175px; --start-y:45px; }
+.piece-b { --start-x:-260px; --start-y:50px; animation-delay:.08s; }
+.piece-c { --start-x:-320px; --start-y:50px; animation-delay:.16s; }
+.piece-d { --start-x:-160px; --start-y:-15px; animation-delay:.24s; }
+.piece-e { --start-x:-240px; --start-y:-10px; animation-delay:.32s; }
+.piece-f { --start-x:-310px; --start-y:-40px; animation-delay:.4s; }
+.piece-g { --start-x:-330px; --start-y:-5px; animation-delay:.48s; }
+@keyframes tour-nest-in { 0%,12% { transform:translate(var(--start-x),var(--start-y)) scale(.25) rotate(-12deg); opacity:0; } 35% { opacity:1; } 100% { transform:none; opacity:1; } }
+#shop-team-dialog.team-steps-tour h2,#shop-team-dialog.team-output-tour h2 { display:flex; flex-wrap:wrap; align-items:baseline; column-gap:10px; }
+#shop-team-dialog.team-steps-tour h2 { font-size:32px; }
+#shop-team-dialog.team-steps-tour h2 em { font-size:24px; letter-spacing:-.6px; }
+#shop-team-dialog .tour-output-intro { font-size:14px; line-height:1.5; margin:0 0 10px; max-width:540px; }
+.tour-step-icon { flex:0 0 48px; }
 .tour-illustration { display:block; width:100%; height:auto; max-height:250px; object-fit:contain; border-radius:12px; background:#f7f7f2; }
 .tour-network { display:grid; grid-template-columns:1fr 24px 1fr 24px 1fr; align-items:center; padding:12px; border-radius:12px; background:#f7f7f2; }
 .tour-story-brief { display:flex; align-items:center; gap:12px; min-height:56px; margin:10px 0; font-size:16px; line-height:1.35; }
@@ -49,16 +66,15 @@
 .tour-transfer i:nth-child(3) { animation-delay:.4s; }
 .tour-network[data-running=true] .tour-transfer i { animation-play-state:running; }
 @keyframes tour-transfer { 0%,80%,100% { opacity:.2; transform:translateX(-2px); } 40% { opacity:1; transform:translateX(2px); } }
-.tour-motion-controls { display:flex; justify-content:space-between; align-items:center; margin-top:6px; color:#637083; font-size:11px; }
-#shop-team-dialog .tour-motion-toggle { border:0; padding:8px 0 8px 8px; margin:0; background:transparent; font-size:12px; color:#526173; text-decoration:underline; text-underline-offset:3px; }
-@media(prefers-reduced-motion:reduce) { .tour-transfer i,.tour-network-shop[data-active=true] img { animation:none; opacity:1; } }
+#shop-team-dialog .tour-story-play { font-size:15px; }
+@media(prefers-reduced-motion:reduce) { .tour-transfer i,.tour-network-shop[data-active=true] img,.tour-nest-piece { animation:none; opacity:1; transform:none; } }
 .tour-steps { list-style:none; padding:0; margin:30px 0; counter-reset:tour; }
 .tour-steps li { counter-increment:tour; display:flex; align-items:center; gap:18px; padding:18px 0; font-size:17px; border-bottom:1px solid #e8ebee; }
 .tour-steps li:last-child { border-bottom:0; }
 .tour-steps li strong { display:block; font-size:17px; font-weight:700; }
 .tour-steps li span { display:block; margin-top:5px; color:#526173; font-size:14px; line-height:1.5; }
 #shop-team-dialog .tour-output-detail { font-size:15px; line-height:1.6; max-width:520px; }
-.tour-steps li::before { content:'0' counter(tour); color:#006cf5; font-size:12px; font-weight:700; }
+.tour-steps li::before { content:none; }
 .tour-actions { display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-top:28px; }
 #shop-team-dialog .tour-actions button { margin:0; min-height:44px; padding:10px 16px; font-size:13px; font-weight:700; }
 #shop-team-dialog .tour-actions button.primary { background:#006cf5; border-color:#006cf5; }
@@ -70,6 +86,8 @@
 @media(max-width:540px) {
  #shop-team-dialog.team-walkthrough { padding:24px; }
  #shop-team-dialog.team-walkthrough h2 { font-size:30px; }
+ #shop-team-dialog.team-steps-tour h2 { font-size:28px; }
+ #shop-team-dialog.team-steps-tour h2 em { font-size:20px; }
  .tour-illustration { max-height:200px; }
  .tour-network { grid-template-columns:1fr 18px 1fr 18px 1fr; padding:16px 6px; }
  .tour-network-shop { font-size:10px; }
