@@ -34,11 +34,11 @@
 .tour-output-cards { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:20px 0; }
 .tour-output-cards > div { padding:16px; background:#f3f7fc; border-radius:12px; }
 #shop-team-dialog .tour-output-cards p { font-size:13px; margin:8px 0 0; }
-#shop-team-dialog #tour-output-link { display:inline-flex; align-items:center; justify-content:center; background:#0875ed; color:#fff; border:1px solid #0875ed; border-radius:8px; padding:10px 14px; font-weight:700; text-decoration:none; }
+#shop-team-dialog #tour-output-link { display:inline-flex; align-items:center; justify-content:center; background:#0875ed; color:#fff; border:1px solid #0875ed; border-radius:8px; padding:10px 12px; font-weight:700; text-decoration:none; }
 #shop-team-dialog #tour-output-link:hover { background:#0065d4; }
 #shop-team-dialog #tour-next { background:#f0f1f3; border-color:#e0e3e7; }
 .tour-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; flex-wrap:wrap; }
-#shop-team-dialog .tour-actions button { margin:0; min-width:90px; }
+#shop-team-dialog .tour-actions button { margin:0; min-width:90px; padding:10px 12px; }
 #shop-team-dialog .tour-actions > * { min-height:44px; font-size:14px; box-sizing:border-box; }
 @media(max-width:540px) { #shop-team-dialog.team-walkthrough { padding:24px; } .tour-output-cards { grid-template-columns:1fr; } }
 @media (max-width: 720px) {
