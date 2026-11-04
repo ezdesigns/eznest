@@ -93,6 +93,8 @@ class PilotUiTests(unittest.TestCase):
         box=page.locator(field).bounding_box(); outer=page.locator(dialog).bounding_box()
         self.assertGreaterEqual(box['y'],outer['y'])
         self.assertLessEqual(box['y']+box['height'],outer['y']+outer['height'])
+        self.assertGreaterEqual(box['y'],0)
+        self.assertLessEqual(box['y']+box['height'],page.viewport_size['height'])
         self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'),page.viewport_size['width'])
 
     def test_banner_variations_snooze_without_reload_and_settings_labels(self):
@@ -133,8 +135,66 @@ class PilotUiTests(unittest.TestCase):
                 self.assertEqual(page.evaluate('window.keepThisWork'),'unsaved')
                 page.reload();self.fixture.wait_ready(page)
                 expect(page.locator('#output-required')).to_be_hidden()
+                expect(page.locator('#output-promo-reopen')).to_be_visible()
+                page.click('#output-promo-reopen')
+                expect(page.locator('#setup-shop')).to_be_visible()
+                expect(page.locator('#output-browser-start')).to_be_hidden()
+                page.keyboard.press('Escape')
+                page.click('#output-promo-hide')
+                expect(page.locator('#output-promo-dismissed')).to_be_hidden()
+                page.reload();self.fixture.wait_ready(page)
+                expect(page.locator('#output-promo-dismissed')).to_be_hidden()
                 page.evaluate("localStorage.setItem('eznest-output-snooze-until',String(Date.now()-1))")
                 page.reload();self.fixture.wait_ready(page)
                 expect(page.locator('#output-required')).to_be_visible()
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS/'output-banner-variation.png'))
+            finally:browser.close()
+
+    def test_shop_closes_with_x_escape_and_outside_but_not_inside_drag(self):
+        import shop_members
+        shop_members.create(server.WORK, 'Test shop')
+        with sync_playwright() as pw:
+            browser=test_web_mvp.launch_browser(pw)
+            try:
+                page=browser.new_page(viewport={'width':1280,'height':800})
+                page.goto(self.fixture.url()+'/web');self.fixture.wait_ready(page)
+                for action in ['close','escape','outside']:
+                    page.click('#shop-team-open')
+                    expect(page.locator('#shop-team-dialog')).to_be_visible()
+                    expect(page.get_by_role('button',name='Done',exact=True)).to_have_count(0)
+                    if action=='close':page.click('#shop-team-close')
+                    elif action=='escape':page.keyboard.press('Escape')
+                    else:page.mouse.click(5,5)
+                    expect(page.locator('#shop-team-dialog')).to_be_hidden()
+                page.click('#shop-team-open');page.locator('#shop-team-title').click()
+                expect(page.locator('#shop-team-dialog')).to_be_visible()
+                box=page.locator('#shop-team-title').bounding_box()
+                page.mouse.move(box['x']+5,box['y']+5);page.mouse.down();page.mouse.move(5,5);page.mouse.up()
+                expect(page.locator('#shop-team-dialog')).to_be_visible()
+                page.screenshot(path=str(test_web_mvp.SCREENSHOTS/'shop-close-control.png'))
+            finally:browser.close()
+
+    def test_settings_every_control_reachable_without_overlap(self):
+        import shop_members
+        shop_members.create(server.WORK, 'Test shop')
+        with sync_playwright() as pw:
+            browser=test_web_mvp.launch_browser(pw)
+            try:
+                for width,height in [(1280,720),(390,600),(320,480),(844,390)]:
+                    page=browser.new_page(viewport={'width':width,'height':height})
+                    page.goto(self.fixture.url()+'/web');self.fixture.wait_ready(page)
+                    page.click('#settings-open')
+                    page.locator('#settings .settings-section').evaluate_all('(nodes)=>nodes.forEach(n=>{if(n.tagName==="DETAILS"&&!n.hidden)n.open=true})')
+                    page.locator('.privacy-details').evaluate('n=>n.open=true')
+                    for selector in ['#hot-folder','#browse-output','#staging-on','#thru-name','#kiss-name','#generic-cut','#printer','#output-url','#updates','#test-channel','#save-settings']:
+                        control=page.locator(selector);control.scroll_into_view_if_needed()
+                        self.assert_inside(page,selector,'#settings')
+                        self.assertTrue(control.evaluate('n=>{const r=n.getBoundingClientRect();const top=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return n===top||n.contains(top)}'),selector)
+                        if selector in ['#thru-name','#kiss-name','#output-url']:
+                            bounds=control.bounding_box();outer=page.locator('#settings').bounding_box()
+                            self.assertGreaterEqual(bounds['x'],outer['x'])
+                            self.assertLessEqual(bounds['x']+bounds['width'],outer['x']+outer['width'])
+                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'settings-accessible-{width}-{height}.png'))
+                    page.click('#save-settings')
+                    page.close()
             finally:browser.close()

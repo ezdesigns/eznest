@@ -1,6 +1,7 @@
 #shop-team-dialog { width: min(480px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; border: 1px solid #dce3eb; border-radius: 18px; padding: 28px; color: #1c2939; background: #fff; box-shadow: 0 20px 80px #17233b33; }
 #shop-team-dialog::backdrop { background: #15223866; }
-#shop-team-dialog h2 { margin: 0 0 16px; font-size: 24px; }
+#shop-team-dialog h2 { margin: 0 40px 16px 0; font-size: 24px; }
+#shop-team-dialog #shop-team-close { position:absolute; top:14px; right:14px; width:36px; height:36px; padding:0; margin:0; border:0; background:transparent; font-size:26px; color:#526173; }
 #shop-team-dialog p { color: #526173; line-height: 1.5; margin: 0 0 14px; }
 #shop-team-dialog label { display: grid; gap: 6px; margin: 16px 0; font-weight: 600; }
 #shop-team-dialog input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #bcc9d8; border-radius: 8px; font: inherit; }

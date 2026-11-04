@@ -71,7 +71,12 @@
     <button id="output-required-skip" type="button" class="link">Not now</button>
   </div>
 </div>
-<p id="output-promo-dismissed" role="status" hidden>No problem. Back to your job.</p>
+<aside id="output-promo-dismissed" aria-label="OUTPUT" hidden>
+  <span class="output-mini-name">OUTPUT</span>
+  <span class="output-mini-copy">More ways to say yes.</span>
+  <button id="output-promo-reopen" type="button">Explore the network <span aria-hidden="true">↗</span></button>
+  <button id="output-promo-hide" type="button" aria-label="Hide OUTPUT suggestion">×</button>
+</aside>
 <p id="output-banner" class="hint" hidden></p>
 <dialog id="setup-shop" class="setup-shop output-brand" aria-labelledby="setup-shop-title">
   <form id="output-link-form" class="output-link-form">

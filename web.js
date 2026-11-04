@@ -2617,7 +2617,7 @@ function renderOutputRequired(session) {
   showOutputRequired(session?.outputConnection?.ok === false);
   showOutputBanner(session);
 }
-let setupSkippedThisVisit = false;
+let setupSkippedThisVisit = false, outputCompactHidden = false;
 const OUTPUT_PROMOS = [
   ['Take on more work with OUTPUT', 'Keep the customer. Find the machines you need.'],
   ['Your printer has limits. Your ambition doesn’t.', 'OUTPUT is building a network for the jobs beyond your equipment.'],
@@ -2645,8 +2645,7 @@ function rotateOutputPromo() {
   outputPromoIndex = ((outputPromoIndex ?? 0) + 1) % OUTPUT_PROMOS.length;
   renderOutputPromo();
 }
-// Quiet, local-only variations. No tracking, popups, or ads over an active job.
-setInterval(rotateOutputPromo, 45000);
+// A new variation on the next visit; no timed advertising while a shop is working.
 function setupSkipped() {
   if (setupSkippedThisVisit) return true;
   try { return localStorage.getItem('eznest-setup-skipped') === '1'
@@ -2656,6 +2655,9 @@ function setupSkipped() {
 function showOutputRequired(required) {
   outputRequired = required === true && !setupSkipped();
   $('output-required').hidden = !outputRequired;
+  let compactDismissed = false;
+  try { compactDismissed = Number(localStorage.getItem('eznest-output-compact-hidden-until')) > Date.now(); } catch {}
+  $('output-promo-dismissed').hidden = required !== true || outputRequired || compactDismissed || outputCompactHidden;
   if (outputRequired) renderOutputPromo();
   $('output-required-note').textContent = '';
   document.body.classList.toggle('output-required-on', outputRequired);
@@ -3691,15 +3693,20 @@ async function disconnectOutputLink() {
 $('output-link-connect').addEventListener('click', openOutputLinkForm);
 $('output-link-reconnect').addEventListener('click', openOutputLinkForm);
 $('output-required-code').addEventListener('click', openOutputLinkForm);
+$('output-promo-reopen').addEventListener('click', openOutputLinkForm);
+$('output-promo-hide').addEventListener('click', () => {
+  outputCompactHidden = true;
+  try { localStorage.setItem('eznest-output-compact-hidden-until', String(Date.now() + 24 * 60 * 60 * 1000)); } catch {}
+  $('output-promo-dismissed').hidden = true;
+});
 $('output-required-skip').addEventListener('click', () => {
   setupSkippedThisVisit = true;
   try {
     localStorage.setItem('eznest-setup-skipped', '1');
     localStorage.setItem('eznest-output-snooze-until', String(Date.now() + 24 * 60 * 60 * 1000));
   } catch { /* Dismissal still lasts for this visit if browser storage is blocked. */ }
-  showOutputRequired(false);
-  $('output-promo-dismissed').hidden = false;
-  setTimeout(() => { $('output-promo-dismissed').hidden = true; }, 4000);
+  showOutputRequired(true);
+  if (!$('output-promo-dismissed').hidden) $('output-promo-reopen').focus();
 });
 $('output-link-cancel').addEventListener('click', closeOutputLinkForm);
 $('output-link-form').addEventListener('submit', submitOutputLink);

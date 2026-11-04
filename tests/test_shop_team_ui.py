@@ -36,7 +36,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 expect(page.locator('#shop-team-dialog')).to_contain_text('This PC is local only')
                 expect(page.get_by_role('button', name='Create invitation')).to_have_count(0)
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-local.png'))
-                page.get_by_role('button', name='Done', exact=True).click()
+                page.get_by_role('button', name='Close shop', exact=True).click()
                 page.reload()
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()
                 expect(page.locator('#shop-team-open')).to_have_text('Test Print Shop')
@@ -143,6 +143,9 @@ class ShopTeamBrowserTests(unittest.TestCase):
             try:
                 page.goto(self.fixture.url() + '/?view=simple')
                 expect(page.get_by_role('heading', name='Join Shared shop')).to_be_visible()
+                expect(page.locator('#shop-team-close')).to_be_hidden()
+                page.keyboard.press('Escape'); page.mouse.click(5,5)
+                expect(page.locator('#shop-team-dialog')).to_be_visible()
                 page.locator('#team-member-name').fill('Designer A')
                 page.locator('#team-code').fill(code)
                 page.locator('#team-join').click()
