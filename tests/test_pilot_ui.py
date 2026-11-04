@@ -228,6 +228,7 @@ class PilotUiTests(unittest.TestCase):
                     page.click('#save-settings')
                     page.click('#output-settings-open')
                     expect(page.locator('#telemetry-enable')).to_be_hidden()
+                    expect(page.locator('#telemetry-agree')).to_be_hidden()
                     expect(page.locator('#telemetry-stop')).to_be_hidden()
                     page.locator('.privacy-details').evaluate('n=>n.open=true')
                     page.locator('#output-url').scroll_into_view_if_needed()
