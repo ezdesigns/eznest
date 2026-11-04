@@ -95,7 +95,7 @@ During beta, `eznest-setup.exe` is unsigned. Windows SmartScreen can say it prot
 2. Compare that checksum with the file before you run it. A mismatch means do not run the file.
 3. If SmartScreen appears, choose **More info**, then **Run anyway**.
 
-That screen is the unsigned-beta warning. It is not Ez Nest's own check. When update checks are on, a downloaded installer is kept only when its SHA-256 matches the published checksum, and installing it is still a separate click.
+That screen is the unsigned-beta warning. It is not Ez Nest's own check. When update checks are on, a downloaded installer is kept only when its signed update manifest checks out and the file matches that manifest. Installing it is still a separate click.
 
 ## Update
 
@@ -108,7 +108,7 @@ Background update checks are **off** during beta. Ez Nest does not call GitHub, 
 
 The installer task **Check for app updates** only saves the Settings preference. You still set `EZ_NEST_UPDATES=1` for the account that runs Ez Nest, then restart. `--shop-test` forces checks off.
 
-When both are on, Ez Nest looks for a newer release at startup and every six hours. It downloads an installer only when the SHA-256 checksum matches. For signed Program Files installations, **Install when finished** opens a separate helper and asks for Windows administrator approval. It waits for the current job to be sent or explicitly discarded, then installs and restarts the existing limited `eznest-svc` task. A failed startup restores the previous files. Settings, local activity and hot-folder contents stay in their existing locations.
+When both are on, Ez Nest looks for a newer release at startup and every six hours. It downloads an installer only when the signed update manifest checks out and the file matches that manifest. For signed Program Files installations, **Install when finished** opens a separate helper and asks for Windows administrator approval. It waits for the current job to be sent or explicitly discarded, then installs and restarts the existing limited `eznest-svc` task. A failed startup restores the previous files. Settings, local activity and hot-folder contents stay in their existing locations.
 
 Unsigned builds still require a manual installer upgrade. The managed helper requires a signed app and installer from the same certificate, the default data directory/port, and an existing limited startup task. See [update testing and recovery](docs/windows-updates.md).
 

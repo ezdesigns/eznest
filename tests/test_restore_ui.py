@@ -410,6 +410,11 @@ class InventoryShelfTests(unittest.TestCase):
             output_pairing.connect(server.WORK, CODE, transport=self.output.pair, host='Shop PC',
                                    check_in_transport=self.output.check_in)
 
+    def wait_shop(self, page):
+        # The shop record can answer before a reloaded page has created the shelf.
+        page.wait_for_function("""() => fetch('/api/shop').then(r => r.json()).then(shop =>
+            shop.setupComplete === true && typeof inventoryPanel === 'object' && document.body.dataset.ready === '1')""")
+
     def snap(self, page, name, width):
         target = os.environ.get('EZ_NEST_SHELF_SHOTS')
         if target:
@@ -454,7 +459,7 @@ class InventoryShelfTests(unittest.TestCase):
                 violations = []
                 page.on('console', lambda m: violations.append(m.text) if 'Content Security Policy' in m.text else None)
                 try:
-                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    self.wait_shop(page)
                     page.click('#stock-open')
                     expect(page.locator('#stock-empty')).to_be_visible()
                     self.snap(page, 'empty', width)
@@ -560,7 +565,7 @@ class InventoryShelfTests(unittest.TestCase):
                 page = context.new_page()
                 page.goto(local + '/web', wait_until='domcontentloaded')
                 self.wait_ready(page)
-                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                self.wait_shop(page)
                 parsed = page.evaluate("""() => ({
                     huge: parseLength('99999999999999999999', 'ft').bad === true,
                     tiny: parseLength('0.0000001', 'ft').bad === true,
@@ -607,7 +612,7 @@ class InventoryShelfTests(unittest.TestCase):
         with without_gate_env(), sync_playwright() as playwright:
             browser, context, page = self.page(playwright, 1280)
             try:
-                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                self.wait_shop(page)
                 page.evaluate("""async () => {
                     const real = window.fetch; let release; const gate = new Promise(r => { release = r; });
                     window.fetch = async (...args) => { const answer = await real(...args); if (String(args[0]).endsWith('/api/materials')) await gate; return answer; };
@@ -630,7 +635,7 @@ class InventoryShelfTests(unittest.TestCase):
         with without_gate_env(), sync_playwright() as playwright:
             browser, context, page = self.page(playwright, 1280)
             try:
-                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                self.wait_shop(page)
                 shown = page.evaluate("""async () => {
                     const real = window.fetch; let release; const gate = new Promise(r => { release = r; });
                     let first = true;
@@ -677,7 +682,7 @@ class InventoryShelfTests(unittest.TestCase):
                     self.fresh()
                 browser, context, page = self.page(playwright, width)
                 try:
-                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    self.wait_shop(page)
                     self.save_rolls(page, rolls[:3])
                     page.click('#stock-open')
                     expect(page.locator('.stock-slot')).to_have_count(3)
@@ -776,7 +781,7 @@ class InventoryShelfTests(unittest.TestCase):
                     self.fresh()
                 browser, context, page = self.page(playwright, width)
                 try:
-                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    self.wait_shop(page)
                     cases = page.evaluate("""() => [inventoryPanel.shortName('Gloss vinyl 54 in', 54), inventoryPanel.shortName('Banner 64', 64), inventoryPanel.shortName('Clear laminate', 54),
                         inventoryPanel.shortName('Vinyl - 54"', 54), inventoryPanel.shortName('Gloss vinyl 54 in', 30), inventoryPanel.shortName('54 in', 54), inventoryPanel.shortName('Film 51.5 in', 51.5)]""")
                     self.assertEqual(cases, ['Gloss vinyl', 'Banner', 'Clear laminate', 'Vinyl', 'Gloss vinyl 54 in', '54 in', 'Film'])
@@ -839,7 +844,7 @@ class InventoryShelfTests(unittest.TestCase):
         with without_gate_env(), sync_playwright() as playwright:
             browser, context, page = self.page(playwright, 1280)
             try:
-                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                self.wait_shop(page)
                 shown = page.evaluate("""async () => {
                     const real = window.fetch;
                     // The save takes 600 ms to reach the server; a refresh started after it answers first.
@@ -869,7 +874,7 @@ class InventoryShelfTests(unittest.TestCase):
                     self.fresh()
                 browser, context, page = self.page(playwright, width)
                 try:
-                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    self.wait_shop(page)
                     self.save_rolls(page, [['material-a', roll('Gloss vinyl 54 in', left='600', **{'roll-length': '1800'})]])
                     page.click('#stock-open')
                     page.locator('.stock-slot').first.click()
