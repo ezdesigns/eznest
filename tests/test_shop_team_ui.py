@@ -28,6 +28,9 @@ class ShopTeamBrowserTests(unittest.TestCase):
                     page.goto(self.fixture.url()+'/web')
                     for step in range(3):
                         expect(page.locator('#tour-progress')).to_have_text(f'Quick tour · {step+1} of 3')
+                        if step == 0:
+                            page.wait_for_function("() => {const img=document.querySelector('.tour-illustration'); return img && img.complete && img.naturalWidth>0;}")
+                            self.assertTrue(page.locator('.tour-illustration').get_attribute('src').startswith('/onboarding-'))
                         page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'walkthrough-{step+1}-{width}.png'))
                         if step<2:page.click('#tour-next')
                     page.click('#tour-back');expect(page.locator('#tour-progress')).to_contain_text('2 of 3')
@@ -60,7 +63,8 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 expect(page.get_by_role('heading', name='Thanks for downloading Ez Nest.')).to_be_visible()
                 page.click('#tour-next'); page.click('#tour-next')
                 expect(page.locator('#tour-output-link')).to_have_attribute('href','https://output.jeezlabs.io/')
-                page.get_by_role('button',name='Set up my shop',exact=True).click()
+                page.click('#tour-next'); self.fixture.wait_ready(page)
+                page.click('#shop-team-open')
                 expect(page.get_by_role('button', name='Create a shop', exact=True)).to_have_count(0)
                 page.locator('#team-create').click()
                 self.assertFalse(shop_members.configured(server.WORK))

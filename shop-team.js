@@ -54,38 +54,26 @@ window.EZNShop = (() => {
   }
   function endTour() { rememberTour(); touring = false; finish(); }
   function tour(step = 0) {
-    const titles = [['Thanks for downloading', 'Ez Nest.'], ['Here’s how', 'it works.'], ['Meet OUTPUT.', 'Say yes to more jobs.']];
+    const titles = [['Thanks for downloading', 'Ez Nest.'], ['How it works.', ''], ['Meet', 'OUTPUT.']];
     reset(''); touring = true; dialog.classList.add('team-walkthrough');
-    node('span', titles[step][0], heading); node('em', titles[step][1], heading);
+    node('span', titles[step][0], heading);
+    if (titles[step][1]) node('em', titles[step][1], heading);
     closeButton.setAttribute('aria-label', 'Close walkthrough');
     const brand = node('div', '', null); brand.className = 'tour-brand-row';
-    node('strong', step === 2 ? 'OUTPUT' : 'eznest', brand);
     const progress = node('span', `Quick tour · ${step + 1} of 3`, brand); progress.id = 'tour-progress';
     dialog.insertBefore(brand, heading);
-    const rail = node('ol', '', content); rail.className = 'tour-rail'; rail.setAttribute('aria-label', 'Walkthrough progress');
-    ['Thanks', 'How it works', 'OUTPUT'].forEach((text, index) => {
-      const item = node('li', text, rail); if (index === step) item.setAttribute('aria-current', 'step');
-    });
+    function illustration(src, alt) {
+      const image = node('img', '', content); image.className = 'tour-illustration'; image.src = src; image.alt = alt;
+      image.width = 600; image.height = 340;
+    }
     if (step === 0) {
-      node('p', 'We built Ez Nest to help print shops fit more on a roll and waste less material. It’s free, and we’re glad you’re here.', content).className = 'tour-lead';
-      const visual = node('div', '', content); visual.className = 'tour-roll'; visual.setAttribute('aria-hidden', 'true');
-      for (let i = 0; i < 6; i++) node('span', '', visual);
-      node('p', 'Your artwork. A tighter layout. More room for the next job.', content).className = 'tour-caption';
+      node('p', 'Free nesting. Less wasted material.', content).className = 'tour-lead';
+      illustration('/onboarding-nest.webp', 'Illustration of shapes nested on a roll of material.');
     } else if (step === 1) {
-      node('p', 'From your print-ready file to a layout you can review and save.', content).className = 'tour-lead';
       const steps = node('ol', '', content); steps.className = 'tour-steps';
-      for (const [title, text] of [
-        ['Upload your file', 'Add a PDF, SVG, or PDF-compatible Illustrator file.'],
-        ['Choose your material', 'Pick the roll you plan to use. Add rolls in Inventory.'],
-        ['Nest, review, save', 'Check the pieces and cut lines, then save your print file.']
-      ]) { const item = node('li', '', steps); node('strong', title, item); node('span', text, item); }
-      node('p', 'Printing with a team? Set up your shop to keep everyone’s material stock together.', content).className = 'tour-caption';
+      for (const title of ['Upload your print file.', 'Choose your material.', 'Nest, review, and save.']) node('li', title, steps);
     } else {
-      node('p', 'Ez Nest helps you make the most of your roll. We’re also building OUTPUT—a network to help you take on more work.', content).className = 'tour-lead';
-      const cards = node('div', '', content); cards.className = 'tour-output-cards';
-      for (const [title, text] of [['Send work out', 'Explore partner shops while keeping your customer.'], ['Bring work in', 'Put spare machine time to work for other shops.']]) {
-        const card = node('div', '', cards); node('span', title === 'Send work out' ? '↗' : '↙', card).className = 'tour-direction'; node('strong', title, card); node('p', text, card);
-      }
+      node('p', 'We’re building a network for print shops to send work out and bring work in.', content).className = 'tour-lead';
       const link = node('a', 'Explore OUTPUT ↗', content); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
     }
     const actions = node('div', '', content); actions.className = 'tour-actions';
@@ -93,7 +81,6 @@ window.EZNShop = (() => {
     if (step < 2) { const skip = button('Skip tour', endTour, actions); skip.className = 'team-text-button tour-skip'; actions.prepend(skip); }
     button(step === 2 ? 'Start nesting' : 'Next', () => step === 2 ? endTour() : tour(step + 1), actions, step !== 2).id = 'tour-next';
     if (step === 2) actions.append(document.getElementById('tour-output-link'));
-    if (step === 2 && session.localPC && !session.shopIdentity?.created) button('Set up my shop', () => { rememberTour(); welcome(); }).className = 'team-text-button';
     heading.tabIndex = -1; heading.focus({preventScroll:true}); dialog.scrollTop = 0;
   }
   function showTour() {

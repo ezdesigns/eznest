@@ -19,37 +19,22 @@
 #shop-team-dialog .team-output-intro h3 { margin:0 0 8px; color:#182136; font-size:17px; }
 #shop-team-dialog .team-output-intro p { font-size:13px; line-height:1.65; }
 #shop-team-dialog .team-output-intro a { color:#006cf5; font-size:13px; font-weight:700; text-decoration:none; }
-/* OUTPUT's white, navy and blue visual language, scoped to the welcome tour. */
-#shop-team-dialog.team-walkthrough { width:min(720px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); padding:40px; border-radius:20px; color:#182136; font-family:"OUTPUT Shop","Red Hat Display",Arial,sans-serif; }
-#shop-team-dialog.team-walkthrough::backdrop { background:#18213666; backdrop-filter:blur(4px); }
+/* A quiet welcome: one message per slide, with the site's bundled illustrations. */
+#shop-team-dialog.team-walkthrough { width:min(680px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); padding:36px 40px; border-radius:18px; color:#182136; font-family:"OUTPUT Shop","Red Hat Display",Arial,sans-serif; }
+#shop-team-dialog.team-walkthrough::backdrop { background:#18213655; backdrop-filter:blur(3px); }
 #shop-team-title:focus { outline:none; }
-.tour-brand-row { display:flex; justify-content:space-between; gap:16px; align-items:center; padding-right:24px; margin-bottom:30px; }
-.tour-brand-row strong { font-size:23px; font-weight:800; letter-spacing:-1px; }
-#tour-progress { color:#637083; font-size:11px; white-space:nowrap; }
-#shop-team-dialog.team-walkthrough h2 { font-size:clamp(32px,5vw,48px); line-height:1.05; letter-spacing:-1.8px; font-weight:800; margin:0 0 24px; }
+.tour-brand-row { margin-bottom:20px; padding-right:24px; }
+#tour-progress { color:#637083; font-size:11px; }
+#shop-team-dialog.team-walkthrough h2 { font-size:clamp(30px,4vw,40px); line-height:1.1; letter-spacing:-1.2px; font-weight:750; margin:0 0 14px; }
 .team-walkthrough h2 span,.team-walkthrough h2 em { display:block; }
 .team-walkthrough h2 em { color:#006cf5; font-style:normal; }
-.tour-rail { display:flex; list-style:none; padding:0; gap:12px; margin:0 0 24px; }
-.tour-rail li { flex:1; border-top:3px solid #e5e9ee; padding-top:8px; font-size:11px; color:#637083; }
-.tour-rail [aria-current=step] { border-color:#006cf5; color:#006cf5; font-weight:700; }
-#shop-team-dialog .tour-lead { font-size:15px; line-height:1.65; margin-bottom:20px; max-width:570px; }
-#shop-team-dialog .tour-caption { font-size:12px; color:#637083; margin:14px 0 0; line-height:1.6; }
-.tour-roll { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; padding:18px; margin:20px 0 0; background:#f3f7fc; border:1px solid #dce6f2; border-radius:14px; }
-.tour-roll span { height:46px; border-radius:8px 22px 8px 8px; background:#006cf5; }
-.tour-roll span:nth-child(2n) { background:#8bb7ec; border-radius:22px 8px 8px 8px; }
-.tour-steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; list-style:none; padding:0; margin:24px 0; counter-reset:tour; }
-.tour-steps li { counter-increment:tour; padding:18px; border:1px solid #dce1dd; border-radius:12px; background:#fafbfa; }
-.tour-steps li::before { content:'0' counter(tour); display:block; font-size:12px; font-weight:700; color:#006cf5; margin-bottom:22px; }
-.tour-steps strong,.tour-steps span { display:block; }
-.tour-steps strong { font-size:14px; }
-.tour-steps span { font-size:12px; line-height:1.6; color:#526173; margin-top:8px; }
-.tour-output-cards { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:24px 0; }
-.tour-output-cards > div { padding:20px; background:#fafbfa; border:1px solid #dce1dd; border-radius:12px; }
-.tour-output-cards strong { display:block; font-size:15px; }
-.tour-direction { display:grid; place-items:center; width:34px; height:34px; border-radius:9px; background:#edf4ff; color:#006cf5; font-size:25px; margin-bottom:16px; }
-.tour-output-cards > div:last-child .tour-direction { background:#eaf5ed; color:#28704b; }
-#shop-team-dialog .tour-output-cards p { font-size:13px; line-height:1.6; margin:8px 0 0; }
-.tour-actions { display:flex; justify-content:flex-end; align-items:center; gap:10px; border-top:1px solid #e5e9ee; padding-top:20px; margin-top:24px; }
+#shop-team-dialog .tour-lead { font-size:15px; line-height:1.6; margin:0 0 22px; max-width:520px; }
+.tour-illustration { display:block; width:100%; height:auto; max-height:250px; object-fit:contain; border-radius:12px; background:#f7f7f2; }
+.tour-steps { list-style:none; padding:0; margin:30px 0; counter-reset:tour; }
+.tour-steps li { counter-increment:tour; display:flex; align-items:center; gap:18px; padding:18px 0; font-size:17px; border-bottom:1px solid #e8ebee; }
+.tour-steps li:last-child { border-bottom:0; }
+.tour-steps li::before { content:'0' counter(tour); color:#006cf5; font-size:12px; font-weight:700; }
+.tour-actions { display:flex; justify-content:flex-end; align-items:center; gap:10px; margin-top:28px; }
 #shop-team-dialog .tour-actions button { margin:0; min-height:44px; padding:10px 16px; font-size:13px; font-weight:700; }
 #shop-team-dialog .tour-actions button.primary { background:#006cf5; border-color:#006cf5; }
 #shop-team-dialog .tour-actions .tour-skip { margin-right:auto; font-weight:400; padding-left:0; }
@@ -59,16 +44,10 @@
 #tour-output-link:hover { background:#0056c8; }
 @media(max-width:540px) {
  #shop-team-dialog.team-walkthrough { padding:24px; }
- .tour-brand-row { margin-bottom:24px; gap:8px; }
- #shop-team-dialog.team-walkthrough h2 { font-size:34px; letter-spacing:-1.2px; }
- .tour-steps,.tour-output-cards { grid-template-columns:1fr; }
- .tour-steps li { display:grid; grid-template-columns:24px 1fr; gap:0 12px; padding:14px; }
- .tour-steps li::before { grid-row:1 / 3; margin:0; }
- .tour-steps span { grid-column:2; margin-top:4px; }
- .tour-output-cards > div { padding:16px; }
- .tour-direction { margin-bottom:12px; }
+ #shop-team-dialog.team-walkthrough h2 { font-size:30px; }
+ .tour-illustration { max-height:200px; }
  .tour-actions { flex-wrap:wrap; gap:8px; }
- .tour-actions:has(#tour-output-link) #tour-back { flex-basis:100%; text-align:left; border:0; padding-left:0; min-height:32px; }
+ .tour-actions:has(#tour-output-link) #tour-back { flex-basis:100%; text-align:left; border:0; padding-left:0; min-height:28px; }
  .tour-actions:has(#tour-output-link) #tour-next,.tour-actions #tour-output-link { flex:1; }
 }
 @media (max-width: 720px) {

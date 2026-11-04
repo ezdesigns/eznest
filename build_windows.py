@@ -13,6 +13,7 @@ import sys
 
 ROOT=Path(__file__).resolve().parent
 STATIC=['shop-team.js','shop-team.css','app-theme.css','inventory-panel.css','material-profile.js','inventory-panel.js','queue-inventory.js','production.html','queue.css','queue-app.js','queue-core.js','production-features.js','layout-comparison.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','CHANGELOG.md','app.js','style.css','web.html','web.css','web.js','tester-results.js']
+STATIC += ['onboarding-nest.webp', 'LICENSE-colorfigures.txt']
 INNO_SETUP_URL='https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe'
 
 def pinned_distribution(name, version):
