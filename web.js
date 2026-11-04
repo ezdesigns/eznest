@@ -2450,6 +2450,7 @@ let hostComputer = false;
 let lastCheckInText = '';
 function renderOutputSharing(info) {
   outputSharing = info;
+  $('output-settings').dataset.configured = String(!!info.configured);
   const source = info.connection;
   const paired = source === 'paired';
   const launch = source === 'environment' || source === 'environment-invalid';

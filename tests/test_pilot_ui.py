@@ -227,6 +227,8 @@ class PilotUiTests(unittest.TestCase):
                     page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'settings-accessible-{width}-{height}.png'))
                     page.click('#save-settings')
                     page.click('#output-settings-open')
+                    expect(page.locator('#telemetry-enable')).to_be_hidden()
+                    expect(page.locator('#telemetry-stop')).to_be_hidden()
                     page.locator('.privacy-details').evaluate('n=>n.open=true')
                     page.locator('#output-url').scroll_into_view_if_needed()
                     self.assert_inside(page,'#output-url','#output-settings')

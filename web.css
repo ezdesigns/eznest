@@ -776,6 +776,11 @@ body[data-step="sent"] #inventory-open { display: block; }
 #output-settings .setting-field.check { display:flex; align-items:flex-start; gap:8px; }
 #output-settings .setting-field.check input { margin-top:3px; }
 #output-settings-back { margin-top:20px; }
+#output-settings button:not(.link):not(.dialog-close) { padding:10px 14px; border:1px solid #dce1e6; border-radius:8px; background:#f7f8fa; font-size:13px; margin:4px 6px 4px 0; }
+#output-settings button.primary { background:#006cf5; border-color:#006cf5; color:#fff; }
+#output-settings button:disabled { opacity:.5; cursor:default; }
+#output-settings #telemetry-status { font-size:13px; line-height:1.6; color:#526173; margin:12px 0; }
+#output-settings:not([data-configured="true"]) :is(.setting-field:has(#telemetry-agree),#telemetry-enable,#telemetry-stop) { display:none; }
 #settings .version-row { flex-wrap:wrap; }
 #settings .settings-section { min-width:0; overflow-wrap:anywhere; }
 .settings-summary-note { display:block; margin-top:4px; font-size:12px; font-weight:400; color:var(--muted); }
