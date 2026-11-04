@@ -26,9 +26,9 @@
 .tour-roll span { height:50px; border-radius:10px 22px 10px 10px; background:#006cf5; }
 .tour-roll span:nth-child(2n) { background:#78afea; border-radius:22px 10px 10px 10px; }
 .tour-steps { list-style:none; counter-reset:welcome-step; padding:0; margin:20px 0; }
-.tour-steps li { counter-increment:welcome-step; display:grid; grid-template-columns:16px 22px minmax(0,1fr); align-items:center; gap:10px; margin:10px 0; line-height:1.5; }
+.tour-steps li { counter-increment:welcome-step; display:grid; grid-template-columns:16px 36px minmax(0,1fr); align-items:center; gap:10px; margin:10px 0; line-height:1.5; }
 .tour-steps li::before { content:counter(welcome-step) '.'; }
-.tour-steps svg { width:22px; height:22px; fill:none; stroke:#0875ed; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.tour-steps img { display:block; width:36px; height:36px; object-fit:contain; }
 .tour-steps strong,.tour-steps span { display:block; }
 .tour-steps span { font-size:15px; color:inherit; }
 .tour-output-cards { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:20px 0; }
@@ -46,5 +46,7 @@
 }
 
 .tour-output-pitch { border-top:1px solid #e5e9ee; padding-top:18px; margin-top:20px; }
-.tour-output-pitch h3 { display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:18px; }
+.tour-output-pitch h3 { display:flex; align-items:flex-start; gap:8px; margin:0 0 8px; font-size:18px; }
 #shop-team-dialog .tour-output-pitch p { font-size:14px; margin-bottom:10px; }
+
+.tour-output-pitch h3 > span:first-child { flex-shrink:0; }

@@ -1,8 +1,7 @@
 # Onboarding visuals
 
-## Restored walkthrough
-
-The active walkthrough is restored to commit `f141581` at the owner's request. The later OUTPUT-style artwork and motion documented below are retained in the repository for reference, but are no longer displayed, served, or packaged in this restored version. The active welcome is a single popup with three usage steps and a short OUTPUT introduction; it has no slideshow or decorative artwork. The intent-specific Don't print popup is unchanged.
+## Current welcome
+The single welcome popup uses OUTPUT's actual upload, stickers and file artwork as compact step icons. These three WebP files are served and packaged locally; no connection or remote image request is needed. Their source URLs are documented below. The prior slideshow, video and other illustrations remain inactive reference assets. The separate Don't print popup is unchanged.
 
 ## Retained design references
 

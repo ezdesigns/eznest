@@ -30,6 +30,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
                     expect(page.locator('#tour-progress')).to_have_count(0)
                     expect(page.locator('#tour-back')).to_have_count(0)
                     expect(page.locator('.tour-steps li')).to_have_count(3)
+                    page.wait_for_function("() => [...document.querySelectorAll('.tour-steps img')].length === 3 && [...document.querySelectorAll('.tour-steps img')].every(n => n.complete && n.naturalWidth > 0)")
                     expect(page.locator('#tour-output-link')).to_have_attribute('href','https://output.jeezlabs.io/')
                     page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'single-welcome-{width}.png'))
                     page.click('#tour-next');self.fixture.wait_ready(page)
