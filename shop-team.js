@@ -76,6 +76,11 @@ window.EZNShop = (() => {
     button('Not now', () => { try { localStorage.setItem('eznest-shop-welcome-dismissed', '1'); } catch {} finish(); }).className = 'team-text-button';
     const existing = node('div', '', content); existing.className = 'team-existing';
     button('Already have a shop on another PC?', joinAddress, existing).className = 'team-text-button';
+    const intro = node('section', '', content); intro.className = 'team-output-intro';
+    node('h3', 'Free nesting. More possibilities.', intro);
+    node('p', 'Thanks for trying Ez Nest, our free nesting tool. We’re also building OUTPUT — a network to help you take on jobs beyond your equipment or capacity, and put spare machine time to work.', intro);
+    const explore = node('a', 'Explore OUTPUT ↗', intro); explore.id = 'team-output-explore';
+    explore.href = 'https://output.jeezlabs.io/'; explore.target = '_blank'; explore.rel = 'noopener noreferrer'; explore.referrerPolicy = 'no-referrer';
     name.focus();
   }
   function joinAddress() {

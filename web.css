@@ -738,13 +738,18 @@ body[data-step="sent"] #inventory-open { display: block; }
 @media(max-width:540px) { .shop-update-notice { left:12px; bottom:76px; max-width:calc(100vw - 24px); flex-wrap:wrap; } }
 
 /* Each dialog owns one scroll surface. Long forms must not be clipped by flex children. */
-#settings, #material-dialog { max-height:calc(100dvh - 32px); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+#settings, #material-dialog { max-height:calc(100dvh - 32px); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:auto; }
 #settings { height:auto; overflow-y:auto; overflow-x:hidden; padding:24px; }
 #settings .panel { display:block; height:auto; min-height:0; overflow:visible; }
 #settings .settings-scroll { overflow:visible; padding:6px 0 18px; }
 #settings .settings-save { position:static; padding:14px 0 0; margin:0; }
 #settings :is(input,select) { min-width:0; max-width:100%; }
 #settings :is(button,input,select):focus-visible { outline-offset:0; }
+#settings-title:focus { outline:none; }
+#settings, #stock, #material-dialog { scrollbar-width:thin; scrollbar-color:#a3afbc transparent; touch-action:pan-y; }
+#settings::-webkit-scrollbar, #stock::-webkit-scrollbar, #material-dialog::-webkit-scrollbar { width:8px; }
+#settings::-webkit-scrollbar-thumb, #stock::-webkit-scrollbar-thumb, #material-dialog::-webkit-scrollbar-thumb { background:#a3afbc; border:2px solid #fff; border-radius:8px; }
+#settings :is(input,select):focus { outline:2px solid #006cf5; outline-offset:0; }
 #settings .setting-heading { min-width:0; }
 #settings .setting-heading button { white-space:normal; text-align:left; }
 #settings .setting-field.check { display:flex; align-items:flex-start; gap:10px; }
@@ -771,17 +776,22 @@ body[data-step="sent"] #inventory-open { display: block; }
 .top-actions #shop-team-open svg { flex:none; }
 .top-actions #shop-team-open span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
-#output-promo-dismissed { display:flex; align-items:center; flex-wrap:wrap; gap:10px 16px; width:min(760px, calc(100% - 32px)); margin:12px auto 0; padding:10px 14px; border:1px solid #e3e8ee; border-radius:10px; font-size:12px; color:var(--muted); background:#fff; }
-.output-mini-name { color:#182136; font-weight:700; letter-spacing:.02em; }
-#output-promo-reopen { margin-left:auto; border:0; background:transparent; padding:6px 0; color:#006cf5; font-size:12px; font-weight:700; }
-#output-promo-hide { border:0; background:transparent; font-size:22px; color:#637083; padding:0 6px; min-width:32px; min-height:32px; }
+#output-promo-dismissed { position:relative; width:min(900px, calc(100% - 48px)); margin:24px auto 100px; padding:28px 60px 28px 28px; border:1px solid #dce6f2; border-radius:16px; color:#526173; background:linear-gradient(120deg,#fff,#f2f7ff); }
+.output-thanks-kicker { font-size:10px; letter-spacing:.12em; font-weight:700; color:#617082; }
+.output-thanks h2 { color:#182136; font-size:24px; letter-spacing:-.6px; margin:8px 0 12px; }
+.output-thanks p { max-width:680px; font-size:14px; line-height:1.65; }
+.output-thanks .output-thanks-kicker { font-size:10px; }
+.output-thanks-benefit { margin-top:10px; }
+#output-promo-reopen { display:inline-flex; gap:18px; margin-top:18px; border:0; border-radius:8px; background:#006cf5; padding:11px 16px; color:#fff; font-size:13px; font-weight:700; text-decoration:none; }
+#output-promo-hide { position:absolute; top:14px; right:14px; border:0; background:transparent; font-size:22px; color:#637083; padding:0; width:32px; height:32px; }
 @media(max-width:540px) {
   #settings { padding:20px; }
   #settings .fields { grid-template-columns:minmax(0,1fr); }
   #settings .setting-field.wide:has(#browse-output) { grid-template-columns:minmax(0,1fr); }
   #settings #browse-output { justify-self:start; padding:6px 0; }
   #settings .dialog-heading .hint { font-size:12px; }
-  .output-mini-copy { display:none; }
+  #output-promo-dismissed { width:calc(100% - 32px); padding:24px; }
+  .output-thanks-kicker { padding-right:22px; }
 }
 .top-actions #output-link { order:4; }
 .output-brand { --output-blue:#006cf5; --output-ink:#182136; color:var(--output-ink); background:#fff; }

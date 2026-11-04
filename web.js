@@ -3128,7 +3128,8 @@ function closeSettingsFolds() {
 }
 
 function syncWelcome() {
-  $('feedback-welcome').hidden = !!prefs().feedbackWelcomed || kits.length > 0 || !!current;
+  // The inline introduction replaces the floating welcome bubble.
+  $('feedback-welcome').hidden = true;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -3151,7 +3152,8 @@ document.addEventListener('DOMContentLoaded', () => {
   $('settings-open').addEventListener('click', () => {
     const dialog = $('settings');
     if (!dialog.open) dialog.showModal();
-    $('hot-folder').focus();
+    dialog.scrollTop = 0;
+    $('settings-title').focus({preventScroll:true});
     refreshStockPreview();
   });
   $('settings-stock-share').addEventListener('toggle', () => { if ($('settings-stock-share').open) refreshStockPreview(); });
@@ -3693,7 +3695,6 @@ async function disconnectOutputLink() {
 $('output-link-connect').addEventListener('click', openOutputLinkForm);
 $('output-link-reconnect').addEventListener('click', openOutputLinkForm);
 $('output-required-code').addEventListener('click', openOutputLinkForm);
-$('output-promo-reopen').addEventListener('click', openOutputLinkForm);
 $('output-promo-hide').addEventListener('click', () => {
   outputCompactHidden = true;
   try { localStorage.setItem('eznest-output-compact-hidden-until', String(Date.now() + 24 * 60 * 60 * 1000)); } catch {}
@@ -3706,7 +3707,8 @@ $('output-required-skip').addEventListener('click', () => {
     localStorage.setItem('eznest-output-snooze-until', String(Date.now() + 24 * 60 * 60 * 1000));
   } catch { /* Dismissal still lasts for this visit if browser storage is blocked. */ }
   showOutputRequired(true);
-  if (!$('output-promo-dismissed').hidden) $('output-promo-reopen').focus();
+  // Do not move focus or scroll away from the current job to the footer.
+  $('settings-open').focus({preventScroll:true});
 });
 $('output-link-cancel').addEventListener('click', closeOutputLinkForm);
 $('output-link-form').addEventListener('submit', submitOutputLink);

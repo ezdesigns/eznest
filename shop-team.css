@@ -15,6 +15,10 @@
 #shop-team-dialog .team-text-button { border: 0; background: transparent; color: #526173; padding: 10px 0; text-decoration: underline; text-underline-offset: 3px; }
 #shop-team-dialog .team-existing { margin-top: 16px; border-top: 1px solid #e5e9ee; }
 #shop-team-dialog .team-existing button { margin-bottom: 0; font-size: 13px; }
+#shop-team-dialog .team-output-intro { border-top:1px solid #e5e9ee; padding-top:20px; margin-top:18px; }
+#shop-team-dialog .team-output-intro h3 { margin:0 0 8px; color:#182136; font-size:17px; }
+#shop-team-dialog .team-output-intro p { font-size:13px; line-height:1.65; }
+#shop-team-dialog .team-output-intro a { color:#006cf5; font-size:13px; font-weight:700; text-decoration:none; }
 @media (max-width: 720px) {
   #shop-team-open { max-width: min(150px, 40vw); }
 }

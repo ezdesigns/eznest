@@ -25,6 +25,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
             try:
                 page.goto(self.fixture.url() + '/?view=simple')
                 expect(page.get_by_role('heading', name='Welcome to Ez Nest')).to_be_visible()
+                expect(page.locator('#team-output-explore')).to_have_attribute('href','https://output.jeezlabs.io/')
                 expect(page.get_by_role('button', name='Create a shop', exact=True)).to_have_count(0)
                 page.locator('#team-create').click()
                 self.assertFalse(shop_members.configured(server.WORK))

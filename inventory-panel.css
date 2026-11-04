@@ -87,7 +87,7 @@
 .roll-actions { align-items: center; }
 
 /* One scroll surface for the shelf and roll form, including on short screens. */
-#stock[open] { display: block; max-height:calc(100dvh - 32px); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+#stock[open] { display: block; max-height:calc(100dvh - 32px); overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:auto; }
 #stock .panel { display:block; min-height:0; }
 #stock .panel > .stock-shelf { min-height:calc(var(--rowh) + 12px); overflow:visible; }
 #stock .panel > .stock-shelf:empty { min-height: 0; }
