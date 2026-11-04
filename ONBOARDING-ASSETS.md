@@ -1,5 +1,11 @@
 # Onboarding visuals
 
+## Restored walkthrough
+
+The active walkthrough is restored to commit `f141581` at the owner's request. The later OUTPUT-style artwork and motion documented below are retained in the repository for reference, but are no longer displayed, served, or packaged in this restored version. The original three-slide welcome and intent-specific Don't print popup are active.
+
+## Retained design references
+
 Bundled locally; onboarding makes no requests to the marketing sites.
 
 The current welcome uses OUTPUT's actual computer, file, stickers and upload illustrations, with its original `ComputerIllustration` screen geometry. The first scene uses the site's stepped file-transfer and green receipt treatment, settles in 3.6 seconds and respects reduced motion. No visible playback bar. Type, color, hero spacing, highlighted job labels, white illustration stage, step layout and button treatment adapt `apps/web/app/experience/landing.module.css`; motion adapts `machine-illustration.module.css` (ezdesigns/output main, read 2026-11-04). The earlier custom roll drawing and custom icons are no longer used. OUTPUT examples retain compact accessible controls beside previous/next arrows.

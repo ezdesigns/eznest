@@ -28,18 +28,6 @@ class ShopTeamBrowserTests(unittest.TestCase):
                     page.goto(self.fixture.url()+'/web')
                     for step in range(3):
                         expect(page.locator('#tour-progress')).to_have_text(f'Quick tour · {step+1} of 3')
-                        if step == 0:
-                            expect(page.locator('.tour-nesting-drawing')).to_be_visible()
-                            page.wait_for_function("() => [...document.querySelectorAll('.tour-nest-piece')].every(n=>n.getAnimations().every(a=>a.playState==='finished'))")
-                            expect(page.get_by_text('Illustrated example',exact=True)).to_have_count(0)
-                            expect(page.get_by_role('button',name='Pause animation')).to_have_count(0)
-                        if step == 1:
-                            expect(page.locator('.tour-step-icon')).to_have_count(3)
-                            page.wait_for_function("() => [...document.querySelectorAll('.tour-step-icon')].every(i=>i.complete && i.naturalWidth>0)")
-                            if width==1280:
-                                self.assertGreater(page.locator('#shop-team-title em').bounding_box()['x'],page.locator('#shop-team-title span').bounding_box()['x'])
-                        if step == 2:
-                            page.wait_for_function("() => [...document.querySelectorAll('.tour-network img')].every(i=>i.complete && i.naturalWidth>0)")
                         page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'walkthrough-{step+1}-{width}.png'))
                         if step<2:page.click('#tour-next')
                     page.click('#tour-back');expect(page.locator('#tour-progress')).to_contain_text('2 of 3')
@@ -62,57 +50,6 @@ class ShopTeamBrowserTests(unittest.TestCase):
                     page.close()
             finally:browser.close()
 
-    def test_reduced_motion_and_leaving_slide_stop_animation(self):
-        from playwright.sync_api import sync_playwright, expect
-        with sync_playwright() as pw:
-            browser=test_web_mvp.launch_browser(pw)
-            try:
-                page=browser.new_page(reduced_motion='reduce')
-                external=[]
-                page.on('request',lambda r:external.append(r.url) if not r.url.startswith(self.fixture.url()) else None)
-                page.goto(self.fixture.url()+'/?tour=1')
-                expect(page.locator('.tour-nesting-drawing')).to_have_attribute('data-running','false')
-                self.assertEqual(page.locator('.tour-nest-piece').first.evaluate('n=>getComputedStyle(n).animationName'),'none')
-                page.evaluate('() => {window.tourDrawing=document.querySelector(".tour-nesting-drawing");}')
-                page.click('#tour-next')
-                self.assertEqual(page.evaluate('() => window.tourDrawing.dataset.running'),'false')
-                page.click('#tour-next')
-                expect(page.locator('.tour-network')).to_have_attribute('data-running','false')
-                page.keyboard.press('Escape')
-                self.assertFalse(external)
-            finally:browser.close()
-
-    def test_output_stories_cycle_pause_and_cleanup(self):
-        from playwright.sync_api import sync_playwright, expect
-        with sync_playwright() as pw:
-            browser=test_web_mvp.launch_browser(pw)
-            try:
-                page=browser.new_page(viewport={'width':390,'height':600})
-                page.goto(self.fixture.url()+'/?tour=1')
-                page.click('#tour-next');page.click('#tour-next')
-                page.clock.install()
-                page.get_by_role('button',name='Pause examples').click()
-                page.get_by_role('button',name='Play examples').click()
-                page.clock.run_for(10900)
-                expect(page.locator('.tour-network')).to_have_attribute('data-example','1')
-                page.get_by_role('button',name='Pause examples').click()
-                page.clock.run_for(20000)
-                expect(page.locator('.tour-network')).to_have_attribute('data-example','1')
-                for index in [2,3,4,5,0]:
-                    page.get_by_role('button',name='Next example').click()
-                    expect(page.locator('.tour-network')).to_have_attribute('data-example',str(index))
-                    page.wait_for_function("() => [...document.querySelectorAll('.tour-network img,.tour-story-brief img')].every(i=>i.complete && i.naturalWidth>0)")
-                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'output-story-{index}-390.png'))
-                page.get_by_role('button',name='Previous example').click()
-                expect(page.locator('#tour-story-job')).to_have_text('100 printed T-shirts')
-                page.get_by_role('button',name='Play examples').click()
-                page.evaluate("() => {window.oldStory=document.querySelector('.tour-network');}")
-                page.keyboard.press('Escape')
-                page.clock.run_for(30000)
-                self.assertEqual(page.evaluate('() => window.oldStory.dataset.example'),'5')
-                self.assertEqual(page.evaluate('() => window.oldStory.dataset.running'),'false')
-            finally:browser.close()
-
     def test_first_run_create_shop_and_return_to_materials(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as pw:
@@ -120,11 +57,10 @@ class ShopTeamBrowserTests(unittest.TestCase):
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             try:
                 page.goto(self.fixture.url() + '/?view=simple')
-                expect(page.get_by_role('heading', name='Thanks for downloading Ez Nest.')).to_be_visible()
+                expect(page.get_by_role('heading', name='Welcome to Ez Nest')).to_be_visible()
                 page.click('#tour-next'); page.click('#tour-next')
                 expect(page.locator('#tour-output-link')).to_have_attribute('href','https://output.jeezlabs.io/')
-                page.click('#tour-next'); self.fixture.wait_ready(page)
-                page.click('#shop-team-open')
+                page.get_by_role('button',name='Set up my shop',exact=True).click()
                 expect(page.get_by_role('button', name='Create a shop', exact=True)).to_have_count(0)
                 page.locator('#team-create').click()
                 self.assertFalse(shop_members.configured(server.WORK))
@@ -153,7 +89,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             try:
                 page.goto(self.fixture.url() + '/?view=full')
-                expect(page.get_by_role('heading', name='Thanks for downloading Ez Nest.')).to_be_visible()
+                expect(page.get_by_role('heading', name='Welcome to Ez Nest')).to_be_visible()
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-welcome.png'))
                 page.get_by_role('button', name='Skip tour').click()
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()
