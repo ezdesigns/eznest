@@ -26,7 +26,7 @@
 .tour-roll span { height:50px; border-radius:10px 22px 10px 10px; background:#006cf5; }
 .tour-roll span:nth-child(2n) { background:#78afea; border-radius:22px 10px 10px 10px; }
 .tour-steps { padding-left:24px; margin:20px 0; }
-.tour-steps li { margin:18px 0; padding-left:6px; }
+.tour-steps li { margin:10px 0; padding-left:6px; }
 .tour-steps strong,.tour-steps span { display:block; }
 .tour-steps span { font-size:13px; color:#526173; margin-top:4px; }
 .tour-output-cards { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:20px 0; }
@@ -39,3 +39,7 @@
 @media (max-width: 720px) {
   #shop-team-open { max-width: min(150px, 40vw); }
 }
+
+.tour-output-pitch { border-top:1px solid #e5e9ee; padding-top:18px; margin-top:20px; }
+.tour-output-pitch h3 { margin:0 0 8px; font-size:18px; }
+#shop-team-dialog .tour-output-pitch p { font-size:14px; margin-bottom:10px; }

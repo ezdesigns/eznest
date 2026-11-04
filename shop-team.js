@@ -52,21 +52,18 @@ window.EZNShop = (() => {
     try { localStorage.setItem('eznest-tour-seen', '1'); localStorage.setItem('eznest-shop-welcome-dismissed', '1'); } catch {}
   }
   function endTour() { rememberTour(); touring = false; finish(); }
-  function tour(step = 0) {
-    const titles = ['Ready to waste less and make more?', 'Three simple steps', 'Meet OUTPUT'];
-    reset(titles[step]); touring = true; dialog.classList.add('team-walkthrough');
-    closeButton.setAttribute('aria-label', 'Close walkthrough');
-    const progress = node('p', `${step + 1} of 3`, content); progress.className = 'tour-progress'; progress.id = 'tour-progress';
-    if (step === 1) {
-      const steps = node('ol', '', content); steps.className = 'tour-steps';
-      for (const title of ['Upload your print file', 'Choose your material', 'Nest, review and save']) node('li', title, steps);
-    } else if (step === 2) {
-      node('p', 'OUTPUT is our next product: a network to find print partners and bring more work to your shop. You keep your customers.', content);
-      const link = node('a', 'Explore OUTPUT ↗', content); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
-    }
+  function tour() {
+    reset('Thanks for downloading Ez Nest'); touring = true; dialog.classList.add('team-walkthrough');
+    closeButton.setAttribute('aria-label', 'Close welcome');
+    node('strong', 'Use less. Save more.', content);
+    const steps = node('ol', '', content); steps.className = 'tour-steps';
+    for (const title of ['Upload your print file', 'Choose your material', 'Nest, review and save']) node('li', title, steps);
+    const pitch = node('section', '', content); pitch.className = 'tour-output-pitch';
+    node('h3', 'Want to earn more?', pitch);
+    node('p', 'Meet OUTPUT, our upcoming print-shop network. Find print partners. Take on more jobs. Keep your customers.', pitch);
+    const link = node('a', 'Check out OUTPUT ↗', pitch); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
     const actions = node('div', '', content); actions.className = 'tour-actions';
-    if (step > 0) button('Back', () => tour(step - 1), actions).id = 'tour-back';
-    button(step === 2 ? 'Start nesting' : step === 0 ? 'Show me how' : 'Next', () => step === 2 ? endTour() : tour(step + 1), actions, true).id = 'tour-next';
+    button('Start nesting', endTour, actions, true).id = 'tour-next';
     heading.tabIndex = -1; heading.focus({preventScroll:true}); dialog.scrollTop = 0;
   }
   function showTour() {

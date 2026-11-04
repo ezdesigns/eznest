@@ -25,7 +25,7 @@ class PilotUiTests(unittest.TestCase):
                 page = browser.new_page()
                 page.goto(self.fixture.url() + '/web')
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS/'welcome-output-intro.png'))
-                page.get_by_role('button', name='Skip tour', exact=True).click()
+                page.get_by_role('button', name='Close welcome', exact=True).click()
                 self.fixture.wait_ready(page)
                 expect(page.locator('#setup')).to_be_hidden()
                 expect(page.locator('#drop')).to_be_visible()
