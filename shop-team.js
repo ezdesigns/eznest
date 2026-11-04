@@ -58,19 +58,18 @@ window.EZNShop = (() => {
     closeButton.setAttribute('aria-label', 'Close walkthrough');
     const progress = node('p', `Quick tour · ${step + 1} of 3`, content); progress.className = 'tour-progress'; progress.id = 'tour-progress';
     if (step === 0) {
-      node('p', 'Free nesting for print shops. Fit more on your roll. Waste less material.', content);
+      node('p', 'Waste less on your roll. Make more.', content);
     } else if (step === 1) {
       const steps = node('ol', '', content); steps.className = 'tour-steps';
       for (const title of ['Upload your print file', 'Choose your material', 'Nest, review and save']) node('li', title, steps);
     } else {
-      node('p', 'Our upcoming print-shop network. Find a print partner. Take on more work. Keep your customer.', content);
+      node('p', 'OUTPUT is our next product: a network to find print partners and bring more work to your shop. You keep your customers.', content);
       const link = node('a', 'Explore OUTPUT ↗', content); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
     }
     const actions = node('div', '', content); actions.className = 'tour-actions';
     if (step > 0) button('Back', () => tour(step - 1), actions).id = 'tour-back';
     button(step === 2 ? 'Start nesting' : 'Next', () => step === 2 ? endTour() : tour(step + 1), actions, true).id = 'tour-next';
-    if (step < 2) button('Skip tour', endTour).className = 'team-text-button';
-    else if (session.localPC && !session.shopIdentity?.created) button('Set up my shop', () => { rememberTour(); welcome(); }).className = 'team-text-button';
+    if (step === 2 && session.localPC && !session.shopIdentity?.created) button('Set up my shop', () => { rememberTour(); welcome(); }).className = 'team-text-button';
     heading.tabIndex = -1; heading.focus({preventScroll:true}); dialog.scrollTop = 0;
   }
   function showTour() {

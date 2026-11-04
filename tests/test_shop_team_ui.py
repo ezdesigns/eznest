@@ -91,7 +91,8 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 page.goto(self.fixture.url() + '/?view=full')
                 expect(page.get_by_role('heading', name='Welcome to Ez Nest')).to_be_visible()
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-welcome.png'))
-                page.get_by_role('button', name='Skip tour').click()
+                expect(page.get_by_role('button', name='Skip tour')).to_have_count(0)
+                page.get_by_role('button', name='Close walkthrough').click()
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()
                 self.assertFalse(shop_members.configured(server.WORK))
             finally:
