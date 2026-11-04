@@ -17,6 +17,39 @@ class ShopTeamBrowserTests(unittest.TestCase):
     def tearDown(self):
         self.fixture.tearDown()
 
+    def test_walkthrough_navigation_remembered_and_replay_without_connecting(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as pw:
+            browser=test_web_mvp.launch_browser(pw)
+            try:
+                for width,height in [(1280,720),(390,600)]:
+                    page=browser.new_page(viewport={'width':width,'height':height})
+                    posts=[];page.on('request',lambda r:posts.append(r.url) if r.method=='POST' else None)
+                    page.goto(self.fixture.url()+'/web')
+                    for step in range(3):
+                        expect(page.locator('#tour-progress')).to_have_text(f'Quick tour · {step+1} of 3')
+                        page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'walkthrough-{step+1}-{width}.png'))
+                        if step<2:page.click('#tour-next')
+                    page.click('#tour-back');expect(page.locator('#tour-progress')).to_contain_text('2 of 3')
+                    page.click('#tour-next');expect(page.locator('#tour-output-link')).to_have_attribute('href','https://output.jeezlabs.io/')
+                    page.click('#tour-next');self.fixture.wait_ready(page)
+                    expect(page.locator('#shop-team-dialog')).to_be_hidden()
+                    self.assertFalse(shop_members.configured(server.WORK))
+                    page.reload();self.fixture.wait_ready(page)
+                    expect(page.locator('#shop-team-dialog')).to_be_hidden()
+                    page.click('#settings-support > summary');page.click('#replay-walkthrough')
+                    expect(page.locator('#tour-progress')).to_contain_text('1 of 3')
+                    page.keyboard.press('Escape');expect(page.locator('#shop-team-dialog')).to_be_hidden()
+                    page.goto(self.fixture.url()+'/?tour=1')
+                    expect(page.locator('#tour-progress')).to_contain_text('1 of 3')
+                    self.assertNotIn('tour=',page.url)
+                    page.get_by_role('button',name='Close walkthrough').click()
+                    page.reload();self.fixture.wait_ready(page)
+                    expect(page.locator('#shop-team-dialog')).to_be_hidden()
+                    self.assertFalse(any('/output/link' in url or '/shop-members/create' in url or '/telemetry/output/pair' in url for url in posts))
+                    page.close()
+            finally:browser.close()
+
     def test_first_run_create_shop_and_return_to_materials(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as pw:
@@ -25,7 +58,9 @@ class ShopTeamBrowserTests(unittest.TestCase):
             try:
                 page.goto(self.fixture.url() + '/?view=simple')
                 expect(page.get_by_role('heading', name='Welcome to Ez Nest')).to_be_visible()
-                expect(page.locator('#team-output-explore')).to_have_attribute('href','https://output.jeezlabs.io/')
+                page.click('#tour-next'); page.click('#tour-next')
+                expect(page.locator('#tour-output-link')).to_have_attribute('href','https://output.jeezlabs.io/')
+                page.get_by_role('button',name='Set up my shop',exact=True).click()
                 expect(page.get_by_role('button', name='Create a shop', exact=True)).to_have_count(0)
                 page.locator('#team-create').click()
                 self.assertFalse(shop_members.configured(server.WORK))
@@ -56,7 +91,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 page.goto(self.fixture.url() + '/?view=full')
                 expect(page.get_by_role('heading', name='Welcome to Ez Nest')).to_be_visible()
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-welcome.png'))
-                page.get_by_role('button', name='Not now').click()
+                page.get_by_role('button', name='Skip tour').click()
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()
                 self.assertFalse(shop_members.configured(server.WORK))
             finally:

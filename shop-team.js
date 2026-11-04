@@ -2,6 +2,7 @@
 // Shared by simple and full workspaces. Invitations never go in URLs or storage.
 window.EZNShop = (() => {
   let session, dialog, heading, content, message, done, closeButton;
+  let touring = false;
   const node = (tag, text, parent) => {
     const item = document.createElement(tag);
     if (text) item.textContent = text;
@@ -32,18 +33,62 @@ window.EZNShop = (() => {
     return field;
   }
   function reset(title) {
+    touring = false; dialog.classList.remove('team-walkthrough');
+    closeButton.setAttribute('aria-label', 'Close shop');
     heading.textContent = title; content.replaceChildren(); message.textContent = '';
     closeButton.hidden = !canDismiss();
   }
   function canDismiss() { return session?.localPC || session?.authenticated; }
   function dismiss() {
     if (!canDismiss()) return;
+    if (touring) { endTour(); return; }
     if (session.localPC && !session.shopIdentity?.created) {
       try { localStorage.setItem('eznest-shop-welcome-dismissed', '1'); } catch {}
     }
     finish();
   }
   function finish() { dialog.close(); if (done) { done(session); done = null; } }
+  function rememberTour() {
+    try { localStorage.setItem('eznest-tour-seen', '1'); localStorage.setItem('eznest-shop-welcome-dismissed', '1'); } catch {}
+  }
+  function endTour() { rememberTour(); touring = false; finish(); }
+  function tour(step = 0) {
+    const titles = ['Welcome to Ez Nest', 'Your file. Ready to print.', 'More ways to say yes.'];
+    reset(titles[step]); touring = true; dialog.classList.add('team-walkthrough');
+    closeButton.setAttribute('aria-label', 'Close walkthrough');
+    const progress = node('p', `Quick tour · ${step + 1} of 3`, content); progress.className = 'tour-progress'; progress.id = 'tour-progress';
+    if (step === 0) {
+      node('p', 'Our free nesting tool helps you fit more on a roll and waste less material.', content);
+      const visual = node('div', '', content); visual.className = 'tour-roll'; visual.setAttribute('aria-hidden', 'true');
+      for (let i = 0; i < 6; i++) node('span', '', visual);
+      node('p', 'Bring your print-ready artwork and cut lines. Ez Nest arranges the pieces so you can review and save your layout.', content);
+    } else if (step === 1) {
+      const steps = node('ol', '', content); steps.className = 'tour-steps';
+      for (const [title, text] of [
+        ['Upload your file', 'Add a PDF, SVG, or PDF-compatible Illustrator file.'],
+        ['Choose your material', 'Pick the roll you plan to use. Add rolls in Inventory.'],
+        ['Nest, review, save', 'Check the pieces and cut lines, then save your print file.']
+      ]) { const item = node('li', '', steps); node('strong', title, item); node('span', text, item); }
+      node('p', 'Working with a team? Your shop keeps people and material stock together.', content);
+    } else {
+      node('p', 'Ez Nest helps with the work you print in-house. We’re also building OUTPUT for the work beyond your equipment or capacity.', content);
+      const cards = node('div', '', content); cards.className = 'tour-output-cards';
+      for (const [title, text] of [['Send work out', 'Explore partner shops while keeping your customer.'], ['Bring work in', 'Put spare machine time to work for other shops.']]) {
+        const card = node('div', '', cards); node('strong', title, card); node('p', text, card);
+      }
+      const link = node('a', 'Explore OUTPUT ↗', content); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
+    }
+    const actions = node('div', '', content); actions.className = 'tour-actions';
+    if (step > 0) button('Back', () => tour(step - 1), actions).id = 'tour-back';
+    button(step === 2 ? 'Start nesting' : 'Next', () => step === 2 ? endTour() : tour(step + 1), actions, true).id = 'tour-next';
+    if (step < 2) button('Skip tour', endTour).className = 'team-text-button';
+    else if (session.localPC && !session.shopIdentity?.created) button('Set up my shop', () => { rememberTour(); welcome(); }).className = 'team-text-button';
+    heading.tabIndex = -1; heading.focus({preventScroll:true}); dialog.scrollTop = 0;
+  }
+  function showTour() {
+    if (!dialog || !canDismiss()) return;
+    tour(); if (!dialog.open) dialog.showModal(); heading.focus({preventScroll:true});
+  }
   async function updateSession() { session = await request('/api/session'); label(); }
   function label() {
     const open = document.getElementById('shop-team-open');
@@ -59,8 +104,7 @@ window.EZNShop = (() => {
   }
   async function created() { await updateSession(); finish(); }
   function welcome() {
-    reset('Welcome to Ez Nest');
-    node('p', 'Less wasted material. More room for your next job.', content);
+    reset('Set up your shop');
     const name = input('What’s your print shop called?', 'Your print shop'); name.id = 'team-shop-name';
     name.required = true; name.autocomplete = 'organization';
     node('p', 'Keep your materials together under one shop name. You can invite your team later.', content);
@@ -76,11 +120,6 @@ window.EZNShop = (() => {
     button('Not now', () => { try { localStorage.setItem('eznest-shop-welcome-dismissed', '1'); } catch {} finish(); }).className = 'team-text-button';
     const existing = node('div', '', content); existing.className = 'team-existing';
     button('Already have a shop on another PC?', joinAddress, existing).className = 'team-text-button';
-    const intro = node('section', '', content); intro.className = 'team-output-intro';
-    node('h3', 'Free nesting. More possibilities.', intro);
-    node('p', 'Thanks for trying Ez Nest, our free nesting tool. We’re also building OUTPUT — a network to help you take on jobs beyond your equipment or capacity, and put spare machine time to work.', intro);
-    const explore = node('a', 'Explore OUTPUT ↗', intro); explore.id = 'team-output-explore';
-    explore.href = 'https://output.jeezlabs.io/'; explore.target = '_blank'; explore.rel = 'noopener noreferrer'; explore.referrerPolicy = 'no-referrer';
     name.focus();
   }
   function joinAddress() {
@@ -181,12 +220,17 @@ window.EZNShop = (() => {
       parent.prepend(document.getElementById('shop-team-open'));
       let dismissed = false;
       try { dismissed = localStorage.getItem('eznest-shop-welcome-dismissed') === '1'; } catch {}
+      const visit = new URL(location.href), replay = visit.searchParams.get('tour') === '1';
+      if (replay) { visit.searchParams.delete('tour'); history.replaceState(null, '', visit.pathname + visit.search + visit.hash); }
       if ((session.localPC && !session.shopIdentity?.created && !dismissed) || (!session.localPC && session.shopIdentity?.created && !session.authenticated)) {
-        const waiting = new Promise(resolve => { done = resolve; }); await open(); return waiting;
+        const waiting = new Promise(resolve => { done = resolve; });
+        if (session.localPC) showTour(); else await open();
+        return waiting;
       }
+      if (replay) showTour();
       return session;
     })();
     return pending;
   }
-  return {start};
+  return {start, showTour};
 })();

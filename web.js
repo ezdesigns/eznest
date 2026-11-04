@@ -3151,6 +3151,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('preset-editor').addEventListener('change', renderInventory);
   $('inventory-reserve').addEventListener('click', () => inventoryAction('/api/materials/reserve', {id: current?.id}));
   installSettingsHelp();
+  $('replay-walkthrough').addEventListener('click', () => { $('settings-support').open = false; EZNShop.showTour(); });
   $('help-close').addEventListener('click', () => { $('settings-support').open = false; $('settings-support').querySelector('summary').focus(); });
   document.addEventListener('keydown', event => { if (event.key === 'Escape') $('settings-support').open = false; });
   document.addEventListener('click', event => { if (!event.target.closest('#settings-support')) $('settings-support').open = false; });
