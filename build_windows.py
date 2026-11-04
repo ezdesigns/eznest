@@ -16,6 +16,7 @@ STATIC=['shop-team.js','shop-team.css','app-theme.css','inventory-panel.css','ma
 STATIC += ['onboarding-nest.webp', 'LICENSE-colorfigures.txt']
 STATIC += ['onboarding-nest.webm', 'onboarding-computer.webp', 'onboarding-output.webp', 'onboarding-printer.webp', 'ONBOARDING-ASSETS.md']
 STATIC += ['onboarding-' + name + '.webp' for name in ('stickers', 'backdrop', 'cards', 'tshirts', 'press', 'screenpress')]
+STATIC += ['onboarding-file.webp', 'onboarding-upload.webp']
 INNO_SETUP_URL='https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe'
 
 def pinned_distribution(name, version):

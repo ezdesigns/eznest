@@ -35,6 +35,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
                             expect(page.get_by_role('button',name='Pause animation')).to_have_count(0)
                         if step == 1:
                             expect(page.locator('.tour-step-icon')).to_have_count(3)
+                            page.wait_for_function("() => [...document.querySelectorAll('.tour-step-icon')].every(i=>i.complete && i.naturalWidth>0)")
                             if width==1280:
                                 self.assertGreater(page.locator('#shop-team-title em').bounding_box()['x'],page.locator('#shop-team-title span').bounding_box()['x'])
                         if step == 2:

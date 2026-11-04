@@ -698,7 +698,7 @@ class Handler(BaseHTTPRequestHandler):
         static['/shop-team.css'] = ('shop-team.css', 'text/css')
         static['/onboarding-nest.webp'] = ('onboarding-nest.webp', 'image/webp')
         static['/onboarding-nest.webm'] = ('onboarding-nest.webm', 'video/webm')
-        for name in ('computer', 'output', 'printer', 'stickers', 'backdrop', 'cards', 'tshirts', 'press', 'screenpress'):
+        for name in ('computer', 'output', 'printer', 'stickers', 'backdrop', 'cards', 'tshirts', 'press', 'screenpress', 'file', 'upload'):
             static[f'/onboarding-{name}.webp'] = (f'onboarding-{name}.webp', 'image/webp')
         static['/tester-results.js'] = ('tester-results.js', 'text/javascript')
         static['/fonts/Archivo.ttf'] = ('fonts/Archivo.ttf', 'font/ttf')

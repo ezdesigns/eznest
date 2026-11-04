@@ -2,7 +2,9 @@
 
 Bundled locally; onboarding makes no requests to the marketing sites.
 
-The current welcome uses an original code-native SVG drawing and three matching step icons in `shop-team.js`. Its introductory motion settles in under three seconds and respects reduced motion. It has no visible playback bar. The earlier still/video below remain bundled for provenance and compatibility but are no longer shown on the welcome. OUTPUT examples retain compact, accessible icon controls beside the previous/next arrows.
+The current welcome uses OUTPUT's actual computer, file, stickers and upload illustrations, with its original `ComputerIllustration` screen geometry. The first scene uses the site's stepped file-transfer and green receipt treatment, settles in 3.6 seconds and respects reduced motion. No visible playback bar. Type, color, hero spacing, highlighted job labels, white illustration stage, step layout and button treatment adapt `apps/web/app/experience/landing.module.css`; motion adapts `machine-illustration.module.css` (ezdesigns/output main, read 2026-11-04). The earlier custom roll drawing and custom icons are no longer used. OUTPUT examples retain compact accessible controls beside previous/next arrows.
+
+`onboarding-file.webp` and `onboarding-upload.webp` are optimized copies of https://output.jeezlabs.io/illustrations/print-v2/file.png and https://output.jeezlabs.io/illustrations/print-v3/upload.png. These are bundled locally with the existing OUTPUT artwork. No remote embedding or OUTPUT connection is required.
 
 - `onboarding-nest.webp`: https://eznest.jeezlabs.io/prototype/stills/hero-nest-d.webp
 - `onboarding-nest.webm`: rendered from the SVG animation at https://eznest.jeezlabs.io/prototype/nesting.html on 2026-11-04. Shows the loose-parts, rows and nesting sequence only; no automatic cut generation or hot-folder delivery. Synthetic example, not measured savings. Colorfigures attribution and MIT terms are in `LICENSE-colorfigures.txt`.
