@@ -680,7 +680,7 @@ body[data-step="sent"] #inventory-open { display: block; }
 .job-panel #start-over-idle:disabled { opacity: .5; cursor: not-allowed; }
 .output-dot { width: 36px; justify-content: center; padding: 0; }
 .output-dot .status-circle { width: 10px; height: 10px; border-radius: 50%; background: #9ca3af; box-shadow: 0 0 0 2px #fff; }
-.output-dot.connected .status-circle { background: #15803D; }
+.output-dot.connected .status-circle { background: #0875ed; }
 .job-panel #start-over-idle { align-self: stretch; height: auto; min-height: 0; padding: 0 16px; border: 1px solid #d6d9de; border-radius: 10px; background: #fff; color: var(--ink); font-size: 14px; font-weight: 600; text-decoration: none; }
 .job-panel #start-over-idle:disabled { color: #929ba7; background: #f7f7f4; opacity: 1; }
 /* The status circle is the only visible OUTPUT control; the old buttons stay as hidden click targets. */

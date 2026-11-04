@@ -3553,7 +3553,7 @@ function renderOutputLink(info, local) {
   if (dot) {
     const live = state === 'connected' && info?.secondsSinceCheckIn != null;
     dot.classList.toggle('connected', live);
-    const label = live ? 'Connected to OUTPUT' + name : paired ? $('output-link-label').textContent : 'Connect to OUTPUT';
+    const label = live ? 'Connected to OUTPUT' + name : paired ? $('output-link-label').textContent : 'Connect OUTPUT';
     dot.title = label; dot.setAttribute('aria-label', label);
   }
 }
@@ -3572,7 +3572,7 @@ function openOutputLinkForm(event) {
   if ($('setup-shop').open) return;
   closeOutputLinkMenu();
   $('output-link-reconnect-note').hidden = !outputSharing?.configured;
-  const connecting = ['output-pair', 'output-reconnect', 'output-link-reconnect'].includes(event?.currentTarget?.id);
+  const connecting = ['output-pair', 'output-reconnect', 'output-link-reconnect', 'output-dot'].includes(event?.currentTarget?.id);
   const canConnect = connecting && outputLink?.canPair && !outputSharing?.paused;
   $('setup-shop').dataset.mode = connecting ? 'connect' : 'explore';
   $('output-connect-details').hidden = !connecting;
@@ -3766,4 +3766,14 @@ for (const id of ['thru-name', 'kiss-name']) $(id).addEventListener('input', ren
 renderCutLineNote();
 
 // Header status circle: click reuses the existing connect flow (or the connected menu).
-$('output-dot')?.addEventListener('click', event => { event.stopPropagation(); ($('output-link-status').hidden ? $('output-link-connect') : $('output-link-status')).click(); });
+$('output-dot')?.addEventListener('click', event => {
+  event.stopPropagation();
+  const paired = ['connected', 'stale'].includes(outputLink?.state);
+  if (!paired && outputLinkLocal && outputLink?.canPair && !outputSharing?.paused) {
+    openOutputLinkForm(event);
+    startBrowserConnection();
+  } else {
+    // Viewing the connection page never overrides a disabled connection or sharing.
+    window.open('https://output.jeezlabs.io/outpost/ez-nest', '_blank', 'noopener,noreferrer');
+  }
+});

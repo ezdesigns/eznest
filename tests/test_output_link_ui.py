@@ -88,3 +88,42 @@ class LinkBrowserTests(unittest.TestCase):
             finally:
                 browser.close()
 
+
+
+    def test_header_connect_opens_approval_without_extra_clicks(self):
+        with patch.object(output_link, 'start', return_value=ATTEMPT), sync_playwright() as pw:
+            browser = test_web_mvp.launch_browser(pw)
+            try:
+                context = browser.new_context()
+                context.route('https://output.jeezlabs.io/**', lambda route: route.fulfill(body='Simulated OUTPUT approval'))
+                page = context.new_page()
+                page.goto(self.fixture.url() + '/web')
+                expect(page.locator('#output-dot')).to_have_attribute('title', 'Connect OUTPUT')
+                with context.expect_page() as popup:
+                    page.click('#output-dot')
+                popup.value.wait_for_url(ATTEMPT['approvalUrl'])
+                expect(page.locator('#output-browser-status')).to_contain_text('Waiting for your approval')
+                expect(page.locator('#output-dot')).not_to_have_class('top-button output-dot connected')
+                self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
+            finally:
+                browser.close()
+
+    def test_header_with_output_off_opens_hub_without_pairing(self):
+        with patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS':'0'}), patch.object(output_link, 'start') as start, sync_playwright() as pw:
+            browser = test_web_mvp.launch_browser(pw)
+            try:
+                context = browser.new_context()
+                context.route('https://output.jeezlabs.io/**', lambda route: route.fulfill(body='Simulated connection page'))
+                page = context.new_page()
+                page.goto(self.fixture.url() + '/web')
+                with context.expect_page() as popup:
+                    page.click('#output-dot')
+                popup.value.wait_for_url('https://output.jeezlabs.io/outpost/ez-nest')
+                start.assert_not_called()
+                self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
+                # Only a confirmed check-in gets the blue state, not a pending or stale link.
+                for state, seen, blue in [('unpaired', None, False), ('connected', None, False), ('connected', 0, True), ('stale', 900, False), ('revoked', None, False)]:
+                    page.evaluate("([state, seen]) => renderOutputLink({state, secondsSinceCheckIn:seen, canPair:false}, true)", [state, seen])
+                    self.assertEqual(page.locator('#output-dot .status-circle').evaluate('(n) => getComputedStyle(n).backgroundColor'), 'rgb(8, 117, 237)' if blue else 'rgb(156, 163, 175)')
+            finally:
+                browser.close()
