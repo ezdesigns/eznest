@@ -10,6 +10,7 @@
 #shop-team-dialog code { display: block; padding: 12px; background: #eff5fc; overflow-wrap: anywhere; }
 #shop-team-dialog .team-person { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 #shop-team-dialog [role=status] { color: #a32c26; }
+#shop-team-dialog [role=status]:empty { display:none; }
 #team-invitation { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
 #shop-team-open { display: block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #shop-team-dialog .team-text-button { border: 0; background: transparent; color: #526173; padding: 10px 0; text-decoration: underline; text-underline-offset: 3px; }
@@ -81,7 +82,8 @@
  .tour-actions #tour-output-link { white-space:nowrap; padding-inline:12px; }
  #shop-team-dialog.team-output-tour { padding:20px; }
  .team-output-tour .tour-brand-row { margin-bottom:12px; }
- #shop-team-dialog.team-output-tour .tour-actions { flex-wrap:nowrap; gap:6px; margin-top:16px; }
+ .team-output-tour .tour-network { padding:8px 6px; }
+ #shop-team-dialog.team-output-tour .tour-actions { flex-wrap:nowrap; gap:6px; margin-top:8px; }
  #shop-team-dialog.team-output-tour .tour-actions #tour-back { flex:0 0 auto; min-height:44px; padding:8px; }
  #shop-team-dialog.team-output-tour .tour-actions #tour-next,.team-output-tour #tour-output-link { font-size:12px; padding:8px; }
 }
