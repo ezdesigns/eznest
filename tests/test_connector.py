@@ -1,8 +1,10 @@
 """Shop Connector privacy, parsing, file access, and write-only delivery."""
 import opt_out
+import csv
 import io
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import tempfile
@@ -529,6 +531,47 @@ class OnyxJobLogTests(TempCase):
         self.assertNotIn('SureColor', shown)
 
 
+def saved_acl_entries(text):
+    """Protected flag and allow SIDs from an icacls /save file."""
+    sddl = ''
+    for line in text.splitlines():
+        line = line.strip().lstrip('\ufeff')
+        if line.startswith('D:'):
+            sddl = line
+            break
+    flags = ''
+    matched = re.match(r'D:([A-Za-z]*)', sddl)
+    if matched:
+        flags = matched.group(1)
+    allowed = re.findall(r'\(A;[^;]*;[^;]*;[^;]*;[^;]*;([^)]+)\)', sddl)
+    return 'P' in flags.upper(), allowed, sddl
+
+
+def windows_acl_snapshot(path):
+    """Read a path's DACL with icacls. The runner's PowerShell host is not used."""
+    saved = Path(path).with_name(Path(path).name + '.acl.txt')
+    result = subprocess.run(
+        ['icacls', str(path), '/save', str(saved), '/Q'],
+        capture_output=True, text=True, timeout=15, stdin=subprocess.DEVNULL)
+    if result.returncode != 0 or not saved.is_file():
+        raise AssertionError((result.stderr or result.stdout or 'icacls could not save the ACL').strip())
+    raw = saved.read_bytes()
+    if raw.startswith((b'\xff\xfe', b'\xfe\xff')):
+        text = raw.decode('utf-16')
+    elif b'\x00' in raw[:8]:
+        text = raw.decode('utf-16-le')
+    else:
+        text = raw.decode('utf-8')
+    protected, allowed, sddl = saved_acl_entries(text)
+    who = subprocess.run(
+        ['whoami', '/user', '/fo', 'csv', '/nh'],
+        capture_output=True, text=True, timeout=15, stdin=subprocess.DEVNULL)
+    if who.returncode != 0 or not who.stdout.strip():
+        raise AssertionError((who.stderr or 'whoami could not report the current user').strip())
+    current = next(csv.reader([who.stdout.strip()]))[-1].strip()
+    return {'protected': protected, 'allowed': allowed, 'current': current, 'sddl': sddl}
+
+
 class BoundAndHostTests(TempCase):
     def test_read_window_and_oversize_lines_are_capped(self):
         path = self.root / 'big.log'
@@ -663,39 +706,12 @@ class BoundAndHostTests(TempCase):
             self.assertEqual(first.path.stat().st_mode & 0o077, 0)
         else:
             # Windows privacy is an ACL property; stat's POSIX mode is synthetic.
+            # icacls already applied the DACL. Read that same record back.
             for path in (first.directory, first.path):
-                literal = str(path).replace("'", "''")
-                # Windows PowerShell 5.1's ConvertTo-Json drops AreAccessRulesProtected.
-                # The DACL 'P' flag is the protected bit. Allow rules must be only this user's SID.
-                script = """
-$ErrorActionPreference = 'Stop'
-$env:PSModulePath = Join-Path $PSHOME 'Modules'
-$acl = Get-Acl -LiteralPath '__PATH__'
-[Console]::Error.WriteLine("ACL type: $($acl.GetType().FullName); SDDL: $($acl.Sddl)")
-$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$sddl = ([string]$acl.Sddl) -replace [char]0, ''
-$protected = $false
-if ($sddl -match 'D:([A-Za-z]*)') { $protected = $Matches[1].ToUpperInvariant().Contains('P') }
-try {
-  $value = $acl.GetType().GetProperty('AreAccessRulesProtected').GetValue($acl, $null)
-  if ($null -ne $value) { $protected = $protected -or [bool]$value }
-} catch {}
-$allowed = @($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Value })
-$list = (@($allowed) | ForEach-Object { '"' + $_ + '"' }) -join ','
-$shown = $sddl.Replace('\\','\\\\').Replace('"','\\"')
-if ($protected) { $flag = 'true' } else { $flag = 'false' }
-Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' + $list + '],"sddl":"' + $shown + '"}')
-""".replace('__PATH__', literal)
-                env = os.environ.copy()
-                # The runner's PSModulePath points at PowerShell 7 and hides Get-Acl from Windows PowerShell 5.1.
-                env.pop('PSModulePath', None)
-                result = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-                                        capture_output=True, text=True, timeout=15, env=env)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                acl = json.loads(result.stdout.lstrip('\ufeff'))
-                detail = ((result.stderr or '') + '\n' + str(acl.get('sddl', ''))).strip()
+                acl = windows_acl_snapshot(path)
+                detail = acl['sddl']
                 self.assertTrue(acl['protected'], detail)
-                self.assertEqual(set(acl['allowed']), {acl['current']}, detail)
+                self.assertEqual({item.casefold() for item in acl['allowed']}, {acl['current'].casefold()}, detail)
         commands = windows_acl_commands(first.directory, 'ShopUser', container=True)
         flat = [' '.join(part) for part in commands]
         self.assertIn('/inheritance:r', flat[0])
@@ -712,6 +728,15 @@ Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' 
         readme = ' '.join((ROOT / 'connector' / 'README.md').read_text(encoding='utf-8').split())
         self.assertIn("computer's name and installation id", readme)
         self.assertIn('sent once', readme)
+
+    def test_saved_acl_text_names_the_protected_allow_entries(self):
+        protected, allowed, sddl = saved_acl_entries('data\nD:PAI(A;OICI;FA;;;S-1-5-21-1)\n')
+        self.assertTrue(protected)
+        self.assertEqual(allowed, ['S-1-5-21-1'])
+        self.assertIn('D:PAI', sddl)
+        protected, allowed, _sddl = saved_acl_entries('D:AI(A;;FA;;;WD)(A;;FA;;;S-1-5-21-1)\n')
+        self.assertFalse(protected)
+        self.assertEqual(set(allowed), {'WD', 'S-1-5-21-1'})
 
     def test_pairing_text_says_the_name_and_install_id_are_sent_once(self):
         ack = json.dumps({'outcome': 'created', 'result': {'token': TOKEN, 'shopName': 'North Shop'}}).encode()
