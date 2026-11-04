@@ -340,7 +340,7 @@ class GateTests(unittest.TestCase):
                     self.assertFalse(output_credential.path(server.WORK).exists())
                     expect(page.locator('#output-connect-details')).to_be_hidden()
                     expect(page.locator('#setup-shop')).to_be_visible()
-                    expect(page.locator('#setup-shop-title')).to_contain_text('More possibilities.')
+                    expect(page.locator('#setup-shop-title')).to_contain_text('More work with OUTPUT.')
                     expect(page.locator('label[for=output-link-code]')).to_have_text('Enter the code from OUTPUT')
                     expect(page.locator('#output-link-form')).to_be_visible()
                     self.assertEqual(page.locator('#output-link-code').input_value(), '')

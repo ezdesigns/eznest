@@ -74,10 +74,11 @@
 
 <p id="output-banner" class="hint" hidden></p>
 <dialog id="setup-shop" class="setup-shop output-brand" aria-labelledby="setup-shop-title">
+  <button id="output-explore-close" class="dialog-close output-corner-close" type="button" aria-label="Close OUTPUT introduction">×</button>
   <form id="output-link-form" class="output-link-form">
-    <p class="output-thanks-kicker">FROM THE EZ NEST TEAM</p>
-    <h2 id="setup-shop-title">Free nesting.<br><em>More possibilities.</em></h2>
-    <p class="output-intro">Thanks for using Ez Nest — our free tool to help you waste less material. We’re also building OUTPUT: a network to help print shops take on more work.</p>
+    <p class="output-thanks-kicker">THANKS FOR USING EZ NEST</p>
+    <h2 id="setup-shop-title">Less waste with Ez Nest.<br><em>More work with OUTPUT.</em></h2>
+    <p class="output-intro">Ez Nest is free. We’re also building OUTPUT — a network to help you say yes to jobs beyond your own equipment or capacity.</p>
     <div class="output-benefits">
       <div><span class="output-direction" aria-hidden="true">↗</span><h3>Send work out</h3><p>Explore partner shops for jobs beyond your equipment or capacity.</p></div>
       <div><span class="output-direction" aria-hidden="true">↙</span><h3>Bring work in</h3><p>Explore making jobs for other shops when your machines have room.</p></div>
@@ -121,11 +122,15 @@
     <section class="settings-section" aria-labelledby="destination-title">
       <h3 id="destination-title" class="visually-hidden">Print files</h3>
       <div class="fields">
-      <label class="wide">
-        <input id="hot-folder" type="text" placeholder="Optional — choose a folder when saving" autocomplete="off">
+      <div class="wide save-folder-field">
+        <label for="hot-folder">Default print folder</label>
+        <div class="save-folder-controls">
+          <input id="hot-folder" type="text" placeholder="No default folder selected" autocomplete="off" aria-describedby="save-folder-help">
+          <button id="browse-output" class="link" type="button">Choose folder</button>
+        </div>
+        <p id="save-folder-help" class="hint">Optional. You can also choose where to save each job.</p>
         <span id="hot-error" class="lan-note" hidden></span>
-        <button id="browse-output" class="link" type="button">Choose folder</button>
-      </label>
+      </div>
       <label class="check wide"><input id="staging-on" type="checkbox"> Keep an extra copy</label>
       <label class="wide" id="staging-row" hidden>Staging folder
         <input id="staging-folder" type="text" placeholder="Off" autocomplete="off">
@@ -449,15 +454,13 @@
   <button id="output-promo-hide" type="button" aria-label="Hide OUTPUT suggestion">×</button>
 </aside>
 <dialog class="output-brand" id="max-output-dialog" aria-labelledby="max-output-title">
-  <div class="dialog-heading"><div class="output-wordmark">OUTPUT<span>FOR PRINT SHOPS</span></div><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
-  <h2 id="max-output-title">Keep the customer.<br><em>Expand what you offer.</em></h2>
-  <p>OUTPUT is building a network of print shops. Find a partner for the work you can’t make in-house.</p>
-  <p class="output-when">Use it when</p>
-  <ul class="output-points">
-    <li>You don't have the material or roll width</li>
-    <li>Your customer is too far away</li>
-    <li>You're too busy to finish on time</li>
-  </ul>
+  <div class="dialog-heading"><p class="output-thanks-kicker">THANKS FOR USING EZ NEST</p><button id="max-output-close" class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <h2 id="max-output-title">Less waste with Ez Nest.<br><em>More work with OUTPUT.</em></h2>
+  <p>Ez Nest is free. We’re also building OUTPUT — a network to help you say yes to jobs beyond your own equipment or capacity.</p>
+  <div class="output-benefits">
+    <div><span class="output-direction" aria-hidden="true">↗</span><h3>Send work out</h3><p>Keep the customer. Explore partner shops for work you can’t make in-house.</p></div>
+    <div><span class="output-direction" aria-hidden="true">↙</span><h3>Bring work in</h3><p>Put spare machine time to work making jobs for other shops.</p></div>
+  </div>
   <div class="output-actions">
     <p class="output-next">Visit OUTPUT to explore the network and register your interest.</p>
     <a id="max-output-waitlist" class="primary-link" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Join the waitlist</a>

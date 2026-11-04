@@ -3711,6 +3711,7 @@ $('output-required-skip').addEventListener('click', () => {
   $('settings-open').focus({preventScroll:true});
 });
 $('output-link-cancel').addEventListener('click', closeOutputLinkForm);
+$('output-explore-close').addEventListener('click', closeOutputLinkForm);
 $('output-link-form').addEventListener('submit', submitOutputLink);
 $('output-link-check').addEventListener('click', checkOutputLink);
 $('output-link-disconnect').addEventListener('click', disconnectOutputLink);
