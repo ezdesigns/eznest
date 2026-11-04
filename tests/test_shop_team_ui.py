@@ -60,7 +60,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             try:
                 page.goto(self.fixture.url() + '/?view=simple')
-                expect(page.get_by_role('heading', name='Thanks for downloading Ez Nest.')).to_be_visible()
+                expect(page.get_by_role('heading', name='Fit more. Waste less.')).to_be_visible()
                 page.click('#tour-next'); page.click('#tour-next')
                 expect(page.locator('#tour-output-link')).to_have_attribute('href','https://output.jeezlabs.io/')
                 page.click('#tour-next'); self.fixture.wait_ready(page)
@@ -93,7 +93,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             try:
                 page.goto(self.fixture.url() + '/?view=full')
-                expect(page.get_by_role('heading', name='Thanks for downloading Ez Nest.')).to_be_visible()
+                expect(page.get_by_role('heading', name='Fit more. Waste less.')).to_be_visible()
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-welcome.png'))
                 page.get_by_role('button', name='Skip tour').click()
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()

@@ -54,7 +54,7 @@ window.EZNShop = (() => {
   }
   function endTour() { rememberTour(); touring = false; finish(); }
   function tour(step = 0) {
-    const titles = [['Thanks for downloading', 'Ez Nest.'], ['How it works.', ''], ['Meet', 'OUTPUT.']];
+    const titles = [['Fit more.', 'Waste less.'], ['Your next print,', 'in three steps.'], ['Keep the customer.', 'Take on more.']];
     reset(''); touring = true; dialog.classList.add('team-walkthrough');
     node('span', titles[step][0], heading);
     if (titles[step][1]) node('em', titles[step][1], heading);
@@ -67,19 +67,27 @@ window.EZNShop = (() => {
       image.width = 600; image.height = 340;
     }
     if (step === 0) {
-      node('p', 'Free nesting. Less wasted material.', content).className = 'tour-lead';
+      node('p', 'Ez Nest fits your print pieces into a tighter layout, so you use less of your roll. Free to use. Built for print shops.', content).className = 'tour-lead';
       illustration('/onboarding-nest.webp', 'Illustration of shapes nested on a roll of material.');
     } else if (step === 1) {
       const steps = node('ol', '', content); steps.className = 'tour-steps';
-      for (const title of ['Upload your print file.', 'Choose your material.', 'Nest, review, and save.']) node('li', title, steps);
+      for (const [title, detail] of [
+        ['Add your print file', 'Use artwork you’ve prepared for printing.'],
+        ['Choose your roll', 'Its printable width and spacing guide the layout.'],
+        ['Nest, review, and save', 'Check the pieces and material used before exporting.']
+      ]) {
+        const row = node('li', '', steps), copy = node('div', '', row);
+        node('strong', title, copy); node('span', detail, copy);
+      }
     } else {
-      node('p', 'We’re building a network for print shops to send work out and bring work in.', content).className = 'tour-lead';
+      node('p', 'A job beyond your equipment or capacity shouldn’t have to be a lost order.', content).className = 'tour-lead';
+      node('p', 'OUTPUT is building a network to help you find a print partner—or put your own spare machine time to work.', content).className = 'tour-output-detail';
       const link = node('a', 'Explore OUTPUT ↗', content); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
     }
     const actions = node('div', '', content); actions.className = 'tour-actions';
     if (step > 0) button('Back', () => tour(step - 1), actions).id = 'tour-back';
     if (step < 2) { const skip = button('Skip tour', endTour, actions); skip.className = 'team-text-button tour-skip'; actions.prepend(skip); }
-    button(step === 2 ? 'Start nesting' : 'Next', () => step === 2 ? endTour() : tour(step + 1), actions, step !== 2).id = 'tour-next';
+    button(step === 2 ? 'Start nesting' : step === 0 ? 'See how it works' : 'Next', () => step === 2 ? endTour() : tour(step + 1), actions, step !== 2).id = 'tour-next';
     if (step === 2) actions.append(document.getElementById('tour-output-link'));
     heading.tabIndex = -1; heading.focus({preventScroll:true}); dialog.scrollTop = 0;
   }
