@@ -71,8 +71,8 @@ window.EZNShop = (() => {
     const pitch = node('section', '', content); pitch.className = 'tour-output-pitch';
     const pitchTitle = node('h3', '', pitch);
     node('span', '🤑', pitchTitle).setAttribute('aria-hidden', 'true');
-    node('span', 'Want to earn more? Check out OUTPUT.', pitchTitle);
-    node('p', 'OUTPUT is building a network to help you outsource jobs your equipment can’t handle—so you keep the work and the customer.', pitch);
+    node('span', 'Want to earn more?', pitchTitle);
+    node('p', 'Check out OUTPUT. We’re building a network to help you take on more jobs without buying new equipment. Print partners handle production; you keep the customer.', pitch);
     const actions = node('div', '', content); actions.className = 'tour-actions';
     button('Start nesting', endTour, actions).id = 'tour-next';
     const link = node('a', 'Use OUTPUT', actions); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
