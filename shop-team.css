@@ -25,21 +25,26 @@
 .tour-roll { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding:16px; margin:20px 0; background:#edf4ff; border:1px dashed #9dbfeb; border-radius:14px; }
 .tour-roll span { height:50px; border-radius:10px 22px 10px 10px; background:#006cf5; }
 .tour-roll span:nth-child(2n) { background:#78afea; border-radius:22px 10px 10px 10px; }
-.tour-steps { padding-left:24px; margin:20px 0; }
-.tour-steps li { margin:10px 0; padding-left:6px; }
+.tour-steps { list-style:none; counter-reset:welcome-step; padding:0; margin:20px 0; }
+.tour-steps li { counter-increment:welcome-step; display:grid; grid-template-columns:16px 22px minmax(0,1fr); align-items:center; gap:10px; margin:10px 0; line-height:1.5; }
+.tour-steps li::before { content:counter(welcome-step) '.'; }
+.tour-steps svg { width:22px; height:22px; fill:none; stroke:#0875ed; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
 .tour-steps strong,.tour-steps span { display:block; }
-.tour-steps span { font-size:13px; color:#526173; margin-top:4px; }
+.tour-steps span { font-size:15px; color:inherit; }
 .tour-output-cards { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:20px 0; }
 .tour-output-cards > div { padding:16px; background:#f3f7fc; border-radius:12px; }
 #shop-team-dialog .tour-output-cards p { font-size:13px; margin:8px 0 0; }
-#tour-output-link { color:#006cf5; font-weight:700; text-decoration:none; }
-.tour-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:24px; }
+#shop-team-dialog #tour-output-link { display:inline-flex; align-items:center; justify-content:center; background:#0875ed; color:#fff; border:1px solid #0875ed; border-radius:8px; padding:10px 14px; font-weight:700; text-decoration:none; }
+#shop-team-dialog #tour-output-link:hover { background:#0065d4; }
+#shop-team-dialog #tour-next { background:#f0f1f3; border-color:#e0e3e7; }
+.tour-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; flex-wrap:wrap; }
 #shop-team-dialog .tour-actions button { margin:0; min-width:90px; }
+#shop-team-dialog .tour-actions > * { min-height:44px; font-size:14px; box-sizing:border-box; }
 @media(max-width:540px) { #shop-team-dialog.team-walkthrough { padding:24px; } .tour-output-cards { grid-template-columns:1fr; } }
 @media (max-width: 720px) {
   #shop-team-open { max-width: min(150px, 40vw); }
 }
 
 .tour-output-pitch { border-top:1px solid #e5e9ee; padding-top:18px; margin-top:20px; }
-.tour-output-pitch h3 { margin:0 0 8px; font-size:18px; }
+.tour-output-pitch h3 { display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:18px; }
 #shop-team-dialog .tour-output-pitch p { font-size:14px; margin-bottom:10px; }
