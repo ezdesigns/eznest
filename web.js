@@ -56,7 +56,7 @@ function savePrefs(patch) {
 function installSettingsHelp() {
   const help = {
     'nesting-effort': ['Nesting effort', 'Quick finds a layout sooner. Best fit spends longer trying arrangements and may use less material. These are search budgets; preparation and checking take extra time. Your artwork, bleed, spacing and allowed turns stay the same. Try tighter fit keeps your best valid result.'],
-    'cut-preset': ['Cut naming preset', 'Choose the names your print software recognizes. This changes exported cut names; it does not create missing cut lines.'],
+    'cut-preset': ['Names your cutter uses', 'Pick the naming style your print software expects. The fields below show exactly what will be saved. This does not change the artwork or blade depth.'],
     'thru-name': ['Through-cut name', 'The name your print software uses for a full cut. It must match your cutter setup. Changing this name does not set the blade depth.'],
     'kiss-name': ['Kiss-cut name', 'The name your print software uses to cut the sticker and leave the backing. It must match your cutter setup.'],
     'generic-cut': ['If a cut type is missing', 'Choose how to treat lines named only CutContour in the next file you add. Ask me keeps you in control when the cut type is unclear.'],
@@ -1879,6 +1879,7 @@ function applyCutPreset() {
   if (!names) return;
   $('thru-name').value = names.thru;
   $('kiss-name').value = names.kiss;
+  renderCutLineNote();
 }
 
 function matchCutPreset() {
@@ -2617,14 +2618,45 @@ function renderOutputRequired(session) {
   showOutputBanner(session);
 }
 let setupSkippedThisVisit = false;
+const OUTPUT_PROMOS = [
+  ['Take on more work with OUTPUT', 'Keep the customer. Find the machines you need.'],
+  ['Your printer has limits. Your ambition doesn’t.', 'OUTPUT is building a network for the jobs beyond your equipment.'],
+  ['Too many jobs. Not enough clones.', 'Meet OUTPUT: a growing network of shops for those “can you do it by Friday?” jobs.'],
+  ['That machine you don’t own? Someone does.', 'Explore OUTPUT and the shops that could help you say yes.'],
+  ['Give your machines a side hustle.', 'Room on the schedule? Explore making work for other shops through OUTPUT.'],
+];
+let outputPromoIndex = null;
+function renderOutputPromo() {
+  if (outputPromoIndex === null) {
+    let saved = 0;
+    try { saved = Number(localStorage.getItem('eznest-output-promo-index')) || 0; } catch {}
+    outputPromoIndex = Math.abs(Math.trunc(saved)) % OUTPUT_PROMOS.length;
+    if (!Number.isFinite(outputPromoIndex)) outputPromoIndex = 0;
+  }
+  const [title, copy] = OUTPUT_PROMOS[outputPromoIndex];
+  $('output-required-title').textContent = title;
+  $('output-promo-copy').textContent = copy;
+  try { localStorage.setItem('eznest-output-promo-index', String((outputPromoIndex + 1) % OUTPUT_PROMOS.length)); } catch {}
+}
+function rotateOutputPromo() {
+  if ($('output-required').hidden || document.hidden || busy || saving || importing
+      || document.querySelector('dialog[open]') || $('output-required').matches(':hover, :focus-within')
+      || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
+  outputPromoIndex = ((outputPromoIndex ?? 0) + 1) % OUTPUT_PROMOS.length;
+  renderOutputPromo();
+}
+// Quiet, local-only variations. No tracking, popups, or ads over an active job.
+setInterval(rotateOutputPromo, 45000);
 function setupSkipped() {
   if (setupSkippedThisVisit) return true;
-  try { return localStorage.getItem('eznest-setup-skipped') === '1'; }
+  try { return localStorage.getItem('eznest-setup-skipped') === '1'
+    && Number(localStorage.getItem('eznest-output-snooze-until')) > Date.now(); }
   catch { return false; }
 }
 function showOutputRequired(required) {
   outputRequired = required === true && !setupSkipped();
   $('output-required').hidden = !outputRequired;
+  if (outputRequired) renderOutputPromo();
   $('output-required-note').textContent = '';
   document.body.classList.toggle('output-required-on', outputRequired);
 }
@@ -3660,15 +3692,14 @@ $('output-link-connect').addEventListener('click', openOutputLinkForm);
 $('output-link-reconnect').addEventListener('click', openOutputLinkForm);
 $('output-required-code').addEventListener('click', openOutputLinkForm);
 $('output-required-skip').addEventListener('click', () => {
+  setupSkippedThisVisit = true;
   try {
     localStorage.setItem('eznest-setup-skipped', '1');
-    location.reload();
-  } catch {
-    setupSkippedThisVisit = true;
-    document.body.dataset.ready = '0';
-    showOutputRequired(false);
-    boot().catch(error => status(error.message, true));
-  }
+    localStorage.setItem('eznest-output-snooze-until', String(Date.now() + 24 * 60 * 60 * 1000));
+  } catch { /* Dismissal still lasts for this visit if browser storage is blocked. */ }
+  showOutputRequired(false);
+  $('output-promo-dismissed').hidden = false;
+  setTimeout(() => { $('output-promo-dismissed').hidden = true; }, 4000);
 });
 $('output-link-cancel').addEventListener('click', closeOutputLinkForm);
 $('output-link-form').addEventListener('submit', submitOutputLink);

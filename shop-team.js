@@ -36,7 +36,13 @@ window.EZNShop = (() => {
   async function updateSession() { session = await request('/api/session'); label(); }
   function label() {
     const open = document.getElementById('shop-team-open');
-    open.textContent = session.shopIdentity?.name || 'Your shop';
+    open.replaceChildren();
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('width', '20'); icon.setAttribute('height', '20'); icon.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M3 10h18l-2-6H5l-2 6Zm1 0v10h16V10M9 20v-6h6v6M3 10c0 3 4.5 3 4.5 0 0 3 4.5 3 4.5 0 0 3 4.5 3 4.5 0 0 3 4.5 3 4.5 0');
+    path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.6'); path.setAttribute('stroke-linejoin', 'round');
+    icon.append(path); open.append(icon); node('span', session.shopIdentity?.name || 'Your shop', open);
     open.title = session.shopIdentity?.name || 'Your shop';
     open.setAttribute('aria-haspopup', 'dialog');
   }

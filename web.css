@@ -760,7 +760,11 @@ body[data-step="sent"] #inventory-open { display: block; }
 .help-steps li::before { content:counter(help); position:absolute; left:0; top:10px; width:26px; height:26px; display:grid; place-items:center; border-radius:8px; color:#006cf5; background:#eef5ff; font-weight:700; }
 .help-steps span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
 #settings-support .help-card > details { border-top:1px solid #e8ebee; padding-top:12px; }
-.top-actions #shop-team-open { margin-right:8px; border-right:1px solid #dde2e8; border-radius:0; padding-right:18px; font-weight:700; }
+.top-actions #shop-team-open { display:flex; align-items:center; gap:8px; margin-right:8px; border:0; padding-right:10px; font-weight:700; }
+.top-actions #shop-team-open svg { flex:none; }
+.top-actions #shop-team-open span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+#output-promo-dismissed { width:min(760px, calc(100% - 32px)); margin:12px auto 0; font-size:13px; color:var(--muted); }
 .top-actions #output-link { order:4; }
 .output-brand { --output-blue:#006cf5; --output-ink:#182136; color:var(--output-ink); background:#fff; }
 #setup-shop.output-brand, #max-output-dialog.output-brand { width:min(600px, calc(100vw - 32px)); padding:32px; border:1px solid #dce1dd; border-radius:18px; box-shadow:0 22px 100px #10271926; max-height:calc(100dvh - 32px); overflow-y:auto; }

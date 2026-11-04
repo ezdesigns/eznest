@@ -60,10 +60,10 @@
     <p id="pin-error" class="lan-note" hidden></p>
   </form>
 </dialog>
-<div id="output-required" class="output-required" role="status" hidden>
+<div id="output-required" class="output-required" role="region" aria-label="Explore OUTPUT" hidden>
   <div>
     <p><strong id="output-required-title">Take on more work with OUTPUT</strong></p>
-    <p class="hint">Keep the customer. Find the machines you need.</p>
+    <p id="output-promo-copy" class="hint">Keep the customer. Find the machines you need.</p>
     <p id="output-required-note" class="hint"></p>
   </div>
   <div class="output-required-actions">
@@ -71,10 +71,10 @@
     <button id="output-required-skip" type="button" class="link">Not now</button>
   </div>
 </div>
+<p id="output-promo-dismissed" role="status" hidden>No problem. Back to your job.</p>
 <p id="output-banner" class="hint" hidden></p>
 <dialog id="setup-shop" class="setup-shop output-brand" aria-labelledby="setup-shop-title">
   <form id="output-link-form" class="output-link-form">
-    <div class="output-wordmark">OUTPUT<span>FOR PRINT SHOPS</span></div>
     <h2 id="setup-shop-title">Say yes to<br><em>more jobs.</em></h2>
     <p class="output-intro">Ez Nest helps you fit more on a roll. OUTPUT is building a network to help you take on more work.</p>
     <div class="output-benefits">
@@ -118,15 +118,14 @@
     </div>
     <div class="settings-scroll">
     <section class="settings-section" aria-labelledby="destination-title">
-      <h3 id="destination-title">Where files are saved</h3>
-      <p class="section-note">Choose your usual folder. You can still choose a different location when saving a job.</p>
+      <h3 id="destination-title" class="visually-hidden">Print files</h3>
       <div class="fields">
-      <label class="wide">Default print folder
+      <label class="wide">
         <input id="hot-folder" type="text" placeholder="Optional — choose a folder when saving" autocomplete="off">
         <span id="hot-error" class="lan-note" hidden></span>
-        <button id="browse-output" class="link" type="button">Choose folder…</button>
+        <button id="browse-output" class="link" type="button">Choose folder</button>
       </label>
-      <label class="check wide"><input id="staging-on" type="checkbox"> Keep a backup before sending</label>
+      <label class="check wide"><input id="staging-on" type="checkbox"> Keep an extra copy</label>
       <label class="wide" id="staging-row" hidden>Staging folder
         <input id="staging-folder" type="text" placeholder="Off" autocomplete="off">
         <span class="hint">Optional. Off until you turn it on.</span>
@@ -135,20 +134,22 @@
     </section>
     <details id="settings-cuts" class="settings-section">
       <summary>Cut lines<span class="settings-summary-note">Names your cutter recognizes</span></summary>
-      <p id="cut-line-note" class="section-note">Your cutter uses these names to tell a through-cut from a kiss-cut. Now: <span id="cut-line-names"></span>. Leave them if your cuts already work.</p>
+      <p id="cut-line-note" class="section-note">Match your through-cut and kiss-cut names to your print software. Current names: <span id="cut-line-names"></span>. If your cuts work, leave these as they are.</p>
       <div class="fields">
       <label class="wide">Cut spot names
         <select id="cut-preset">
-          <option value="output" selected>Standard cut names</option>
-          <option value="ln">LN cut names</option>
-          <option value="custom">Custom</option>
+          <option value="output" selected>Standard · CutContour</option>
+          <option value="ln">LN · LNThru-cut / LNKiss-cut</option>
+          <option value="custom">Use my own names</option>
         </select>
       </label>
       <label>Through-cut name
         <input id="thru-name" type="text" maxlength="80" value="CutContour_Thru-cut" spellcheck="false" autocomplete="off">
+        <span class="hint">Cuts through the backing.</span>
       </label>
       <label>Kiss-cut name
         <input id="kiss-name" type="text" maxlength="80" value="CutContour_Kiss-cut" spellcheck="false" autocomplete="off">
+        <span class="hint">Leaves the backing intact.</span>
       </label>
       <label>When the cut type is missing
         <select id="generic-cut">
