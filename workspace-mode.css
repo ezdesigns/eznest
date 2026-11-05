@@ -5,7 +5,7 @@
 .workspace-modes .workspace-mode:hover, .workspace-modes #mode-switch:hover { color: #182136; background: #f0f2f0; }
 .workspace-modes [aria-current="page"] { color: #fff; background: #182136; }
 .workspace-modes a:focus-visible { outline: 2px solid #006cf5; outline-offset: 3px; }
-.shop-header { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 18px 24px; border-bottom: 1px solid #e2e4de; }
+.shop-header { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 12px 24px; border-bottom: 1px solid #e2e4de; }
 .shop-header > .top-actions { position: static; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
 .full-workspace .app-header { gap: 16px; }
 .full-workspace .app-header .header-tools { gap: 4px; }
