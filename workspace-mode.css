@@ -1,5 +1,5 @@
 /* Shared navbar geometry keeps the mode switch and common tools in place. */
-html { scrollbar-gutter: stable; }
+html { overflow-y: scroll; }
 .workspace-header.shop-header, .workspace-header.app-header {
   display: flex; align-items: center; flex-wrap: nowrap; gap: 16px;
   position: relative; height: 65px; min-height: 65px; padding: 12px 24px;
