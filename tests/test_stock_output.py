@@ -633,9 +633,19 @@ class ScreenTests(unittest.TestCase):
                     page = browser.new_page(viewport={'width': 1366, 'height': 768})
                     page.goto(helper.url() + '/web')
                     helper.wait_ready(page)
+                    preview_reads = []
+                    def stock_preview(route):
+                        preview_reads.append(route.request.url)
+                        if len(preview_reads) == 1:
+                            route.abort('timedout')
+                        else:
+                            route.continue_()
+                    # A transient local read must not leave the preview empty.
+                    page.route('**/api/stock/output?names=0', stock_preview)
                     page.click('#settings-open')
                     self.assertTrue(page.locator('#settings-stock-share').is_hidden())
                     page.wait_for_function("() => document.querySelector('#stock-output-preview').textContent.includes('\"name\": null')")
+                    self.assertGreaterEqual(len(preview_reads), 2)
                     self.assertFalse(page.locator('#share-stock-summary').is_checked())
                     self.assertFalse(page.locator('#show-roll-names').is_checked())
                     section = page.locator('#settings-stock-share').text_content()

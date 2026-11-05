@@ -2521,7 +2521,7 @@ async function refreshStockPreview() {
   if (!preview) return;
   const names = $('show-roll-names') && $('show-roll-names').checked ? '1' : '0';
   try {
-    const info = await fetchJson('/api/stock/output?names=' + names, 5000);
+    const info = await fetchJsonRetry('/api/stock/output?names=' + names);
     preview.textContent = JSON.stringify(info.preview, null, 2);
     const note = $('stock-output-note');
     if (!note) return;
@@ -3151,7 +3151,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (busy || saving || importing) {
       event.preventDefault(); status('Finish the current operation before switching modes.', true); return;
     }
-    if (kits.length && !window.confirm('Switch to full mode? Save your work first. Jobs are not transferred between modes, and unsaved changes may be lost.')) event.preventDefault();
+    if (kits.length && !window.confirm('Switch to Pro? Save your work first. Jobs do not move between modes, and unsaved changes may be lost.')) event.preventDefault();
   });
   closeSettingsFolds();
   $('inventory-open').addEventListener('click', () => openPreset($('material').value));
@@ -3515,7 +3515,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (document.querySelector('dialog[open]') || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #top-actions, #stock, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
+    if (document.querySelector('dialog[open]') || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #mode-switch, #top-actions, #stock, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

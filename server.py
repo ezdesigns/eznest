@@ -720,6 +720,7 @@ class Handler(BaseHTTPRequestHandler):
         static['/web.js'] = ('web.js', 'text/javascript')
         static['/shop-team.js'] = ('shop-team.js', 'text/javascript')
         static['/shop-team.css'] = ('shop-team.css', 'text/css')
+        static['/workspace-mode.css'] = ('workspace-mode.css', 'text/css')
         for name in ('onboarding-upload.webp', 'onboarding-stickers.webp', 'onboarding-file.webp'):
             static['/' + name] = (name, 'image/webp')
         static['/tester-results.js'] = ('tester-results.js', 'text/javascript')

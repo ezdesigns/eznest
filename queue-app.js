@@ -51,8 +51,8 @@ function clearPreview(){
   const hasJobs=activeEntries().length>0,actions=document.createElement('div');actions.className='empty-actions';
   const add=svgText('Choose artwork files','button');add.className='primary';add.disabled=busy||saving;add.onclick=()=>$('files').click();actions.append(add);
   if(!hasJobs){const example=svgText('Try an example','button');example.disabled=busy||saving;example.onclick=()=>$('demo').click();actions.append(example);}
-  const formats=svgText('PDF / compatible AI with cut contours, or SVG. Original print artwork stays local.','p');formats.className='empty-format';
-  $('empty').replaceChildren(svgText(hasJobs?'Your layout will appear here.':'Drop PDF, AI or SVG artwork to begin.','strong'),svgText(hasJobs?'Check the width and quantities, then select Nest.':'Choose your roll width, then nest the selected jobs.','p'),actions,formats);
+  const formats=svgText('PDF and compatible AI need existing named cut contours. SVG files are also supported.','p');formats.className='empty-format';
+  $('empty').replaceChildren(svgText('Your print layout appears here','strong'),svgText(hasJobs?'Check the width and quantities, then nest.':'Add jobs and choose a roll width.','p'),actions,formats);
 
   for(const id of ['metrics','review-tools','completeness','job-key','export-bar','batch-status','output-check','download-confirmation'])$(id).hidden=true;
 
@@ -463,7 +463,7 @@ $('show-labels').onchange=renderLayout;$('job-colors').onchange=renderLayout;$('
 const modeSwitch=$('mode-switch');
 if(modeSwitch)modeSwitch.onclick=event=>{
   if(busy||saving||importing){event.preventDefault();status('Finish the current operation before switching modes.',true);return;}
-  if(queue.length&&!window.confirm('Switch to simple mode? Save your work first. Jobs are not transferred between modes, and unsaved changes may be lost.'))event.preventDefault();
+  if(queue.length&&!window.confirm('Switch to Lite? Save your work first. Jobs do not move between modes, and unsaved changes may be lost.'))event.preventDefault();
 };
 $('settings-open').onclick=()=>{fillSettings();$('settings').showModal();};$('settings-close').onclick=()=>$('settings').close();
 
