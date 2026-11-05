@@ -1,0 +1,24 @@
+/* Both workspaces keep their own controls and share one visible mode selector. */
+.workspace-identity { display: flex; align-items: center; flex-wrap: wrap; gap: 20px; min-width: 0; }
+.workspace-modes { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid #d8ddd9; border-radius: 9px; background: #fff; }
+.workspace-modes .workspace-mode, .workspace-modes #mode-switch { display: inline-flex; align-items: center; justify-content: center; min-width: 52px; min-height: 32px; padding: 4px 12px; border: 0; border-radius: 6px; font: 600 13px/1.4 var(--font-sans, sans-serif); color: #5c6870; background: transparent; text-decoration: none; white-space: nowrap; }
+.workspace-modes .workspace-mode:hover, .workspace-modes #mode-switch:hover { color: #182136; background: #f0f2f0; }
+.workspace-modes [aria-current="page"] { color: #fff; background: #182136; }
+.workspace-modes a:focus-visible { outline: 2px solid #006cf5; outline-offset: 3px; }
+.shop-header { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 18px 24px; border-bottom: 1px solid #e2e4de; }
+.shop-header > .top-actions { position: static; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+.full-workspace .app-header { gap: 16px; }
+.full-workspace .app-header .header-tools { gap: 4px; }
+@media (max-width: 720px) {
+  .shop-header { padding: 12px 16px; gap: 10px; }
+  .workspace-identity { width: 100%; justify-content: space-between; gap: 12px; }
+  .shop-header > .top-actions { width: 100%; justify-content: flex-start; gap: 6px; }
+  .shop-header .top-actions #shop-team-open { flex: 1 1 80px; min-width: 0; max-width: 116px; margin-right: 0; }
+  .shop-header .top-actions #output-link { flex: none; }
+  .corner-actions { position: static; justify-content: flex-end; margin: 16px; }
+  body:not(.full-workspace) main { padding-bottom: 24px; }
+  #settings-support .help-card { position: fixed; left: 16px; right: 16px; bottom: 80px; width: auto; }
+  .full-workspace .app-header .header-tools button { height: 36px; min-height: 36px; padding: 0 6px; font-size: 12px; }
+  .full-workspace .header-tools #shop-team-open { max-width: 120px; }
+  .full-workspace .app-header .header-tools { justify-content: flex-start; }
+}

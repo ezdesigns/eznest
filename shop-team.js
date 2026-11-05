@@ -67,7 +67,6 @@ window.EZNShop = (() => {
   function tour() {
     reset('Thanks for downloading Ez Nest'); touring = true; dialog.classList.add('team-walkthrough');
     closeButton.setAttribute('aria-label', 'Close welcome');
-    node('strong', 'Use less. Save more.', content);
     const steps = node('ol', '', content); steps.className = 'tour-steps';
     steps.setAttribute('role', 'list');
     const stepIcons = [
@@ -86,7 +85,7 @@ window.EZNShop = (() => {
     node('span', 'Want to earn more?', pitchTitle);
     node('p', 'Check out OUTPUT. Take on more jobs without buying more equipment—partners print, you keep the customer. Or get paid to print for other shops.', pitch);
     const actions = node('div', '', content); actions.className = 'tour-actions';
-    button('Start nesting', endTour, actions).id = 'tour-next';
+    button('Continue', endTour, actions).id = 'tour-next';
     const link = node('a', 'Use OUTPUT', actions); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
     heading.tabIndex = -1; heading.focus({preventScroll:true}); dialog.scrollTop = 0;
   }

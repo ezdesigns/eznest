@@ -7,10 +7,17 @@
 <link rel="stylesheet" href="/web.css">
 <link rel="stylesheet" href="/inventory-panel.css">
 <link rel="stylesheet" href="/shop-team.css">
+<link rel="stylesheet" href="/workspace-mode.css">
 </head>
 <body data-step="drop">
 <header class="shop-header">
+  <div class="workspace-identity">
   <strong>eznest</strong>
+  <nav class="workspace-modes" aria-label="Workspace mode">
+    <span class="workspace-mode" aria-current="page">Lite</span>
+    <a id="mode-switch" class="workspace-mode" href="/?view=full" aria-label="Pro mode" title="Multiple jobs and batch controls">Pro</a>
+  </nav>
+  </div>
 <div id="top-actions" class="top-actions">
 <div id="output-link" class="output-link">
 <button id="output-dot" type="button" class="top-button output-dot" title="Connect OUTPUT" aria-label="Connect OUTPUT"><span class="status-circle" aria-hidden="true"></span></button>
