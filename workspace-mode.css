@@ -1,4 +1,4 @@
-/* Shared navbar geometry keeps the mode switch and common tools in place. */
+/* Header layout for the single upload-and-nest workspace. */
 html { overflow-y: scroll; }
 .workspace-header.shop-header, .workspace-header.app-header {
   display: flex; align-items: center; flex-wrap: nowrap; gap: 16px;
@@ -6,7 +6,7 @@ html { overflow-y: scroll; }
   border: 0; border-bottom: 1px solid #e2e4de; background: #f7f7f4;
   color: #1c1c1c; font-family: "Red Hat Display", "Segoe UI", sans-serif;
 }
-.workspace-identity { display: grid; grid-template-columns: max-content max-content 1fr; align-items: center; gap: 20px; min-width: 0; }
+.workspace-identity { display: grid; grid-template-columns: max-content 1fr; align-items: center; gap: 20px; min-width: 0; }
 .workspace-header .workspace-identity > strong { font-size: 23px; font-weight: 700; letter-spacing: -.5px; line-height: 36px; }
 .workspace-header .workspace-modes { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid #d8ddd9; border-radius: 9px; background: #fff; }
 .workspace-header .workspace-modes .workspace-mode, .workspace-header .workspace-modes #mode-switch {

@@ -54,7 +54,7 @@ class StartupScreenTests(unittest.TestCase):
         self.state_release.set()
         self.fixture.tearDown()
 
-    def test_launch_waits_then_reveals_both_modes_without_replaying_switch(self):
+    def test_launch_waits_then_reveals_single_workspace_from_legacy_links(self):
         from playwright.sync_api import sync_playwright, expect
         from test_web_mvp import launch_browser
         with sync_playwright() as pw:
@@ -88,7 +88,9 @@ class StartupScreenTests(unittest.TestCase):
                     self.state_release.set()
                     expect(page.locator('#app-startup')).to_have_count(0, timeout=15000)
                     expect(page.locator('header')).to_be_visible()
-                    page.click('#mode-switch')
+                    expect(page.locator('#mode-switch')).to_have_count(0)
+                    page.reload()
+                    self.fixture.wait_ready(page)
                     expect(page.locator('#app-startup')).to_have_count(0)
                     self.assertNotIn('startup=', page.url)
                     self.assertFalse(errors, errors)

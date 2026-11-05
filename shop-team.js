@@ -65,7 +65,9 @@ window.EZNShop = (() => {
     else finish();
   }
   function tour() {
-    reset('Thanks for downloading Ez Nest'); touring = true; dialog.classList.add('team-walkthrough');
+    reset('Thanks for downloading'); touring = true; dialog.classList.add('team-walkthrough');
+    heading.append(document.createTextNode(' '));
+    node('span', 'Ez Nest', heading).className = 'tour-brand';
     closeButton.setAttribute('aria-label', 'Close welcome');
     const steps = node('ol', '', content); steps.className = 'tour-steps';
     steps.setAttribute('role', 'list');
@@ -107,16 +109,6 @@ window.EZNShop = (() => {
     shopButton.title = name;
     shopButton.setAttribute('aria-haspopup', 'dialog');
     shopButton.classList.add('top-button');
-    const parent = shopButton.parentElement;
-    let invite = document.getElementById('shop-invite-open');
-    const show = !!(session.localPC && session.shopIdentity?.created);
-    if (show && !invite && parent) {
-      invite = button('Invite', open, parent);
-      invite.id = 'shop-invite-open';
-      invite.className = 'top-button';
-      const logout = document.getElementById('logout');
-      if (logout && logout.parentElement === parent) parent.insertBefore(invite, logout);
-    } else if (!show && invite) invite.remove();
   }
   async function created() { await updateSession(); finish(); }
   function welcome() {
