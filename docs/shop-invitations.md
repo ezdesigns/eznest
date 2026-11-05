@@ -5,15 +5,17 @@ the single source of stock. Designers open that host in a browser; they do not
 install separate inventory servers or copy a database between PCs. Each browser
 has its own revocable access, rather than a shared account password.
 
-On first run, enter the print shop name and choose **Start nesting**. This names the shop on this host without replacing
-materials, changing cut/print settings, opening a firewall, or connecting OUTPUT.
-The shop name appears in the header in both workspaces. **Already have a shop on
-another PC?** takes a designer to the host's network address. **Not now** allows
-a local trial without creating a shop and asks again next launch.
+On first run, choose **Create a shop** or **Join a shop**. Creating a shop names
+it on this host without replacing materials, changing cut/print settings, opening
+a firewall, or connecting OUTPUT. The shop name appears in the header in both
+workspaces. **Join a shop** takes a designer to the host's network address.
+**Use this PC for now** allows a local trial without creating a shop and asks
+again next launch. **Invite** on the home screen creates a one-time code.
 
-**Explore OUTPUT** introduces the network pilot before asking for a connection.
+The status dot opens **Continue with OUTPUT**. That dialog introduces the
+network pilot before asking for a connection.
 Its public-site link does not send the local shop name, filenames, or job data.
-Existing OUTPUT shops can expand **Already use OUTPUT? Connect this computer**
+Existing OUTPUT shops can expand **Use a pairing code instead**
 to use the current code exchange. No external tab opens until a link is clicked.
 Local shop creation is not OUTPUT registration; sharing still needs separate
 consent. OUTPUT currently describes a devnet pilot, not production fulfillment.

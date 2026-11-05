@@ -1,11 +1,12 @@
 # OUTPUT pairing
 
-Nesting and stock management work without OUTPUT. The optional discovery
-panel explains the OUTPUT pilot. On the host PC, **Continue with OUTPUT**
-opens owner sign-in and approval; see [browser approval](output-browser-approval.md).
-Manual codes remain under **Use a pairing code instead**. **Not now** dismisses
-the invitation, and Settings lets the owner connect later. Designer PCs cannot
-pair the host. An explicit OUTPUT-off launch setting still disables pairing.
+Nesting and stock work without OUTPUT. The home screen does not show a Connect
+or Explore OUTPUT banner, and nesting does not wait for a connection. On the
+shop computer, the status dot or Settings opens **Continue with OUTPUT** for
+owner sign-in and a matching code; see [browser approval](output-browser-approval.md).
+Manual codes remain under **Use a pairing code instead**. Designer PCs cannot
+pair the host. Sharing stays off until the host turns it on. An explicit
+OUTPUT-off launch setting still disables pairing.
 
 `output_remote.READY` defaults to false. A shop setting cannot turn it on.
 While it is false, legacy capacity-approval routes and stock-summary upload

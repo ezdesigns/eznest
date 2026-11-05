@@ -317,15 +317,12 @@ class GateTests(unittest.TestCase):
                     context = browser.new_context(viewport={'width': 1280, 'height': 800})
                     page = context.new_page()
                     page.goto(helper.url() + '/web')
-                    # OUTPUT discovery is optional; nesting is already available.
+                    # OUTPUT stays off the home screen. The status dot opens the same dialog.
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
-                    expect(page.locator('#output-required')).to_be_visible()
-                    expect(page.locator('#output-required-title')).to_have_text('Take on more work with OUTPUT')
-                    expect(page.locator('#output-required-code')).to_have_text('Explore OUTPUT')
-                    self.assertEqual(page.locator('#output-setup-waiting, #output-setup-settings, #output-required-connect').count(), 0)
-                    expect(page.locator('#output-required-skip')).to_have_text('Not now')
+                    expect(page.locator('#output-required')).to_be_hidden()
+                    expect(page.locator('#start-nesting')).to_be_visible()
                     expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
-                    page.click('#output-required-code')
+                    page.click('#output-dot')
                     self.assertEqual(len(context.pages), 1)
                     expect(page.locator('#output-browser-start')).to_be_focused()
                     expect(page.locator('#output-link-code')).to_be_hidden()
@@ -347,25 +344,14 @@ class GateTests(unittest.TestCase):
                     shots.mkdir(parents=True, exist_ok=True)
                     page.screenshot(path=str(shots / 'output-connect-gate.png'))
                     page.click('#output-link-cancel')
-                    page.click('#output-required-skip')
-                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
-                    self.assertEqual(page.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
-                    self.assertIsNone(page.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"))
-                    fresh = context.new_page()
-                    try:
-                        fresh.goto(helper.url() + '/web')
-                        fresh.wait_for_function("() => document.body.dataset.ready === '1'")
-                        expect(fresh.locator('#output-required')).to_be_hidden()
-                        self.assertEqual(fresh.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
-                        self.assertIsNone(fresh.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"))
-                    finally:
-                        fresh.close()
+                    expect(page.locator('#output-required')).to_be_hidden()
+                    expect(page.locator('#start-nesting')).to_be_visible()
                 finally:
                     browser.close()
         finally:
             helper.tearDown()
 
-    def test_skip_opens_inventory_when_browser_storage_is_unavailable(self):
+    def test_inventory_opens_without_connecting(self):
         from playwright.sync_api import expect, sync_playwright
         import test_web_mvp
         helper = test_web_mvp.WebMvpTests(methodName='runTest')
@@ -386,11 +372,7 @@ class GateTests(unittest.TestCase):
                     })();""")
                     page.goto(helper.url() + '/web')
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
-                    expect(page.locator('#output-required')).to_be_visible()
-                    page.evaluate('window.skipVisit = true')
-                    page.click('#output-required-skip')
-                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
-                    self.assertTrue(page.evaluate('window.skipVisit === true'))
+                    expect(page.locator('#output-required')).to_be_hidden()
                     page.click('#stock-open')
                     expect(page.locator('#stock-add')).to_be_visible()
                     page.click('#stock-add')

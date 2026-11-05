@@ -58,7 +58,7 @@ Designer PCs only open `http://SHOP-HOST:8765/web`. Install Ez Nest on the
 host. Set a shop PIN before other PCs connect:
 
 1. On the host, open `http://127.0.0.1:8765/web`.
-2. Connecting to OUTPUT is optional. Choose **Skip** to open the workspace in this browser, or choose **Have a pairing code?** and paste a code from <https://output.jeezlabs.io/outpost/ez-nest>. **Skip** is remembered in that browser. Designer PCs cannot pair. **Set up your shop** stays hidden.
+2. Connecting to OUTPUT is optional and is not on the home screen. Open Settings or the status dot and paste a code from <https://output.jeezlabs.io/outpost/ez-nest> if you want to connect. Designer PCs cannot pair. Nesting works either way.
 3. Open **Settings**, then **Shop PIN**.
 4. Type 8 to 12 digits, or a passphrase of at least 10 characters with a letter, and choose **Save shop PIN**. Tell the designers that PIN. Do not write it in a file in the data folder. If Settings says the saved PIN is old, replace it.
 5. Optional and recommended: pass `-TlsCert` and `-TlsKey` together so the shop page is HTTPS. Leave both empty to keep HTTP. On HTTP, someone who can watch the shop network can copy a signed-in browser's session. See [Security](../SECURITY.md).

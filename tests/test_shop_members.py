@@ -140,6 +140,11 @@ class MembershipHTTPTests(unittest.TestCase):
         handler = self.handler('/api/materials', headers={'Cookie': cookie})
         handler.do_GET()
         self.assertEqual(handler.sent[0][0], 403)
+        self.assertEqual(handler.sent[0][1]['error'], 'Your access was removed.')
+        session = self.handler('/api/session', headers={'Cookie': cookie})
+        session.do_GET()
+        self.assertEqual(session.sent[0][0], 200)
+        self.assertTrue(session.sent[0][1]['accessRemoved'])
 
     def test_join_requires_same_origin_and_local_only_cannot_invite(self):
         code = members.invite(self.root)['code']

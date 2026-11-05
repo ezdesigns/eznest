@@ -169,6 +169,12 @@ async function sha256(data) {
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+function networkError(error) {
+  const text = String(error && error.message || error || '');
+  if (/Failed to fetch|NetworkError|Load failed/i.test(text)) return Error("Can't reach Ez Nest. Check the connection and try again.");
+  return error instanceof Error ? error : Error(text || "Can't reach Ez Nest. Check the connection and try again.");
+}
+
 function fetchJson(path, ms) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -180,12 +186,13 @@ function fetchJson(path, ms) {
         showOutputRequired(true);
         throw Error('Connect to OUTPUT in Settings. Nesting works without it.');
       }
+      if (body.error === 'Your access was removed.') throw Error(body.error);
       throw Error('Request failed.');
     }
     return response.json();
   }, error => {
     clearTimeout(timer);
-    throw error;
+    throw networkError(error);
   });
 }
 
@@ -252,11 +259,16 @@ function withToken(headers) {
 }
 
 async function api(path, data, file) {
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: file ? withToken({'Content-Type': 'application/pdf', 'X-EZ-Import': encodeURIComponent(JSON.stringify(data || {}))}) : withToken({'Content-Type': 'application/json'}),
-    body: file || JSON.stringify(data || {})
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      method: 'POST',
+      headers: file ? withToken({'Content-Type': 'application/pdf', 'X-EZ-Import': encodeURIComponent(JSON.stringify(data || {}))}) : withToken({'Content-Type': 'application/json'}),
+      body: file || JSON.stringify(data || {})
+    });
+  } catch (error) {
+    throw networkError(error);
+  }
   const body = await response.json();
   if (!response.ok) {
     const gated = body.code === 'connect_required' && !path.startsWith('/api/telemetry/output/');
@@ -1692,8 +1704,9 @@ function renderMaterialButtons() {
   const prompt = [...$('material').options].find(option => option.value === '');
   const saved = [...$('material').options].filter(option => option.value && option.value !== 'custom');
   const picked = !!materialProfiles[selected];
+  const hasRolls = saved.length > 0 || (inventoryReady && shopInventory.materials.length > 0);
   if (prompt) {
-    if (!saved.length) {
+    if (!hasRolls) {
       prompt.hidden = false;
       prompt.textContent = 'Add your first material';
     } else if (!picked || legacyRollUnconfirmed()) {
@@ -2558,6 +2571,7 @@ async function boot() {
   localSave = session.localSave === true;
   renderOutputLink(session.outputLink, session.localPC);
   renderOutputRequired(session);
+  if (session.accessRemoved) status('Your access was removed.', true);
   if (session.localPC && session.pinWeak && !session.shopIdentity?.created) {
     await requireHostPinReset();
     session = await fetchJsonRetry('/api/session');
@@ -2570,11 +2584,6 @@ async function boot() {
     $('logout').hidden = false;
   } else if (!session.localPC) {
     $('logout').hidden = false;
-  }
-  if (outputRequired) {
-    showScreen('drop'); status(''); renderActions();
-    document.body.dataset.ready = '1';
-    return;
   }
   await refreshInventory().catch(() => {});
   if (inventoryReady && !legacyRollUnconfirmed() && shopInventory.materials.some(item => item.id === stored.material)) $('material').value = stored.material;
@@ -2621,11 +2630,13 @@ function setupSkipped() {
   try { return localStorage.getItem('eznest-setup-skipped') === '1'; }
   catch { return false; }
 }
-function showOutputRequired(required) {
-  outputRequired = required === true && !setupSkipped();
-  $('output-required').hidden = !outputRequired;
-  $('output-required-note').textContent = '';
-  document.body.classList.toggle('output-required-on', outputRequired);
+function showOutputRequired() {
+  // The matching-code dialog stays on the status dot and in Settings.
+  // It does not sit on the home screen or block nesting.
+  outputRequired = false;
+  const box = $('output-required');
+  if (box) box.hidden = true;
+  document.body.classList.remove('output-required-on');
 }
 function showOutputBanner(session) {
   const banner = $('output-banner');
@@ -3344,7 +3355,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('update-note').textContent = result.message;
       }
     } catch (error) {
-      const offline = /Failed to fetch|NetworkError/i.test(String(error.message || error));
+      const offline = /Failed to fetch|NetworkError|Can't reach Ez Nest/i.test(String(error.message || error));
       if (installNow && offline) {
         status('Ez Nest is restarting to install the update.');
         return;
@@ -3695,5 +3706,10 @@ const inventoryPanel = EZNInventoryPanel.create({
 for (const id of ['thru-name', 'kiss-name']) $(id).addEventListener('input', renderCutLineNote);
 renderCutLineNote();
 
-// Header status circle: click reuses the existing connect flow (or the connected menu).
-$('output-dot')?.addEventListener('click', event => { event.stopPropagation(); ($('output-link-status').hidden ? $('output-link-connect') : $('output-link-status')).click(); });
+// Header status circle: open the connection dialog, or the menu once connected.
+// The Connect button can be disabled when pairing is off; the dialog still explains that.
+$('output-dot')?.addEventListener('click', event => {
+  event.stopPropagation();
+  if ($('output-link-status').hidden) openOutputLinkForm(event);
+  else $('output-link-status').click();
+});

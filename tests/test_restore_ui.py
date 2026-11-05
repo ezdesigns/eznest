@@ -264,12 +264,9 @@ class RestoreUiTests(unittest.TestCase):
         self.assertEqual(round(page.locator('#start-over-idle').bounding_box()['height']), round(page.locator('#start-nesting').bounding_box()['height']))
         self.assertEqual(round(page.locator('#output-dot').bounding_box()['height']), 36)
         expect(page.locator('#output-dot')).to_have_attribute('title', 'Connect to OUTPUT')
-        # Unpaired: discovery is optional and nesting remains available.
-        expect(page.locator('#output-required')).to_be_visible()
-        expect(page.locator('#output-required-title')).to_have_text('Take on more work with OUTPUT')
-        expect(page.locator('#output-required-skip')).to_be_visible()
+        expect(page.locator('#output-required')).to_be_hidden()
         self.final(page, 'not-connected', width)
-        page.click('#output-required-code')
+        page.click('#output-dot')
         page.locator('#output-connect-details summary').click()
         with context.expect_page() as tab:
             page.click('#output-link-open')
@@ -278,9 +275,8 @@ class RestoreUiTests(unittest.TestCase):
         expect(page.locator('#output-link-code')).to_be_visible()
         self.shot(page, f'after-connect-code-{width}.png')
         page.fill('#output-link-code', CODE)
-        with page.expect_navigation():
-            page.click('#output-link-submit')
-        self.wait_ready(page)
+        page.click('#output-link-submit')
+        expect(page.locator('#setup-shop')).to_be_hidden()
         expect(page.locator('#output-required')).to_be_hidden()
         if page.locator('#setup').is_visible():
             page.click('#setup-save')
