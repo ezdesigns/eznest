@@ -720,6 +720,8 @@ class Handler(BaseHTTPRequestHandler):
         static['/web.js'] = ('web.js', 'text/javascript')
         static['/shop-team.js'] = ('shop-team.js', 'text/javascript')
         static['/shop-team.css'] = ('shop-team.css', 'text/css')
+        for name in ('onboarding-upload.webp', 'onboarding-stickers.webp', 'onboarding-file.webp'):
+            static['/' + name] = (name, 'image/webp')
         static['/tester-results.js'] = ('tester-results.js', 'text/javascript')
         static['/fonts/Archivo.ttf'] = ('fonts/Archivo.ttf', 'font/ttf')
         static['/fonts/rajdhani-700.woff2'] = ('fonts/rajdhani-700.woff2', 'font/woff2')

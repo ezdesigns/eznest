@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- The home screen no longer leads with Connect to OUTPUT. First run opens create-a-shop or join-with-an-invite. Pairing stays optional in Settings and the status dot, and it does not block nesting, inventory, or shop setup.
+- First run shows the welcome introduction, then create-a-shop or join-with-an-invite. The home screen no longer leads with Connect to OUTPUT. Pairing stays optional in Settings and the status dot, and it does not block nesting, inventory, or shop setup.
 - After a shop exists, Invite is on the home screen. The invite code is shown above Done.
 - A second computer on a plain network address can open Join. HTTPS is unchanged and is not required for that.
 - A removed person sees that their access was removed. If Ez Nest cannot be reached, the page says so in plain words. A second nest says someone else is nesting. The material list names rolls that are already in the shop. Log out stays fully visible. Help no longer covers Try tighter fit.

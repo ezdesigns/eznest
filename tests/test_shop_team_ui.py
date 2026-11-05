@@ -18,6 +18,43 @@ class ShopTeamBrowserTests(unittest.TestCase):
     def tearDown(self):
         self.fixture.tearDown()
 
+    def test_walkthrough_navigation_remembered_and_replay_without_connecting(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as pw:
+            browser=test_web_mvp.launch_browser(pw)
+            try:
+                for width,height in [(1280,720),(390,600)]:
+                    page=browser.new_page(viewport={'width':width,'height':height})
+                    posts=[];page.on('request',lambda r:posts.append(r.url) if r.method=='POST' else None)
+                    page.goto(self.fixture.url()+'/web')
+                    expect(page.locator('#shop-team-title')).to_have_text('Thanks for downloading Ez Nest')
+                    expect(page.locator('#tour-progress')).to_have_count(0)
+                    expect(page.locator('#tour-back')).to_have_count(0)
+                    expect(page.locator('.tour-steps li')).to_have_count(3)
+                    page.wait_for_function("() => [...document.querySelectorAll('.tour-steps img')].length === 3 && [...document.querySelectorAll('.tour-steps img')].every(n => n.complete && n.naturalWidth > 0)")
+                    expect(page.locator('#tour-output-link')).to_have_attribute('href','https://output.jeezlabs.io/')
+                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'single-welcome-{width}.png'))
+                    page.click('#tour-next')
+                    expect(page.get_by_role('button', name='Create a shop', exact=True)).to_be_visible()
+                    page.get_by_role('button', name='Use this PC for now', exact=True).click()
+                    self.fixture.wait_ready(page)
+                    expect(page.locator('#shop-team-dialog')).to_be_hidden()
+                    self.assertFalse(shop_members.configured(server.WORK))
+                    page.reload();self.fixture.wait_ready(page)
+                    expect(page.locator('#shop-team-dialog')).to_be_hidden()
+                    page.click('#settings-support > summary');page.click('#replay-walkthrough')
+                    expect(page.locator('#shop-team-title')).to_have_text('Thanks for downloading Ez Nest')
+                    page.keyboard.press('Escape');expect(page.locator('#shop-team-dialog')).to_be_hidden()
+                    page.goto(self.fixture.url()+'/?tour=1')
+                    expect(page.locator('#shop-team-title')).to_have_text('Thanks for downloading Ez Nest')
+                    self.assertNotIn('tour=',page.url)
+                    page.get_by_role('button',name='Close welcome').click()
+                    page.reload();self.fixture.wait_ready(page)
+                    expect(page.locator('#shop-team-dialog')).to_be_hidden()
+                    self.assertFalse(any('/output/link' in url or '/shop-members/create' in url or '/telemetry/output/pair' in url for url in posts))
+                    page.close()
+            finally:browser.close()
+
     def test_first_run_create_shop_and_return_to_materials(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as pw:
@@ -25,6 +62,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             try:
                 page.goto(self.fixture.url() + '/?view=simple')
+                page.click('#tour-next')
                 expect(page.get_by_role('heading', name='Welcome to Ez Nest')).to_be_visible()
                 page.get_by_role('button', name='Create a shop', exact=True).click()
                 page.locator('#team-shop-name').fill('Test Print Shop')
@@ -35,7 +73,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 expect(page.locator('#shop-team-dialog')).to_contain_text('shop network')
                 expect(page.get_by_role('button', name='Invite someone')).to_have_count(0)
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-local.png'))
-                page.get_by_role('button', name='Done', exact=True).click()
+                page.get_by_role('button', name='Close shop', exact=True).click()
                 page.reload()
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()
                 expect(page.locator('#shop-team-open')).to_have_text('Test Print Shop')
@@ -53,9 +91,12 @@ class ShopTeamBrowserTests(unittest.TestCase):
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             try:
                 page.goto(self.fixture.url() + '/?view=full')
-                expect(page.get_by_role('heading', name='Welcome to Ez Nest')).to_be_visible()
+                expect(page.get_by_role('heading', name='Thanks for downloading Ez Nest')).to_be_visible()
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-welcome.png'))
-                page.get_by_role('button', name='Use this PC for now').click()
+                expect(page.get_by_role('button', name='Skip tour')).to_have_count(0)
+                page.get_by_role('button', name='Close welcome').click()
+                expect(page.get_by_role('button', name='Join a shop', exact=True)).to_be_visible()
+                page.get_by_role('button', name='Use this PC for now', exact=True).click()
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()
                 self.assertFalse(shop_members.configured(server.WORK))
             finally:
@@ -74,8 +115,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 page.get_by_role('button', name='Invite someone', exact=True).click()
                 expect(page.locator('#team-invitation')).to_contain_text('Expires in 15 minutes')
                 code_box = page.locator('#team-invitation').bounding_box()
-                done_box = page.get_by_role('button', name='Done', exact=True).bounding_box()
-                self.assertLessEqual(code_box['y'], done_box['y'])
+                self.assertGreater(code_box['height'], 0)
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-team-host.png'))
                 page.get_by_role('button', name='Cancel unused invites').click()
                 expect(page.locator('#team-invitation')).to_be_hidden()
@@ -102,19 +142,11 @@ class ShopTeamBrowserTests(unittest.TestCase):
                     expect(page.locator('#shop-team-open')).to_have_attribute('title', name)
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                     page.screenshot(path=str(test_web_mvp.SCREENSHOTS / f'output-invitation-{width}.png'), full_page=True)
-                    page.click('#output-dot')
-                    expect(page.locator('#output-explore')).to_be_focused()
-                    expect(page.locator('#output-link-code')).to_be_hidden()
-                    self.assertEqual(len(context.pages), 1)
-                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS / f'output-discovery-{width}.png'), full_page=True)
                     with context.expect_page() as opened:
-                        page.click('#output-explore')
-                    self.assertEqual(opened.value.url, 'https://output.jeezlabs.io/')
+                        page.click('#output-dot')
+                    opened.value.wait_for_url('https://output.jeezlabs.io/outpost/ez-nest')
+                    self.assertIsNone(opened.value.evaluate('window.opener'))
                     opened.value.close()
-                    page.locator('#output-connect-details summary').click()
-                    expect(page.locator('#output-connect-help')).to_contain_text('turned off')
-                    expect(page.locator('#output-link-submit')).to_be_hidden()
-                    page.click('#output-link-cancel')
                     expect(page.locator('#setup-shop')).not_to_be_visible()
                     self.assertFalse(output_credential.path(server.WORK).exists())
                     self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
@@ -147,6 +179,9 @@ class ShopTeamBrowserTests(unittest.TestCase):
             try:
                 page.goto(self.fixture.url() + '/?view=simple')
                 expect(page.get_by_role('heading', name='Join Shared shop')).to_be_visible()
+                expect(page.locator('#shop-team-close')).to_be_hidden()
+                page.keyboard.press('Escape'); page.mouse.click(5,5)
+                expect(page.locator('#shop-team-dialog')).to_be_visible()
                 page.locator('#team-member-name').fill('Designer A')
                 page.locator('#team-code').fill(code)
                 page.locator('#team-join').click()

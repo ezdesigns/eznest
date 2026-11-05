@@ -5,15 +5,17 @@ the single source of stock. Designers open that host in a browser; they do not
 install separate inventory servers or copy a database between PCs. Each browser
 has its own revocable access, rather than a shared account password.
 
-On first run, choose **Create a shop** or **Join a shop**. Creating a shop names
+On first run, finish the welcome introduction, then choose **Create a shop** or
+**Join a shop**. Creating a shop names
 it on this host without replacing materials, changing cut/print settings, opening
 a firewall, or connecting OUTPUT. The shop name appears in the header in both
 workspaces. **Join a shop** takes a designer to the host's network address.
-**Use this PC for now** allows a local trial without creating a shop and asks
-again next launch. **Invite** on the home screen creates a one-time code.
+**Use this PC for now** allows a local trial without creating a shop and remembers
+that choice in this browser. Open **Your shop** later to create or join one. **Invite** on the home screen creates a one-time code.
 
-The status dot opens **Continue with OUTPUT**. That dialog introduces the
-network pilot before asking for a connection.
+The status dot opens OUTPUT approval on an eligible host, or the public OUTPUT
+connection page when this computer cannot pair. Settings > OUTPUT connection
+provides the in-app connection controls.
 Its public-site link does not send the local shop name, filenames, or job data.
 Existing OUTPUT shops can expand **Use a pairing code instead**
 to use the current code exchange. No external tab opens until a link is clicked.
@@ -27,11 +29,11 @@ the host. The shop button shows the host address once LAN mode is running. A
 local-only installation does not automatically convert into a service or move
 its stock; migration needs a separate reviewed workflow. No port forwarding.
 
-On the host, select the shop name → **Create invitation**. A teammate opens the
+On the host, select the shop name → **Invite someone**. A teammate opens the
 displayed address and enters their name and invitation. Codes expire in 15
 minutes and work once. Access lasts up to 30 days in that browser, including
 host restarts. Signing out ends it; ask the host for a new invitation to return.
-**Remove access** revokes that member immediately. **Cancel unused invitations**
+**Remove access** revokes that member immediately. **Cancel unused invites**
 invalidates outstanding codes. There is a 100-member pilot cap.
 
 Members see the same materials, reservations, and confirmed usage. Existing

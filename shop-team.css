@@ -1,6 +1,7 @@
 #shop-team-dialog { width: min(480px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; border: 1px solid #dce3eb; border-radius: 18px; padding: 28px; color: #1c2939; background: #fff; box-shadow: 0 20px 80px #17233b33; }
 #shop-team-dialog::backdrop { background: #15223866; }
-#shop-team-dialog h2 { margin: 0 0 16px; font-size: 24px; }
+#shop-team-dialog h2 { margin: 0 40px 16px 0; font-size: 24px; }
+#shop-team-dialog #shop-team-close { position:absolute; top:14px; right:14px; width:36px; height:36px; padding:0; margin:0; border:0; background:transparent; font-size:26px; color:#526173; }
 #shop-team-dialog p { color: #526173; line-height: 1.5; margin: 0 0 14px; }
 #shop-team-dialog label { display: grid; gap: 6px; margin: 16px 0; font-weight: 600; }
 #shop-team-dialog input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #bcc9d8; border-radius: 8px; font: inherit; }
@@ -14,6 +15,38 @@
 #shop-team-dialog .team-text-button { border: 0; background: transparent; color: #526173; padding: 10px 0; text-decoration: underline; text-underline-offset: 3px; }
 #shop-team-dialog .team-existing { margin-top: 16px; border-top: 1px solid #e5e9ee; }
 #shop-team-dialog .team-existing button { margin-bottom: 0; font-size: 13px; }
+#shop-team-dialog .team-output-intro { border-top:1px solid #e5e9ee; padding-top:20px; margin-top:18px; }
+#shop-team-dialog .team-output-intro h3 { margin:0 0 8px; color:#182136; font-size:17px; }
+#shop-team-dialog .team-output-intro p { font-size:13px; line-height:1.65; }
+#shop-team-dialog .team-output-intro a { color:#006cf5; font-size:13px; font-weight:700; text-decoration:none; }
+#shop-team-dialog.team-walkthrough { width:min(460px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); padding:32px; }
+#shop-team-title:focus { outline:none; }
+#shop-team-dialog .tour-progress { font-size:12px; font-weight:700; color:#006cf5; }
+.tour-roll { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding:16px; margin:20px 0; background:#edf4ff; border:1px dashed #9dbfeb; border-radius:14px; }
+.tour-roll span { height:50px; border-radius:10px 22px 10px 10px; background:#006cf5; }
+.tour-roll span:nth-child(2n) { background:#78afea; border-radius:22px 10px 10px 10px; }
+.tour-steps { list-style:none; counter-reset:welcome-step; padding:0; margin:20px 0; }
+.tour-steps li { counter-increment:welcome-step; display:grid; grid-template-columns:16px 36px minmax(0,1fr); align-items:center; gap:10px; margin:10px 0; line-height:1.5; }
+.tour-steps li::before { content:counter(welcome-step) '.'; }
+.tour-steps img { display:block; width:36px; height:36px; object-fit:contain; }
+.tour-steps strong,.tour-steps span { display:block; }
+.tour-steps span { font-size:15px; color:inherit; }
+.tour-output-cards { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:20px 0; }
+.tour-output-cards > div { padding:16px; background:#f3f7fc; border-radius:12px; }
+#shop-team-dialog .tour-output-cards p { font-size:13px; margin:8px 0 0; }
+#shop-team-dialog #tour-output-link { display:inline-flex; align-items:center; justify-content:center; background:#0875ed; color:#fff; border:1px solid #0875ed; border-radius:8px; padding:10px 12px; font-weight:700; text-decoration:none; }
+#shop-team-dialog #tour-output-link:hover { background:#0065d4; }
+#shop-team-dialog #tour-next { background:#f0f1f3; border-color:#e0e3e7; }
+.tour-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:24px; flex-wrap:wrap; }
+#shop-team-dialog .tour-actions button { margin:0; min-width:90px; padding:10px 12px; }
+#shop-team-dialog .tour-actions > * { min-height:44px; font-size:14px; box-sizing:border-box; }
+@media(max-width:540px) { #shop-team-dialog.team-walkthrough { padding:24px; } .tour-output-cards { grid-template-columns:1fr; } }
 @media (max-width: 720px) {
   #shop-team-open { max-width: min(150px, 40vw); }
 }
+
+.tour-output-pitch { border-top:1px solid #e5e9ee; padding-top:18px; margin-top:20px; }
+.tour-output-pitch h3 { display:flex; align-items:flex-start; gap:8px; margin:0 0 8px; font-size:18px; }
+#shop-team-dialog .tour-output-pitch p { font-size:14px; margin-bottom:10px; }
+
+.tour-output-pitch h3 > span:first-child { flex-shrink:0; }

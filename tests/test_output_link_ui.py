@@ -33,8 +33,9 @@ class LinkBrowserTests(unittest.TestCase):
                 context.route('https://output.jeezlabs.io/**', lambda route: route.fulfill(body='Simulated OUTPUT approval'))
                 page = context.new_page()
                 page.goto(self.fixture.url() + '/web')
-                page.wait_for_function("() => document.body.dataset.ready === '1'")
-                page.click('#output-dot')
+                page.click('#settings-open')
+                page.click('#output-settings-open')
+                page.click('#output-pair')
                 with context.expect_page() as popup:
                     page.click('#output-browser-start')
                 popup.value.wait_for_url(ATTEMPT['approvalUrl'])
@@ -54,8 +55,9 @@ class LinkBrowserTests(unittest.TestCase):
                 page = browser.new_page(viewport={'width':390, 'height':844})
                 page.add_init_script('window.open = () => null')
                 page.goto(self.fixture.url() + '/web')
-                page.wait_for_function("() => document.body.dataset.ready === '1'")
-                page.click('#output-dot')
+                page.click('#settings-open')
+                page.click('#output-settings-open')
+                page.click('#output-pair')
                 page.click('#output-browser-start')
                 expect(page.locator('#output-browser-status')).to_contain_text('blocked')
                 expect(page.locator('#output-browser-open')).to_have_attribute('href', ATTEMPT['approvalUrl'])
@@ -75,13 +77,53 @@ class LinkBrowserTests(unittest.TestCase):
                 page = browser.new_page()
                 page.add_init_script('window.open = () => null')
                 page.goto(self.fixture.url() + '/web')
-                page.wait_for_function("() => document.body.dataset.ready === '1'")
-                page.click('#output-dot')
+                page.click('#settings-open')
+                page.click('#output-settings-open')
+                page.click('#output-pair')
                 page.click('#output-browser-start')
                 expect(page.locator('#output-browser-error')).to_contain_text('pairing code')
-                page.locator('#output-connect-details summary').click()
+                page.locator('#output-connect-details').evaluate('n => n.open = true')
                 expect(page.locator('#output-link-code')).to_be_visible()
                 expect(page.locator('#output-link-submit')).to_be_enabled()
             finally:
                 browser.close()
 
+
+
+    def test_header_connect_opens_approval_without_extra_clicks(self):
+        with patch.object(output_link, 'start', return_value=ATTEMPT), sync_playwright() as pw:
+            browser = test_web_mvp.launch_browser(pw)
+            try:
+                context = browser.new_context()
+                context.route('https://output.jeezlabs.io/**', lambda route: route.fulfill(body='Simulated OUTPUT approval'))
+                page = context.new_page()
+                page.goto(self.fixture.url() + '/web')
+                expect(page.locator('#output-dot')).to_have_attribute('title', 'Connect OUTPUT')
+                with context.expect_page() as popup:
+                    page.click('#output-dot')
+                popup.value.wait_for_url(ATTEMPT['approvalUrl'])
+                expect(page.locator('#output-browser-status')).to_contain_text('Waiting for your approval')
+                expect(page.locator('#output-dot')).not_to_have_class('top-button output-dot connected')
+                self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
+            finally:
+                browser.close()
+
+    def test_header_with_output_off_opens_hub_without_pairing(self):
+        with patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS':'0'}), patch.object(output_link, 'start') as start, sync_playwright() as pw:
+            browser = test_web_mvp.launch_browser(pw)
+            try:
+                context = browser.new_context()
+                context.route('https://output.jeezlabs.io/**', lambda route: route.fulfill(body='Simulated connection page'))
+                page = context.new_page()
+                page.goto(self.fixture.url() + '/web')
+                with context.expect_page() as popup:
+                    page.click('#output-dot')
+                popup.value.wait_for_url('https://output.jeezlabs.io/outpost/ez-nest')
+                start.assert_not_called()
+                self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
+                # Only a confirmed check-in gets the blue state, not a pending or stale link.
+                for state, seen, blue in [('unpaired', None, False), ('connected', None, False), ('connected', 0, True), ('stale', 900, False), ('revoked', None, False)]:
+                    page.evaluate("([state, seen]) => renderOutputLink({state, secondsSinceCheckIn:seen, canPair:false}, true)", [state, seen])
+                    self.assertEqual(page.locator('#output-dot .status-circle').evaluate('(n) => getComputedStyle(n).backgroundColor'), 'rgb(8, 117, 237)' if blue else 'rgb(156, 163, 175)')
+            finally:
+                browser.close()

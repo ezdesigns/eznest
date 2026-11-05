@@ -1,7 +1,8 @@
 'use strict';
 // Shared by simple and full workspaces. Invitations never go in URLs or storage.
 window.EZNShop = (() => {
-  let session, dialog, heading, content, message, done;
+  let session, dialog, heading, content, message, done, closeButton;
+  let touring = false;
   const node = (tag, text, parent) => {
     const item = document.createElement(tag);
     if (text) item.textContent = text;
@@ -39,13 +40,71 @@ window.EZNShop = (() => {
     field.maxLength = 80; field.placeholder = placeholder; field.autocomplete = 'off';
     return field;
   }
-  function reset(title) { heading.textContent = title; content.replaceChildren(); message.textContent = ''; }
+  function reset(title) {
+    touring = false; dialog.classList.remove('team-walkthrough');
+    closeButton.setAttribute('aria-label', 'Close shop');
+    heading.textContent = title; content.replaceChildren(); message.textContent = '';
+    closeButton.hidden = !canDismiss();
+  }
+  function canDismiss() { return session?.localPC || session?.authenticated; }
+  function dismiss() {
+    if (!canDismiss()) return;
+    if (touring) { endTour(); return; }
+    if (session.localPC && !session.shopIdentity?.created) {
+      try { localStorage.setItem('eznest-shop-welcome-dismissed', '1'); } catch {}
+    }
+    finish();
+  }
   function finish() { dialog.close(); if (done) { done(session); done = null; } }
+  function rememberTour() {
+    try { localStorage.setItem('eznest-tour-seen', '1'); } catch {}
+  }
+  function endTour() {
+    rememberTour(); touring = false;
+    if (done && session.localPC && !session.shopIdentity?.created) welcome();
+    else finish();
+  }
+  function tour() {
+    reset('Thanks for downloading Ez Nest'); touring = true; dialog.classList.add('team-walkthrough');
+    closeButton.setAttribute('aria-label', 'Close welcome');
+    node('strong', 'Use less. Save more.', content);
+    const steps = node('ol', '', content); steps.className = 'tour-steps';
+    steps.setAttribute('role', 'list');
+    const stepIcons = [
+      ['Upload your print file', 'onboarding-upload.webp'],
+      ['Choose your material', 'onboarding-stickers.webp'],
+      ['Nest, review and save', 'onboarding-file.webp']
+    ];
+    for (const [title, artwork] of stepIcons) {
+      const item = node('li', '', steps);
+      const icon = node('img', '', item); icon.src = '/' + artwork; icon.alt = ''; icon.width = 36; icon.height = 36;
+      node('span', title, item);
+    }
+    const pitch = node('section', '', content); pitch.className = 'tour-output-pitch';
+    const pitchTitle = node('h3', '', pitch);
+    node('span', '🤑', pitchTitle).setAttribute('aria-hidden', 'true');
+    node('span', 'Want to earn more?', pitchTitle);
+    node('p', 'Check out OUTPUT. Take on more jobs without buying more equipment—partners print, you keep the customer. Or get paid to print for other shops.', pitch);
+    const actions = node('div', '', content); actions.className = 'tour-actions';
+    button('Start nesting', endTour, actions).id = 'tour-next';
+    const link = node('a', 'Use OUTPUT', actions); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';
+    heading.tabIndex = -1; heading.focus({preventScroll:true}); dialog.scrollTop = 0;
+  }
+  function showTour() {
+    if (!dialog || !canDismiss()) return;
+    tour(); if (!dialog.open) dialog.showModal(); heading.focus({preventScroll:true});
+  }
   async function updateSession() { session = await request('/api/session'); label(); }
   function label() {
     const shopButton = document.getElementById('shop-team-open');
     const name = session.shopIdentity?.name || 'Your shop';
-    shopButton.textContent = name;
+    shopButton.replaceChildren();
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('width', '20'); icon.setAttribute('height', '20'); icon.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M3 10h18l-2-6H5l-2 6Zm1 0v10h16V10M9 20v-6h6v6M3 10c0 3 4.5 3 4.5 0 0 3 4.5 3 4.5 0 0 3 4.5 3 4.5 0 0 3 4.5 3 4.5 0');
+    path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.6'); path.setAttribute('stroke-linejoin', 'round');
+    icon.append(path); shopButton.append(icon); node('span', session.shopIdentity?.name || 'Your shop', shopButton);
     shopButton.title = name;
     shopButton.setAttribute('aria-haspopup', 'dialog');
     shopButton.classList.add('top-button');
@@ -73,7 +132,7 @@ window.EZNShop = (() => {
       button('Back', welcome); name.focus();
     }, content, true);
     button('Join a shop', joinAddress);
-    button('Use this PC for now', finish);
+    button('Use this PC for now', dismiss);
   }
   function joinAddress() {
     reset('Join a shop');
@@ -132,7 +191,7 @@ window.EZNShop = (() => {
         node('span', member.name, row);
         button('Remove access', async () => { await request('/api/shop-members/revoke', {id: member.id}); await manage(); }, row);
       }
-      // The code sits above Done. Appending it when the invite is created would put it below.
+      // Keep the invitation in the dialog content before the close control.
       inviteSlot = node('p', '', content);
       inviteSlot.id = 'team-invitation';
       inviteSlot.hidden = true;
@@ -140,14 +199,13 @@ window.EZNShop = (() => {
       node('p', 'Ask the shop computer to invite people.', content);
       button('Log out', async () => { await request('/api/logout', {}); location.reload(); });
     }
-    button('Done', finish);
   }
   async function open() {
     await updateSession();
     if (!session.localPC && session.shopIdentity?.created && !session.authenticated) join();
     else if (!session.shopIdentity?.created && session.localPC) welcome();
     else if (!session.shopIdentity?.created) {
-      reset('Your shop'); node('p', 'Ask the host to create the shop and send you an invitation.', content); button('Done', finish);
+      reset('Your shop'); node('p', 'Ask the host to create the shop and send you an invitation.', content);
     }
     else await manage();
     if (!dialog.open) dialog.showModal();
@@ -160,23 +218,39 @@ window.EZNShop = (() => {
       dialog = node('dialog', '', document.body); dialog.id = 'shop-team-dialog';
       dialog.setAttribute('aria-labelledby', 'shop-team-title');
       heading = node('h2', '', dialog); heading.id = 'shop-team-title';
+      closeButton = node('button', '×', dialog); closeButton.id = 'shop-team-close'; closeButton.type = 'button';
+      closeButton.setAttribute('aria-label', 'Close shop'); closeButton.onclick = dismiss;
       content = node('div', '', dialog); message = node('p', '', dialog); message.setAttribute('role', 'status');
       dialog.addEventListener('cancel', event => {
-        if (!session.localPC && !session.authenticated) event.preventDefault(); else finish();
+        event.preventDefault(); dismiss();
       });
-      const parent = document.querySelector('.header-tools, .top-actions') || document.querySelector('header');
-      const shopButton = button('Your shop', open, parent);
-      shopButton.id = 'shop-team-open';
-      shopButton.classList.add('top-button');
-      const logout = document.getElementById('logout');
-      if (logout && logout.parentElement === parent) parent.insertBefore(shopButton, logout);
-      label();
-      if ((session.localPC && !session.shopIdentity?.created) || (!session.localPC && session.shopIdentity?.created && !session.authenticated)) {
-        const waiting = new Promise(resolve => { done = resolve; }); await open(); return waiting;
+      let startedOutside = false;
+      function outside(event) {
+        const r = dialog.getBoundingClientRect();
+        return event.target === dialog && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom);
       }
+      dialog.addEventListener('pointerdown', event => { startedOutside = outside(event); });
+      dialog.addEventListener('pointercancel', () => { startedOutside = false; });
+      dialog.addEventListener('click', event => { if (startedOutside && outside(event)) dismiss(); startedOutside = false; });
+      const parent = document.querySelector('.header-tools, .top-actions') || document.querySelector('header');
+      button('Your shop', open, parent).id = 'shop-team-open'; label();
+      document.getElementById('shop-team-open').classList.add('top-button');
+      parent.prepend(document.getElementById('shop-team-open'));
+      let dismissed = false;
+      try { dismissed = localStorage.getItem('eznest-shop-welcome-dismissed') === '1'; } catch {}
+      const visit = new URL(location.href), replay = visit.searchParams.get('tour') === '1';
+      if (replay) { visit.searchParams.delete('tour'); history.replaceState(null, '', visit.pathname + visit.search + visit.hash); }
+      if ((session.localPC && !session.shopIdentity?.created && !dismissed) || (!session.localPC && session.shopIdentity?.created && !session.authenticated)) {
+        const waiting = new Promise(resolve => { done = resolve; });
+        let seen = false;
+        try { seen = localStorage.getItem('eznest-tour-seen') === '1'; } catch {}
+        if (session.localPC && !seen) showTour(); else await open();
+        return waiting;
+      }
+      if (replay) showTour();
       return session;
     })();
     return pending;
   }
-  return {start};
+  return {start, showTour};
 })();
