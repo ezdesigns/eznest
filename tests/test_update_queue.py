@@ -142,7 +142,9 @@ class UpdateQueueTests(unittest.TestCase):
                     page = browser.new_page()
                     page.goto(fixture.url()+'/web')
                     fixture.wait_ready(page)
-                    info = {'current':'1.0.0', 'managedSupported':True, 'staged':True, 'localPC':True, 'message':'Update ready.'}
+                    # The first real update poll may arrive after these renders.
+                    # A different fake current version would trigger a real reload.
+                    info = {'current':server.VERSION, 'managedSupported':True, 'staged':True, 'localPC':True, 'message':'Update ready.'}
                     def render(value):
                         return page.evaluate('''info => { showUpdate(info); return {
                             label: document.querySelector('#update').textContent,
