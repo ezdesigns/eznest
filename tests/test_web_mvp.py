@@ -921,11 +921,14 @@ class WebMvpTests(unittest.TestCase):
                 expect(page.locator('.workspace-modes [aria-current=page]')).to_have_text('Lite')
                 expect(page.get_by_role('link', name='Pro mode', exact=True)).to_be_visible()
                 navbar = {}
+                panels = None
                 common = ['.workspace-header', '.workspace-identity > strong', '.workspace-modes', '#shop-team-open', '#stock-open', '#settings-open']
                 for width in [1280, 768, 720, 390, 320]:
                     page.set_viewport_size({'width': width, 'height': 900})
                     page.evaluate('document.fonts.ready')
                     navbar[width] = [page.locator(selector).bounding_box() for selector in common]
+                    if width == 1280:
+                        panels = [page.locator(selector).bounding_box() for selector in ['.canvas-area', '.job-panel']]
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                     expect(page.locator('#mode-switch')).to_be_in_viewport()
                     page.screenshot(path=str(SCREENSHOTS / f'mode-lite-{width}.png'), full_page=True)
@@ -959,6 +962,12 @@ class WebMvpTests(unittest.TestCase):
                         for coordinate in ['x', 'y', 'width', 'height']:
                             self.assertAlmostEqual(before[coordinate], after[coordinate], delta=0.5,
                                                    msg=f'{selector} {coordinate} moves on mode switch at {width}px')
+                    if width == 1280:
+                        for selector, before in zip(['main > .workspace', '.queue-panel'], panels):
+                            after = page.locator(selector).bounding_box()
+                            for coordinate in ['x', 'y', 'width']:
+                                self.assertAlmostEqual(before[coordinate], after[coordinate], delta=0.5,
+                                                       msg=f'{selector} {coordinate} differs from Lite')
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                     expect(page.get_by_role('link', name='Lite mode', exact=True)).to_be_in_viewport()
                     page.screenshot(path=str(SCREENSHOTS / f'mode-pro-{width}.png'), full_page=True)
