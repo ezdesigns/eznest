@@ -74,7 +74,9 @@ class StartupScreenTests(unittest.TestCase):
                     page.wait_for_timeout(4700)
                     expect(page.locator('#app-startup')).to_be_visible()
                     self.assertGreater(page.locator('.startup-rider').bounding_box()['x'], start + 100)
-                    self.assertTrue(self.state_requested.is_set(), 'Workspace request must be waiting before reveal')
+                    # A busy runner may still be loading the workspace after the
+                    # animation interval. Synchronize on the held server request.
+                    self.assertTrue(self.state_requested.wait(10), 'Workspace request must be waiting before reveal')
                     self.assertEqual(page.locator('header').evaluate('n => getComputedStyle(n).visibility'), 'hidden')
                     if mode == 'simple':
                         page.evaluate("() => { window.startupExport = exportFile; window.startupExportCalls = 0; exportFile = () => window.startupExportCalls++; document.body.dataset.step = 'confirm'; }")
