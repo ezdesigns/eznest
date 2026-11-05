@@ -6,6 +6,8 @@
 - After a shop exists, Invite is on the home screen. The invite code is shown above Done.
 - A second computer on a plain network address can open Join. HTTPS is unchanged and is not required for that.
 - A removed person sees that their access was removed. If Ez Nest cannot be reached, the page says so in plain words. A second nest says someone else is nesting. The material list names rolls that are already in the shop. Log out stays fully visible. Help no longer covers Try tighter fit.
+- Shop updates install only when a signed update manifest checks out and the download matches it. A release with no manifest, or one marked as a database change, is not installed. The previous app is still restored if the new build does not start.
+- A valid shop invitation is still accepted when other addresses have used the shared join-attempt count. Each address keeps its own limit.
 
 ## 1.0.0-rc.8
 

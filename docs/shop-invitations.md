@@ -51,11 +51,12 @@ with an old shared PIN. Invite teammates again. The old PIN file is not deleted.
 Invitations use 80 random bits and are consumed atomically. Session tokens use
 256 random bits. Only hashes are stored in `shop-members.sqlite3`; plaintext codes
 and tokens do not go in URLs, browser storage, telemetry, or logs. The browser
-receives an HttpOnly, SameSite=Strict cookie (Secure under HTTPS). Join attempts
-are limited per address and globally; sessions expire and are checked against
-live membership on each request. State changes retain same-origin checks. Names
-are display labels, not verified identities. Host users are administrators under
-the app's existing loopback trust model.
+receives an HttpOnly, SameSite=Strict cookie (Secure under HTTPS). Each address
+is limited to a few join attempts. Failed attempts are also counted for the
+whole shop. A valid invitation from another address is still accepted. Sessions
+expire and are checked against live membership on each request. State changes
+retain same-origin checks. Names are display labels, not verified identities.
+Host users are administrators under the app's existing loopback trust model.
 
 Use a trusted shop network; configure the existing HTTPS support to protect
 invites and session cookies in transit. HTTP does not protect them from a network

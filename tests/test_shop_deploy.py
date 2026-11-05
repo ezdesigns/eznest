@@ -13,6 +13,7 @@ from unittest.mock import patch
 import build_windows
 import server
 import shop_deploy
+import update_manifest_support
 
 
 class BytesResponse:
@@ -74,6 +75,7 @@ class ShopDeployTests(unittest.TestCase):
         self.assertEqual(api['Authorization'], 'Bearer secret')
         self.assertNotIn('Authorization', cdn)
 
+    @patch('update_manifest.PUBLIC_KEY', update_manifest_support.PUBLIC)
     @patch('shop_deploy.sys.platform', 'win32')
     def test_pull_latest_stages_a_checked_installer_and_skips_a_prerelease(self):
         import hashlib
@@ -83,10 +85,13 @@ class ShopDeployTests(unittest.TestCase):
         sha_url = url + '.sha256'
         payload = b'MZ-eznest'
         digest = hashlib.sha256(payload).hexdigest()
+        manifest_url, manifest_asset = update_manifest_support.manifest_release_asset(url)
+        document = update_manifest_support.signed_document(payload, '1.0.0-rc.2', 'eznest-setup.exe')
         newer = json.dumps({'tag_name': 'v1.0.0-rc.2', 'prerelease': True, 'assets': [
             {'name': 'eznest-windows.zip', 'browser_download_url': 'https://github.com/ezdesigns/eznest/releases/download/v1.0.0-rc.2/eznest-windows.zip'},
             {'name': 'eznest-setup.exe', 'browser_download_url': url},
             {'name': 'eznest-setup.exe.sha256', 'browser_download_url': sha_url},
+            manifest_asset,
         ]}).encode()
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'EZ_NEST_UPDATES': '1'}):
             root = Path(tmp)
@@ -98,7 +103,12 @@ class ShopDeployTests(unittest.TestCase):
             self.assertFalse(stable['updated'])
             self.assertEqual(stable['message'], 'This is the latest release.')
             shop_deploy.save_shop(root, False, False, updates=True, channel='test')
-            saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: newer, url: payload, sha_url: (digest + '  eznest-setup.exe\n').encode()}))
+            saved = shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({
+                shop_deploy.RELEASE_API: newer,
+                url: payload,
+                sha_url: (digest + '  eznest-setup.exe\n').encode(),
+                manifest_url: update_manifest_support.manifest_bytes(document),
+            }))
             self.assertTrue(saved['updated'])
             self.assertTrue(saved['staged'])
             self.assertIn('checked', saved['message'])
@@ -110,7 +120,7 @@ class ShopDeployTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'release file'):
                 shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: slipped}))
             bare = json.dumps({'tag_name': 'v9.0.0', 'assets': [{'name': 'eznest-setup.exe', 'browser_download_url': url}]}).encode()
-            with self.assertRaisesRegex(ValueError, 'no checksum'):
+            with self.assertRaisesRegex(ValueError, 'no update manifest'):
                 shop_deploy.pull_latest(root, '1.0.0-rc.1', opener=ScriptedOpener({shop_deploy.RELEASE_API: bare, url: payload}))
 
     def test_updates_off_does_not_call_github_or_read_a_token(self):

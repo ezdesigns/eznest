@@ -16,6 +16,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import shop_deploy
+import update_manifest
 
 EXE_NAMES = ('eznest.exe', 'eznest', 'eznest.py')
 KEEP_FILES = ('shop.json', 'output-folder.json')
@@ -103,6 +104,15 @@ def pending_state(data_dir):
     file = Path(pending.get('file', ''))
     if file.is_symlink() or not file.resolve().is_relative_to((Path(data_dir) / 'updates' / 'incoming').resolve()):
         return None
+    stored = pending.get('manifest')
+    if stored is not None:
+        try:
+            checked = update_manifest.check_stored_manifest(
+                stored, version=pending.get('version'), asset=pending.get('filename'))
+        except (TypeError, ValueError):
+            return None
+        if not checksum_matches(checked['sha256'], pending.get('sha256', '')):
+            return None
     if not file.is_file() or not checksum_matches(sha256_file(file), pending.get('sha256', '')):
         return None
     return pending
@@ -582,9 +592,15 @@ def handoff_if_pending(install_root, data_dir):
     return True
 
 
-def stage_file(data_dir, version, digest, payload, filename):
+def stage_file(data_dir, version, digest, payload, filename, manifest=None):
     if filename != Path(filename).name or '/' in filename or '\\' in filename or ':' in filename or Path(filename).suffix.lower() not in ('.exe', '.zip'):
         raise ValueError('Invalid update filename.')
+    # A shop download passes the signed manifest. Local rollback fixtures may omit it.
+    stored = None
+    if manifest is not None:
+        stored = update_manifest.check_stored_manifest(manifest, version=version, asset=filename)
+        if not checksum_matches(stored['sha256'], digest):
+            raise ValueError(update_manifest.UNCHECKED)
     directory = updates_dir(data_dir)
     incoming = directory / 'incoming'
     incoming.mkdir(parents=True, exist_ok=True)
@@ -606,6 +622,8 @@ def stage_file(data_dir, version, digest, payload, filename):
         'verified': True,
         'applyOnRestart': not shop_deploy.portable_edition(),
     }
+    if stored is not None:
+        pending['manifest'] = stored
     write_json(directory / 'pending.json', pending)
     return pending
 
