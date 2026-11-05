@@ -21,6 +21,7 @@
 #shop-team-dialog .team-output-intro a { color:#006cf5; font-size:13px; font-weight:700; text-decoration:none; }
 #shop-team-dialog.team-walkthrough { width:min(460px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); padding:32px; }
 #shop-team-title:focus { outline:none; }
+#shop-team-title .tour-brand { display:block; }
 #shop-team-dialog .tour-progress { font-size:12px; font-weight:700; color:#006cf5; }
 .tour-roll { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding:16px; margin:20px 0; background:#edf4ff; border:1px dashed #9dbfeb; border-radius:14px; }
 .tour-roll span { height:50px; border-radius:10px 22px 10px 10px; background:#006cf5; }

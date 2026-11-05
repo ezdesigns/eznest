@@ -796,7 +796,7 @@ class WebMvpTests(unittest.TestCase):
             )
             raise AssertionError('Shop page was not ready. ' + detail) from None
 
-    def test_one_local_app_has_full_and_simple_modes(self):
+    def test_one_workspace_accepts_legacy_view_links(self):
         with urlopen(self.url() + '/', timeout=10) as response:
             page = response.read().decode()
         with urlopen(self.url() + '/web', timeout=10) as response:
@@ -805,11 +805,9 @@ class WebMvpTests(unittest.TestCase):
             self.assertEqual(response.read().decode(), page)
         with urlopen(self.url() + '/?view=full', timeout=10) as response:
             desktop = response.read().decode()
-        self.assertIn('Jobs to print', desktop)
-        self.assertIn('aria-label="Lite mode"', desktop)
-        self.assertIn('aria-current="page">Pro', desktop)
-        self.assertIn('aria-label="Pro mode"', page)
-        self.assertIn('aria-current="page">Lite', page)
+        self.assertEqual(desktop, page)
+        self.assertNotIn('aria-label="Workspace mode"', page)
+        self.assertNotIn('id="mode-switch"', page)
         self.assertIn('Upload your print here', page)
         self.assertIn('Stop · keep best', page)
         self.assertIn('id="files"', page)
@@ -819,7 +817,7 @@ class WebMvpTests(unittest.TestCase):
         self.assertIn('/svg-io.js', page)
         self.assertNotIn('<script>', page.lower().split('<body', 1)[-1].replace('src=', ''))
 
-    def test_inventory_shelf_is_shared_across_modes_and_updates_one_ledger(self):
+    def test_inventory_survives_legacy_links_and_updates_one_ledger(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as playwright:
             browser = launch_browser(playwright)
@@ -842,7 +840,7 @@ class WebMvpTests(unittest.TestCase):
                 page.goto(self.url() + '/')
                 self.wait_ready(page)
                 if page.locator('#setup').is_visible(): page.click('#setup-dismiss')
-                self.assertEqual(page.locator('#mode-switch').count(), 1)
+                self.assertEqual(page.locator('#mode-switch').count(), 0)
                 page.get_by_role('button', name='Inventory', exact=True).click()
                 expect(page.get_by_role('dialog', name='Inventory', exact=True)).to_be_visible()
                 page.get_by_role('button', name='Add roll', exact=True).click()
@@ -881,8 +879,8 @@ class WebMvpTests(unittest.TestCase):
                 expect(page.locator('#stock-status')).to_contain_text('75 ft left')
                 page.click('#stock-close')
                 page.goto(self.url() + '/?view=full')
-                page.wait_for_function("() => token.length > 0")
-                self.assertEqual(page.locator('#mode-switch').count(), 1)
+                self.wait_ready(page)
+                self.assertEqual(page.locator('#mode-switch').count(), 0)
                 page.click('#stock-open')
                 expect(page.locator('#stock-list [role=option]')).to_have_count(1)
                 expect(page.locator('#stock-list')).to_contain_text('Shared gloss')
@@ -903,90 +901,38 @@ class WebMvpTests(unittest.TestCase):
                 page.set_viewport_size({'width':1280,'height':900})
                 page.locator('#stock-list [role=option]').click()
                 page.get_by_role('button', name='Use for this job', exact=True).click()
-                expect(page.locator('#preset option:checked')).to_have_text('Shared gloss')
-                self.assertAlmostEqual(float(page.input_value('#quick-width')),51.5)
+                expect(page.locator('#material option:checked')).to_contain_text('Shared gloss')
+                self.assertAlmostEqual(float(page.input_value('#width')),51.5)
                 page.screenshot(path=str(SCREENSHOTS / 'shared-style-full-desktop.png'))
                 self.assertEqual(errors, [])
             finally:
                 browser.close()
 
-    def test_mode_switches_warn_before_leaving_work_and_fit_mobile(self):
+    def test_single_workspace_keeps_tools_and_jobs_without_a_mode_switch(self):
         from playwright.sync_api import sync_playwright, expect
         artwork = Path(__file__).resolve().parents[1] / 'sample-artwork.svg'
         with sync_playwright() as playwright:
             browser = launch_browser(playwright)
             page = browser.new_page(viewport={'width': 1280, 'height': 900})
             try:
-                page.goto(self.url() + '/'); self.wait_ready(page)
-                expect(page.locator('.workspace-modes [aria-current=page]')).to_have_text('Lite')
-                expect(page.get_by_role('link', name='Pro mode', exact=True)).to_be_visible()
-                navbar = {}
-                panels = {}
-                common = ['.workspace-header', '.workspace-identity > strong', '.workspace-modes', '#shop-team-open', '#stock-open', '#settings-open']
-                for width in [1280, 768, 720, 390, 320]:
-                    page.set_viewport_size({'width': width, 'height': 900})
-                    page.evaluate('document.fonts.ready')
-                    navbar[width] = [page.locator(selector).bounding_box() for selector in common]
-                    panels[width] = [page.locator(selector).bounding_box() for selector in ['.canvas-area', '.job-panel']]
-                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
-                    expect(page.locator('#mode-switch')).to_be_in_viewport()
-                    page.screenshot(path=str(SCREENSHOTS / f'mode-lite-{width}.png'), full_page=True)
-                page.set_viewport_size({'width': 1280, 'height': 900})
-                page.evaluate('''() => {
-                    window.exportsFromModeKey = 0; window.savedExport = exportFile;
-                    exportFile = () => { window.exportsFromModeKey++; };
-                    document.body.dataset.step = 'confirm';
-                    document.querySelector('#mode-switch').addEventListener('click', event => event.preventDefault(), {once:true});
-                }''')
-                page.locator('#mode-switch').focus(); page.keyboard.press('Enter')
-                self.assertEqual(page.evaluate('window.exportsFromModeKey'), 0)
-                page.evaluate("() => { exportFile = window.savedExport; document.body.dataset.step = 'drop'; }")
+                page.goto(self.url() + '/?view=full'); self.wait_ready(page)
                 page.set_input_files('#file', str(artwork))
                 page.wait_for_function('() => !importing && kits.length === 1')
-                page.once('dialog', lambda dialog: dialog.dismiss())
-                page.click('#mode-switch')
-                self.assertEqual(page.evaluate('kits.length'), 1)
-                self.assertNotIn('view=full', page.url)
-                page.once('dialog', lambda dialog: dialog.accept())
-                page.click('#mode-switch')
-                page.wait_for_function('() => token.length > 0')
-                expect(page.get_by_role('heading', name='Jobs to print')).to_be_visible()
-                expect(page.locator('.workspace-modes [aria-current=page]')).to_have_text('Pro')
-                self.assertEqual(page.evaluate('queue.length'), 0)
                 for width in [1280, 768, 720, 390, 320]:
                     page.set_viewport_size({'width': width, 'height': 900})
-                    page.evaluate('document.fonts.ready')
-                    for selector, before in zip(common, navbar[width]):
-                        after = page.locator(selector).bounding_box()
-                        for coordinate in ['x', 'y', 'width', 'height']:
-                            self.assertAlmostEqual(before[coordinate], after[coordinate], delta=0.5,
-                                                   msg=f'{selector} {coordinate} moves on mode switch at {width}px')
-                    for selector, before in zip(['main > .workspace', '.queue-panel'], panels[width]):
-                        if selector == 'main > .workspace' or width == 1280:
-                            after = page.locator(selector).bounding_box()
-                            for coordinate in ['x', 'y', 'width']:
-                                self.assertAlmostEqual(before[coordinate], after[coordinate], delta=0.5,
-                                                       msg=f'{selector} {coordinate} differs from Lite')
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
-                    expect(page.get_by_role('link', name='Lite mode', exact=True)).to_be_in_viewport()
-                    page.screenshot(path=str(SCREENSHOTS / f'mode-pro-{width}.png'), full_page=True)
-                page.set_viewport_size({'width': 1280, 'height': 900})
-                page.set_input_files('#files', str(artwork))
-                page.wait_for_function('() => !importing && queue.length === 1')
-                page.once('dialog', lambda dialog: dialog.dismiss())
-                page.click('#mode-switch')
-                self.assertIn('view=full', page.url)
-                self.assertEqual(page.evaluate('queue.length'), 1)
-                page.evaluate('busy = true')
-                page.click('#mode-switch')
-                expect(page.locator('#status')).to_contain_text('Finish the current operation')
-                self.assertIn('view=full', page.url)
-                page.evaluate('busy = false')
-                page.once('dialog', lambda dialog: dialog.accept())
-                page.locator('#mode-switch').focus(); page.keyboard.press('Enter')
-                self.wait_ready(page)
-                self.assertEqual(page.evaluate('kits.length'), 0)
-                expect(page.locator('.workspace-modes [aria-current=page]')).to_have_text('Lite')
+                    expect(page.locator('.workspace-modes')).to_have_count(0)
+                    expect(page.locator('#mode-switch')).to_have_count(0)
+                    expect(page.locator('#shop-invite-open')).to_have_count(0)
+                    for selector in ['#shop-team-open', '#stock-open', '#settings-open']:
+                        expect(page.locator(selector)).to_be_in_viewport()
+                    self.assertEqual(page.evaluate('kits.length'), 1)
+                    page.screenshot(path=str(SCREENSHOTS / f'single-workspace-{width}.png'), full_page=True)
+                page.set_viewport_size({'width':1280,'height':900})
+                page.click('#shop-team-open')
+                expect(page.locator('#shop-team-title')).to_have_text('Browser test shop')
+                page.get_by_role('button', name='Close shop', exact=True).click()
+                self.assertEqual(page.evaluate('kits.length'), 1)
             finally:
                 browser.close()
 

@@ -62,7 +62,7 @@ That removes the program, the shortcuts the installer created, the `eznest` star
 
 ## First run
 
-The main entry `/` opens the simple screen. The other screen stays at `/?view=full`. The old `/web` link redirects to `/`. Inventory is shared. Jobs are not transferred between the two screens.
+The main entry `/` opens the upload, material, nest, and save workspace. Older `/?view=full` and `/?view=simple` links open that same screen; `/web` redirects to `/`. There is no Lite/Pro switch. Existing inventory and saved queue data are preserved.
 
 The first time the page opens, it asks for four things:
 

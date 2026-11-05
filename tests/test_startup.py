@@ -54,7 +54,7 @@ class StartupScreenTests(unittest.TestCase):
         self.state_release.set()
         self.fixture.tearDown()
 
-    def test_launch_waits_then_reveals_both_modes_without_replaying_switch(self):
+    def test_launch_waits_then_reveals_single_workspace_from_legacy_links(self):
         from playwright.sync_api import sync_playwright, expect
         from test_web_mvp import launch_browser
         with sync_playwright() as pw:
@@ -74,7 +74,9 @@ class StartupScreenTests(unittest.TestCase):
                     page.wait_for_timeout(4700)
                     expect(page.locator('#app-startup')).to_be_visible()
                     self.assertGreater(page.locator('.startup-rider').bounding_box()['x'], start + 100)
-                    self.assertTrue(self.state_requested.is_set(), 'Workspace request must be waiting before reveal')
+                    # A busy runner may still be loading the workspace after the
+                    # animation interval. Synchronize on the held server request.
+                    self.assertTrue(self.state_requested.wait(10), 'Workspace request must be waiting before reveal')
                     self.assertEqual(page.locator('header').evaluate('n => getComputedStyle(n).visibility'), 'hidden')
                     if mode == 'simple':
                         page.evaluate("() => { window.startupExport = exportFile; window.startupExportCalls = 0; exportFile = () => window.startupExportCalls++; document.body.dataset.step = 'confirm'; }")
@@ -88,7 +90,9 @@ class StartupScreenTests(unittest.TestCase):
                     self.state_release.set()
                     expect(page.locator('#app-startup')).to_have_count(0, timeout=15000)
                     expect(page.locator('header')).to_be_visible()
-                    page.click('#mode-switch')
+                    expect(page.locator('#mode-switch')).to_have_count(0)
+                    page.reload()
+                    self.fixture.wait_ready(page)
                     expect(page.locator('#app-startup')).to_have_count(0)
                     self.assertNotIn('startup=', page.url)
                     self.assertFalse(errors, errors)
