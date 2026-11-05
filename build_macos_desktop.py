@@ -1,5 +1,6 @@
 """Compile the native Mac window with Apple's installed SDK; no third-party UI runtime."""
 import argparse
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -14,6 +15,8 @@ def build(out, architecture, *, testing=False):
     if out.exists() or out == ROOT or out in ROOT.parents or ROOT in out.parents:
         raise ValueError('Use a new dedicated native build directory outside the source tree.')
     out.mkdir(parents=True, exist_ok=False)
+    for name in ('startup-nesting.gif', 'startup-companion.png'):
+        shutil.copy2(ROOT / name, out / name)
     source = ROOT / 'native/macos/EZNestDesktop.swift'
     executable = out / 'eznest-desktop'
     args = ['xcrun', '--sdk', 'macosx', 'swiftc', '-O', '-parse-as-library',

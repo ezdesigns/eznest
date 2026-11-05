@@ -13,6 +13,7 @@ import WebKit
     init(origin: URL, pid: Int, folder: URL, version: String) {
         self.folder = folder
         app = DesktopApp(configuration: DesktopConfiguration(origin: origin, version: version, servicePID: { pid }))
+        app.startupReducedMotion = { false }
         app.failed = { [weak self] _ in self?.check(false, "workspace startup") }
         app.externalLink = { [weak self] _ in self?.check(false, "unexpected browser launch") }
         app.pickFiles = { [weak self] _ in
@@ -61,6 +62,12 @@ import WebKit
     func loaded() {
         if page == 0 {
             page = 1
+            wait("document.body.dataset.ready === '1'") {
+                print("WORKSPACE_STAGE: default-lite-ready")
+                self.js("document.querySelector('#mode-switch').click()")
+            }
+        } else if page == 1 {
+            page = 2
             wait("document.body.classList.contains('full-workspace') && typeof fullInventoryReady !== 'undefined'") {
                 print("WORKSPACE_STAGE: full-loaded")
                 self.js("document.querySelector('#stock-open').click()")
@@ -72,8 +79,8 @@ import WebKit
                     }
                 }
             }
-        } else if page == 1 {
-            page = 2
+        } else if page == 2 {
+            page = 3
             wait("document.body.dataset.ready === '1'") {
                 print("WORKSPACE_STAGE: simple-ready")
                 self.js("""

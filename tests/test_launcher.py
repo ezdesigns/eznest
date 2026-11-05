@@ -74,7 +74,7 @@ class LauncherTests(unittest.TestCase):
             with self.subTest(flags=flags), patch.object(sys, 'argv', ['eznest', *flags]), \
                  patch.object(launcher, 'urlopen', return_value=response), patch('webbrowser.open') as browser:
                 self.assertEqual(launcher.main(), 0)
-                browser.assert_called_once_with('http://127.0.0.1:8765/')
+                browser.assert_called_once_with('http://127.0.0.1:8765/?startup=1')
 
     def test_wrong_version_not_reused(self):
         response=io.BytesIO(b'{"app":"eznest","version":"old"}')

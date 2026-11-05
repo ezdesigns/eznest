@@ -720,6 +720,8 @@ class Handler(BaseHTTPRequestHandler):
         static['/web.js'] = ('web.js', 'text/javascript')
         static['/shop-team.js'] = ('shop-team.js', 'text/javascript')
         static['/shop-team.css'] = ('shop-team.css', 'text/css')
+        for name, mime in [('startup.css', 'text/css'), ('startup.js', 'text/javascript'), ('startup-nesting.gif', 'image/gif'), ('startup-companion.png', 'image/png')]:
+            static['/' + name] = (name, mime)
         static['/workspace-mode.css'] = ('workspace-mode.css', 'text/css')
         for name in ('onboarding-upload.webp', 'onboarding-stickers.webp', 'onboarding-file.webp'):
             static['/' + name] = (name, 'image/webp')
@@ -1447,7 +1449,8 @@ def serve(open_browser=False, page='/'):
     threading.Thread(target=check_updates, args=(update_stop,), daemon=True).start()
     if open_browser:
         import webbrowser
-        webbrowser.open(f'http://127.0.0.1:{PORT}{page}')
+        from startup import browser_page
+        webbrowser.open(f'http://127.0.0.1:{PORT}{browser_page(page)}')
     if sys.stdout:
         print(f'eznest ready: http://127.0.0.1:{PORT}{page}', flush=True)
         if LAN:

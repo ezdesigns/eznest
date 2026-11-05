@@ -243,10 +243,11 @@ window.EZNShop = (() => {
         const waiting = new Promise(resolve => { done = resolve; });
         let seen = false;
         try { seen = localStorage.getItem('eznest-tour-seen') === '1'; } catch {}
+        await window.EZNStartup?.reveal();
         if (session.localPC && !seen) showTour(); else await open();
         return waiting;
       }
-      if (replay) showTour();
+      if (replay) { await window.EZNStartup?.reveal(); showTour(); }
       return session;
     })();
     return pending;

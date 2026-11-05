@@ -122,7 +122,8 @@ def main():
             raise RuntimeError('The listener is not the installed shop service.')
         if not args.no_browser:
             import webbrowser
-            webbrowser.open(address + page)
+            from startup import browser_page
+            webbrowser.open(address + browser_page(page))
         return 0
     if service_client and not args.shop_service:
         raise RuntimeError('The shop service is offline. Ask the administrator to restore it; no separate stock database was created.')
