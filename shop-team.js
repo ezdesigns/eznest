@@ -83,7 +83,7 @@ window.EZNShop = (() => {
     const pitchTitle = node('h3', '', pitch);
     node('span', '🤑', pitchTitle).setAttribute('aria-hidden', 'true');
     node('span', 'Want to earn more?', pitchTitle);
-    node('p', 'Check out OUTPUT. Take on more jobs without buying more equipment—partners print, you keep the customer. Or get paid to print for other shops.', pitch);
+    node('p', 'Check out OUTPUT. Take on more jobs without buying more equipment. You keep the customer. Or get paid to print for other shops.', pitch);
     const actions = node('div', '', content); actions.className = 'tour-actions';
     button('Continue', endTour, actions).id = 'tour-next';
     const link = node('a', 'Use OUTPUT', actions); link.id = 'tour-output-link'; link.href = 'https://output.jeezlabs.io/'; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.referrerPolicy = 'no-referrer';

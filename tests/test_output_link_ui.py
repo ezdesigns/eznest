@@ -49,7 +49,7 @@ class LinkBrowserTests(unittest.TestCase):
                 browser.close()
 
     def test_blocked_popup_has_explicit_link_and_cancel_removes_attempt(self):
-        with patch.object(output_link, 'start', return_value=ATTEMPT), patch.object(output_link, 'cancel', return_value={'state':'cancelled'}) as cancel, sync_playwright() as pw:
+        with patch.object(output_link, 'start', return_value=ATTEMPT), patch.object(output_link, 'status', return_value=ATTEMPT), patch.object(output_link, 'cancel', return_value={'state':'cancelled'}) as cancel, sync_playwright() as pw:
             browser = test_web_mvp.launch_browser(pw)
             try:
                 page = browser.new_page(viewport={'width':390, 'height':844})
