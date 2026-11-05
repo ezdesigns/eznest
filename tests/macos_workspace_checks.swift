@@ -13,6 +13,7 @@ import WebKit
     init(origin: URL, pid: Int, folder: URL, version: String) {
         self.folder = folder
         app = DesktopApp(configuration: DesktopConfiguration(origin: origin, version: version, servicePID: { pid }))
+        app.startupReducedMotion = { false }
         app.failed = { [weak self] _ in self?.check(false, "workspace startup") }
         app.externalLink = { [weak self] _ in self?.check(false, "unexpected browser launch") }
         app.pickFiles = { [weak self] _ in

@@ -26,6 +26,9 @@ import WebKit
             precondition(!config.contains(URL(string: url)!))
         }
         app = DesktopApp(configuration: config)
+        // Hosted Mac accessibility defaults vary. Exercise motion explicitly;
+        // the separate still view below verifies the reduced-motion path.
+        app.startupReducedMotion = { false }
         app.startupShown = { [weak self] view in
             guard let self else { return }
             self.startupCount += 1; self.startupBegan = ProcessInfo.processInfo.systemUptime

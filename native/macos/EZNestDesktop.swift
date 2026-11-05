@@ -225,6 +225,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     var pendingPopupCount: Int { popups.count }
     var updateRequested: (() -> Void)?
     var startupShown: ((DesktopStartupView) -> Void)?
+    var startupReducedMotion: (() -> Bool)?
     var startupIsVisible: Bool { startupView != nil }
     #endif
 
@@ -305,7 +306,12 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
             showError("This application is missing its installed shop configuration.")
             return
         }
-        let loading = DesktopStartupView(frame: window.contentView?.bounds ?? .zero) { [weak self] in
+        #if EZNEST_DESKTOP_TESTING
+        let motion = startupReducedMotion ?? { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+        #else
+        let motion = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+        #endif
+        let loading = DesktopStartupView(frame: window.contentView?.bounds ?? .zero, reducedMotion: motion) { [weak self] in
             guard let self, self.startupGeneration == generation else { return }
             self.startupAnimationFinished = true; self.revealWorkspace()
         }

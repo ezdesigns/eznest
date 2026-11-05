@@ -88,9 +88,11 @@ body:not(.full-workspace) .job-panel { border-color: var(--line); }
 @media (max-width: 800px) {
   .full-workspace { display: block; height: auto; overflow: auto; }
   .full-workspace main { display: flex; flex-direction: column; height: auto; padding: 16px 0 24px; }
-  .full-workspace .queue-panel { order: 1; width: 100%; }
-  .full-workspace .workspace { order: 2; width: 100%; margin: 0; }
+  .full-workspace .queue-panel { order: 2; width: 100%; }
+  .full-workspace .workspace { order: 1; width: 100%; margin: 0; }
 }
+@media (max-width: 420px) { .full-workspace main { width: calc(100% - 32px); } }
+@media (min-width: 801px) and (max-height: 800px) { .full-workspace main { padding-top: 16px; } }
 /* Keep the Save action visible on short shop laptops without shrinking controls. */
 @media (min-width: 721px) and (max-height: 800px) {
   .app-header, .app-header.shop-header { min-height: 72px; padding-top: 12px; padding-bottom: 12px; }
