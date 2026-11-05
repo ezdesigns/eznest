@@ -2,8 +2,9 @@
 
 Nesting and stock work without OUTPUT. The home screen does not show a Connect
 or Explore OUTPUT banner, and nesting does not wait for a connection. On the
-shop computer, the status dot or Settings opens **Continue with OUTPUT** for
-owner sign-in and a matching code; see [browser approval](output-browser-approval.md).
+shop computer, the status dot starts browser approval when pairing is allowed.
+Settings > OUTPUT connection also offers **Continue with OUTPUT** for owner
+sign-in and a matching code; see [browser approval](output-browser-approval.md).
 Manual codes remain under **Use a pairing code instead**. Designer PCs cannot
 pair the host. Sharing stays off until the host turns it on. An explicit
 OUTPUT-off launch setting still disables pairing.
