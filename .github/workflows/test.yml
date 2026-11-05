@@ -45,6 +45,7 @@ jobs:
       # python -m pip-audit -r requirements.txt
       - name: Check interface syntax
         run: |
+          node --check startup.js
           node --check queue-app.js
           node --check production-features.js
           node --check layout-comparison.js

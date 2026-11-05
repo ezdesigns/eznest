@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import threading
+import time
 
 HTML = b'''<!doctype html><title>EZNest native window checks</title>
 <style>body{font:20px system-ui;margin:60px;color:#202621;background:#f7f8f3}button,a,input{margin:20px}</style>
@@ -18,6 +19,8 @@ HTML = b'''<!doctype html><title>EZNest native window checks</title>
 <button id="popup">Connect OUTPUT</button>
 <button id="update" onclick="location.href='eznest-update://install'">Request checked update</button>
 <script>
+window.EZNStartup = {state: location.search ? 'ready' : 'waiting'};
+setTimeout(() => window.EZNStartup.state = 'ready', 5500);
 // This executes from page startup, not from WKWebView.evaluateJavaScript,
 // whose host-injected scripts can carry a synthetic WebKit user gesture.
 if(!location.search)setTimeout(()=>window.open('https://output.jeezlabs.io/workspace'),100);
@@ -42,6 +45,8 @@ def actual_workspace(executable, out):
     (folder / 'synthetic.svg').write_bytes(SVG)
     workspace.WORK = folder / 'data'
     shop_test.prepare(workspace.WORK)
+    import shop_members
+    shop_members.create(workspace.WORK, 'Native UI test shop')
     workspace.OUTPUT = workspace.OutputFolder(workspace.WORK / 'output-folder.json')
     workspace.STATE.clear(); workspace.STATE.update(status='idle')
 
@@ -86,12 +91,15 @@ def main():
     parser.add_argument('--executable', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--real-workspace', action='store_true')
+    parser.add_argument('--local', action='store_true', help='Use a new scratch directory on this Mac, with synthetic service/data only.')
     args = parser.parse_args()
-    if (sys.platform != 'darwin' or os.environ.get('GITHUB_ACTIONS') != 'true'
-            or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted'):
-        raise SystemExit('Native UI verification runs only on the disposable hosted Mac.')
-    root = Path(os.environ['RUNNER_TEMP']).resolve()
+    hosted = os.environ.get('GITHUB_ACTIONS') == 'true' and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted'
+    if sys.platform != 'darwin' or not (hosted or args.local):
+        raise SystemExit('Use the disposable hosted Mac, or explicitly opt into --local synthetic verification.')
     out = args.out.resolve()
+    root = out.parent if args.local else Path(os.environ['RUNNER_TEMP']).resolve()
+    if args.local and out.is_relative_to(Path(__file__).resolve().parents[1]):
+        raise SystemExit('Keep local runtime artifacts outside the source checkout.')
     if out.exists() or not out.is_relative_to(root) or out == root:
         raise SystemExit('Use a new directory inside this hosted runner temp.')
     out.mkdir()
@@ -108,6 +116,8 @@ def main():
 
             def do_GET(self):
                 if self.path == '/api/session':
+                    if mode == 'valid':
+                        time.sleep(.25)  # A reload must cancel/ignore the older probe.
                     if mode == 'redirect':
                         self.send_response(302); self.send_header('Location', 'https://example.com/'); self.end_headers(); return
                     body = json.dumps({'app': 'eznest', 'version': 'wrong' if mode == 'wrong-version' else '1.0.0-rc.6',
@@ -116,7 +126,11 @@ def main():
                     body = HTML
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json' if self.path == '/api/session' else 'text/html')
-                self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
+                self.send_header('Content-Length', str(len(body))); self.end_headers()
+                try:
+                    self.wfile.write(body)
+                except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                    pass  # The retry case deliberately cancels the older probe.
 
         server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         thread = threading.Thread(target=server.serve_forever); thread.start()

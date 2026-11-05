@@ -2580,6 +2580,7 @@ async function boot() {
   renderOutputRequired(session);
   if (session.accessRemoved) status('Your access was removed.', true);
   if (session.localPC && session.pinWeak && !session.shopIdentity?.created) {
+    await window.EZNStartup?.reveal();
     await requireHostPinReset();
     session = await fetchJsonRetry('/api/session');
   }
@@ -2587,6 +2588,7 @@ async function boot() {
     $('shop-pin').hidden = false;
     showPinNotices(session);
   } else if (!session.localPC && !session.authenticated) {
+    await window.EZNStartup?.reveal();
     await requireShopPin(session);
     $('logout').hidden = false;
   } else if (!session.localPC) {
@@ -2619,6 +2621,7 @@ async function boot() {
       $('illustrator-load').disabled = true;
     }
   }
+  await window.EZNStartup?.reveal();
   document.body.dataset.ready = '1';
   await autoLoadIllustrator();
   setInterval(() => { if (!document.hidden && !inventoryBusy && !inventoryPanel.isEditing() && !document.querySelector('dialog[open]')) refreshInventory().catch(() => {}); }, 10000);
@@ -3522,7 +3525,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.body.dataset.step === 'confirm') { event.preventDefault(); exportFile(); return; }
     if (document.body.dataset.step === 'check' && current && current.result && !$('export').disabled) { event.preventDefault(); openConfirm(); }
   });
-  boot().catch(error => status(error.message, true));
+  boot().catch(error => { window.EZNStartup?.fail(); status(error.message, true); });
 });
 
 

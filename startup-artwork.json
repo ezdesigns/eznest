@@ -1,0 +1,16 @@
+{
+  "nesting": {
+    "file": "startup-nesting.gif",
+    "source": "Animation supplied by the project owner for the EZNest startup screen"
+  },
+  "companion": {
+    "file": "startup-companion.png",
+    "sourceRepository": "ezdesigns/output",
+    "sourceCommit": "c75482b62a8a8681dce279cec0a196c31c1ed8b9",
+    "sourcePath": "companions/output-base/assets/owner-idle.png"
+  },
+  "sha256": {
+    "startup-nesting.gif": "e2f7ea9bf190481118c1723b1410e45b898ad9d65c18e35c871e953888b6a038",
+    "startup-companion.png": "81de441b437e9056d4ec5703aeb3ac8ee9fb4c5644c4f0e0b07b4c1a8848ea83"
+  }
+}

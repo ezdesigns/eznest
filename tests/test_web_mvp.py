@@ -889,12 +889,13 @@ class WebMvpTests(unittest.TestCase):
                 expect(page.locator('#stock-list')).to_contain_text('75 ft')
                 expect(page.locator('#stock-list')).to_contain_text('54 in')
                 page.evaluate('document.fonts.ready')
-                self.assertTrue(page.evaluate("""document.fonts.check('600 15px "OUTPUT Shop"')"""))
+                self.assertTrue(page.evaluate("""document.fonts.check('700 16px "Red Hat Display"')"""))
                 full_styles = styles()
-                self.assertIn('OUTPUT Shop', full_styles[0][0])
-                self.assertEqual(full_styles[0][1:], ['rgb(24, 33, 54)', 'rgb(255, 255, 255)'])
-                self.assertEqual(full_styles[4][0], 'rgb(0, 108, 245)')
-                self.assertNotEqual(simple_styles[0], full_styles[0])
+                self.assertIn('Red Hat Display', full_styles[0][0])
+                self.assertEqual(full_styles[0][1], simple_styles[0][1])
+                self.assertEqual(full_styles[1], simple_styles[1])
+                self.assertEqual(full_styles[4][0], simple_styles[4][0])
+                self.assertEqual(simple_styles[0][:2], full_styles[0][:2])
                 page.screenshot(path=str(SCREENSHOTS / 'shared-inventory-full-desktop.png'))
                 page.set_viewport_size({'width':390,'height':844})
                 self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'),390)
@@ -919,8 +920,12 @@ class WebMvpTests(unittest.TestCase):
                 page.goto(self.url() + '/'); self.wait_ready(page)
                 expect(page.locator('.workspace-modes [aria-current=page]')).to_have_text('Lite')
                 expect(page.get_by_role('link', name='Pro mode', exact=True)).to_be_visible()
-                for width in [1280, 390, 320]:
+                navbar = {}
+                common = ['.workspace-header', '.workspace-identity > strong', '.workspace-modes', '#shop-team-open', '#stock-open', '#settings-open']
+                for width in [1280, 768, 720, 390, 320]:
                     page.set_viewport_size({'width': width, 'height': 900})
+                    page.evaluate('document.fonts.ready')
+                    navbar[width] = [page.locator(selector).bounding_box() for selector in common]
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                     expect(page.locator('#mode-switch')).to_be_in_viewport()
                     page.screenshot(path=str(SCREENSHOTS / f'mode-lite-{width}.png'), full_page=True)
@@ -946,8 +951,14 @@ class WebMvpTests(unittest.TestCase):
                 expect(page.get_by_role('heading', name='Jobs to print')).to_be_visible()
                 expect(page.locator('.workspace-modes [aria-current=page]')).to_have_text('Pro')
                 self.assertEqual(page.evaluate('queue.length'), 0)
-                for width in [1280, 390, 320]:
+                for width in [1280, 768, 720, 390, 320]:
                     page.set_viewport_size({'width': width, 'height': 900})
+                    page.evaluate('document.fonts.ready')
+                    for selector, before in zip(common, navbar[width]):
+                        after = page.locator(selector).bounding_box()
+                        for coordinate in ['x', 'y', 'width', 'height']:
+                            self.assertAlmostEqual(before[coordinate], after[coordinate], delta=0.5,
+                                                   msg=f'{selector} {coordinate} moves on mode switch at {width}px')
                     self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                     expect(page.get_by_role('link', name='Lite mode', exact=True)).to_be_in_viewport()
                     page.screenshot(path=str(SCREENSHOTS / f'mode-pro-{width}.png'), full_page=True)

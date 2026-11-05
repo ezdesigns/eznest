@@ -8,17 +8,15 @@
 <link rel="stylesheet" href="/inventory-panel.css">
 <link rel="stylesheet" href="/shop-team.css">
 <link rel="stylesheet" href="/workspace-mode.css">
-</head>
+<link rel="stylesheet" href="/startup.css"><script src="/startup.js"></script></head>
 <body data-step="drop">
-<header class="shop-header">
+<header class="shop-header workspace-header">
   <div class="workspace-identity">
   <strong>eznest</strong>
   <nav class="workspace-modes" aria-label="Workspace mode">
     <span class="workspace-mode" aria-current="page">Lite</span>
     <a id="mode-switch" class="workspace-mode" href="/?view=full" aria-label="Pro mode" title="Multiple jobs and batch controls">Pro</a>
   </nav>
-  </div>
-<div id="top-actions" class="top-actions">
 <div id="output-link" class="output-link">
 <button id="output-dot" type="button" class="top-button output-dot" title="Connect OUTPUT" aria-label="Connect OUTPUT"><span class="status-circle" aria-hidden="true"></span></button>
   <button id="output-link-connect" type="button" class="top-button">Connect to OUTPUT</button>
@@ -30,6 +28,8 @@
     <button id="output-link-disconnect" type="button" role="menuitem">Disconnect</button>
   </div>
 </div>
+  </div>
+<div id="top-actions" class="top-actions workspace-tools">
 <button id="stock-open" type="button" class="top-button" aria-label="Inventory" aria-haspopup="dialog">
   <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
     <g fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">

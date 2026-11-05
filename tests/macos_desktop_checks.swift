@@ -14,6 +14,8 @@ import WebKit
     var popupCreations = 0
     var popupClicks = 0
     var updateRequests = 0
+    var startupCount = 0
+    var startupBegan = ProcessInfo.processInfo.systemUptime
 
     init(origin: URL, pid: Int, folder: URL, mode: String) {
         self.folder = folder; self.mode = mode
@@ -24,9 +26,28 @@ import WebKit
             precondition(!config.contains(URL(string: url)!))
         }
         app = DesktopApp(configuration: config)
+        app.startupShown = { [weak self] view in
+            guard let self else { return }
+            self.startupCount += 1; self.startupBegan = ProcessInfo.processInfo.systemUptime
+            self.check(view.artworkLoaded, "bundled startup artwork")
+            self.check(view.progress == 0, "startup begins at the left")
+            self.snapshot(view, name: "startup-left.png")
+            if self.mode == "valid" && self.startupCount == 1 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.app.reloadWorkspace(nil) }
+            } else if self.mode == "valid" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    self.check(view.progress > 0 && view.progress < 1, "startup moves right")
+                    self.snapshot(view, name: "startup-moving.png")
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.7) {
+                    self.check(self.app.startupIsVisible && view.progress > 0.9 && view.progress < 1, "loading waits before the right edge for workspace readiness")
+                }
+            }
+        }
         app.failed = { [weak self] _ in
             guard let self else { return }
             self.check(self.mode != "valid", "unexpected startup failure")
+            self.check(!self.app.startupIsVisible, "failed probe stops loading")
             self.complete(["closedOnInvalidService": true])
         }
         app.externalLink = { [weak self] url in
@@ -50,6 +71,12 @@ import WebKit
         }
         app.downloadFinished = { [weak self] in self?.verifyDownload() }
         app.loaded = { [weak self] in self?.loaded() }
+        var completed = false
+        let still = DesktopStartupView(frame: NSRect(x: 0, y: 0, width: 1320, height: 842), reducedMotion: { true }) { completed = true }
+        self.check(still.artworkLoaded, "reduced-motion artwork")
+        self.check(!completed, "reduced motion still waits for service readiness")
+        still.markReady()
+        self.check(completed && still.progress == 1, "reduced motion reveals without skating")
     }
 
     func check(_ condition: Bool, _ name: String) {
@@ -57,6 +84,13 @@ import WebKit
             fputs("NATIVE_FAIL: \(name)\n", stderr)
             exit(1)
         }
+    }
+
+    func snapshot(_ view: NSView, name: String) {
+        view.layoutSubtreeIfNeeded()
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { check(false, "startup bitmap"); return }
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        if let png = bitmap.representation(using: .png, properties: [:]) { try? png.write(to: folder.appendingPathComponent(name)) }
     }
 
     func js(_ script: String, then: @escaping (Any?) -> Void = { _ in }) {
@@ -72,6 +106,9 @@ import WebKit
         check(app.window.title == "EZNest" && app.window.isVisible, "native titled window")
         check(NSApp.mainMenu?.items.count == 3, "native menu bar")
         if stage == 0 {
+            check(!app.startupIsVisible && app.window.contentView === app.webView, "startup reveals the native workspace")
+            check(startupCount == 2, "retry replaces the previous startup")
+            check(ProcessInfo.processInfo.systemUptime - startupBegan >= 4, "one complete left-to-right trip")
             check(externalCount == 0, "startup must not open a browser")
             app.window.close()
             _ = app.applicationShouldHandleReopen(NSApp, hasVisibleWindows: false)

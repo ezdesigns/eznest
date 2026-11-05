@@ -66,6 +66,140 @@ final class NoRedirects: NSObject, URLSessionTaskDelegate {
 }
 
 @MainActor
+final class DesktopStartupView: NSView {
+    private let scene = NSView(), picture = NSImageView(), counterCover = NSView()
+    private let rider: StartupRiderView
+    private let ground = NSView(), label = NSTextField(labelWithString: "Loading")
+    private var timer: Timer?
+    private var observers: [NSObjectProtocol] = []
+    private var accessibilityObserver: NSObjectProtocol?
+    private var last = ProcessInfo.processInfo.systemUptime, elapsed = 0.0
+    private var ready = false, finished = false
+    private let completed: () -> Void
+    private let reducedMotion: () -> Bool
+    private(set) var progress = 0.0
+    let artworkLoaded: Bool
+    override var isFlipped: Bool { true }
+    private static let paper = NSColor(srgbRed: 247/255, green: 247/255, blue: 242/255, alpha: 1)
+
+    init(frame: NSRect, reducedMotion: @escaping () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }, completed: @escaping () -> Void) {
+        let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
+        let gif = NSImage(contentsOf: resources.appendingPathComponent("startup-nesting.gif"))
+        let companion = NSImage(contentsOf: resources.appendingPathComponent("startup-companion.png"))
+        self.rider = StartupRiderView(image: companion)
+        self.artworkLoaded = gif != nil && companion != nil
+        self.completed = completed
+        self.reducedMotion = reducedMotion
+        super.init(frame: frame)
+        autoresizingMask = [.width, .height]
+        wantsLayer = true; layer?.backgroundColor = Self.paper.cgColor
+        scene.wantsLayer = true; scene.layer?.masksToBounds = true
+        picture.image = gif; picture.imageScaling = .scaleAxesIndependently
+        picture.setAccessibilityElement(false)
+        counterCover.wantsLayer = true; counterCover.layer?.backgroundColor = Self.paper.cgColor
+        scene.addSubview(picture); scene.addSubview(counterCover)
+        ground.wantsLayer = true
+        ground.layer?.backgroundColor = NSColor(srgbRed: 23/255, green: 33/255, blue: 52/255, alpha: 0.13).cgColor
+        label.font = .systemFont(ofSize: 16, weight: .medium); label.alignment = .center
+        label.textColor = NSColor(srgbRed: 23/255, green: 33/255, blue: 52/255, alpha: 1)
+        label.setAccessibilityLabel("Loading")
+        for item in [scene, ground, rider, label] { addSubview(item) }
+        accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.updateMotion() } }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+        observers.removeAll()
+        if let window {
+            for name in [NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification,
+                         NSWindow.didChangeOcclusionStateNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.updateMotion() } })
+            }
+            for name in [NSApplication.didHideNotification, NSApplication.didUnhideNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.updateMotion() } })
+            }
+        }
+        updateMotion()
+    }
+
+    override func layout() {
+        super.layout()
+        let width = min(680, max(0, bounds.width - 40)), sceneHeight = width * 470 / 800
+        let height = sceneHeight + 105 - 8 + 23 + 20, top = (bounds.height - height) / 2
+        scene.frame = NSRect(x: (bounds.width-width)/2, y: top, width: width, height: sceneHeight)
+        // NSImageView's parent is not flipped: register the same cropped square
+        // image and top-right counter cover used by the browser startup page.
+        picture.frame = NSRect(x: 0, y: sceneHeight-width+width*0.22, width: width, height: width)
+        counterCover.frame = NSRect(x: width*0.78, y: sceneHeight*0.87, width: width*0.22, height: sceneHeight*0.13)
+        let laneWidth = min(300, width * 0.7), laneTop = top + sceneHeight - 8
+        ground.frame = NSRect(x: (bounds.width-laneWidth)/2+12, y: laneTop+96, width: laneWidth-24, height: 2)
+        rider.frame = NSRect(x: (bounds.width-laneWidth)/2+max(0,laneWidth-68)*progress, y: laneTop+4, width: 68, height: 95)
+        label.frame = NSRect(x: (bounds.width-width)/2, y: laneTop+128, width: width, height: 20)
+    }
+
+    func markReady() { ready = true; updateMotion() }
+
+    private func updateMotion() {
+        let reduced = reducedMotion()
+        let visible = window?.isVisible == true && window?.isMiniaturized == false && !NSApp.isHidden
+        picture.animates = visible && !reduced && !finished
+        if finished || !visible || reduced {
+            timer?.invalidate(); timer = nil
+            if reduced && !finished { progress = ready ? 1 : 0.5; needsLayout = true; if ready { complete() } }
+        } else if timer == nil {
+            last = ProcessInfo.processInfo.systemUptime
+            timer = Timer(timeInterval: 1/60, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.tick() } }
+            RunLoop.main.add(timer!, forMode: .common)
+        }
+    }
+
+    private func tick() {
+        let now = ProcessInfo.processInfo.systemUptime
+        elapsed += min(now-last, 1/30); last = now
+        let t = min(1, elapsed/4.2)
+        progress = min(ready ? 1 : 0.92, t*t*(3-2*t)); needsLayout = true
+        if ready && progress == 1 { complete() }
+    }
+
+    private func complete() { guard !finished else { return }; stop(); completed() }
+    func stop() {
+        finished = true; timer?.invalidate(); timer = nil; picture.animates = false
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }; observers.removeAll()
+        if let accessibilityObserver { NSWorkspace.shared.notificationCenter.removeObserver(accessibilityObserver) }
+        accessibilityObserver = nil
+    }
+}
+
+@MainActor
+private final class StartupRiderView: NSView {
+    private let image: NSImage?
+    override var isFlipped: Bool { true }
+    init(image: NSImage?) { self.image = image; super.init(frame: .zero) }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func draw(_ dirtyRect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        context.saveGState(); context.translateBy(x: 68, y: 0); context.scaleBy(x: -1, y: 1)
+        image?.draw(in: NSRect(x: 4, y: 17, width: 60, height: 72), from: .zero,
+                    operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        context.translateBy(x: 0, y: 73); context.scaleBy(x: 68/56, y: 22/18)
+        context.setStrokeColor(NSColor(srgbRed: 36/255, green: 39/255, blue: 39/255, alpha: 1).cgColor)
+        context.setLineWidth(3); context.setLineCap(.round)
+        context.move(to: CGPoint(x: 2, y: 5)); context.addQuadCurve(to: CGPoint(x: 13, y: 8), control: CGPoint(x: 7, y: 9))
+        context.addLine(to: CGPoint(x: 44, y: 8)); context.addQuadCurve(to: CGPoint(x: 54, y: 3), control: CGPoint(x: 50, y: 8)); context.strokePath()
+        context.setLineWidth(2)
+        for (x, end) in [(14.0, 15.0), (42.0, 41.0)] { context.move(to: CGPoint(x: x, y: 9)); context.addLine(to: CGPoint(x: end, y: 14)) }; context.strokePath()
+        context.setFillColor(NSColor(srgbRed: 52/255, green: 115/255, blue: 237/255, alpha: 1).cgColor); context.setLineWidth(1.4)
+        for x in [15.0, 41.0] { context.addEllipse(in: CGRect(x: x-3, y: 11, width: 6, height: 6)); context.drawPath(using: .fillStroke) }
+        context.restoreGState()
+    }
+}
+
+@MainActor
 final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
                         WKUIDelegate, WKDownloadDelegate {
     let configuration: DesktopConfiguration?
@@ -75,6 +209,10 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     private var popups: [ObjectIdentifier: WKWebView] = [:]
     private var probe: URLSessionDataTask?
     private var network: URLSession!
+    private var startupView: DesktopStartupView?
+    private var startupGeneration = 0
+    private var startupNavigation: WKNavigation?
+    private var startupAnimationFinished = false, startupPageLoaded = false
 
     #if EZNEST_DESKTOP_TESTING
     var pickFiles: ((WKOpenPanelParameters) -> [URL]?)?
@@ -86,6 +224,8 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     var popupCreated: (() -> Void)?
     var pendingPopupCount: Int { popups.count }
     var updateRequested: (() -> Void)?
+    var startupShown: ((DesktopStartupView) -> Void)?
+    var startupIsVisible: Bool { startupView != nil }
     #endif
 
     init(configuration: DesktopConfiguration?) {
@@ -155,32 +295,76 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     }
 
     @objc func reloadWorkspace(_ sender: Any?) {
+        startupGeneration += 1
+        let generation = startupGeneration
         probe?.cancel()
+        webView.stopLoading()
+        startupView?.stop(); startupView = nil; startupNavigation = nil
+        startupAnimationFinished = false; startupPageLoaded = false
         guard let configuration else {
             showError("This application is missing its installed shop configuration.")
             return
         }
-        showMessage("Opening your workspace…", retry: false)
+        let loading = DesktopStartupView(frame: window.contentView?.bounds ?? .zero) { [weak self] in
+            guard let self, self.startupGeneration == generation else { return }
+            self.startupAnimationFinished = true; self.revealWorkspace()
+        }
+        startupView = loading; window.contentView = loading
+        #if EZNEST_DESKTOP_TESTING
+        startupShown?(loading)
+        #endif
         var request = URLRequest(url: configuration.origin.appendingPathComponent("api/session"))
         request.cachePolicy = .reloadIgnoringLocalCacheData
         probe = network.dataTask(with: request) { [weak self] data, response, error in
             DispatchQueue.main.async {
-                guard let self, error == nil,
+                guard let self, self.startupGeneration == generation else { return }
+                guard error == nil,
                       let response = response as? HTTPURLResponse, response.statusCode == 200,
                       let data, data.count <= 16384,
                       let session = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       configuration.accepts(session) else {
-                    self?.showError("The installed EZNest service is unavailable or does not match this app. Check the installation, then try again.")
+                    self.showError("The installed EZNest service is unavailable or does not match this app. Check the installation, then try again.")
                     return
                 }
-                self.window.contentView = self.webView
-                self.webView.load(URLRequest(url: configuration.origin.appendingPathComponent("/")))
+                self.webView.frame = self.window.contentView?.bounds ?? .zero
+                self.startupNavigation = self.webView.load(URLRequest(url: configuration.origin.appendingPathComponent("/")))
             }
         }
         probe?.resume()
     }
 
+    private func revealWorkspace() {
+        guard startupAnimationFinished && startupPageLoaded else { return }
+        startupView?.stop(); startupView = nil; startupNavigation = nil
+        window.contentView = webView
+        window.makeFirstResponder(webView)
+        #if EZNEST_DESKTOP_TESTING
+        loaded?()
+        #endif
+    }
+
+    private func waitForWorkspace(generation: Int, deadline: TimeInterval) {
+        guard generation == startupGeneration, startupView != nil else { return }
+        // Read presentation readiness only. This adds no JavaScript handler or
+        // native capability; the service identity/origin gates remain above.
+        webView.evaluateJavaScript("window.EZNStartup ? window.EZNStartup.state : 'ready'") { [weak self] value, error in
+            guard let self, generation == self.startupGeneration, self.startupView != nil else { return }
+            if value as? String == "failed" {
+                self.startupAnimationFinished = true; self.revealWorkspace()
+            } else if value as? String == "ready" {
+                self.startupView?.markReady()
+            } else if error != nil || ProcessInfo.processInfo.systemUptime >= deadline {
+                self.showError("The workspace could not be loaded. Please try again.")
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    self?.waitForWorkspace(generation: generation, deadline: deadline)
+                }
+            }
+        }
+    }
+
     private func showMessage(_ text: String, retry: Bool) {
+        startupView?.stop(); startupView = nil; startupNavigation = nil
         let view = NSView(frame: window.contentView?.bounds ?? .zero)
         let label = NSTextField(wrappingLabelWithString: text)
         label.font = .systemFont(ofSize: 18)
@@ -205,6 +389,11 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
         #if EZNEST_DESKTOP_TESTING
         failed?(text)
         #endif
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        startupGeneration += 1; probe?.cancel(); startupView?.stop()
+        network?.invalidateAndCancel()
     }
 
     private func openExternal(_ url: URL) {
@@ -331,6 +520,12 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if webView === self.webView, startupView != nil {
+            guard startupNavigation === navigation else { return }
+            startupPageLoaded = true
+            waitForWorkspace(generation: startupGeneration, deadline: ProcessInfo.processInfo.systemUptime + 30)
+            return
+        }
         #if EZNEST_DESKTOP_TESTING
         if webView === self.webView { loaded?() }
         #endif
@@ -339,11 +534,13 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate,
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         if popups.removeValue(forKey: ObjectIdentifier(webView)) != nil { return }
         guard webView === self.webView else { return }
+        guard startupView == nil || startupNavigation === navigation else { return }
         if (error as NSError).code != NSURLErrorCancelled { showError("The workspace could not be loaded. Please try again.") }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         if popups.removeValue(forKey: ObjectIdentifier(webView)) != nil { return }
+        guard startupView == nil || startupNavigation === navigation else { return }
         if webView === self.webView && (error as NSError).code != NSURLErrorCancelled {
             showError("The workspace could not be loaded. Please try again.")
         }
