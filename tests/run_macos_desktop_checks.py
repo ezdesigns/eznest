@@ -20,7 +20,6 @@ HTML = b'''<!doctype html><title>EZNest native window checks</title>
 <button id="update" onclick="location.href='eznest-update://install'">Request checked update</button>
 <script>
 window.EZNStartup = {state: location.search ? 'ready' : 'waiting'};
-setTimeout(() => window.EZNStartup.state = 'ready', 5500);
 // This executes from page startup, not from WKWebView.evaluateJavaScript,
 // whose host-injected scripts can carry a synthetic WebKit user gesture.
 if(!location.search)setTimeout(()=>window.open('https://output.jeezlabs.io/workspace'),100);

@@ -42,9 +42,7 @@ import WebKit
                     self.check(view.progress > 0 && view.progress < 1, "startup moves right")
                     self.snapshot(view, name: "startup-moving.png")
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 4.7) {
-                    self.check(self.app.startupIsVisible && view.progress > 0.9 && view.progress < 1, "loading waits before the right edge for workspace readiness")
-                }
+                self.waitForStartupGate(view)
             }
         }
         app.failed = { [weak self] _ in
@@ -85,6 +83,7 @@ import WebKit
     func check(_ condition: Bool, _ name: String) {
         if !condition {
             fputs("NATIVE_FAIL: \(name)\n", stderr)
+            fputs("stage=\(stage) startups=\(startupCount) loading=\(app.startupIsVisible) picker=\(picker) save=\(save) popups=\(popupCreations)/\(popupClicks) external=\(externalCount) url=\(app.webView?.url?.absoluteString ?? "none")\n", stderr)
             exit(1)
         }
     }
@@ -94,6 +93,15 @@ import WebKit
         guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { check(false, "startup bitmap"); return }
         view.cacheDisplay(in: view.bounds, to: bitmap)
         if let png = bitmap.representation(using: .png, properties: [:]) { try? png.write(to: folder.appendingPathComponent(name)) }
+    }
+
+    func waitForStartupGate(_ view: DesktopStartupView) {
+        if view.progress >= 0.9 {
+            check(app.startupIsVisible && view.progress < 1, "loading waits before the right edge for workspace readiness")
+            js("window.EZNStartup.state = 'ready'")
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.waitForStartupGate(view) }
+        }
     }
 
     func js(_ script: String, then: @escaping (Any?) -> Void = { _ in }) {
