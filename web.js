@@ -2521,7 +2521,7 @@ async function refreshStockPreview() {
   if (!preview) return;
   const names = $('show-roll-names') && $('show-roll-names').checked ? '1' : '0';
   try {
-    const info = await fetchJson('/api/stock/output?names=' + names, 5000);
+    const info = await fetchJsonRetry('/api/stock/output?names=' + names);
     preview.textContent = JSON.stringify(info.preview, null, 2);
     const note = $('stock-output-note');
     if (!note) return;
