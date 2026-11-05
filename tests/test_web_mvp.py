@@ -1744,7 +1744,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertTrue(page.locator('#lan').is_disabled())
                 page.locator('#settings-delivery').evaluate('node => node.open = true')
                 self.assertTrue(page.locator('#lan-access').is_hidden())
-                self.assertIn('Shop network access is configured when the app starts.', page.locator('#lan-access').text_content())
+                self.assertIn('Changing network access requires restarting the host', page.locator('#lan-access').text_content())
                 self.assertTrue(page.locator('#onyx-pc').is_hidden())
                 self.assertIn('Example RIP Input', page.locator('#hot-default').text_content())
                 self.assertEqual(page.input_value('#hot-folder'), '')
