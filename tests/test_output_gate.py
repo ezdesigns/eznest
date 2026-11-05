@@ -311,62 +311,31 @@ class GateTests(unittest.TestCase):
         helper = test_web_mvp.WebMvpTests(methodName='runTest')
         helper.setUp()
         try:
-            with sync_playwright() as playwright:
+            with patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS': '0'}), patch('output_link.start', side_effect=AssertionError('No live OUTPUT request allowed')), sync_playwright() as playwright:
                 browser = test_web_mvp.launch_browser(playwright)
                 try:
                     context = browser.new_context(viewport={'width': 1280, 'height': 800})
                     page = context.new_page()
                     page.goto(helper.url() + '/web')
-                    # OUTPUT discovery is optional; nesting is already available.
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
-                    expect(page.locator('#output-required')).to_be_visible()
-                    expect(page.locator('#output-required-title')).to_have_text('Take on more work with OUTPUT')
-                    expect(page.locator('#output-required-code')).to_have_text('Explore OUTPUT')
-                    self.assertEqual(page.locator('#output-setup-waiting, #output-setup-settings, #output-required-connect').count(), 0)
-                    expect(page.locator('#output-required-skip')).to_have_text('Not now')
-                    expect(page.locator('#output-link-open')).to_have_attribute('href', 'https://output.jeezlabs.io/outpost/ez-nest')
-                    page.click('#output-required-code')
-                    self.assertEqual(len(context.pages), 1)
-                    expect(page.locator('#output-explore')).to_be_focused()
-                    expect(page.locator('#output-browser-start')).to_be_hidden()
-                    expect(page.locator('#output-link-code')).to_be_hidden()
-                    expect(page.locator('#output-explore')).to_have_attribute('href', 'https://output.jeezlabs.io/')
-                    self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
+                    expect(page.locator('#output-required')).to_be_hidden()
+                    expect(page.locator('#start-nesting')).to_be_visible()
                     context.route('https://output.jeezlabs.io/**', lambda route: route.fulfill(body='OUTPUT pilot'))
                     with context.expect_page() as opened:
-                        page.click('#output-explore')
-                    self.assertEqual(opened.value.url, 'https://output.jeezlabs.io/')
+                        page.click('#output-dot')
+                    opened.value.wait_for_url('https://output.jeezlabs.io/outpost/ez-nest')
+                    self.assertIsNone(opened.value.evaluate('window.opener'))
                     opened.value.close()
+                    expect(page.locator('#setup-shop')).to_be_hidden()
+                    self.assertFalse(server.load_shop(server.WORK)['outputNetwork'])
                     self.assertFalse(output_credential.path(server.WORK).exists())
-                    expect(page.locator('#output-connect-details')).to_be_hidden()
-                    expect(page.locator('#setup-shop')).to_be_visible()
-                    expect(page.locator('#setup-shop-title')).to_contain_text('More work with OUTPUT.')
-                    expect(page.locator('label[for=output-link-code]')).to_have_text('Enter the code from OUTPUT')
-                    expect(page.locator('#output-link-form')).to_be_visible()
-                    self.assertEqual(page.locator('#output-link-code').input_value(), '')
-                    shots = Path(__file__).resolve().parents[1] / '.local' / 'test-screenshots'
-                    shots.mkdir(parents=True, exist_ok=True)
-                    page.screenshot(path=str(shots / 'output-connect-gate.png'))
-                    page.click('#output-link-cancel')
-                    page.click('#output-required-skip')
-                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
-                    self.assertEqual(page.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
-                    self.assertIsNone(page.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"))
-                    fresh = context.new_page()
-                    try:
-                        fresh.goto(helper.url() + '/web')
-                        fresh.wait_for_function("() => document.body.dataset.ready === '1'")
-                        expect(fresh.locator('#output-required')).to_be_hidden()
-                        self.assertEqual(fresh.evaluate("() => localStorage.getItem('eznest-setup-skipped')"), '1')
-                        self.assertIsNone(fresh.evaluate("() => sessionStorage.getItem('eznest-setup-skipped')"))
-                    finally:
-                        fresh.close()
+                    expect(page.locator('#start-nesting')).to_be_visible()
                 finally:
                     browser.close()
         finally:
             helper.tearDown()
 
-    def test_skip_opens_inventory_when_browser_storage_is_unavailable(self):
+    def test_inventory_opens_without_connecting(self):
         from playwright.sync_api import expect, sync_playwright
         import test_web_mvp
         helper = test_web_mvp.WebMvpTests(methodName='runTest')
@@ -387,11 +356,7 @@ class GateTests(unittest.TestCase):
                     })();""")
                     page.goto(helper.url() + '/web')
                     page.wait_for_function("() => document.body.dataset.ready === '1'")
-                    expect(page.locator('#output-required')).to_be_visible()
-                    page.evaluate('window.skipVisit = true')
-                    page.click('#output-required-skip')
-                    page.wait_for_function("() => document.querySelector('#output-required').hidden && document.body.dataset.ready === '1'")
-                    self.assertTrue(page.evaluate('window.skipVisit === true'))
+                    expect(page.locator('#output-required')).to_be_hidden()
                     page.click('#stock-open')
                     expect(page.locator('#stock-add')).to_be_visible()
                     page.click('#stock-add')

@@ -445,13 +445,15 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return self.local_name(rest)
 
-    def browser_site_ok(self):
-        """State changes and /api/session need a same-origin browser signal.
+    def browser_site_ok(self, method=None):
+        """Accept a page that is actually this computer.
 
-        A present Origin must name this host. A present Sec-Fetch-Site must be
-        same-origin. LAN clients must send one of those. A loopback program
-        that sends neither header (the launcher, Illustrator, the update helper)
-        is not a browser rebinding.
+        HTTPS and localhost send Sec-Fetch-Site. A plain network address does
+        not, and a same-origin GET there also omits Origin. A request that
+        names another site, including Origin: null, is refused. A state
+        change still needs a matching Origin or Sec-Fetch-Site: same-origin,
+        unless it comes from this computer with neither header (the launcher,
+        Illustrator, or the update helper).
         """
         origin = self.headers.get('Origin') if self.headers else None
         fetch_site = (self.headers.get('Sec-Fetch-Site') or '').strip().casefold() if self.headers else ''
@@ -463,7 +465,23 @@ class Handler(BaseHTTPRequestHandler):
             return False
         if origin_matches or fetch_matches:
             return True
+        if method is None:
+            method = getattr(self, 'command', '')
+        if not origin and not fetch_site and method in ('GET', 'HEAD'):
+            return True
         return self.loopback_client()
+
+    def access_removed(self):
+        """A member cookie is present, but that person is no longer in the shop."""
+        if not shop_members.configured(WORK):
+            return False
+        token = shop_auth.read_cookie(self.headers.get('Cookie') if self.headers else None, shop_members.COOKIE)
+        if not token:
+            return False
+        try:
+            return shop_members.member(WORK, token) is None
+        except (OSError, sqlite3.Error):
+            return False
 
     def session_body(self):
         local = self.loopback_client()
@@ -484,6 +502,7 @@ class Handler(BaseHTTPRequestHandler):
             'shopAddress': f'{"https" if TLS else "http"}://{host_name()}:{PORT}/' if local and LAN else None,
             'outputConnection': output_gate.public_status(WORK, local),
             'outputLink': output_gate.link_status(WORK, local),
+            'accessRemoved': (not local) and self.access_removed(),
         }
         if local:
             body['localDataId'] = os.environ.get('EZ_NEST_LOCAL_ID')
@@ -502,7 +521,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(307, b'', 'text/plain; charset=utf-8',
                              extra_headers=(('Location', target),))
         if path == '/api/session':
-            if not self.browser_site_ok():
+            if not self.browser_site_ok('GET'):
                 return self.send(403, {'error': 'Invalid session'})
             return self.send(200, self.session_body())
         if path.startswith('/api/'):
@@ -511,7 +530,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Open health on the shop computer.'})
                 return self.send(200, {'ok': True, 'app': 'eznest'})
             if not self.loopback_client() and not self.authenticated():
-                note = 'Open Your shop to join with a new invitation.' if shop_members.configured(WORK) else 'Enter the shop PIN on this computer.'
+                if self.access_removed():
+                    note = 'Your access was removed.'
+                elif shop_members.configured(WORK):
+                    note = 'Open Your shop to join with a new invitation.'
+                else:
+                    note = 'Enter the shop PIN on this computer.'
                 return self.send(403, {'error': note})
             if not self.loopback_client() and (path == '/api/shop' or path == '/api/folder' or path.startswith('/api/folder/')):
                 return self.send(403, {'error': 'Open this on the shop computer.'})
@@ -833,7 +857,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_post(self):
         global PROCESS
-        if not self.allowed() or not self.browser_site_ok():
+        if not self.allowed() or not self.browser_site_ok('POST'):
             return self.send(403, {'error': 'Invalid session'})
         path = self.route_path()
         if path.startswith('/api/shop-members/'):
@@ -843,6 +867,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/logout':
             return self._logout()
         if not self.authenticated():
+            if self.access_removed():
+                return self.send(403, {'error': 'Your access was removed.'})
             return self.send(403, {'error': 'Invalid session'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
@@ -1181,7 +1207,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 if path in ('/api/solve', '/api/improve'):
                     if STATE.get('status') == 'running':
-                        raise ValueError('Cancel the current search before starting another.')
+                        raise ValueError('Someone else is nesting. Wait until they finish.')
                     incumbent = None
                     if path == '/api/improve':
                         if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):

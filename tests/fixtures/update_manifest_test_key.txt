@@ -1,0 +1,4 @@
+# TEST ONLY. RFC 8032 section 7.1 test vector.
+# Not a release signing key. Do not copy it into update_manifest.PUBLIC_KEY.
+public d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a
+seed 9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60

@@ -46,6 +46,17 @@ class MembershipTests(unittest.TestCase):
         self.assertEqual(members.join(self.root, code, 'A', 'blocked', now=1102)['status'], 429)
         self.assertIn('token', members.join(self.root, code, 'B', 'other', now=1103))
 
+    def test_valid_invite_is_accepted_after_other_addresses_fail(self):
+        for _ in range(members.SOURCE_ATTEMPTS - 1):
+            self.assertEqual(members.join(self.root, 'bad', 'A', 'almost', now=2000)['status'], 401)
+        for index in range(members.SHARED_ATTEMPTS - (members.SOURCE_ATTEMPTS - 1)):
+            self.assertEqual(members.join(self.root, 'bad', 'A', f'net-{index}', now=2000)['status'], 401)
+        code = members.invite(self.root, now=2001)['code']
+        self.assertIn('token', members.join(self.root, code, 'Guest', 'almost', now=2002))
+        self.assertEqual(members.join(self.root, 'bad', 'A', 'fresh', now=2003)['status'], 429)
+        later = members.invite(self.root, now=2004)['code']
+        self.assertIn('token', members.join(self.root, later, 'Next', 'fresh-2', now=2005))
+
     def test_only_hashes_persist_and_member_can_be_revoked(self):
         code = members.invite(self.root, now=100)['code']
         result = members.join(self.root, code, 'Alex', 'one', now=101)
@@ -129,6 +140,11 @@ class MembershipHTTPTests(unittest.TestCase):
         handler = self.handler('/api/materials', headers={'Cookie': cookie})
         handler.do_GET()
         self.assertEqual(handler.sent[0][0], 403)
+        self.assertEqual(handler.sent[0][1]['error'], 'Your access was removed.')
+        session = self.handler('/api/session', headers={'Cookie': cookie})
+        session.do_GET()
+        self.assertEqual(session.sent[0][0], 200)
+        self.assertTrue(session.sent[0][1]['accessRemoved'])
 
     def test_join_requires_same_origin_and_local_only_cannot_invite(self):
         code = members.invite(self.root)['code']

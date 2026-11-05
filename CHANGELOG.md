@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- First run shows the welcome introduction, then create-a-shop or join-with-an-invite. The home screen no longer leads with Connect to OUTPUT. Pairing stays optional in Settings and the status dot, and it does not block nesting, inventory, or shop setup.
+- After a shop exists, Invite is on the home screen. The invite code is shown above Done.
+- A second computer on a plain network address can open Join. HTTPS is unchanged and is not required for that.
+- A removed person sees that their access was removed. If Ez Nest cannot be reached, the page says so in plain words. A second nest says someone else is nesting. The material list names rolls that are already in the shop. Log out stays fully visible. Help no longer covers Try tighter fit.
+- Shop updates install only when a signed update manifest checks out and the download matches it. A release with no manifest, or one marked as a database change, is not installed. The previous app is still restored if the new build does not start.
+- A valid shop invitation is still accepted when other addresses have used the shared join-attempt count. Each address keeps its own limit.
+
 ## 1.0.0-rc.8
 
 - Publish the native Mac desktop client under a newer version so evaluation hosts with an earlier rc.7 test package can use the normal administrator upgrade path. The installer still requires the same publisher and architecture, a strictly newer version, and completion or explicit discard of unfinished work.

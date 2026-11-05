@@ -10,9 +10,17 @@ window.EZNShop = (() => {
     return item;
   };
   async function request(path, data) {
-    const response = await fetch(path, data === undefined ? {} : {
-      method: 'POST', headers: {'Content-Type': 'application/json', 'X-EZ-Token': session?.token || ''}, body: JSON.stringify(data)
-    });
+    let response;
+    try {
+      response = await fetch(path, data === undefined ? {} : {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-EZ-Token': session?.token || ''}, body: JSON.stringify(data)
+      });
+    } catch (error) {
+      if (/Failed to fetch|NetworkError|Load failed/i.test(String(error && error.message || error))) {
+        throw Error("Can't reach Ez Nest. Check the connection and try again.");
+      }
+      throw error;
+    }
     const result = await response.json();
     if (!response.ok) throw Error(result.error || 'Could not reach your shop. Try again.');
     return result;
@@ -49,9 +57,13 @@ window.EZNShop = (() => {
   }
   function finish() { dialog.close(); if (done) { done(session); done = null; } }
   function rememberTour() {
-    try { localStorage.setItem('eznest-tour-seen', '1'); localStorage.setItem('eznest-shop-welcome-dismissed', '1'); } catch {}
+    try { localStorage.setItem('eznest-tour-seen', '1'); } catch {}
   }
-  function endTour() { rememberTour(); touring = false; finish(); }
+  function endTour() {
+    rememberTour(); touring = false;
+    if (done && session.localPC && !session.shopIdentity?.created) welcome();
+    else finish();
+  }
   function tour() {
     reset('Thanks for downloading Ez Nest'); touring = true; dialog.classList.add('team-walkthrough');
     closeButton.setAttribute('aria-label', 'Close welcome');
@@ -84,40 +96,47 @@ window.EZNShop = (() => {
   }
   async function updateSession() { session = await request('/api/session'); label(); }
   function label() {
-    const open = document.getElementById('shop-team-open');
-    open.replaceChildren();
+    const shopButton = document.getElementById('shop-team-open');
+    const name = session.shopIdentity?.name || 'Your shop';
+    shopButton.replaceChildren();
     const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('width', '20'); icon.setAttribute('height', '20'); icon.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', 'M3 10h18l-2-6H5l-2 6Zm1 0v10h16V10M9 20v-6h6v6M3 10c0 3 4.5 3 4.5 0 0 3 4.5 3 4.5 0 0 3 4.5 3 4.5 0 0 3 4.5 3 4.5 0');
     path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor'); path.setAttribute('stroke-width', '1.6'); path.setAttribute('stroke-linejoin', 'round');
-    icon.append(path); open.append(icon); node('span', session.shopIdentity?.name || 'Your shop', open);
-    open.title = session.shopIdentity?.name || 'Your shop';
-    open.setAttribute('aria-haspopup', 'dialog');
+    icon.append(path); shopButton.append(icon); node('span', session.shopIdentity?.name || 'Your shop', shopButton);
+    shopButton.title = name;
+    shopButton.setAttribute('aria-haspopup', 'dialog');
+    shopButton.classList.add('top-button');
+    const parent = shopButton.parentElement;
+    let invite = document.getElementById('shop-invite-open');
+    const show = !!(session.localPC && session.shopIdentity?.created);
+    if (show && !invite && parent) {
+      invite = button('Invite', open, parent);
+      invite.id = 'shop-invite-open';
+      invite.className = 'top-button';
+      const logout = document.getElementById('logout');
+      if (logout && logout.parentElement === parent) parent.insertBefore(invite, logout);
+    } else if (!show && invite) invite.remove();
   }
   async function created() { await updateSession(); finish(); }
   function welcome() {
-    reset('Set up your shop');
-    const name = input('What’s your print shop called?', 'Your print shop'); name.id = 'team-shop-name';
-    name.required = true; name.autocomplete = 'organization';
-    node('p', 'Keep your materials together under one shop name. You can invite your team later.', content);
-    if (session.pinConfigured) node('p', 'This replaces shared PIN access. Invite current teammates again after creating the shop.', content);
-    const create = button('Save shop', async () => {
-      name.value = name.value.trim();
-      if (!name.reportValidity()) return;
-      await request('/api/shop-members/create', {name: name.value}); await created();
-    }, content, true); create.id = 'team-create';
-    name.addEventListener('keydown', event => {
-      if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); create.click(); }
-    });
-    button('Not now', () => { try { localStorage.setItem('eznest-shop-welcome-dismissed', '1'); } catch {} finish(); }).className = 'team-text-button';
-    const existing = node('div', '', content); existing.className = 'team-existing';
-    button('Already have a shop on another PC?', joinAddress, existing).className = 'team-text-button';
-    name.focus();
+    reset('Welcome to Ez Nest');
+    node('p', 'Create a shop for your team, or join one with an invite.', content);
+    button('Create a shop', () => {
+      reset('Create your shop');
+      const name = input('Shop name', 'Your shop'); name.id = 'team-shop-name';
+      node('p', 'People you invite share this shop’s materials.', content);
+      if (session.pinConfigured) node('p', 'People using the old PIN need a new invite.', content);
+      button('Create shop', async () => { await request('/api/shop-members/create', {name: name.value}); await created(); }, content, true).id = 'team-create';
+      button('Back', welcome); name.focus();
+    }, content, true);
+    button('Join a shop', joinAddress);
+    button('Use this PC for now', dismiss);
   }
   function joinAddress() {
-    reset('Open your shop');
-    node('p', 'Ask your shop host for its address. Open it on this shop’s network, then enter your invitation. You will use the host’s stock, not a second copy on this PC.', content);
+    reset('Join a shop');
+    node('p', 'Ask for the shop address. Open it, then enter your invite.', content);
     const address = input('Shop address', 'http://SHOP-PC:8765'); address.id = 'team-address';
     button('Open shop', () => {
       const raw = address.value.trim();
@@ -133,9 +152,10 @@ window.EZNShop = (() => {
   }
   function join() {
     reset('Join ' + (session.shopIdentity?.name || 'your shop'));
-    node('p', 'Enter the one-time invitation from your shop host. Everyone in this shop uses the same material stock.', content);
+    if (session.accessRemoved) node('p', 'Your access was removed. Ask for a new invite.', content);
+    node('p', 'Enter your name and the invite from your shop.', content);
     const name = input('Your name'); name.id = 'team-member-name'; name.autocomplete = 'name';
-    const code = input('Invitation code', 'XXXXX-XXXXX-XXXXX-XXXXX'); code.id = 'team-code'; code.spellcheck = false;
+    const code = input('Invite code', 'XXXXX-XXXXX-XXXXX-XXXXX'); code.id = 'team-code'; code.spellcheck = false;
     button('Join shop', async () => {
       await request('/api/shop-members/join', {name: name.value, code: code.value}); code.value = '';
       await updateSession(); finish();
@@ -143,36 +163,41 @@ window.EZNShop = (() => {
   }
   async function manage() {
     reset(session.shopIdentity?.name || 'Your shop');
-    node('p', 'Shared material stock. Stock is deducted when usage is confirmed, not just when a layout is previewed.', content);
-    node('p', 'Pilot: coordinate one active nesting job at a time. The host PC must stay on. Remote locations are not connected yet.', content);
+    node('p', 'Everyone in this shop uses the same materials.', content);
     if (session.localPC) {
       const shop = await request('/api/shop-members');
+      let inviteSlot = null;
       if (session.shopAddress) {
-        node('p', 'Teammates open this address on the shop network:', content);
+        node('p', 'People open this address:', content);
         node('code', session.shopAddress, content);
-        button('Create invitation', async () => {
+        button('Invite someone', async () => {
           const invite = await request('/api/shop-members/invite', {});
-          let box = document.getElementById('team-invitation');
-          if (!box) { box = node('p', '', content); box.id = 'team-invitation'; }
-          box.textContent = invite.code + ' · One use · Expires in 15 minutes';
+          inviteSlot.hidden = false;
+          inviteSlot.textContent = invite.code + ' · One use · Expires in 15 minutes';
         }, content, true);
-        button('Cancel unused invitations', async () => {
+        button('Cancel unused invites', async () => {
           await request('/api/shop-members/cancel-invites', {});
-          document.getElementById('team-invitation')?.remove(); message.textContent = 'Unused invitations cancelled.';
+          inviteSlot.hidden = true;
+          inviteSlot.textContent = '';
+          message.textContent = 'Unused invites cancelled.';
         });
       } else {
-        node('p', 'This PC is local only. Before inviting people, set up the shared shop host with shop network enabled, then restart Ez Nest. Creating a shop does not open your network.', content);
+        node('p', 'Invites are off until this computer is on the shop network. Turn that on and restart Ez Nest.', content);
       }
-      node('h3', 'People with access', content);
-      if (!shop.members?.length) node('p', 'No teammates have joined yet.', content);
+      node('h3', 'People', content);
+      if (!shop.members?.length) node('p', 'No one has joined yet.', content);
       for (const member of shop.members || []) {
         const row = node('div', '', content); row.className = 'team-person';
         node('span', member.name, row);
         button('Remove access', async () => { await request('/api/shop-members/revoke', {id: member.id}); await manage(); }, row);
       }
+      // Keep the invitation in the dialog content before the close control.
+      inviteSlot = node('p', '', content);
+      inviteSlot.id = 'team-invitation';
+      inviteSlot.hidden = true;
     } else {
-      node('p', 'Ask the host to manage invitations and people.', content);
-      button('Sign out', async () => { await request('/api/logout', {}); location.reload(); });
+      node('p', 'Ask the shop computer to invite people.', content);
+      button('Log out', async () => { await request('/api/logout', {}); location.reload(); });
     }
   }
   async function open() {
@@ -217,7 +242,9 @@ window.EZNShop = (() => {
       if (replay) { visit.searchParams.delete('tour'); history.replaceState(null, '', visit.pathname + visit.search + visit.hash); }
       if ((session.localPC && !session.shopIdentity?.created && !dismissed) || (!session.localPC && session.shopIdentity?.created && !session.authenticated)) {
         const waiting = new Promise(resolve => { done = resolve; });
-        if (session.localPC) showTour(); else await open();
+        let seen = false;
+        try { seen = localStorage.getItem('eznest-tour-seen') === '1'; } catch {}
+        if (session.localPC && !seen) showTour(); else await open();
         return waiting;
       }
       if (replay) showTour();

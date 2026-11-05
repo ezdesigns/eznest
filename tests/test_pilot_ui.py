@@ -18,7 +18,7 @@ class PilotUiTests(unittest.TestCase):
         env = patch.dict(os.environ, {'EZ_NEST_OUTPUT_UPLOADS':'0', 'EZ_NEST_DEV':'0', 'EZ_NEST_OUTPUT_GATE_OPEN':'0', 'EZ_NEST_DEV_NO_OUTPUT':'0'})
         env.start(); self.addCleanup(env.stop)
 
-    def test_skip_goes_directly_to_job_and_is_remembered(self):
+    def test_welcome_then_local_trial_is_remembered(self):
         with sync_playwright() as pw:
             browser = test_web_mvp.launch_browser(pw)
             try:
@@ -26,12 +26,14 @@ class PilotUiTests(unittest.TestCase):
                 page.goto(self.fixture.url() + '/web')
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS/'welcome-output-intro.png'))
                 page.get_by_role('button', name='Close welcome', exact=True).click()
+                page.get_by_role('button', name='Use this PC for now', exact=True).click()
                 self.fixture.wait_ready(page)
                 expect(page.locator('#setup')).to_be_hidden()
                 expect(page.locator('#drop')).to_be_visible()
                 page.reload(); self.fixture.wait_ready(page)
                 expect(page.locator('#shop-team-dialog')).to_be_hidden()
                 page.click('#shop-team-open')
+                page.get_by_role('button', name='Create a shop', exact=True).click()
                 page.fill('#team-shop-name', 'Test Print Shop')
                 page.click('#team-create')
                 expect(page.locator('#shop-team-open')).to_have_text('Test Print Shop')
@@ -84,14 +86,6 @@ class PilotUiTests(unittest.TestCase):
                     self.assert_inside(page,'#test-channel','#settings')
                     page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'pilot-settings-{width}.png'))
                     page.click('#save-settings'); page.keyboard.press('Escape')
-                    page.click('#output-required-code')
-                    expect(page.locator('#output-connect-details')).to_be_hidden()
-                    expect(page.locator('#output-browser-start')).to_be_hidden()
-                    expect(page.locator('#output-explore')).to_have_attribute('href','https://output.jeezlabs.io/')
-                    self.assertNotIn('Pilot preview',page.locator('#setup-shop').inner_text())
-                    page.screenshot(path=str(test_web_mvp.SCREENSHOTS/f'pilot-output-{width}.png'))
-                    page.click('#output-explore-close')
-                    expect(page.locator('#setup-shop')).to_be_hidden()
                     page.click('#max-output')
                     expect(page.locator('#max-output-dialog')).to_have_class('output-brand')
                     expect(page.locator('#max-output-title')).to_contain_text('Let a partner print.')
@@ -113,6 +107,58 @@ class PilotUiTests(unittest.TestCase):
                     page.close()
             finally: browser.close()
 
+    def test_output_dialog_enter_never_runs_underlying_production_action(self):
+        import shop_members
+        shop_members.create(server.WORK, 'Keyboard test shop')
+        with sync_playwright() as pw:
+            browser = test_web_mvp.launch_browser(pw)
+            try:
+                page = browser.new_page()
+                page.goto(self.fixture.url() + '/web'); self.fixture.wait_ready(page)
+                page.evaluate("() => { window.productionCalls = 0; exportFile = openConfirm = () => { window.productionCalls++; }; }")
+                for step in ['check', 'confirm']:
+                    page.click('#settings-open'); page.click('#output-settings-open')
+                    page.evaluate('(step) => { document.body.dataset.step = step; current = {result: {}}; }', step)
+                    page.locator('#output-settings-back').press('Enter')
+                    expect(page.locator('#settings')).to_be_visible()
+                    self.assertEqual(page.evaluate('window.productionCalls'), 0)
+                    page.click('#settings-close')
+            finally:
+                browser.close()
+
+    def test_welcome_and_local_trial_restore_saved_job_without_output(self):
+        from pathlib import Path
+        import material_inventory
+        from test_material_inventory import values
+        hot = server.WORK / 'synthetic-hot-folder'; hot.mkdir()
+        server.OUTPUT.connect(str(hot))
+        material_inventory.save(server.WORK, 'shared-roll', values(), 0)
+        with sync_playwright() as pw:
+            browser = test_web_mvp.launch_browser(pw)
+            try:
+                context = browser.new_context()
+                context.add_init_script("localStorage.setItem('eznest-shop-welcome-dismissed', '1')")
+                page = context.new_page()
+                page.goto(self.fixture.url() + '/web'); self.fixture.wait_ready(page)
+                page.set_input_files('#file', str(Path(__file__).parents[1] / 'sample-artwork.svg'))
+                page.click('#start-nesting')
+                page.wait_for_function("() => document.body.dataset.step === 'check'", timeout=90000)
+                context.close()
+                fresh = browser.new_context()
+                page = fresh.new_page()
+                page.goto(self.fixture.url() + '/web')
+                page.click('#tour-next')
+                page.get_by_role('button', name='Use this PC for now', exact=True).click()
+                self.fixture.wait_ready(page)
+                self.assertEqual(page.get_attribute('body', 'data-step'), 'check')
+                self.assertEqual(page.input_value('#hot-folder'), str(hot.resolve()))
+                self.assertEqual(page.evaluate('kits.length'), 1)
+                self.assertIn('shared-roll', page.evaluate('shopInventory.materials.map(item => item.id)'))
+                expect(page.locator('#output-required')).to_be_hidden()
+                self.assertEqual(list(hot.iterdir()), [])
+            finally:
+                browser.close()
+
     def assert_inside(self,page,field,dialog):
         box=page.locator(field).bounding_box(); outer=page.locator(dialog).bounding_box()
         self.assertGreaterEqual(box['y'],outer['y'])
@@ -121,7 +167,7 @@ class PilotUiTests(unittest.TestCase):
         self.assertLessEqual(box['y']+box['height'],page.viewport_size['height'])
         self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'),page.viewport_size['width'])
 
-    def test_banner_variations_snooze_without_reload_and_settings_labels(self):
+    def test_home_has_no_output_banner_and_settings_labels(self):
         import shop_members
         shop_members.create(server.WORK, 'EZ Designs')
         with sync_playwright() as pw:
@@ -131,18 +177,9 @@ class PilotUiTests(unittest.TestCase):
                 page.goto(self.fixture.url()+'/web');self.fixture.wait_ready(page)
                 expect(page.locator('#shop-team-open svg')).to_be_visible()
                 self.assertEqual(page.locator('#shop-team-open').evaluate('n=>getComputedStyle(n).borderRightWidth'),'0px')
-                titles=[]
-                for _ in range(5):
-                    titles.append(page.locator('#output-required-title').inner_text())
-                    page.evaluate('rotateOutputPromo()')
-                self.assertEqual(len(set(titles)),5)
-                page.click('#output-required-code')
-                expect(page.locator('#setup-shop .output-wordmark')).to_have_count(0)
-                before=page.locator('#output-required-title').text_content()
-                page.evaluate('rotateOutputPromo()')
-                self.assertEqual(page.locator('#output-required-title').text_content(),before)
-                page.screenshot(path=str(test_web_mvp.SCREENSHOTS/'output-no-wordmark.png'))
-                page.keyboard.press('Escape');page.click('#settings-open')
+                expect(page.locator('#output-required')).to_be_hidden()
+                expect(page.locator('#output-promo-dismissed')).to_be_hidden()
+                page.click('#settings-open')
                 expect(page.locator('#browse-output')).to_have_text('Choose folder')
                 page.locator('#settings-backup > summary').click()
                 expect(page.get_by_role('button',name='About Keep an extra copy',exact=True)).to_be_visible()
@@ -153,30 +190,9 @@ class PilotUiTests(unittest.TestCase):
                 expect(page.locator('#cut-line-names')).to_have_text('LNThru-cut, LNKiss-cut')
                 page.screenshot(path=str(test_web_mvp.SCREENSHOTS/'settings-simple-folder-cuts.png'))
                 page.keyboard.press('Escape')
-                page.evaluate('window.keepThisWork = "unsaved"')
-                page.click('#output-required-skip')
-                expect(page.locator('#output-required')).to_be_hidden()
-                expect(page.locator('#output-promo-dismissed')).to_be_visible()
-                self.assertEqual(page.evaluate('window.keepThisWork'),'unsaved')
-                self.assertEqual(page.evaluate('window.scrollY'),0)
-                page.screenshot(path=str(test_web_mvp.SCREENSHOTS/'output-thanks-desktop.png'),full_page=True)
                 page.reload();self.fixture.wait_ready(page)
                 expect(page.locator('#output-required')).to_be_hidden()
-                expect(page.locator('#output-promo-reopen')).to_be_visible()
-                page.context.route('https://output.jeezlabs.io/**',lambda route:route.fulfill(body='OUTPUT test destination'))
-                with page.expect_popup() as popup:
-                    page.click('#output-promo-reopen')
-                popup.value.wait_for_url('https://output.jeezlabs.io/')
-                popup.value.close()
-                expect(page.locator('#setup-shop')).to_be_hidden()
-                page.click('#output-promo-hide')
                 expect(page.locator('#output-promo-dismissed')).to_be_hidden()
-                page.reload();self.fixture.wait_ready(page)
-                expect(page.locator('#output-promo-dismissed')).to_be_hidden()
-                page.evaluate("localStorage.setItem('eznest-output-snooze-until',String(Date.now()-1))")
-                page.reload();self.fixture.wait_ready(page)
-                expect(page.locator('#output-required')).to_be_visible()
-                page.screenshot(path=str(test_web_mvp.SCREENSHOTS/'output-banner-variation.png'))
             finally:browser.close()
 
     def test_shop_closes_with_x_escape_and_outside_but_not_inside_drag(self):

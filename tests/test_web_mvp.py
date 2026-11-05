@@ -4,6 +4,8 @@ import copy
 import hashlib
 import io
 import json
+import socket
+import sys
 import tempfile
 import threading
 import time
@@ -703,7 +705,17 @@ class WebMvpTests(unittest.TestCase):
         class TestHandler(getattr(self, 'handler_type', server.Handler)):
             # Browsers may pre-open idle sockets across a server restart.
             timeout = 5
+            connections = []
 
+            def setup(self):
+                super().setup()
+                self.connections.append((threading.get_ident(), self.connection))
+
+            def finish(self):
+                self.connections[:] = [item for item in self.connections if item[1] is not self.connection]
+                super().finish()
+
+        self.connections = TestHandler.connections
         self.service = server.ThreadingHTTPServer(('127.0.0.1', 0), TestHandler)
         # Join request handlers before removing their SQLite-backed temporary data.
         self.service.daemon_threads = False
@@ -731,6 +743,34 @@ class WebMvpTests(unittest.TestCase):
             server.DOCUMENT_LOCK.release()
         if self.service:
             self.service.shutdown()
+            service = self.service
+            connections = getattr(self, 'connections', [])
+
+            def drop_idle(threads):
+                # server_close removes threads from its list before joining them.
+                # A page that stays open keeps one of those threads waiting for
+                # the next request. Close only that wait. Leave an in-flight request.
+                for _ in range(40):
+                    time.sleep(0.5)
+                    live = {thread.ident for thread in threads if thread.is_alive()}
+                    if not live:
+                        return
+                    frames = sys._current_frames()
+                    for ident, connection in list(connections):
+                        if ident not in live:
+                            continue
+                        names = []
+                        frame = frames.get(ident)
+                        while frame:
+                            names.append(frame.f_code.co_name)
+                            frame = frame.f_back
+                        if 'readinto' in names or 'readline' in names:
+                            try:
+                                connection.shutdown(socket.SHUT_RDWR)
+                            except OSError:
+                                pass
+
+            threading.Thread(target=drop_idle, args=(list(service._threads),), daemon=True).start()
             self.service.server_close()
             self.thread.join(timeout=5)
             self.service = None
@@ -757,7 +797,8 @@ class WebMvpTests(unittest.TestCase):
             detail = page.evaluate(
                 "() => JSON.stringify({ready: document.body && document.body.dataset.ready || '',"
                 " alarm: getComputedStyle(document.documentElement).getPropertyValue('--alarm').trim(),"
-                " status: (document.querySelector('#status') || {}).textContent || ''})"
+                " status: (document.querySelector('#status') || {}).textContent || '',"
+                " shop: (document.querySelector('#shop-team-dialog[open] #shop-team-title') || {}).textContent || ''})"
             )
             raise AssertionError('Shop page was not ready. ' + detail) from None
 

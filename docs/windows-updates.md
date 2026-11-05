@@ -5,9 +5,9 @@
 1. Background checks are off until Settings has **Check for updates** on and
    the host was started with `EZ_NEST_UPDATES=1`. Then Settings shows an
    available version and release notes. Checks run at startup and every six
-   hours. A download is kept only when its SHA-256 matches, and installation
-   is still a separate click.
-2. Download the update. The app verifies the release checksum before staging it.
+   hours. A download is kept only when its signed update manifest checks out
+   and the file matches that manifest. Installation is still a separate click.
+2. Download the update. The app checks the signed manifest before staging it.
 3. On the server PC, choose **Install when finished** and approve the Windows
    administrator prompt. If the browser does not open the protocol handler, use
    **Update eznest** in the Windows Start menu. Other shop PCs cannot approve it.
