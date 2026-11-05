@@ -95,12 +95,13 @@ import WebKit
         if let png = bitmap.representation(using: .png, properties: [:]) { try? png.write(to: folder.appendingPathComponent(name)) }
     }
 
-    func waitForStartupGate(_ view: DesktopStartupView) {
-        if view.progress >= 0.9 {
-            check(app.startupIsVisible && view.progress < 1, "loading waits before the right edge for workspace readiness")
+    func waitForStartupGate(_ view: DesktopStartupView, held: Int = 0) {
+        check(app.startupIsVisible && view.progress < 1, "loading waits before the right edge for workspace readiness")
+        if view.progress == 0.92 && held >= 10 {
             js("window.EZNStartup.state = 'ready'")
         } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.waitForStartupGate(view) }
+            let next = view.progress == 0.92 ? held + 1 : 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.waitForStartupGate(view, held: next) }
         }
     }
 
