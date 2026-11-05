@@ -1,5 +1,5 @@
 /* Inventory dialog: same frame as Settings. */
-#stock { width: min(620px, calc(100vw - 32px)); max-height: 90dvh; padding: 24px; border: 1px solid #ddd; border-radius: 14px; color: var(--ink); }
+#stock { width: min(620px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: 90dvh; padding: 24px; border: 1px solid #ddd; border-radius: 14px; color: var(--ink); }
 #stock::backdrop { background: #1c243855; }
 #stock .panel { text-align: left; }
 .stock-job { margin-bottom: 14px; padding: 12px 14px; border: 1px solid #d6e3f2; border-radius: 10px; background: #f3f7fc; }

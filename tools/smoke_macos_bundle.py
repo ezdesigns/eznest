@@ -57,6 +57,11 @@ def stop():
     proc=None
 
 def ready(page):
+    page.wait_for_function("() => document.body.dataset.ready === '1' || !!document.querySelector('#shop-team-dialog[open]')")
+    if page.get_by_role('button', name='Close welcome', exact=True).is_visible():
+        page.get_by_role('button', name='Close welcome', exact=True).click()
+    if page.get_by_role('button', name='Use this PC for now', exact=True).is_visible():
+        page.get_by_role('button', name='Use this PC for now', exact=True).click()
     page.wait_for_function("() => document.body.dataset.ready === '1'")
     if page.locator('#output-required').is_visible():
         with page.expect_navigation(wait_until='domcontentloaded'):
