@@ -184,7 +184,7 @@ def add_desktop_client(app, out, arch, identity):
     shutil.copy2(native, destination)
     resources = app / 'Contents/Resources'
     resources.mkdir(parents=True, exist_ok=True)
-    for name in ('startup-nesting.gif', 'startup-companion.png'):
+    for name in ('startup-nesting.mp4', 'startup-nesting-poster.png', 'startup-companion.png'):
         target = resources / name
         if target.exists():
             if target.read_bytes() != (ROOT / name).read_bytes():

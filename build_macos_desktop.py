@@ -15,14 +15,14 @@ def build(out, architecture, *, testing=False):
     if out.exists() or out == ROOT or out in ROOT.parents or ROOT in out.parents:
         raise ValueError('Use a new dedicated native build directory outside the source tree.')
     out.mkdir(parents=True, exist_ok=False)
-    for name in ('startup-nesting.gif', 'startup-companion.png'):
+    for name in ('startup-nesting.mp4', 'startup-nesting-poster.png', 'startup-companion.png'):
         shutil.copy2(ROOT / name, out / name)
     source = ROOT / 'native/macos/EZNestDesktop.swift'
     executable = out / 'eznest-desktop'
     args = ['xcrun', '--sdk', 'macosx', 'swiftc', '-O', '-parse-as-library',
             '-swift-version', '5', '-target', f'{architecture}-apple-macos26.0',
             '-module-cache-path', str(out / 'module-cache'),
-            '-framework', 'AppKit', '-framework', 'WebKit', str(source)]
+            '-framework', 'AppKit', '-framework', 'WebKit', '-framework', 'AVFoundation', str(source)]
     if testing:
         args += ['-D', 'EZNEST_DESKTOP_TESTING', str(ROOT / 'tests/macos_desktop_checks.swift'),
                  str(ROOT / 'tests/macos_workspace_checks.swift')]

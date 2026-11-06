@@ -14,6 +14,7 @@ import WebKit
     var popupCreations = 0
     var popupClicks = 0
     var updateRequests = 0
+    var currentStartup: DesktopStartupView?
     var startupCount = 0
     var startupBegan = ProcessInfo.processInfo.systemUptime
 
@@ -31,6 +32,7 @@ import WebKit
         app.startupReducedMotion = { false }
         app.startupShown = { [weak self] view in
             guard let self else { return }
+            self.currentStartup = view
             self.startupCount += 1; self.startupBegan = ProcessInfo.processInfo.systemUptime
             self.check(view.artworkLoaded, "bundled startup artwork")
             self.check(view.progress == 0, "startup begins at the left")
@@ -40,6 +42,8 @@ import WebKit
             } else if self.mode == "valid" {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     self.check(view.progress > 0 && view.progress < 1, "startup moves right")
+                    self.check(view.mediaIsDisplaying, "native video layer displays the nesting")
+                    self.check(abs(view.progress-view.playbackTime/5) < 0.04, "rider follows the media clock")
                     self.snapshot(view, name: "startup-moving.png")
                 }
                 self.waitForStartupGate(view)
@@ -78,6 +82,12 @@ import WebKit
         self.check(!completed, "reduced motion still waits for service readiness")
         still.markReady()
         self.check(completed && still.progress == 1, "reduced motion reveals without skating")
+        var stalledCompleted = false
+        let stalled = DesktopStartupView(frame: .zero, reducedMotion: { false }) { stalledCompleted = true }
+        self.check(stalled.simulateStallForTesting(), "stalled native media falls back and releases the player item")
+        self.check(!stalledCompleted, "static fallback still waits for workspace readiness")
+        stalled.markReady()
+        self.check(stalledCompleted, "static fallback reveals a ready workspace")
     }
 
     func check(_ condition: Bool, _ name: String) {
@@ -97,10 +107,11 @@ import WebKit
 
     func waitForStartupGate(_ view: DesktopStartupView, held: Int = 0) {
         check(app.startupIsVisible && view.progress < 1, "loading waits before the right edge for workspace readiness")
-        if view.progress == 0.92 && held >= 10 {
+        if view.isHoldingForWorkspace && held >= 10 {
+            check(view.playbackTime >= 4.6 && view.playbackTime < 5, "nesting video pauses with the rider before readiness")
             js("window.EZNStartup.state = 'ready'")
         } else {
-            let next = view.progress == 0.92 ? held + 1 : 0
+            let next = view.isHoldingForWorkspace ? held + 1 : 0
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.waitForStartupGate(view, held: next) }
         }
     }
@@ -119,8 +130,10 @@ import WebKit
         check(NSApp.mainMenu?.items.count == 3, "native menu bar")
         if stage == 0 {
             check(!app.startupIsVisible && app.window.contentView === app.webView, "startup reveals the native workspace")
+            check(currentStartup?.playbackCompleted == true && (currentStartup?.playbackTime ?? 0) >= 4.99, "complete nesting media ends before reveal")
+            currentStartup = nil
             check(startupCount == 2, "retry replaces the previous startup")
-            check(ProcessInfo.processInfo.systemUptime - startupBegan >= 4, "one complete left-to-right trip")
+            check(ProcessInfo.processInfo.systemUptime - startupBegan >= 5, "one complete five-second left-to-right trip")
             check(externalCount == 0, "startup must not open a browser")
             app.window.close()
             _ = app.applicationShouldHandleReopen(NSApp, hasVisibleWindows: false)

@@ -1,5 +1,6 @@
 import AppKit
 import WebKit
+import AVFoundation
 
 // The desktop client has no filesystem/JavaScript bridge and never starts a
 // second engine. Only the already installed, PID-matched shop service is loaded.
@@ -70,32 +71,40 @@ final class DesktopStartupView: NSView {
     private let scene = NSView(), picture = NSImageView(), counterCover = NSView()
     private let rider: StartupRiderView
     private let ground = NSView(), label = NSTextField(labelWithString: "Loading")
-    private var timer: Timer?
+    private let player: AVPlayer, movie = AVPlayerLayer()
+    private var timer: Timer?, mediaStatus: NSKeyValueObservation?
     private var observers: [NSObjectProtocol] = []
-    private var accessibilityObserver: NSObjectProtocol?
-    private var last = ProcessInfo.processInfo.systemUptime, elapsed = 0.0
-    private var ready = false, finished = false
-    private let completed: () -> Void
-    private let reducedMotion: () -> Bool
+    private var accessibilityObserver: NSObjectProtocol?, mediaObserver: NSObjectProtocol?
+    private var last = ProcessInfo.processInfo.systemUptime, lastMedia = 0.0, stalled = 0.0
+    private var ready = false, finished = false, posterOnly = false, ending = false
+    private let completed: () -> Void, reducedMotion: () -> Bool
+    private static let duration = 5.0, holdAt = 4.6
     private(set) var progress = 0.0
+    private(set) var isHoldingForWorkspace = false, playbackCompleted = false
+    var mediaIsDisplaying: Bool { !movie.isHidden && movie.isReadyForDisplay }
+    var playbackTime: Double { let t = player.currentTime().seconds; return t.isFinite ? max(0, t) : 0 }
     let artworkLoaded: Bool
     override var isFlipped: Bool { true }
     private static let paper = NSColor(srgbRed: 247/255, green: 247/255, blue: 242/255, alpha: 1)
 
     init(frame: NSRect, reducedMotion: @escaping () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }, completed: @escaping () -> Void) {
         let resources = Bundle.main.resourceURL ?? Bundle.main.bundleURL
-        let gif = NSImage(contentsOf: resources.appendingPathComponent("startup-nesting.gif"))
+        let poster = NSImage(contentsOf: resources.appendingPathComponent("startup-nesting-poster.png"))
         let companion = NSImage(contentsOf: resources.appendingPathComponent("startup-companion.png"))
+        let url = resources.appendingPathComponent("startup-nesting.mp4")
+        player = AVPlayer(url: url)
         self.rider = StartupRiderView(image: companion)
-        self.artworkLoaded = gif != nil && companion != nil
-        self.completed = completed
-        self.reducedMotion = reducedMotion
+        self.artworkLoaded = poster != nil && companion != nil && FileManager.default.fileExists(atPath: url.path)
+        self.completed = completed; self.reducedMotion = reducedMotion
         super.init(frame: frame)
         autoresizingMask = [.width, .height]
         wantsLayer = true; layer?.backgroundColor = Self.paper.cgColor
         scene.wantsLayer = true; scene.layer?.masksToBounds = true
-        picture.image = gif; picture.imageScaling = .scaleAxesIndependently
+        picture.image = poster; picture.imageScaling = .scaleAxesIndependently; picture.wantsLayer = true
         picture.setAccessibilityElement(false)
+        player.isMuted = true; player.automaticallyWaitsToMinimizeStalling = false
+        movie.player = player; movie.videoGravity = .resize; movie.isHidden = true
+        picture.layer?.addSublayer(movie)
         counterCover.wantsLayer = true; counterCover.layer?.backgroundColor = Self.paper.cgColor
         scene.addSubview(picture); scene.addSubview(counterCover)
         ground.wantsLayer = true
@@ -107,6 +116,12 @@ final class DesktopStartupView: NSView {
         accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in MainActor.assumeIsolated { self?.updateMotion() } }
+        mediaObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.mediaEnded() }
+        }
+        mediaStatus = player.currentItem?.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            if item.status == .failed { DispatchQueue.main.async { self?.usePoster() } }
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -135,6 +150,7 @@ final class DesktopStartupView: NSView {
         // NSImageView's parent is not flipped: register the same cropped square
         // image and top-right counter cover used by the browser startup page.
         picture.frame = NSRect(x: 0, y: sceneHeight-width+width*0.22, width: width, height: width)
+        movie.frame = picture.bounds
         counterCover.frame = NSRect(x: width*0.78, y: sceneHeight*0.87, width: width*0.22, height: sceneHeight*0.13)
         let laneWidth = min(300, width * 0.7), laneTop = top + sceneHeight - 8
         ground.frame = NSRect(x: (bounds.width-laneWidth)/2+12, y: laneTop+96, width: laneWidth-24, height: 2)
@@ -143,35 +159,73 @@ final class DesktopStartupView: NSView {
     }
 
     func markReady() { ready = true; updateMotion() }
-
+    private func pause() { timer?.invalidate(); timer = nil; player.pause(); last = ProcessInfo.processInfo.systemUptime }
+    private func usePoster() {
+        guard !finished else { return }
+        pause(); posterOnly = true; movie.isHidden = true
+        mediaStatus?.invalidate(); mediaStatus = nil
+        if let mediaObserver { NotificationCenter.default.removeObserver(mediaObserver) }; mediaObserver = nil
+        movie.player = nil; player.replaceCurrentItem(with: nil)
+        progress = ready ? 1 : 0.5; needsLayout = true
+        if ready { complete() }
+    }
     private func updateMotion() {
+        guard !finished else { return }
         let reduced = reducedMotion()
         let visible = window?.isVisible == true && window?.isMiniaturized == false && !NSApp.isHidden
-        picture.animates = visible && !reduced && !finished
-        if finished || !visible || reduced {
-            timer?.invalidate(); timer = nil
-            if reduced && !finished { progress = ready ? 1 : 0.5; needsLayout = true; if ready { complete() } }
-        } else if timer == nil {
+        if reduced || posterOnly {
+            pause(); movie.isHidden = true; progress = ready ? 1 : 0.5; needsLayout = true
+            if ready { complete() }; return
+        }
+        if !visible || (isHoldingForWorkspace && !ready) { pause(); return }
+        if playbackCompleted { if ready { completeAfterFrame() }; return }
+        if isHoldingForWorkspace { isHoldingForWorkspace = false; stalled = 0 }
+        if timer == nil {
             last = ProcessInfo.processInfo.systemUptime
             timer = Timer(timeInterval: 1/60, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.tick() } }
             RunLoop.main.add(timer!, forMode: .common)
         }
+        player.play()
     }
-
+    private func hold() {
+        pause(); isHoldingForWorkspace = true
+        if playbackTime > Self.holdAt + 0.05 { player.seek(to: CMTime(seconds: Self.holdAt, preferredTimescale: 37000), toleranceBefore: .zero, toleranceAfter: .zero) }
+        progress = Self.holdAt / Self.duration; needsLayout = true
+    }
     private func tick() {
-        let now = ProcessInfo.processInfo.systemUptime
-        elapsed += min(now-last, 1/30); last = now
-        let t = min(1, elapsed/4.2)
-        progress = min(ready ? 1 : 0.92, t*t*(3-2*t)); needsLayout = true
-        if ready && progress == 1 { complete() }
+        let now = ProcessInfo.processInfo.systemUptime, time = playbackTime
+        stalled = time > lastMedia + 0.001 ? 0 : stalled + max(0, now-last)
+        last = now; lastMedia = time
+        movie.isHidden = !movie.isReadyForDisplay
+        if !ready && time >= Self.holdAt { hold(); return }
+        progress = min(1, time / Self.duration); needsLayout = true
+        if stalled >= 8 { usePoster() }
     }
-
+    private func mediaEnded() {
+        guard !finished else { return }
+        if !ready { hold(); return }
+        pause(); playbackCompleted = true; completeAfterFrame()
+    }
+    private func completeAfterFrame() {
+        guard !finished && !ending else { return }
+        ending = true; progress = 1; needsLayout = true; layoutSubtreeIfNeeded()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1/60) { [weak self] in
+            guard let self, !self.finished else { return }; self.complete()
+        }
+    }
     private func complete() { guard !finished else { return }; stop(); completed() }
+    #if EZNEST_DESKTOP_TESTING
+    func simulateStallForTesting() -> Bool {
+        player.pause(); lastMedia = playbackTime
+        last = ProcessInfo.processInfo.systemUptime - 8.1; tick()
+        return posterOnly && player.currentItem == nil
+    }
+    #endif
     func stop() {
-        finished = true; timer?.invalidate(); timer = nil; picture.animates = false
+        finished = true; pause(); mediaStatus?.invalidate(); mediaStatus = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }; observers.removeAll()
-        if let accessibilityObserver { NSWorkspace.shared.notificationCenter.removeObserver(accessibilityObserver) }
-        accessibilityObserver = nil
+        if let mediaObserver { NotificationCenter.default.removeObserver(mediaObserver) }; mediaObserver = nil
+        if let accessibilityObserver { NSWorkspace.shared.notificationCenter.removeObserver(accessibilityObserver) }; accessibilityObserver = nil
     }
 }
 
