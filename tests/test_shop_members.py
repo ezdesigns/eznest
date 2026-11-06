@@ -146,6 +146,20 @@ class MembershipHTTPTests(unittest.TestCase):
         self.assertEqual(session.sent[0][0], 200)
         self.assertTrue(session.sent[0][1]['accessRemoved'])
 
+    def test_members_can_read_names_but_anonymous_sessions_cannot(self):
+        cookies = [self.join('Alex'), self.join('Sam')]
+        for cookie in cookies:
+            handler = self.handler('/api/shop-members', headers={'Cookie': cookie})
+            handler.do_GET()
+            self.assertEqual(handler.sent[0][0], 200)
+            self.assertEqual(handler.sent[0][1]['members'], [{'name': 'Alex'}, {'name': 'Sam'}])
+        anonymous = self.handler('/api/shop-members')
+        anonymous.do_GET()
+        self.assertEqual(anonymous.sent[0][0], 403)
+        session = self.handler('/api/session')
+        session.do_GET()
+        self.assertNotIn('members', session.sent[0][1]['shopIdentity'])
+
     def test_join_requires_same_origin_and_local_only_cannot_invite(self):
         code = members.invite(self.root)['code']
         with patch.object(server.Handler, 'browser_site_ok', return_value=False):

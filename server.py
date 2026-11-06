@@ -544,7 +544,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
         if path == '/api/shop-members':
             try:
-                return self.send(200, shop_members.status(WORK, admin=self.loopback_client()))
+                return self.send(200, shop_members.status(WORK, admin=self.loopback_client(), include_members=True))
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Shop access is unavailable. Check the host PC.'})
         if path == '/api/update':

@@ -536,7 +536,8 @@ class InventoryShelfTests(unittest.TestCase):
                     self.assert_panel_hides_nothing(page)
                     name = tapped.locator('.stock-name')
                     self.assertTrue(name.get_attribute('title').startswith(name.text_content()))
-                    self.assertRegex(tapped.locator('.stock-size').text_content(), r'^\d+(\.\d+)? in$')
+                    self.assertRegex(tapped.locator('.stock-size').first.text_content(), r'^\d+(\.\d+)? in roll$')
+                    self.assertRegex(tapped.locator('.stock-print-size').text_content(), r'^\d+(\.\d+)? in print$')
                     page.keyboard.press('Escape')
                     last = page.locator('.stock-slot').last
                     last_name = last.locator('.stock-name').get_attribute('title')
@@ -589,7 +590,7 @@ class InventoryShelfTests(unittest.TestCase):
                 expect(page.locator('.stock-slot').first).to_have_attribute('aria-selected', 'true')
                 expect(page.locator('#stock-panel .stock-selected, #stock-panel button:has-text("Use for this job")')).to_have_count(1)
                 expect(page.locator('#stock-legend')).to_have_text('Tap a roll to see it. Taller roll = wider material. Fatter roll = more left.')
-                expect(page.locator('#stock .dialog-heading .hint')).to_have_text('Rolls in stock in the shop')
+                expect(page.locator('#stock .dialog-heading .hint')).to_have_text('Recently used first · Shared across your shop')
                 small = page.evaluate("""() => [...document.querySelectorAll('#stock .dialog-close, #stock .stock-x, #stock .stock-len, #stock button.link, #stock .stock-row-actions button')]
                     .filter(n => n.offsetParent).map(n => { const r = n.getBoundingClientRect(); return [n.className || n.id, Math.round(r.width), Math.round(r.height)]; })
                     .filter(([, w, h]) => w < 44 || h < 44)""")
@@ -758,14 +759,16 @@ class InventoryShelfTests(unittest.TestCase):
 
     def test_shelf_names_and_widths(self):
         from playwright.sync_api import sync_playwright, expect
-        long_name = 'Premium removable matte wall graphic film with low-tack adhesive 54 in'
+        # Untouched rolls sort by name; keep long labels together so another row
+        # still exercises the compact, all-short-label layout on both screen sizes.
+        long_name = 'A premium removable matte wall graphic film with low-tack adhesive 54 in'
         base = [
             ['gloss', roll('Gloss vinyl 54 in', width='51.5', roll_width='54', left='1800', **{'roll-length': '1800'})],
             ['banner', roll('Banner 64', width='63', roll_width='64', left='1200', **{'roll-length': '1800'})],
             ['plain', roll('Clear laminate', width='54', roll_width='54', left='240', **{'roll-length': '1800', 'low-stock': '600'})],
         ]
         more = [['long', roll(long_name, width='54', roll_width='54', left='900', **{'roll-length': '1800'})],
-                ['long2', roll('Supercalifragilisticexpialidocious-reflective-sheeting', width='30', roll_width='30', left='600', **{'roll-length': '1800'})]]
+                ['long2', roll('A-supercalifragilisticexpialidocious-reflective-sheeting', width='30', roll_width='30', left='600', **{'roll-length': '1800'})]]
         more += [[f'x{i}', roll(f'Material {i} 54 in', width='54', roll_width='54', left=str(300 + i * 60), **{'roll-length': '1800'})] for i in range(7)]
         many = [[f'y{i}', roll(f'Extra roll {i}', width='24', roll_width='24', left=str(400 + i * 30), **{'roll-length': '1800'})] for i in range(18)]
         with without_gate_env(), sync_playwright() as playwright:
@@ -784,7 +787,8 @@ class InventoryShelfTests(unittest.TestCase):
                     gloss = page.locator('.stock-slot[data-id="gloss"]')
                     expect(gloss.locator('.stock-name')).to_have_text('Gloss vinyl')
                     expect(gloss.locator('.stock-name')).to_have_attribute('title', 'Gloss vinyl 54 in')
-                    expect(gloss.locator('.stock-size')).to_have_text('54 in')
+                    expect(gloss.locator('.stock-size').first).to_have_text('54 in roll')
+                    expect(gloss.locator('.stock-print-size')).to_have_text('51.5 in print')
                     self.assertIn('54 inches wide', gloss.get_attribute('aria-label'))
                     self.assertIn('Gloss vinyl 54 in', gloss.get_attribute('aria-label'))
                     expect(page.locator('.stock-slot[data-id="banner"] .stock-name')).to_have_text('Banner')

@@ -112,6 +112,14 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 expect(reader.locator('#stock-panel')).to_contain_text('changed', timeout=2000)
                 self.assertEqual(material_inventory.read(server.WORK)['materials'][0]['onHandMm'], 304.8)
                 reader.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'local-sharing-stale-edit.png'))
+                writer.click('#stock-close')
+                writer.click('#shop-team-open')
+                expect(writer.locator('.team-person span')).to_have_text(['Alex', 'Sam'])
+                expect(writer.get_by_role('button', name='Remove access', exact=True)).to_have_count(0)
+                writer.set_viewport_size({'width': 390, 'height': 844})
+                expect(writer.locator('.team-person').first).to_be_in_viewport()
+                expect(writer.locator('.team-person').last).to_be_in_viewport()
+                writer.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-people-mobile.png'))
             finally:
                 browser.close()
 

@@ -156,8 +156,15 @@ window.EZNShop = (() => {
   async function manage() {
     reset(session.shopIdentity?.name || 'Your shop');
     node('p', 'Everyone in this shop uses the same materials.', content);
+    const shop = await request('/api/shop-members');
+    node('h3', 'People', content);
+    if (!shop.members?.length) node('p', 'No one has joined yet.', content);
+    for (const member of shop.members || []) {
+      const row = node('div', '', content); row.className = 'team-person';
+      node('span', member.name, row);
+      if (session.localPC) button('Remove access', async () => { await request('/api/shop-members/revoke', {id: member.id}); await manage(); }, row);
+    }
     if (session.localPC) {
-      const shop = await request('/api/shop-members');
       let inviteSlot = null;
       if (session.shopAddress) {
         node('p', 'People open this address:', content);
@@ -175,13 +182,6 @@ window.EZNShop = (() => {
         });
       } else {
         node('p', 'Invites are off until this computer is on the shop network. Turn that on and restart Ez Nest.', content);
-      }
-      node('h3', 'People', content);
-      if (!shop.members?.length) node('p', 'No one has joined yet.', content);
-      for (const member of shop.members || []) {
-        const row = node('div', '', content); row.className = 'team-person';
-        node('span', member.name, row);
-        button('Remove access', async () => { await request('/api/shop-members/revoke', {id: member.id}); await manage(); }, row);
       }
       // Keep the invitation in the dialog content before the close control.
       inviteSlot = node('p', '', content);
