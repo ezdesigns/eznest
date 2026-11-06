@@ -121,6 +121,8 @@ def database(directory):
             id TEXT PRIMARY KEY, material TEXT NOT NULL REFERENCES materials(id),
             length REAL NOT NULL, fingerprint TEXT NOT NULL, status TEXT NOT NULL,
             created TEXT NOT NULL, updated TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS material_activity (
+            material TEXT PRIMARY KEY REFERENCES materials(id), last_used TEXT NOT NULL);
         ''')
         connection.execute('BEGIN IMMEDIATE')
         yield connection
@@ -138,11 +140,15 @@ def reserved(db, material):
 
 def snapshot(db):
     materials = []
+    recent = dict(db.execute('SELECT material,last_used FROM material_activity').fetchall())
     for row in db.execute('SELECT * FROM materials ORDER BY id'):
         held = reserved(db, row['id'])
         materials.append({'id': row['id'], 'profile': json.loads(row['profile']), 'revision': row['revision'],
                           'onHandMm': row['stock'], 'reservedMm': held,
-                          'availableMm': None if row['stock'] is None else max(0, row['stock'] - held)})
+                          'availableMm': None if row['stock'] is None else max(0, row['stock'] - held),
+                          'lastUsedAt': recent.get(row['id'])})
+    materials.sort(key=lambda item: (item['profile']['preset-name'].casefold(), item['id']))
+    materials.sort(key=lambda item: item['lastUsedAt'] or '', reverse=True)
     # Never hide an outstanding reservation behind the history limit.
     rows = db.execute("SELECT * FROM reservations WHERE status='reserved' ORDER BY created DESC").fetchall()
     rows += db.execute("SELECT * FROM reservations WHERE status!='reserved' ORDER BY updated DESC LIMIT 50").fetchall()
@@ -180,6 +186,17 @@ def save(directory, key, values, revision):
                     raise ValueError('Release reservations before changing material dimensions or units.')
         db.execute('INSERT INTO materials VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET profile=excluded.profile, stock=excluded.stock, revision=excluded.revision',
                    (key, json.dumps(values), stock, expected + 1))
+        return snapshot(db)
+
+
+def touch(directory, key):
+    """Remember a deliberate material choice across the shop without consuming stock."""
+    key = ident(key)
+    with database(directory) as db:
+        if not db.execute('SELECT 1 FROM materials WHERE id=?', (key,)).fetchone():
+            raise ValueError('This roll is no longer in inventory. Choose another roll.')
+        db.execute('INSERT INTO material_activity VALUES (?,?) ON CONFLICT(material) DO UPDATE SET last_used=excluded.last_used',
+                   (key, datetime.now(timezone.utc).isoformat()))
         return snapshot(db)
 
 
@@ -246,5 +263,6 @@ def remove(directory, key, revision):
         if reserved(db, key):
             raise ValueError('Release reserved jobs on this roll before removing it.')
         db.execute('DELETE FROM reservations WHERE material=?', (key,))
+        db.execute('DELETE FROM material_activity WHERE material=?', (key,))
         db.execute('DELETE FROM materials WHERE id=?', (key,))
         return snapshot(db)

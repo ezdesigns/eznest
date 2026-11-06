@@ -3,7 +3,7 @@ window.EZNInventoryPanel = {create(host) {
 const $ = id => document.getElementById(id);
 document.body.insertAdjacentHTML('beforeend', `<dialog id="stock" aria-labelledby="stock-title">
   <div class="panel">
-    <div class="dialog-heading"><div><h2 id="stock-title" class="settings-title">Inventory</h2><p class="hint">Rolls in stock in the shop</p></div><button id="stock-close" class="dialog-close" type="button" aria-label="Close inventory">×</button></div>
+    <div class="dialog-heading"><div><h2 id="stock-title" class="settings-title">Inventory</h2><p class="hint">Recently used first · Shared across your shop</p></div><button id="stock-close" class="dialog-close" type="button" aria-label="Close inventory">×</button></div>
     <section id="stock-job" class="stock-job" aria-label="Current job" hidden>
       <h3>This job</h3>
       <p id="stock-job-text"></p>
@@ -154,7 +154,8 @@ function shelfLabel(label, m) {
   const full = m.name || 'New roll';
   const name = shelfNode('span', 'stock-name', shelfShortName(full, m.w) || full, label);
   name.title = full;
-  shelfNode('span', 'stock-size', m.w > 0 ? `${shelfFmt(m.w)} in` : '\u00a0', label);
+  shelfNode('span', 'stock-size', m.w > 0 ? `${shelfFmt(m.w)} in roll` : '\u00a0', label);
+  shelfNode('span', 'stock-size stock-print-size', m.pw > 0 ? `${shelfFmt(m.pw)} in print` : '\u00a0', label);
 }
 function shelfNode(tag, cls, text, parent) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; if (parent) parent.append(e); return e; }
 function renderStock() {
@@ -303,6 +304,10 @@ function renderRollPanel() {
   }
   const edit = shelfNode('button', 'link', 'Edit', actions); edit.type = 'button';
   edit.addEventListener('click', () => openRollForm('edit', item, status?.kind === 'unmeasured' ? 'roll-f-left' : 'roll-f-name'));
+  const replace = shelfNode('button', 'link', 'Replace roll', actions); replace.type = 'button';
+  replace.disabled = host.busy;
+  replace.title = 'After loading a new roll, reset the length left to a full roll.';
+  replace.addEventListener('click', () => replaceRoll(item));
 }
 // One parser for every Inventory number. Plain digits with an optional decimal point and
 // unit; no exponents, no commas. Limits sit inside the shop computer's own limits.
@@ -485,6 +490,33 @@ function cancelRollForm() {
   const id = stockForm?.mode === 'edit' ? stockForm.id : null;
   stockForm = null; stockSel = id; renderStock();
   (id ? $('stock-list').querySelector(`[data-id="${id}"]`) : $('stock-add'))?.focus();
+}
+async function replaceRoll(item) {
+  if (host.busy || !item) return;
+  const full = Number(item.profile['roll-length']);
+  if (!Number.isFinite(full) || !(full > 0)) {
+    openRollForm('edit', item, 'roll-f-full');
+    $('stock-status').dataset.note = 'Enter the length of a new roll and save, then choose Replace roll.';
+    $('stock-status').textContent = $('stock-status').dataset.note;
+    return;
+  }
+  const fullMm = full * EZNQueue.unitScale(item.profile.unit);
+  const held = item.reservedMm > 0 ? ` ${stockFeet(item.reservedMm)} stays reserved for pending jobs.` : '';
+  if (!window.confirm(`Loaded a new roll of ${item.profile['preset-name']}? Set the length left to ${stockFeet(fullMm)} for everyone in this shop. This replaces the old remaining amount; it does not add another roll.${held}`)) return;
+  host.busy = true;
+  renderStock();
+  try {
+    const profile = host.validate({...item.profile, 'available-length': String(item.profile['roll-length'])});
+    await host.mutate('/api/materials/save', {id: item.id, profile, revision: item.revision});
+    host.updated(item.id);
+    $('stock-status').dataset.note = `New roll loaded. ${stockFeet(fullMm)} on the roll.${held}`;
+  } catch (error) {
+    await host.refresh().catch(() => {});
+    $('stock-status').dataset.note = error.message;
+  } finally {
+    host.busy = false;
+    renderStock();
+  }
 }
 async function removeRoll(item) {
   if (host.busy || !item) return;

@@ -1133,6 +1133,8 @@ class Handler(BaseHTTPRequestHandler):
                 UPDATE_CHECK.clear()
                 UPDATE_WAKE.set()
                 return self.send(200, shop_status())
+            if path == '/api/materials/touch':
+                return self.send(200, material_inventory.touch(WORK, data.get('id')))
             if path == '/api/materials/save':
                 saved = material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision'))
                 stock_output.note_change(WORK)
