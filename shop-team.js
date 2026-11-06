@@ -135,8 +135,9 @@ window.EZNShop = (() => {
       const host = url.hostname.toLowerCase();
       const privateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) && /^(\d{1,3}\.){3}\d{1,3}$/.test(host);
       const localName = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.(?:local|lan))?$/.test(host) && host !== 'localhost';
-      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || (!privateIp && !localName) || url.search || url.hash || url.pathname !== '/') throw Error('Enter a shop PC name or private network address, without a code or password.');
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || (!privateIp && !localName) || url.search || url.hash || !['/', '/web', '/web/'].includes(url.pathname)) throw Error('Enter a shop PC name or private network address, without a code or password.');
       if (!url.port) url.port = '8765';
+      url.pathname = '/';
       url.search = '?view=simple'; location.assign(url.href);
     }, content, true);
     button('Back', welcome);

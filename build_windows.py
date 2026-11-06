@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 ROOT=Path(__file__).resolve().parent
-STATIC=['startup.css','startup.js','startup-nesting.mp4', 'startup-nesting-poster.png','startup-companion.png','onboarding-upload.webp','onboarding-stickers.webp','onboarding-file.webp','shop-team.js','shop-team.css','workspace-mode.css','app-theme.css','inventory-panel.css','material-profile.js','inventory-panel.js','queue-inventory.js','production.html','queue.css','queue-app.js','queue-core.js','production-features.js','layout-comparison.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','CHANGELOG.md','app.js','style.css','web.html','web.css','web.js','tester-results.js']
+STATIC=['browser-crypto.js','startup.css','startup.js','startup-nesting.mp4', 'startup-nesting-poster.png','startup-companion.png','onboarding-upload.webp','onboarding-stickers.webp','onboarding-file.webp','shop-team.js','shop-team.css','workspace-mode.css','app-theme.css','inventory-panel.css','material-profile.js','inventory-panel.js','queue-inventory.js','production.html','queue.css','queue-app.js','queue-core.js','production-features.js','layout-comparison.js','cut-mapping.js','shop-profiles.js','svg-io.js','sample-artwork.svg','sample.json','version.json','CHANGELOG.md','app.js','style.css','web.html','web.css','web.js','tester-results.js']
 INNO_SETUP_URL='https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe'
 
 def pinned_distribution(name, version):
