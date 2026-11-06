@@ -13,6 +13,7 @@ import WebKit
     init(origin: URL, pid: Int, folder: URL, version: String) {
         self.folder = folder
         app = DesktopApp(configuration: DesktopConfiguration(origin: origin, version: version, servicePID: { pid }))
+        app.startupReducedMotion = { false }
         app.failed = { [weak self] _ in self?.check(false, "workspace startup") }
         app.externalLink = { [weak self] _ in self?.check(false, "unexpected browser launch") }
         app.pickFiles = { [weak self] _ in
@@ -61,21 +62,27 @@ import WebKit
     func loaded() {
         if page == 0 {
             page = 1
-            wait("document.body.classList.contains('full-workspace') && typeof fullInventoryReady !== 'undefined'") {
-                print("WORKSPACE_STAGE: full-loaded")
-                self.js("document.querySelector('#stock-open').click()")
-                self.wait("fullInventoryReady && document.querySelector('#stock').open") {
-                    print("WORKSPACE_STAGE: full-ready")
-                    self.check(self.app.window.isVisible, "full workspace native window")
-                    self.screenshot("full-workspace.png") {
-                        self.js("document.querySelector('#stock-close').click(); document.querySelector('#mode-switch').click()")
-                    }
-                }
+            wait("document.body.dataset.ready === '1'") {
+                print("WORKSPACE_STAGE: workspace-ready")
+                self.js("window.location.href='/?view=full'")
             }
         } else if page == 1 {
             page = 2
+            wait("document.body.dataset.ready === '1' && !document.querySelector('#mode-switch')") {
+                print("WORKSPACE_STAGE: legacy-bookmark-loaded")
+                self.js("document.querySelector('#stock-open').click()")
+                self.wait("inventoryReady && document.querySelector('#stock').open") {
+                    print("WORKSPACE_STAGE: legacy-bookmark-ready")
+                    self.check(self.app.window.isVisible, "single workspace native window")
+                    self.screenshot("full-workspace.png") {
+                        self.js("document.querySelector('#stock-close').click(); window.location.href='/?view=simple'")
+                    }
+                }
+            }
+        } else if page == 2 {
+            page = 3
             wait("document.body.dataset.ready === '1'") {
-                print("WORKSPACE_STAGE: simple-ready")
+                print("WORKSPACE_STAGE: workspace-return-ready")
                 self.js("""
                     const welcome = document.querySelector('#feedback-welcome');
                     if (welcome && welcome.getClientRects().length) document.querySelector('#feedback-dismiss').click();
@@ -126,7 +133,7 @@ import WebKit
         check(bytes?.prefix(2) == Data([0x50, 0x4b]), "native saved ZIP bytes")
         screenshot("simple-workspace.png") {
             let receipt: [String: Any] = ["mode": "workspace", "checks": [
-                "fullWorkspace": true, "simpleWorkspace": true, "filePicker": self.picker,
+                "legacyFullLink": true, "singleWorkspace": true, "filePicker": self.picker,
                 "nativePrintPackSaved": true, "noBrowserOnStartup": true]]
             do {
                 let data = try JSONSerialization.data(withJSONObject: receipt, options: [.prettyPrinted, .sortedKeys])

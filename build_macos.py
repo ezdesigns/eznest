@@ -182,6 +182,15 @@ def add_desktop_client(app, out, arch, identity):
     if destination.exists():
         raise ValueError('Do not overwrite an existing native desktop executable.')
     shutil.copy2(native, destination)
+    resources = app / 'Contents/Resources'
+    resources.mkdir(parents=True, exist_ok=True)
+    for name in ('startup-nesting.mp4', 'startup-nesting-poster.png', 'startup-companion.png'):
+        target = resources / name
+        if target.exists():
+            if target.read_bytes() != (ROOT / name).read_bytes():
+                raise ValueError('The startup artwork does not match the packaged source.')
+        else:
+            shutil.copy2(ROOT / name, target)
     import plistlib
     info_path = app / 'Contents/Info.plist'
     with info_path.open('rb') as handle:

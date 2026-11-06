@@ -18,6 +18,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
+import update_manifest
+
 # Example shop preset. The operator can apply it. Nothing is connected until they save.
 DEFAULT_OUTPUT_URL = 'https://output.jeezlabs.io'
 EZ_PRESET = {
@@ -31,6 +33,7 @@ EZ_PRESET = {
     'shareHotFolder': r'\\RIP\Example RIP Input',
 }
 DEFAULT_REPO = 'ezdesigns/eznest'
+PUBLIC_DOWNLOAD_REPO = 'ezdesigns/eznest-downloads'
 RELEASE_API = f'https://api.github.com/repos/{DEFAULT_REPO}/releases?per_page=20'
 WARNING = 'Shop computers need the shop PIN before they can nest or send. Anyone on the shop LAN can Send to ONYX after that PIN. Do not share this network with guest WiFi.'
 OUTPUT_NOTE = (
@@ -183,11 +186,12 @@ def load_shop(directory):
 def updates_allowed(directory=None):
     """Background update checks stay off unless the operator opts in.
 
-    EZ_NEST_UPDATES defaults to 0. shop.json updates defaults to false.
-    Both must allow a check. A download is kept only when its SHA-256 matches,
-    and installation stays a separate click.
+    shop.json updates defaults to false. The portable shop edition needs only
+    that opt-in; other editions also require EZ_NEST_UPDATES=1. An explicit
+    EZ_NEST_UPDATES=0 disables either edition. Downloads require a signed update
+    manifest and a file hash that matches it.
     """
-    if os.environ.get('EZ_NEST_UPDATES', '0') == '0':
+    if os.environ.get('EZ_NEST_UPDATES', '1' if portable_edition() else '0') == '0':
         return False
     if directory is not None and not load_shop(directory)['updates']:
         return False
@@ -421,12 +425,27 @@ def _data_line(directory, name):
         return ''
 
 
+def portable_edition():
+    """Only a deliberately packaged user-mode host uses the public ZIP feed."""
+    if not getattr(sys, 'frozen', False):
+        return False
+    marker = Path(sys.executable).resolve().parent / 'portable-update.json'
+    try:
+        return json.loads(marker.read_text(encoding='utf-8')) == {'edition': 'shop-portable', 'schema': 1}
+    except (OSError, ValueError):
+        return False
+
+
 def github_repo(directory=None):
+    if portable_edition():
+        return PUBLIC_DOWNLOAD_REPO
     raw = os.environ.get('EZ_NEST_GITHUB_REPO', '').strip() or _data_line(directory, 'github-repo') or DEFAULT_REPO
     return raw if _REPO.fullmatch(raw) else DEFAULT_REPO
 
 
 def release_api(directory=None):
+    if portable_edition():
+        return f'https://api.github.com/repos/{PUBLIC_DOWNLOAD_REPO}/releases?per_page=20'
     raw = os.environ.get('EZ_NEST_RELEASE_API', '').strip() or _data_line(directory, 'release-api')
     if raw and _https(raw):
         return raw
@@ -468,10 +487,11 @@ def release_url_allowed(url, download=False, repo=None):
 
 def choose_asset(release, repo=None):
     assets = [asset for asset in release.get('assets') or [] if isinstance(asset, dict)]
-    files = [asset for asset in assets if str(asset.get('name', '')).lower().endswith(('.exe', '.zip'))]
+    files = [asset for asset in assets if (asset.get('name') == 'eznest-shop-windows.zip' if portable_edition()
+             else str(asset.get('name', '')).lower().endswith(('.exe', '.zip')))]
     files.sort(key=lambda asset: (0 if 'setup' in asset.get('name', '').lower() and asset['name'].lower().endswith('.exe') else 1, asset.get('name', '')))
     if not files:
-        raise ValueError('The latest release has no Windows installer.')
+        raise ValueError('The latest release has no portable shop download.' if portable_edition() else 'The latest release has no Windows installer.')
     url = files[0].get('browser_download_url') or ''
     if not release_url_allowed(url, repo=repo):
         raise ValueError('The release file is not from the eznest releases.')
@@ -548,6 +568,8 @@ def github_token(directory):
     value is sent only to github.com and api.github.com, and only while
     update checks are on. Callers must not log the return value.
     """
+    if portable_edition():
+        return ''  # Public downloads never consult or send the shop's credentials.
     del directory
     token = os.environ.get('EZ_NEST_GITHUB_TOKEN', '').strip()
     if token:
@@ -588,15 +610,16 @@ def _open(opener, url, token, timeout, repo=None, redirects=0):
         return _open(opener, location, token, timeout, repo, redirects + 1)
 
 
-def _read_limited(response):
+def _read_limited(response, limit=None):
     chunks = []
     total = 0
+    limit = MAX_RELEASE_BYTES if limit is None else limit
     while True:
         block = response.read(1024 * 1024)
         if not block:
             break
         total += len(block)
-        if total > MAX_RELEASE_BYTES:
+        if total > limit:
             raise ValueError('The release file is too large.')
         chunks.append(block)
     return b''.join(chunks)
@@ -643,6 +666,25 @@ def select_release(payload, current, include_prerelease=False):
     return chosen
 
 
+def signed_release_manifest(release, filename, version, opener, token, repo):
+    """Download update-manifest.json and return it when the signature checks out."""
+    asset = _asset_map(release).get(update_manifest.ASSET)
+    if not isinstance(asset, dict):
+        raise ValueError(update_manifest.MISSING)
+    url = asset.get('browser_download_url') or ''
+    if not release_url_allowed(url, repo=repo):
+        raise ValueError('The release file is not from the eznest releases.')
+    with _open(opener, url, token, 30, repo) as response:
+        raw = _read_limited(response, update_manifest.MAX_BYTES)
+    try:
+        document = json.loads(raw)
+    except ValueError as error:
+        raise ValueError(update_manifest.UNCHECKED) from error
+    return update_manifest.confirmed_manifest(document, version=version, asset=filename)
+
+
+# Mac package downloads still use the checksum sidecar. Shop updates use
+# signed_release_manifest instead.
 def release_checksum(release, filename, opener, token, repo):
     assets = _asset_map(release)
     sha_asset = assets.get(filename + '.sha256')
@@ -724,7 +766,7 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
     if name != asset['name'] or Path(name).name != name:
         raise ValueError('The release file is not from the eznest releases.')
     try:
-        digest = release_checksum(release, name, opener, token, repo)
+        checked = signed_release_manifest(release, name, latest, opener, token, repo)
         with _open(opener, asset['browser_download_url'], token, 120, repo) as response:
             body = _read_limited(response)
     except (OSError, URLError, HTTPError, ValueError) as error:
@@ -732,7 +774,7 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
             raise
         raise ValueError('Could not reach the release.') from error
     import installer_update
-    pending = installer_update.stage_file(directory, latest, digest, body, name)
+    pending = installer_update.stage_file(directory, latest, checked['sha256'], body, name, manifest=checked)
     supported = installer_update.apply_supported(install_root)
     result = {
         'ok': True,
@@ -740,11 +782,13 @@ def pull_latest(directory, current, opener=None, when='restart', install_root=No
         'latest': latest,
         'updated': True,
         'staged': True,
-        'applyOnRestart': supported,
+        'applyOnRestart': supported and pending['applyOnRestart'],
         'path': pending['file'],
         'message': f'{name} is checked and installs the next time eznest starts. Settings and the hot folder stay.' if supported else f'{name} is checked and saved. Automatic installation is unavailable for this installation. The current app stays running.',
         'restarting': False,
     }
+    if portable_edition() and supported:
+        result['message'] = 'Download checked. Choose Update shop after saving the current job.'
     if when == 'now':
         if installer_update.apply_supported(install_root):
             result.update(installer_update.begin_apply(directory, install_root))
@@ -776,9 +820,15 @@ def peek_latest(directory, current, opener=None):
         return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': current, 'message': 'This is the latest release.', 'error': None}
     latest = str(release['tag_name']).lstrip('vV')
     try:
-        choose_asset(release, repo)
+        asset = choose_asset(release, repo)
+        name = Path(asset['name']).name
+        if name != asset['name'] or Path(name).name != name:
+            raise ValueError('The release file is not from the eznest releases.')
+        signed_release_manifest(release, name, latest, opener, token, repo)
     except ValueError as error:
         return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': latest, 'message': str(error), 'error': str(error)}
+    except (OSError, URLError, HTTPError, json.JSONDecodeError):
+        return {'ok': True, 'current': current, 'updateAvailable': False, 'latest': latest, 'message': 'Could not reach the release.', 'error': 'Could not reach the release.'}
     return {'ok': True, 'current': current, 'updateAvailable': True, 'latest': latest, 'message': f'{latest} is available.', 'releaseNotes': str(release.get('body') or '')[:4000], 'error': None}
 
 

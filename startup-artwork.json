@@ -1,0 +1,29 @@
+{
+  "nesting": {
+    "file": "startup-nesting.gif",
+    "source": "Animation supplied by the project owner for the EZNest startup screen"
+  },
+  "companion": {
+    "file": "startup-companion.png",
+    "sourceRepository": "ezdesigns/output",
+    "sourceCommit": "c75482b62a8a8681dce279cec0a196c31c1ed8b9",
+    "sourcePath": "companions/output-base/assets/owner-idle.png"
+  },
+  "sha256": {
+    "startup-nesting.gif": "e2f7ea9bf190481118c1723b1410e45b898ad9d65c18e35c871e953888b6a038",
+    "startup-companion.png": "81de441b437e9056d4ec5703aeb3ac8ee9fb4c5644c4f0e0b07b4c1a8848ea83",
+    "startup-nesting.mp4": "ad83743671435e72a4d5b422364e60e74b1defa16718e697b6525510a3c64040",
+    "startup-nesting-poster.png": "8885ffa36b02e78d21a3378972c08aaf7366b19383dc25440cb9f9075e1df900"
+  },
+  "playback": {
+    "file": "startup-nesting.mp4",
+    "poster": "startup-nesting-poster.png",
+    "source": "startup-nesting.gif",
+    "durationSeconds": 5,
+    "frameCount": 200,
+    "framesPerSecond": 40,
+    "conversion": "All185 sourceGIF frames in originalorder at40fps, followed by15 repeats of the last frame. Complete5second silentH264/yuv420p video; finalpose visiblefor.4seconds within that duration. Poster is sourceframe0.",
+    "sourceFrameCount": 185,
+    "finalFrameHoldSeconds": 0.4
+  }
+}

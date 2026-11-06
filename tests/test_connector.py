@@ -3,6 +3,7 @@ import opt_out
 import io
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import tempfile
@@ -529,6 +530,148 @@ class OnyxJobLogTests(TempCase):
         self.assertNotIn('SureColor', shown)
 
 
+def saved_acl_entries(text):
+    """Protected flag and allow SIDs from an icacls /save file."""
+    sddl = ''
+    for line in text.splitlines():
+        line = line.strip().lstrip('\ufeff')
+        if line.startswith('D:'):
+            sddl = line
+            break
+    flags = ''
+    matched = re.match(r'D:([A-Za-z]*)', sddl)
+    if matched:
+        flags = matched.group(1)
+    allowed = re.findall(r'\(A;[^;]*;[^;]*;[^;]*;[^;]*;([^)]+)\)', sddl)
+    return 'P' in flags.upper(), allowed, sddl
+
+
+def windows_acl_snapshot(path):
+    """Read a path's DACL in this process. A separate PowerShell host is not used.
+
+    The saved text can name the local administrator as LA. The check uses the
+    account id, which is what the current user id uses too.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    adv = ctypes.WinDLL('advapi32', use_last_error=True)
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel.LocalFree.restype = ctypes.c_void_p
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+
+    get_named = adv.GetNamedSecurityInfoW
+    get_named.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p)]
+    get_named.restype = wintypes.DWORD
+    descriptor = ctypes.c_void_p()
+    status = get_named(str(path), 1, 0x4, None, None, None, None, ctypes.byref(descriptor))
+    if status != 0 or not descriptor:
+        raise AssertionError(f'Could not read the access list ({status}).')
+    try:
+        control = wintypes.WORD()
+        revision = wintypes.DWORD()
+        get_control = adv.GetSecurityDescriptorControl
+        get_control.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.WORD), ctypes.POINTER(wintypes.DWORD)]
+        get_control.restype = wintypes.BOOL
+        if not get_control(descriptor, ctypes.byref(control), ctypes.byref(revision)):
+            raise AssertionError('Could not read the access list flags.')
+        present = wintypes.BOOL()
+        defaulted = wintypes.BOOL()
+        dacl = ctypes.c_void_p()
+        get_dacl = adv.GetSecurityDescriptorDacl
+        get_dacl.argtypes = [
+            ctypes.c_void_p, ctypes.POINTER(wintypes.BOOL),
+            ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(wintypes.BOOL)]
+        get_dacl.restype = wintypes.BOOL
+        if not get_dacl(descriptor, ctypes.byref(present), ctypes.byref(dacl), ctypes.byref(defaulted)):
+            raise AssertionError('Could not read the access list.')
+
+        class ACL_SIZE(ctypes.Structure):
+            _fields_ = [('AceCount', wintypes.DWORD), ('AclBytesInUse', wintypes.DWORD), ('AclBytesFree', wintypes.DWORD)]
+
+        info = ACL_SIZE()
+        get_info = adv.GetAclInformation
+        get_info.argtypes = [ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD]
+        get_info.restype = wintypes.BOOL
+        if present and dacl and not get_info(dacl, ctypes.byref(info), ctypes.sizeof(info), 2):
+            raise AssertionError('Could not read the access entries.')
+
+        class ACE_HEADER(ctypes.Structure):
+            _fields_ = [('AceType', ctypes.c_ubyte), ('AceFlags', ctypes.c_ubyte), ('AceSize', wintypes.WORD)]
+
+        get_ace = adv.GetAce
+        get_ace.argtypes = [ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)]
+        get_ace.restype = wintypes.BOOL
+        sid_text = adv.ConvertSidToStringSidW
+        sid_text.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_wchar_p)]
+        sid_text.restype = wintypes.BOOL
+        allowed = []
+        if present and dacl:
+            for index in range(info.AceCount):
+                ace = ctypes.c_void_p()
+                if not get_ace(dacl, index, ctypes.byref(ace)) or not ace:
+                    raise AssertionError('Could not read an access entry.')
+                header = ACE_HEADER.from_address(ace.value)
+                if header.AceType != 0:
+                    if header.AceType in (5, 9):
+                        raise AssertionError('Unexpected access entry.')
+                    continue
+                rendered = ctypes.c_wchar_p()
+                if not sid_text(ace.value + 8, ctypes.byref(rendered)) or not rendered.value:
+                    raise AssertionError('Could not name an access entry.')
+                allowed.append(rendered.value)
+                kernel.LocalFree(ctypes.cast(rendered, ctypes.c_void_p))
+
+        token = wintypes.HANDLE()
+        open_token = adv.OpenProcessToken
+        open_token.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+        open_token.restype = wintypes.BOOL
+        if not open_token(kernel.GetCurrentProcess(), 0x0008, ctypes.byref(token)):
+            raise AssertionError('Could not read the current user.')
+        try:
+            query = adv.GetTokenInformation
+            query.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+            query.restype = wintypes.BOOL
+            needed = wintypes.DWORD()
+            query(token, 1, None, 0, ctypes.byref(needed))
+            buffer = ctypes.create_string_buffer(needed.value)
+            if not query(token, 1, buffer, needed, ctypes.byref(needed)):
+                raise AssertionError('Could not read the current user.')
+
+            class SID_AND_ATTRIBUTES(ctypes.Structure):
+                _fields_ = [('Sid', ctypes.c_void_p), ('Attributes', wintypes.DWORD)]
+
+            current_sid = SID_AND_ATTRIBUTES.from_buffer(buffer).Sid
+            current = ctypes.c_wchar_p()
+            if not sid_text(current_sid, ctypes.byref(current)) or not current.value:
+                raise AssertionError('Could not name the current user.')
+            current_value = current.value
+            kernel.LocalFree(ctypes.cast(current, ctypes.c_void_p))
+        finally:
+            kernel.CloseHandle(token)
+
+        to_sddl = adv.ConvertSecurityDescriptorToStringSecurityDescriptorW
+        to_sddl.argtypes = [
+            ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
+            ctypes.POINTER(ctypes.c_wchar_p), ctypes.POINTER(wintypes.DWORD)]
+        to_sddl.restype = wintypes.BOOL
+        rendered = ctypes.c_wchar_p()
+        sddl = ''
+        if to_sddl(descriptor, 1, 0x4, ctypes.byref(rendered), None) and rendered.value:
+            sddl = rendered.value
+            kernel.LocalFree(ctypes.cast(rendered, ctypes.c_void_p))
+        return {'protected': bool(control.value & 0x1000), 'allowed': allowed, 'current': current_value, 'sddl': sddl}
+    finally:
+        kernel.LocalFree(descriptor)
+
+
 class BoundAndHostTests(TempCase):
     def test_read_window_and_oversize_lines_are_capped(self):
         path = self.root / 'big.log'
@@ -663,39 +806,12 @@ class BoundAndHostTests(TempCase):
             self.assertEqual(first.path.stat().st_mode & 0o077, 0)
         else:
             # Windows privacy is an ACL property; stat's POSIX mode is synthetic.
+            # icacls already applied the DACL. Read that same record back.
             for path in (first.directory, first.path):
-                literal = str(path).replace("'", "''")
-                # Windows PowerShell 5.1's ConvertTo-Json drops AreAccessRulesProtected.
-                # The DACL 'P' flag is the protected bit. Allow rules must be only this user's SID.
-                script = """
-$ErrorActionPreference = 'Stop'
-$env:PSModulePath = Join-Path $PSHOME 'Modules'
-$acl = Get-Acl -LiteralPath '__PATH__'
-[Console]::Error.WriteLine("ACL type: $($acl.GetType().FullName); SDDL: $($acl.Sddl)")
-$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$sddl = ([string]$acl.Sddl) -replace [char]0, ''
-$protected = $false
-if ($sddl -match 'D:([A-Za-z]*)') { $protected = $Matches[1].ToUpperInvariant().Contains('P') }
-try {
-  $value = $acl.GetType().GetProperty('AreAccessRulesProtected').GetValue($acl, $null)
-  if ($null -ne $value) { $protected = $protected -or [bool]$value }
-} catch {}
-$allowed = @($acl.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]) | Where-Object { $_.AccessControlType -eq 'Allow' } | ForEach-Object { $_.IdentityReference.Value })
-$list = (@($allowed) | ForEach-Object { '"' + $_ + '"' }) -join ','
-$shown = $sddl.Replace('\\','\\\\').Replace('"','\\"')
-if ($protected) { $flag = 'true' } else { $flag = 'false' }
-Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' + $list + '],"sddl":"' + $shown + '"}')
-""".replace('__PATH__', literal)
-                env = os.environ.copy()
-                # The runner's PSModulePath points at PowerShell 7 and hides Get-Acl from Windows PowerShell 5.1.
-                env.pop('PSModulePath', None)
-                result = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', script],
-                                        capture_output=True, text=True, timeout=15, env=env)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                acl = json.loads(result.stdout.lstrip('\ufeff'))
-                detail = ((result.stderr or '') + '\n' + str(acl.get('sddl', ''))).strip()
+                acl = windows_acl_snapshot(path)
+                detail = acl['sddl']
                 self.assertTrue(acl['protected'], detail)
-                self.assertEqual(set(acl['allowed']), {acl['current']}, detail)
+                self.assertEqual({item.casefold() for item in acl['allowed']}, {acl['current'].casefold()}, detail)
         commands = windows_acl_commands(first.directory, 'ShopUser', container=True)
         flat = [' '.join(part) for part in commands]
         self.assertIn('/inheritance:r', flat[0])
@@ -712,6 +828,15 @@ Write-Output ('{"protected":' + $flag + ',"current":"' + $sid + '","allowed":[' 
         readme = ' '.join((ROOT / 'connector' / 'README.md').read_text(encoding='utf-8').split())
         self.assertIn("computer's name and installation id", readme)
         self.assertIn('sent once', readme)
+
+    def test_saved_acl_text_names_the_protected_allow_entries(self):
+        protected, allowed, sddl = saved_acl_entries('data\nD:PAI(A;OICI;FA;;;S-1-5-21-1)\n')
+        self.assertTrue(protected)
+        self.assertEqual(allowed, ['S-1-5-21-1'])
+        self.assertIn('D:PAI', sddl)
+        protected, allowed, _sddl = saved_acl_entries('D:AI(A;;FA;;;WD)(A;;FA;;;S-1-5-21-1)\n')
+        self.assertFalse(protected)
+        self.assertEqual(set(allowed), {'WD', 'S-1-5-21-1'})
 
     def test_pairing_text_says_the_name_and_install_id_are_sent_once(self):
         ack = json.dumps({'outcome': 'created', 'result': {'token': TOKEN, 'shopName': 'North Shop'}}).encode()

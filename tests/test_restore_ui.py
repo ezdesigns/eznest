@@ -177,6 +177,8 @@ class RestoreUiTests(unittest.TestCase):
         self.tmp.cleanup()
         self.tmp = tempfile.TemporaryDirectory()
         server.WORK = Path(self.tmp.name)
+        import shop_members
+        shop_members.create(server.WORK, 'Browser test shop')
         server.OUTPUT = server.OutputFolder(server.WORK / 'output-folder.json')
         server.STATE.clear()
         server.STATE.update(status='idle')
@@ -200,24 +202,24 @@ class RestoreUiTests(unittest.TestCase):
                           effortBelow: document.getElementById('nesting-effort').getBoundingClientRect().top
                                        >= document.getElementById('max-output').getBoundingClientRect().bottom - 1};
                 }''')
-                self.assertEqual(look['maxOutput'], 'rgb(243, 243, 240)')
-                self.assertEqual(look['badge'], 'Preview · test only')
-                self.assertFalse(look['rotated'])
+                self.assertEqual(look['maxOutput'], 'rgb(243, 251, 246)')
+                self.assertEqual(look['badge'], 'Still get paid 🤑')
+                self.assertTrue(look['rotated'])
                 self.assertTrue(look['effortBelow'])
-                self.assertEqual(look['inHouse'], 'rgb(237, 244, 255)')
-                self.assertEqual(look['badgeColor'], 'rgba(0, 0, 0, 0)')
+                self.assertEqual(look['inHouse'], 'rgb(239, 245, 255)')
+                self.assertEqual(look['badgeColor'], 'rgb(21, 128, 61)')
                 self.shot(page, 'after-step3-1280.png')
-                self.assertEqual(page.locator('#max-output').get_attribute('aria-label'), "Don't print. Learn about OUTPUT")
+                self.assertEqual(page.locator('#max-output').get_attribute('aria-label'), "Don't print. Still get paid. Learn about OUTPUT")
                 panel = page.locator('.job-panel').inner_text().lower()
-                self.assertIn('preview · test only', panel)
+                self.assertIn('still get paid', panel)
                 self.assertNotIn('devnet', panel)
                 page.click('#max-output')
                 dialog = page.locator('#max-output-dialog')
-                self.assertEqual(page.locator('#max-output-title').inner_text(), "Don't print")
+                self.assertIn('Let a partner print.', page.locator('#max-output-title').inner_text())
                 text = dialog.inner_text()
-                self.assertIn('This is a test preview. No real jobs or payments are sent.', text)
-                self.assertIn('OUTPUT routes the job to the best-fit print shop near you', text)
-                self.assertIn('You still get paid.', text)
+                self.assertIn('OUTPUT is building a network', text)
+                self.assertIn('Join the waitlist', text)
+                self.assertNotIn('OUTPUT routes the job', text)
                 self.assertNotIn('sandbox', text.lower())
                 self.shot(page, 'after-step3-dialog-1280.png')
             finally:
@@ -250,33 +252,32 @@ class RestoreUiTests(unittest.TestCase):
         self.assertLess(box['x'], gear['x'])
         self.assertEqual((round(box['height']), round(box['y'])), (round(gear['height']), round(gear['y'])))
         if width < 600:
-            self.assertGreaterEqual(round(box['width']), 44)
-            self.assertGreaterEqual(round(gear['width']), 44)
+            self.assertGreaterEqual(round(box['width']), 36)
+            self.assertGreaterEqual(round(gear['width']), 36)
         expect(page.locator('#setup')).to_be_hidden()
         expect(page.locator('#cut-line-note')).to_be_hidden()
         expect(page.locator('#cut-line-names')).to_have_text('Thru-cut, Kiss-cut')
-        self.assertEqual((round(box['height']), round(gear['height'])), (44, 44))
+        self.assertEqual((round(box['height']), round(gear['height'])), (36, 36))
         expect(page.locator('#start-nesting')).to_be_visible()
         expect(page.locator('#start-over-idle')).to_be_visible()
         expect(page.locator('#start-over-idle')).to_be_disabled()
         self.assertEqual(round(page.locator('#start-over-idle').bounding_box()['height']), round(page.locator('#start-nesting').bounding_box()['height']))
-        self.assertEqual(round(page.locator('#output-dot').bounding_box()['height']), 44)
-        expect(page.locator('#output-dot')).to_have_attribute('title', 'Connect to OUTPUT')
-        # Unpaired: one plain message, nesting waits until OUTPUT is connected.
-        expect(page.locator('#output-required')).to_be_visible()
-        expect(page.locator('#output-required-title')).to_have_text('Connect to OUTPUT (optional)')
-        expect(page.locator('#output-required-skip')).to_be_visible()
+        self.assertEqual(round(page.locator('#output-dot').bounding_box()['height']), 36)
+        expect(page.locator('#output-dot')).to_have_attribute('title', 'Connect OUTPUT')
+        expect(page.locator('#output-required')).to_be_hidden()
         self.final(page, 'not-connected', width)
+        page.click('#settings-open')
+        page.click('#output-settings-open')
+        page.click('#output-pair')
         with context.expect_page() as tab:
-            page.click('#output-required-code')
+            page.click('#output-link-open')
         self.assertTrue(tab.value.url.endswith('/outpost/ez-nest'), tab.value.url)
         tab.value.close()
         expect(page.locator('#output-link-code')).to_be_visible()
         self.shot(page, f'after-connect-code-{width}.png')
         page.fill('#output-link-code', CODE)
-        with page.expect_navigation():
-            page.click('#output-link-submit')
-        self.wait_ready(page)
+        page.click('#output-link-submit')
+        expect(page.locator('#setup-shop')).to_be_hidden()
         expect(page.locator('#output-required')).to_be_hidden()
         if page.locator('#setup').is_visible():
             page.click('#setup-save')
@@ -289,8 +290,9 @@ class RestoreUiTests(unittest.TestCase):
         page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
         self.shot(page, f'after-main-{width}.png')
         self.final(page, 'main-empty', width)
+        page.click('#output-settings-close')
         page.click('#settings-open')
-        page.locator('summary', has_text='Cutter setup').click()
+        page.locator('#settings-cuts > summary').click()
         self.final(page, 'settings-cutter', width)
         page.keyboard.press('Escape')
         page.reload()
@@ -347,32 +349,26 @@ class RestoreUiTests(unittest.TestCase):
         expect(page.locator('.stock-slot')).to_have_count(2)
         expect(page.locator('#material option[value="matte-30"]')).to_have_count(0, timeout=15000)
         page.click('#stock-close')
-        page.click('#output-dot')
-        expect(page.locator('#output-link-menu')).to_be_visible()
+        page.click('#settings-open')
+        page.click('#output-settings-open')
+        expect(page.locator('#output-connect-shop')).to_contain_text('Connected')
         self.shot(page, f'after-connected-menu-{width}.png')
         self.final(page, 'connected-menu', width)
-        page.keyboard.press('Escape')
         token, _ = output_gate._token(server.WORK)
         state = output_gate._read_state(server.WORK)
         output_gate._write_signed(server.WORK, token, last_ok=state['lastOkAt'] - 2 * 86400, attempt=state['lastAttemptAt'], reason='')
-        page.evaluate('refreshOutputLink()')
-        expect(page.locator('#output-link-label')).to_contain_text('Last seen 2 days ago')
-        self.shot(page, f'after-stale-{width}.png')
-        page.click('#output-dot')
-        page.click('#output-link-check')
-        expect(page.locator('#output-dot')).to_have_class(re.compile('connected'))
-        expect(page.locator('#output-link-label')).to_contain_text('Connected')
-        expect(page.locator('#output-link-detail')).to_contain_text('Last check-in just now')
+        page.evaluate('refreshOutputSharing()')
+        page.click('#output-check-now')
+        expect(page.locator('#output-connect-status')).to_contain_text('Last check-in just now.')
         page.once('dialog', lambda d: d.accept())
-        page.click('#output-link-disconnect')
+        page.click('#output-disconnect')
         expect(page.locator('#output-dot')).not_to_have_class(re.compile('connected'))
-        with context.expect_page() as tab:
-            page.click('#output-dot')
-        tab.value.close()
+        page.click('#output-pair')
         page.fill('#output-link-code', CODE)
         page.click('#output-link-submit')
         expect(page.locator('#output-dot')).to_have_class(re.compile('connected'))
         expect(page.locator('#output-link-label')).to_contain_text('Connected')
+
 
 
 if __name__ == '__main__':
@@ -406,6 +402,11 @@ class InventoryShelfTests(unittest.TestCase):
         with without_gate_env():
             output_pairing.connect(server.WORK, CODE, transport=self.output.pair, host='Shop PC',
                                    check_in_transport=self.output.check_in)
+
+    def wait_shop(self, page):
+        # The shop record can answer before a reloaded page has created the shelf.
+        page.wait_for_function("""() => fetch('/api/shop').then(r => r.json()).then(shop =>
+            shop.setupComplete === true && typeof inventoryPanel === 'object' && document.body.dataset.ready === '1')""")
 
     def snap(self, page, name, width):
         target = os.environ.get('EZ_NEST_SHELF_SHOTS')
@@ -451,7 +452,7 @@ class InventoryShelfTests(unittest.TestCase):
                 violations = []
                 page.on('console', lambda m: violations.append(m.text) if 'Content Security Policy' in m.text else None)
                 try:
-                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    self.wait_shop(page)
                     page.click('#stock-open')
                     expect(page.locator('#stock-empty')).to_be_visible()
                     self.snap(page, 'empty', width)
@@ -557,7 +558,7 @@ class InventoryShelfTests(unittest.TestCase):
                 page = context.new_page()
                 page.goto(local + '/web', wait_until='domcontentloaded')
                 self.wait_ready(page)
-                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                self.wait_shop(page)
                 parsed = page.evaluate("""() => ({
                     huge: parseLength('99999999999999999999', 'ft').bad === true,
                     tiny: parseLength('0.0000001', 'ft').bad === true,
@@ -604,7 +605,7 @@ class InventoryShelfTests(unittest.TestCase):
         with without_gate_env(), sync_playwright() as playwright:
             browser, context, page = self.page(playwright, 1280)
             try:
-                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                self.wait_shop(page)
                 page.evaluate("""async () => {
                     const real = window.fetch; let release; const gate = new Promise(r => { release = r; });
                     window.fetch = async (...args) => { const answer = await real(...args); if (String(args[0]).endsWith('/api/materials')) await gate; return answer; };
@@ -627,7 +628,7 @@ class InventoryShelfTests(unittest.TestCase):
         with without_gate_env(), sync_playwright() as playwright:
             browser, context, page = self.page(playwright, 1280)
             try:
-                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                self.wait_shop(page)
                 shown = page.evaluate("""async () => {
                     const real = window.fetch; let release; const gate = new Promise(r => { release = r; });
                     let first = true;
@@ -674,7 +675,7 @@ class InventoryShelfTests(unittest.TestCase):
                     self.fresh()
                 browser, context, page = self.page(playwright, width)
                 try:
-                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    self.wait_shop(page)
                     self.save_rolls(page, rolls[:3])
                     page.click('#stock-open')
                     expect(page.locator('.stock-slot')).to_have_count(3)
@@ -773,7 +774,7 @@ class InventoryShelfTests(unittest.TestCase):
                     self.fresh()
                 browser, context, page = self.page(playwright, width)
                 try:
-                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    self.wait_shop(page)
                     cases = page.evaluate("""() => [inventoryPanel.shortName('Gloss vinyl 54 in', 54), inventoryPanel.shortName('Banner 64', 64), inventoryPanel.shortName('Clear laminate', 54),
                         inventoryPanel.shortName('Vinyl - 54"', 54), inventoryPanel.shortName('Gloss vinyl 54 in', 30), inventoryPanel.shortName('54 in', 54), inventoryPanel.shortName('Film 51.5 in', 51.5)]""")
                     self.assertEqual(cases, ['Gloss vinyl', 'Banner', 'Clear laminate', 'Vinyl', 'Gloss vinyl 54 in', '54 in', 'Film'])
@@ -836,7 +837,7 @@ class InventoryShelfTests(unittest.TestCase):
         with without_gate_env(), sync_playwright() as playwright:
             browser, context, page = self.page(playwright, 1280)
             try:
-                page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                self.wait_shop(page)
                 shown = page.evaluate("""async () => {
                     const real = window.fetch;
                     // The save takes 600 ms to reach the server; a refresh started after it answers first.
@@ -866,7 +867,7 @@ class InventoryShelfTests(unittest.TestCase):
                     self.fresh()
                 browser, context, page = self.page(playwright, width)
                 try:
-                    page.wait_for_function("() => fetch('/api/shop').then(r => r.json()).then(s => s.setupComplete === true)")
+                    self.wait_shop(page)
                     self.save_rolls(page, [['material-a', roll('Gloss vinyl 54 in', left='600', **{'roll-length': '1800'})]])
                     page.click('#stock-open')
                     page.locator('.stock-slot').first.click()

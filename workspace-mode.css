@@ -1,0 +1,47 @@
+/* Header layout for the single upload-and-nest workspace. */
+html { overflow-y: scroll; }
+.workspace-header.shop-header, .workspace-header.app-header {
+  display: flex; align-items: center; flex-wrap: nowrap; gap: 16px;
+  position: relative; height: 65px; min-height: 65px; padding: 12px 24px;
+  border: 0; border-bottom: 1px solid #e2e4de; background: #f7f7f4;
+  color: #1c1c1c; font-family: "Red Hat Display", "Segoe UI", sans-serif;
+}
+.workspace-identity { display: grid; grid-template-columns: max-content 1fr; align-items: center; gap: 20px; min-width: 0; }
+.workspace-header .workspace-identity > strong { font-size: 23px; font-weight: 700; letter-spacing: -.5px; line-height: 36px; }
+.workspace-header .workspace-modes { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid #d8ddd9; border-radius: 9px; background: #fff; }
+.workspace-header .workspace-modes .workspace-mode, .workspace-header .workspace-modes #mode-switch {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 52px;
+  height: 32px; min-height: 32px; padding: 4px 12px; border: 0; border-radius: 6px;
+  font: 700 13px/1.4 "Red Hat Display", "Segoe UI", sans-serif; color: #5c5c58;
+  background: transparent; text-decoration: none; white-space: nowrap;
+}
+.workspace-header .workspace-modes .workspace-mode:hover { color: #1c1c1c; background: #f0f2f0; }
+.workspace-header .workspace-modes [aria-current="page"] { color: #fff; background: #182136; }
+.workspace-header .workspace-modes a:focus-visible { outline: 2px solid #006cf5; outline-offset: 3px; }
+.workspace-header .workspace-tools { position: static; display: flex; align-items: center; flex-wrap: nowrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
+.workspace-header .workspace-tools :is(button, #settings-open) {
+  position: static; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 36px; min-height: 36px; margin: 0; padding: 0 10px; border: 0; border-radius: 8px;
+  color: #1c1c1c; background: #f7f7f4; font: 400 12px/1 "Red Hat Display", "Segoe UI", sans-serif;
+}
+.workspace-header .workspace-tools :is(button, #settings-open):hover { background: #eceeea; }
+.workspace-header .workspace-tools #shop-team-open { width: 116px; max-width: 116px; justify-content: flex-start; font-weight: 700; }
+.workspace-header .workspace-tools #shop-team-open span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.workspace-header .workspace-tools #stock-open { width: 102px; }
+.workspace-header .workspace-tools #settings-open { width: 100px; }
+.workspace-header .workspace-tools svg { display: block; flex: none; }
+.workspace-header #output-link { justify-self: end; }
+.workspace-header #output-link .output-dot { width: 32px; padding: 0; }
+@media (max-width: 720px) {
+  .workspace-header.shop-header, .workspace-header.app-header { height: 109px; min-height: 109px; padding: 12px 16px; gap: 8px; flex-wrap: wrap; }
+  .workspace-identity { width: 100%; gap: 16px; }
+  .workspace-header .workspace-tools { width: 100%; justify-content: flex-end; margin-left: 0; }
+  .workspace-header .workspace-tools #shop-team-open { flex: 1; width: auto; max-width: none; }
+  .corner-actions { position: static; justify-content: flex-end; margin: 16px; }
+  body:not(.full-workspace) main { padding-bottom: 24px; }
+  #settings-support .help-card { position: fixed; left: 16px; right: 16px; bottom: 80px; width: auto; }
+}
+@media (max-width: 440px) {
+  .workspace-header .workspace-tools #stock-open, .workspace-header .workspace-tools #settings-open { width: 36px; padding: 0; }
+  .workspace-header .workspace-tools #stock-open > span, .workspace-header .workspace-tools #settings-open > span { display: none; }
+}

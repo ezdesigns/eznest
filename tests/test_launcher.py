@@ -13,6 +13,41 @@ import server
 
 
 class LauncherTests(unittest.TestCase):
+    def test_local_shortcut_only_reopens_its_own_folder(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'LOCALAPPDATA': tmp}):
+            ident = launcher.hashlib.sha256(os.path.normcase(str(Path(tmp, 'eznest-local').resolve())).encode()).hexdigest()
+            for actual in (None, 'different', ident):
+                response = io.BytesIO(json.dumps({'app': 'eznest', 'version': launcher.VERSION, 'localDataId': actual}).encode())
+                with patch.object(sys, 'argv', ['eznest', '--local-only']), patch.object(launcher, 'urlopen', return_value=response), patch('webbrowser.open') as browser:
+                    if actual == ident:
+                        self.assertEqual(launcher.main(), 0)
+                        browser.assert_called_once()
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, 'will not open or change'):
+                            launcher.main()
+                        browser.assert_not_called()
+
+    def test_local_only_rejects_shop_flags_before_network(self):
+        for flags in (['--lan'], ['--data-dir', 'old-shop'], ['--shop-test'], ['--shop-service']):
+            with self.subTest(flags=flags), patch.object(sys, 'argv', ['eznest', '--local-only', *flags]), patch.object(launcher, 'urlopen') as probe:
+                with self.assertRaisesRegex(ValueError, 'Local-only'):
+                    launcher.main()
+                probe.assert_not_called()
+
+    def test_local_only_uses_user_folder_and_disables_sharing(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {'LOCALAPPDATA': tmp, 'EZ_NEST_OUTPUT_UPLOADS': '1', 'EZ_NEST_UPDATES': '1'}), patch.object(sys, 'argv', ['eznest', '--local-only', '--no-browser']), patch.object(launcher, 'urlopen', side_effect=URLError('down')), patch('server.serve') as serve, patch('installer_update.handoff_if_pending', return_value=False):
+            saved = server.HOST, server.LAN, server.PORT
+            try:
+                self.assertEqual(launcher.main(), 0)
+                self.assertEqual(Path(os.environ['EZ_NEST_DATA']), Path(tmp, 'eznest-local').resolve())
+                self.assertEqual(os.environ['EZ_NEST_HOST'], '127.0.0.1')
+                self.assertEqual(os.environ['EZ_NEST_LAN'], '0')
+                self.assertEqual(os.environ['EZ_NEST_OUTPUT_UPLOADS'], '0')
+                self.assertEqual(os.environ['EZ_NEST_UPDATES'], '0')
+                serve.assert_called_once()
+            finally:
+                server.HOST, server.LAN, server.PORT = saved
+
     def test_isolated_test_cannot_attach_to_same_version_server(self):
         response=io.BytesIO(json.dumps({'app':'eznest','version':launcher.VERSION}).encode())
         with patch.object(sys,'argv',['eznest','--isolated','--data-dir','test-only']), \
@@ -39,7 +74,7 @@ class LauncherTests(unittest.TestCase):
             with self.subTest(flags=flags), patch.object(sys, 'argv', ['eznest', *flags]), \
                  patch.object(launcher, 'urlopen', return_value=response), patch('webbrowser.open') as browser:
                 self.assertEqual(launcher.main(), 0)
-                browser.assert_called_once_with('http://127.0.0.1:8765/')
+                browser.assert_called_once_with('http://127.0.0.1:8765/?startup=1')
 
     def test_wrong_version_not_reused(self):
         response=io.BytesIO(b'{"app":"eznest","version":"old"}')
@@ -100,6 +135,11 @@ class LauncherTests(unittest.TestCase):
         host, lan = self._launch(['--lan', '--no-browser'], pin='12345678')
         self.assertEqual(host, '0.0.0.0')
         self.assertEqual(lan, '1')
+
+    def test_shop_membership_allows_explicit_lan_without_legacy_pin(self):
+        with patch('shop_members.configured', return_value=True):
+            self.assertEqual(self._launch(['--lan', '--no-browser']), ('0.0.0.0', '1'))
+            self.assertEqual(self._launch(['--no-browser']), ('127.0.0.1', '0'))
 
     def test_lan_flag_without_a_pin_stays_on_loopback_and_waits(self):
         try:

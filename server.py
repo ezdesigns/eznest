@@ -16,6 +16,7 @@ import ssl
 import workload
 import output_gate
 import output_pairing
+import output_link
 import output_remote
 import telemetry
 import telemetry_sender
@@ -24,6 +25,7 @@ import material_inventory
 import macos_service_runtime
 import illustrator_bridge
 import shop_auth
+import shop_members
 from import_limits import request_limit
 import print_export
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -159,6 +161,7 @@ def shop_status():
             pass
     running = LAN and HOST == '0.0.0.0'
     name = host_name()
+    named_shop = shop_members.configured(WORK)
     return {
         'version': VERSION,
         'buildId': build_id,
@@ -182,11 +185,12 @@ def shop_status():
         'runningLan': running,
         'restart': saved['lan'] != running,
         'lanWaiting': os.environ.get('EZ_NEST_LAN_WAITING') == 'pin' and not running,
+        'shopCreated': named_shop,
         'port': PORT,
         'name': name,
         'addresses': lan_addresses(),
         'url': f'http://{name}:{PORT}/web',
-        'warning': WARNING,
+        'warning': 'Invite teammates from Your shop. Joined members can use shared stock and send jobs. Keep guest WiFi separate.' if named_shop else WARNING,
         'hotFolderDefault': default_hot_folder(saved['onyxPc']),
         'shareStockSummary': saved['shareStockSummary'],
         'showRollNames': saved['showRollNames'],
@@ -398,6 +402,12 @@ class Handler(BaseHTTPRequestHandler):
             return False
 
     def cookie_ok(self):
+        try:
+            if shop_members.configured(WORK):
+                token = shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.COOKIE)
+                return shop_members.member(WORK, token) is not None
+        except (OSError, sqlite3.Error):
+            return False
         if not shop_auth.lan_sessions_allowed(WORK):
             # PIN removed, damaged or replaced while running: no shop-network session stays valid.
             return False
@@ -435,13 +445,15 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return self.local_name(rest)
 
-    def browser_site_ok(self):
-        """State changes and /api/session need a same-origin browser signal.
+    def browser_site_ok(self, method=None):
+        """Accept a page that is actually this computer.
 
-        A present Origin must name this host. A present Sec-Fetch-Site must be
-        same-origin. LAN clients must send one of those. A loopback program
-        that sends neither header (the launcher, Illustrator, the update helper)
-        is not a browser rebinding.
+        HTTPS and localhost send Sec-Fetch-Site. A plain network address does
+        not, and a same-origin GET there also omits Origin. A request that
+        names another site, including Origin: null, is refused. A state
+        change still needs a matching Origin or Sec-Fetch-Site: same-origin,
+        unless it comes from this computer with neither header (the launcher,
+        Illustrator, or the update helper).
         """
         origin = self.headers.get('Origin') if self.headers else None
         fetch_site = (self.headers.get('Sec-Fetch-Site') or '').strip().casefold() if self.headers else ''
@@ -453,7 +465,23 @@ class Handler(BaseHTTPRequestHandler):
             return False
         if origin_matches or fetch_matches:
             return True
+        if method is None:
+            method = getattr(self, 'command', '')
+        if not origin and not fetch_site and method in ('GET', 'HEAD'):
+            return True
         return self.loopback_client()
+
+    def access_removed(self):
+        """A member cookie is present, but that person is no longer in the shop."""
+        if not shop_members.configured(WORK):
+            return False
+        token = shop_auth.read_cookie(self.headers.get('Cookie') if self.headers else None, shop_members.COOKIE)
+        if not token:
+            return False
+        try:
+            return shop_members.member(WORK, token) is None
+        except (OSError, sqlite3.Error):
+            return False
 
     def session_body(self):
         local = self.loopback_client()
@@ -469,10 +497,15 @@ class Handler(BaseHTTPRequestHandler):
             'pinConfigured': shop_auth.pin_configured(WORK),
             'pinWeak': shop_auth.pin_is_weak(WORK),
             'tls': TLS,
+            'shopIdentity': shop_members.status(WORK),
+            'shopNetwork': LAN,
+            'shopAddress': f'{"https" if TLS else "http"}://{host_name()}:{PORT}/' if local and LAN else None,
             'outputConnection': output_gate.public_status(WORK, local),
             'outputLink': output_gate.link_status(WORK, local),
+            'accessRemoved': (not local) and self.access_removed(),
         }
         if local:
+            body['localDataId'] = os.environ.get('EZ_NEST_LOCAL_ID')
             body['token'] = TOKEN
             body['pinAlert'] = shop_auth.alert_status()
         return body
@@ -484,11 +517,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/web':
             # Older installers and Illustrator links keep working at the one app entry.
             query = urlparse(self.path).query
-            target = '/?view=simple' + ('&' + query if query else '')
+            target = '/' + ('?' + query if query else '')
             return self.send(307, b'', 'text/plain; charset=utf-8',
                              extra_headers=(('Location', target),))
         if path == '/api/session':
-            if not self.browser_site_ok():
+            if not self.browser_site_ok('GET'):
                 return self.send(403, {'error': 'Invalid session'})
             return self.send(200, self.session_body())
         if path.startswith('/api/'):
@@ -497,12 +530,23 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Open health on the shop computer.'})
                 return self.send(200, {'ok': True, 'app': 'eznest'})
             if not self.loopback_client() and not self.authenticated():
-                return self.send(403, {'error': 'Enter the shop PIN on this computer.'})
+                if self.access_removed():
+                    note = 'Your access was removed.'
+                elif shop_members.configured(WORK):
+                    note = 'Open Your shop to join with a new invitation.'
+                else:
+                    note = 'Enter the shop PIN on this computer.'
+                return self.send(403, {'error': note})
             if not self.loopback_client() and (path == '/api/shop' or path == '/api/folder' or path.startswith('/api/folder/')):
                 return self.send(403, {'error': 'Open this on the shop computer.'})
         if path == '/api/changelog':
             import installer_update
             return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
+        if path == '/api/shop-members':
+            try:
+                return self.send(200, shop_members.status(WORK, admin=self.loopback_client()))
+            except (OSError, sqlite3.Error):
+                return self.send(503, {'error': 'Shop access is unavailable. Check the host PC.'})
         if path == '/api/update':
             if macos_service_runtime.active():
                 import macos_update
@@ -514,7 +558,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, info)
             import installer_update
             refresh = parse_qs(urlparse(self.path).query).get('refresh', ['0'])[0] == '1'
-            if refresh:
+            if refresh and self.loopback_client():
                 info = peek_latest(WORK, VERSION)
             else:
                 info = {'ok': True, 'current': VERSION, 'updateAvailable': False, 'latest': VERSION, 'message': '', 'error': None}
@@ -526,6 +570,7 @@ class Handler(BaseHTTPRequestHandler):
             with OPERATIONS:
                 info.update(UPDATE_QUEUE.status())
             info['localPC'] = self.loopback_client()
+            info['checksEnabled'] = updates_allowed(WORK)
             info['serverPid'] = os.getpid()
             info['managedResult'] = installer_update.read_json(WORK/'updates'/'managed-result.json')
             info['notes'] = installer_update.current_notes(ROOT, VERSION)
@@ -537,6 +582,8 @@ class Handler(BaseHTTPRequestHandler):
                 info['error'] = None
             elif info.get('staged'):
                 info['message'] = 'A checked update is saved. Automatic installation is unavailable for this installation. The current app stays running.'
+            if info.get('staged') and info.get('portableSupported'):
+                info['message'] = 'Update ready. Save the current job, then update on the host PC. Everyone using this host will get the new version.'
             if info.get('queued'):
                 info['message'] = 'Update approved. Finish sending the current job or choose Start over. You can cancel before installation starts.'
             elif info.get('staged') and info['managedSupported']:
@@ -658,9 +705,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, json.loads(source.read_text(encoding='utf-8-sig')))
             except Exception:
                 return self.send(400, {'error': 'Illustrator capture could not be read.'})
-        view = parse_qs(urlparse(self.path).query).get('view', [''])[0]
-        workspace = 'web.html' if view == 'simple' else 'production.html'
-        static = {'/': (workspace, 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
+        # Keep old full/simple links and handoff queries on the single workspace.
+        static = {'/': ('web.html', 'text/html'), '/app.js': ('app.js', 'text/javascript'), '/style.css': ('style.css', 'text/css'), '/sample.json': ('sample.json', 'application/octet-stream')}
         static.update({'/svg-io.js': ('svg-io.js', 'text/javascript'), '/sample-artwork.svg': ('sample-artwork.svg', 'image/svg+xml')})
         static.update({'/queue-app.js': ('queue-app.js','text/javascript'), '/queue-core.js': ('queue-core.js','text/javascript'), '/queue.css': ('queue.css','text/css')})
         static['/production-features.js']=('production-features.js','text/javascript')
@@ -671,6 +717,14 @@ class Handler(BaseHTTPRequestHandler):
             static['/' + asset] = (asset, 'text/css' if asset.endswith('.css') else 'text/javascript')
         static['/web.css'] = ('web.css', 'text/css')
         static['/web.js'] = ('web.js', 'text/javascript')
+        static['/browser-crypto.js'] = ('browser-crypto.js', 'text/javascript')
+        static['/shop-team.js'] = ('shop-team.js', 'text/javascript')
+        static['/shop-team.css'] = ('shop-team.css', 'text/css')
+        for name, mime in [('startup.css', 'text/css'), ('startup.js', 'text/javascript'), ('startup-nesting.mp4', 'video/mp4'), ('startup-nesting-poster.png', 'image/png'), ('startup-companion.png', 'image/png')]:
+            static['/' + name] = (name, mime)
+        static['/workspace-mode.css'] = ('workspace-mode.css', 'text/css')
+        for name in ('onboarding-upload.webp', 'onboarding-stickers.webp', 'onboarding-file.webp'):
+            static['/' + name] = (name, 'image/webp')
         static['/tester-results.js'] = ('tester-results.js', 'text/javascript')
         static['/fonts/Archivo.ttf'] = ('fonts/Archivo.ttf', 'font/ttf')
         static['/fonts/rajdhani-700.woff2'] = ('fonts/rajdhani-700.woff2', 'font/woff2')
@@ -743,6 +797,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.handle_post()
 
     def _login(self):
+        if shop_members.configured(WORK):
+            return self.send(403, {'error': 'Use an invitation from the shop host to join this shop.'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
         except ValueError:
@@ -767,19 +823,55 @@ class Handler(BaseHTTPRequestHandler):
         return self.send(200, {'ok': True, 'authenticated': True}, extra_headers=[('Set-Cookie', shop_auth.cookie_header(sid, secure=TLS))])
 
     def _logout(self):
+        shop_members.logout(WORK, shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.COOKIE))
         shop_auth.revoke_session(shop_auth.read_cookie(self.headers.get('Cookie') if self.headers else None))
-        return self.send(200, {'ok': True}, extra_headers=[('Set-Cookie', shop_auth.clear_cookie_header(secure=TLS))])
+        return self.send(200, {'ok': True}, extra_headers=[('Set-Cookie', shop_auth.clear_cookie_header(secure=TLS)), ('Set-Cookie', shop_members.cookie('', secure=TLS))])
+
+    def _membership(self, path):
+        if path != '/api/shop-members/join' and not (self.loopback_client() and self.token_ok()):
+            return self.send(403, {'error': 'Manage the shop and invitations on the host PC.'})
+        try:
+            size = int(self.headers.get('Content-Length', '0'))
+            if not 0 <= size <= 4000:
+                raise ValueError('Shop request is too large.')
+            data = json.loads(self.rfile.read(size) or b'{}')
+            if not isinstance(data, dict):
+                raise ValueError('Supply a shop request.')
+            if path == '/api/shop-members/join':
+                result = shop_members.join(WORK, data.get('code'), data.get('name'), self.client_ip())
+                if 'error' in result:
+                    return self.send(result['status'], {'error': result['error']})
+                return self.send(200, {'ok': True, 'member': result['member']}, extra_headers=[('Set-Cookie', shop_members.cookie(result['token'], secure=TLS))])
+            if path == '/api/shop-members/create':
+                return self.send(200, shop_members.create(WORK, data.get('name')))
+            if path == '/api/shop-members/invite':
+                if not LAN:
+                    return self.send(409, {'error': 'Set up this PC as a shop host and restart with shop network enabled before inviting teammates.'})
+                return self.send(200, shop_members.invite(WORK))
+            if path == '/api/shop-members/revoke':
+                return self.send(200, shop_members.revoke(WORK, data.get('id')))
+            if path == '/api/shop-members/cancel-invites':
+                return self.send(200, shop_members.cancel_invites(WORK))
+            return self.send(404, {'error': 'Shop action not found.'})
+        except (ValueError, TypeError):
+            return self.send(400, {'error': 'Check the shop name, teammate name, or invitation and try again.'})
+        except (OSError, sqlite3.Error):
+            return self.send(503, {'error': 'Shop access is unavailable. Check the host PC.'})
 
     def handle_post(self):
         global PROCESS
-        if not self.allowed() or not self.browser_site_ok():
+        if not self.allowed() or not self.browser_site_ok('POST'):
             return self.send(403, {'error': 'Invalid session'})
         path = self.route_path()
+        if path.startswith('/api/shop-members/'):
+            return self._membership(path)
         if path == '/api/login':
             return self._login()
         if path == '/api/logout':
             return self._logout()
         if not self.authenticated():
+            if self.access_removed():
+                return self.send(403, {'error': 'Your access was removed.'})
             return self.send(403, {'error': 'Invalid session'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
@@ -836,6 +928,22 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(200, output_pairing.connect(WORK, data.get('code'), paused=telemetry_paused()))
                     except output_pairing.PairingError as error:
                         return self.send(400, {'error': str(error), 'reason': error.reason})
+                if path.startswith('/api/telemetry/output/link/'):
+                    action = path.rsplit('/', 1)[-1]
+                    if action == 'start' and data:
+                        raise ValueError('Starting a connection takes no additional data.')
+                    if action in ('status', 'cancel') and (set(data) != {'attemptId'} or not isinstance(data['attemptId'], str)):
+                        raise ValueError('Choose the current connection request.')
+                    try:
+                        if action == 'start':
+                            return self.send(200, output_link.start(WORK, paused=telemetry_paused()))
+                        if action == 'status':
+                            return self.send(200, output_link.status(WORK, data['attemptId'], paused=telemetry_paused()))
+                        if action == 'cancel':
+                            return self.send(200, output_link.cancel(WORK, data['attemptId']))
+                    except output_pairing.PairingError as error:
+                        return self.send(400, {'error': str(error), 'reason': error.reason})
+                    return self.send(404, {'error': 'Connection action not found.'})
                 if path == '/api/telemetry/output/disconnect':
                     if data:
                         raise ValueError('Disconnect takes no additional data.')
@@ -868,6 +976,25 @@ class Handler(BaseHTTPRequestHandler):
                 import installer_update
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Approve updates on the server PC.'})
+                if path == '/api/update/install':
+                    if not installer_update.updates_enabled(WORK):
+                        raise ValueError('Updates are off.')
+                    if not installer_update.local_state(WORK, installer_update.install_root()).get('portableSupported'):
+                        raise ValueError('Use the approved installer for this installation.')
+                    pending = installer_update.pending_state(WORK)
+                    if not pending or pending.get('channel') != load_shop(WORK)['channel']:
+                        raise ValueError('Download an update for the selected channel first.')
+                    if UPDATE_QUEUE.status()['queued']:
+                        raise ValueError('An update is already waiting.')
+                    with LOCK:
+                        if STATE.get('status') == 'running' or (STATE.get('status') == 'ready' and not STATE.get('deliveryCompleted')):
+                            raise ValueError('Save the current print file or choose Start over before updating.')
+                        persist_state()
+                    result = installer_update.begin_apply(WORK, installer_update.install_root())
+                    UPDATE_QUEUE.stopping = True
+                    self.send(200, result)
+                    threading.Thread(target=self.server.shutdown, daemon=True).start()
+                    return
                 if path == '/api/update/cancel':
                     UPDATE_QUEUE.cancel()
                     return self.send(200, {'ok': True, 'message': 'Update cancelled. The app stays running.'})
@@ -1035,6 +1162,8 @@ class Handler(BaseHTTPRequestHandler):
                 stock_output.note_change(WORK)
                 return self.send(200, saved)
             if path == '/api/update':
+                if not self.loopback_client():
+                    return self.send(403, {'error': 'Download and approve updates on the shop host PC.'})
                 if macos_service_runtime.active():
                     if not self.loopback_client():
                         return self.send(403, {'error':'Download and approve updates on the shop Mac.'})
@@ -1045,9 +1174,12 @@ class Handler(BaseHTTPRequestHandler):
                 with LOCK:
                     if STATE.get('status') == 'running':
                         raise ValueError('Stop the current search before updating.')
+                    if data.get('when') == 'now' and STATE.get('status') == 'ready' and not STATE.get('deliveryCompleted'):
+                        raise ValueError('Save the current print file or choose Start over before updating.')
                 import installer_update
                 result = pull_latest(WORK, VERSION, when=data.get('when') or 'restart', install_root=installer_update.install_root())
                 if result.get('restarting'):
+                    UPDATE_QUEUE.stopping = True
                     self.send(200, result)
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
@@ -1078,7 +1210,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 if path in ('/api/solve', '/api/improve'):
                     if STATE.get('status') == 'running':
-                        raise ValueError('Cancel the current search before starting another.')
+                        raise ValueError('Someone else is nesting. Wait until they finish.')
                     incumbent = None
                     if path == '/api/improve':
                         if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
@@ -1303,8 +1435,8 @@ def check_updates(stop):
 
 def serve(open_browser=False, page='/'):
     configure_tls(os.environ.get('EZ_NEST_TLS_CERT'), os.environ.get('EZ_NEST_TLS_KEY'))
-    if HOST not in ('127.0.0.1', '::1') and not shop_auth.pin_configured(WORK):
-        raise RuntimeError('Set a shop PIN on this computer before opening the shop network.')
+    if HOST not in ('127.0.0.1', '::1') and not (shop_auth.pin_configured(WORK) or shop_members.configured(WORK)):
+        raise RuntimeError('Create your shop or set a shop PIN on this computer before opening the shop network.')
     restore_state()
     import installer_update
     service = LocalServer((HOST, PORT), Handler)
@@ -1317,7 +1449,8 @@ def serve(open_browser=False, page='/'):
     threading.Thread(target=check_updates, args=(update_stop,), daemon=True).start()
     if open_browser:
         import webbrowser
-        webbrowser.open(f'http://127.0.0.1:{PORT}{page}')
+        from startup import browser_page
+        webbrowser.open(f'http://127.0.0.1:{PORT}{browser_page(page)}')
     if sys.stdout:
         print(f'eznest ready: http://127.0.0.1:{PORT}{page}', flush=True)
         if LAN:

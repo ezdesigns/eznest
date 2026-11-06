@@ -16,6 +16,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 import shop_deploy
+import update_manifest
 
 EXE_NAMES = ('eznest.exe', 'eznest', 'eznest.py')
 KEEP_FILES = ('shop.json', 'output-folder.json')
@@ -103,6 +104,15 @@ def pending_state(data_dir):
     file = Path(pending.get('file', ''))
     if file.is_symlink() or not file.resolve().is_relative_to((Path(data_dir) / 'updates' / 'incoming').resolve()):
         return None
+    stored = pending.get('manifest')
+    if stored is not None:
+        try:
+            checked = update_manifest.check_stored_manifest(
+                stored, version=pending.get('version'), asset=pending.get('filename'))
+        except (TypeError, ValueError):
+            return None
+        if not checksum_matches(checked['sha256'], pending.get('sha256', '')):
+            return None
     if not file.is_file() or not checksum_matches(sha256_file(file), pending.get('sha256', '')):
         return None
     return pending
@@ -176,7 +186,7 @@ def locate_payload(extracted):
 
 def app_entries(root):
     for entry in Path(root).iterdir():
-        if entry.name in ('data', 'updates'):
+        if entry.name.casefold() in ('data', 'updates'):
             continue
         if entry.is_symlink() or entry.is_junction():
             raise ValueError(f'Refusing to replace a linked file: {entry.name}')
@@ -214,7 +224,7 @@ def snapshot_app(install_root, backup):
 def replace_app_files(install_root, payload):
     _clear_app(install_root)
     for entry in Path(payload).iterdir():
-        if entry.name not in ('data', 'updates', '__MACOSX'):
+        if entry.name.casefold() not in ('data', 'updates', '__macosx'):
             _copy_entry(entry, Path(install_root) / entry.name)
 
 
@@ -250,6 +260,8 @@ def run_setup(setup, install_root, data_dir):
     if setup.suffix.lower() == '.zip':
         payload = safe_extract(setup, updates_dir(data_dir) / 'extracted')
         archive_version = read_version(payload)
+        if shop_deploy.portable_edition() and read_json(payload / 'portable-update.json') != {'edition': 'shop-portable', 'schema': 1}:
+            raise ValueError('The download is not a portable shop host build.')
         replace_app_files(install_root, payload)
         return archive_version
     if os.name != 'nt':
@@ -284,6 +296,15 @@ def command_for(exe, data_dir, confirm):
     python = (getattr(sys, '_base_executable', None) or sys.executable) if os.name == 'nt' else sys.executable
     command = [python, str(exe)] if exe.suffix == '.py' else [str(exe)]
     command += ['--web', '--no-browser', '--data-dir', str(data_dir)]
+    port = int(os.environ.get('EZ_NEST_PORT', '8765'))
+    if not 1024 <= port <= 65535:
+        raise ValueError('Invalid shop port; update restart was stopped.')
+    command += ['--port', str(port)]
+    if os.environ.get('EZ_NEST_LAN') == '1' or os.environ.get('EZ_NEST_LAN_WAITING') == 'pin':
+        command.append('--lan')
+    for flag, variable in (('--tls-cert', 'EZ_NEST_TLS_CERT'), ('--tls-key', 'EZ_NEST_TLS_KEY')):
+        if os.environ.get(variable):
+            command += [flag, os.environ[variable]]
     if confirm:
         command.append('--update-confirm')
     return command
@@ -305,8 +326,13 @@ def pid_alive(pid):
         import ctypes
         handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
         if handle:
-            ctypes.windll.kernel32.CloseHandle(handle)
-            return True
+            try:
+                code = ctypes.c_ulong()
+                if not ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+                    return True
+                return code.value == 259  # STILL_ACTIVE, not an exited process with a retained handle.
+            finally:
+                ctypes.windll.kernel32.CloseHandle(handle)
         return False
     try:
         os.kill(pid, 0)
@@ -415,6 +441,7 @@ def _stop(process):
 
 def apply_and_confirm(install_root, data_dir, wait_pid=None, timeout=CONFIRM_TIMEOUT, runner=None):
     install_root, data_dir = Path(install_root), Path(data_dir)
+    validate_data_location(install_root, data_dir)
     if not apply_supported(install_root):
         raise ValueError('Automatic updates to Program Files are not supported yet. The current server is kept running.')
     directory = updates_dir(data_dir)
@@ -424,6 +451,8 @@ def apply_and_confirm(install_root, data_dir, wait_pid=None, timeout=CONFIRM_TIM
     if not pending:
         raise ValueError('No checked update is waiting to be installed.')
     version = pending['version']
+    if shop_deploy.portable_edition() and Path(pending['file']).suffix.lower() != '.zip':
+        raise ValueError('This shop host requires a portable ZIP update.')
     # Only an explicit retry may attempt this payload again after a failure.
     pending['applyOnRestart'] = False
     write_json(directory / 'pending.json', pending)
@@ -514,6 +543,8 @@ def spawn_helper(install_root, data_dir, wait_pid):
         runner.mkdir(parents=True)
         exe = Path(sys.executable)
         shutil.copy2(exe, runner / 'eznest-update.exe')
+        if shop_deploy.portable_edition():
+            shutil.copy2(exe.parent / 'portable-update.json', runner / 'portable-update.json')
         internal = exe.parent / '_internal'
         if internal.is_dir():
             shutil.copytree(internal, runner / '_internal', symlinks=False)
@@ -531,13 +562,24 @@ def spawn_helper(install_root, data_dir, wait_pid):
 def begin_apply(data_dir, install_root):
     if not apply_supported(install_root):
         raise ValueError('Run eznest-setup.exe on the shop PC to install this update.')
+    validate_data_location(install_root, data_dir)
     pending = pending_state(data_dir)
     if not pending:
         raise ValueError('Download the update before installing it.')
+    if shop_deploy.portable_edition() and Path(pending['file']).suffix.lower() != '.zip':
+        raise ValueError('This shop host requires a portable ZIP update.')
     pending['applyOnRestart'] = True
     write_json(updates_dir(data_dir) / 'pending.json', pending)
     spawn_helper(install_root, data_dir, os.getpid())
     return {'ok': True, 'restarting': True, 'version': pending['version'], 'latest': pending['version'], 'message': f'Ez Nest is restarting to install {pending["version"]}. Settings and the hot folder stay.'}
+
+
+def validate_data_location(install_root, data_dir):
+    root, data = Path(install_root).resolve(), Path(data_dir).resolve()
+    if root == data or root.is_relative_to(data):
+        raise ValueError('Keep the application and shop data in separate folders before updating.')
+    if data.is_relative_to(root) and data.relative_to(root).parts[0].casefold() != 'data':
+        raise ValueError('Move shop data outside the app folder before updating.')
 
 
 def handoff_if_pending(install_root, data_dir):
@@ -550,9 +592,15 @@ def handoff_if_pending(install_root, data_dir):
     return True
 
 
-def stage_file(data_dir, version, digest, payload, filename):
+def stage_file(data_dir, version, digest, payload, filename, manifest=None):
     if filename != Path(filename).name or '/' in filename or '\\' in filename or ':' in filename or Path(filename).suffix.lower() not in ('.exe', '.zip'):
         raise ValueError('Invalid update filename.')
+    # A shop download passes the signed manifest. Local rollback fixtures may omit it.
+    stored = None
+    if manifest is not None:
+        stored = update_manifest.check_stored_manifest(manifest, version=version, asset=filename)
+        if not checksum_matches(stored['sha256'], digest):
+            raise ValueError(update_manifest.UNCHECKED)
     directory = updates_dir(data_dir)
     incoming = directory / 'incoming'
     incoming.mkdir(parents=True, exist_ok=True)
@@ -572,8 +620,10 @@ def stage_file(data_dir, version, digest, payload, filename):
         'kind': kind,
         'channel': shop_deploy.load_shop(data_dir)['channel'],
         'verified': True,
-        'applyOnRestart': True,
+        'applyOnRestart': not shop_deploy.portable_edition(),
     }
+    if stored is not None:
+        pending['manifest'] = stored
     write_json(directory / 'pending.json', pending)
     return pending
 
@@ -583,6 +633,7 @@ def local_state(data_dir, install_root):
     rollback = read_json(updates_dir(data_dir) / 'rollback.json')
     return {
         'applySupported': apply_supported(install_root),
+        'portableSupported': shop_deploy.portable_edition() and apply_supported(install_root),
         'staged': pending is not None,
         'stagedVersion': pending.get('version') if pending else None,
         'applyOnRestart': bool(apply_supported(install_root) and pending and pending.get('applyOnRestart')),

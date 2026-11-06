@@ -31,16 +31,19 @@ class ServerTests(unittest.TestCase):
         try:
             status, headers, body = get('/')
             self.assertEqual(status, 200)
-            self.assertIn(b'Jobs to print', body)
-            self.assertIn(b'href="/?view=simple">Simple mode', body)
-            status, headers, body = get('/?view=simple')
-            self.assertEqual(status, 200)
             self.assertIn(b'Upload your print here', body)
-            self.assertIn(b'href="/">Full mode', body)
-            self.assertIn(b'Jobs to print', get('/?view=unknown')[2])
-            for path, target in [('/web', '/?view=simple'), ('/web/', '/?view=simple'),
-                                 ('/web?illustrator=capture%2Fid&mode=review', '/?view=simple&illustrator=capture%2Fid&mode=review'),
-                                 ('/web/?next=https%3A%2F%2Fexample.com', '/?view=simple&next=https%3A%2F%2Fexample.com')]:
+            self.assertNotIn(b'id="mode-switch"', body)
+            self.assertNotIn(b'aria-label="Workspace mode"', body)
+            status, headers, simple = get('/?view=simple')
+            self.assertEqual(status, 200)
+            self.assertEqual(simple, body)
+            status, headers, full = get('/?view=full')
+            self.assertEqual(status, 200)
+            self.assertEqual(full, body)
+            self.assertIn(b'Upload your print here', get('/?view=unknown')[2])
+            for path, target in [('/web', '/'), ('/web/', '/'),
+                                 ('/web?illustrator=capture%2Fid&mode=review', '/?illustrator=capture%2Fid&mode=review'),
+                                 ('/web/?next=https%3A%2F%2Fexample.com', '/?next=https%3A%2F%2Fexample.com')]:
                 with self.subTest(path=path):
                     status, headers, body = get(path)
                     self.assertEqual(status, 307)

@@ -1,22 +1,18 @@
 # OUTPUT pairing
 
-The Ez Nest API allows nesting, sending, and stock changes without an OUTPUT
-connection. Connecting to OUTPUT is optional. When `outputConnection.ok` is
-false in `/api/session`, the browser shows **Connect to OUTPUT (optional)**
-until this browser chooses **Skip** or the host connects. **Skip** stores
-`eznest-setup-skipped` in that browser's localStorage, and later loads open
-the workspace. If that write fails, **Skip** lasts for the current visit
-only. The header still offers **Connect to OUTPUT**. On the
-shop computer, paste a one-time pairing code from
-<https://output.jeezlabs.io/outpost/ez-nest> (**Have a pairing code?**).
-Designer PCs cannot pair. If they have not chosen **Skip**, they see "Ask the
-shop computer to connect to OUTPUT."
+Nesting and stock work without OUTPUT. The home screen does not show a Connect
+or Explore OUTPUT banner, and nesting does not wait for a connection. On the
+shop computer, the status dot starts browser approval when pairing is allowed.
+Settings > OUTPUT connection also offers **Continue with OUTPUT** for owner
+sign-in and a matching code; see [browser approval](output-browser-approval.md).
+Manual codes remain under **Use a pairing code instead**. Designer PCs cannot
+pair the host. Sharing stays off until the host turns it on. An explicit
+OUTPUT-off launch setting still disables pairing.
 
 `output_remote.READY` defaults to false. A shop setting cannot turn it on.
-While it is false, browser-approval routes return 403 and stock-summary
-upload stays off. **Skip** works with the flag left false. The page keeps
-**Set up your shop** hidden (`OUTPUT_APPROVE_ENDPOINT_READY` is false in
-`web.js`). Pairing with a code still works.
+While it is false, legacy capacity-approval routes and stock-summary upload
+stay off. This is separate from the new host-only `/api/telemetry/output/link/*`
+connection routes. Connecting does not enable capacity or activity sharing.
 
 Sharing activity, and sharing capacity with the OUTPUT network, are separate
 and stay off until someone on the host opts in.

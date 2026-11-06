@@ -1,0 +1,22 @@
+html[data-starting] body { background: #f7f7f2; }
+html[data-starting] body > :not(#app-startup):not(script),
+html[data-starting] dialog { visibility: hidden !important; }
+#app-startup { position: fixed; inset: 0; z-index: 10000; display: grid; place-content: center; justify-items: center; padding: 32px 20px; background: #f7f7f2; color: #172134; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+#app-startup * { box-sizing: border-box; }
+#app-startup .startup-content { width: min(680px, 92vw); text-align: center; }
+#app-startup .startup-scene { width: 100%; aspect-ratio: 800 / 470; position: relative; overflow: hidden; }
+#app-startup .startup-scene::after { content: ""; position: absolute; top: 0; right: 0; width: 22%; height: 13%; background: #f7f7f2; }
+#app-startup .startup-scene video { width: 100%; height: auto; display: block; transform: translateY(-22%); }
+#app-startup .startup-lane { width: min(300px, 70%); height: 105px; margin: -8px auto 0; position: relative; overflow: hidden; }
+#app-startup .startup-ground { height: 2px; background: #17213420; position: absolute; bottom: 7px; left: 12px; right: 12px; border-radius: 3px; }
+#app-startup .startup-rider { width: 68px; height: 95px; position: absolute; bottom: 6px; left: 0; will-change: transform; }
+#app-startup .startup-rider img { position: absolute; left: 4px; bottom: 6px; width: 60px; height: auto; transform: rotate(-3deg); transform-origin: 50% 100%; }
+#app-startup .startup-board { position: absolute; bottom: 0; left: 0; width: 68px; height: 22px; overflow: visible; }
+#app-startup .startup-label { font-size: 16px; font-weight: 500; letter-spacing: .02em; margin: 23px 0 0; }
+@media (max-width: 520px) {
+  #app-startup { padding: 20px 12px; }
+  #app-startup .startup-content { width: calc(100vw - 24px); }
+  #app-startup .startup-lane { height: 100px; margin-top: 4px; }
+  #app-startup .startup-label { font-size: 15px; margin-top: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { #app-startup .startup-rider { will-change: auto; } }

@@ -45,16 +45,21 @@ jobs:
       # python -m pip-audit -r requirements.txt
       - name: Check interface syntax
         run: |
+          node --check startup.js
           node --check queue-app.js
           node --check production-features.js
           node --check layout-comparison.js
           node --check cut-mapping.js
           node --check web.js
+          node --check browser-crypto.js
+          node --check shop-team.js
           node --check tester-results.js
       - name: Test savings and feedback privacy
         run: node tests/test_tester_results.cjs
       - name: Test queue and physical units
-        run: node tests/test_queue.cjs
+        run: |
+          node tests/test_queue.cjs
+          node tests/test_browser_crypto.cjs
       - name: Test shop profiles
         run: node tests/test_shop_profiles.cjs
       - name: Test cut mappings and profile sharing

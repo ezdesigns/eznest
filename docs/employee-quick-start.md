@@ -9,9 +9,20 @@ Nothing to install on a designer PC. Open the address your admin gave you:
 
 `http://SHOP-HOST:8765/web`
 
-The page asks for the shop PIN the first time in that browser. Ask the person at the host computer for it. You do not set a new PIN here. After it is accepted, that browser can nest and use shop stock. Choose **Log out** when you are done. The sign-in also ends after an hour with no use, after eight hours, or if this computer's address changes. `SHOP-HOST` is the host computer's name. Keep that PC awake during the day.
+For a named shop, enter your name and the invitation from the host. Each code
+works once and expires after 15 minutes; every employee needs a separate code.
+Access stays in that browser for up to 30 days unless the host removes it.
+Logging out ends access, so ask for a new invitation to return. Older shops
+without a shop name still use their existing PIN. `SHOP-HOST` is the host
+computer's name. Keep that PC awake during the day.
 
 `materials.sqlite3` stays on the host. Do not copy it, and do not open it from a shared drive.
+
+Everyone opens the same host address to share stock. Opening `localhost` on
+your own PC points to a different installation. The Inventory view refreshes
+about every ten seconds while visible; editing pauses the refresh. Stock use
+requires **Reserve for this job**, then **Confirm material used** after use.
+Take turns nesting: the host has one shared active job.
 
 ## Each job
 
@@ -54,18 +65,24 @@ turn it on.
 
 ## For the admin
 
-Designer PCs only open `http://SHOP-HOST:8765/web`. Install Ez Nest on the
-host. Set a shop PIN before other PCs connect:
+Designer PCs only open the host address. Install Ez Nest on the host:
 
 1. On the host, open `http://127.0.0.1:8765/web`.
-2. Connecting to OUTPUT is optional. Choose **Skip** to open the workspace in this browser, or choose **Have a pairing code?** and paste a code from <https://output.jeezlabs.io/outpost/ez-nest>. **Skip** is remembered in that browser. Designer PCs cannot pair. **Set up your shop** stays hidden.
-3. Open **Settings**, then **Shop PIN**.
-4. Type 8 to 12 digits, or a passphrase of at least 10 characters with a letter, and choose **Save shop PIN**. Tell the designers that PIN. Do not write it in a file in the data folder. If Settings says the saved PIN is old, replace it.
-5. Optional and recommended: pass `-TlsCert` and `-TlsKey` together so the shop page is HTTPS. Leave both empty to keep HTTP. On HTTP, someone who can watch the shop network can copy a signed-in browser's session. See [Security](../SECURITY.md).
-6. Turn on Shop network and start the host again. Shop network does not open until the PIN is saved.
+2. Finish the welcome screen, choose **Create a shop**, and enter its name.
+   Existing materials stay in this host's inventory.
+3. Start the host with **Shop network** enabled. A configured startup task with
+   `--lan` needs a restart after the shop is created. Saving a preference does
+   not open the listener; see [shop invitations](shop-invitations.md).
+4. Open the shop name → **Invite someone**. Give each employee the displayed
+   address and a fresh invitation. Employees only need their browser.
+5. Optional and recommended: configure local HTTPS. On plain HTTP, someone who
+   can watch the shop network can copy a signed-in browser's session. See
+   [Security](../SECURITY.md).
+6. Connecting to OUTPUT is optional and separate from local shop membership.
 
-Shop network has to be on or other PCs cannot open the page. See
-[Security](../SECURITY.md).
+Shop network has to be on or other PCs cannot open the page. Creating a named
+shop replaces legacy PIN access with individual invitations; invite the
+existing employees again.
 
 **Stock database.** `materials.sqlite3` stays on the host. Only the Ez Nest
 program on that PC should open it. Do not put the data folder on a shared

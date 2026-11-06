@@ -4,6 +4,16 @@
 
 ## 1.0.0-rc.9
 
+- Accept the shop host addresses shown in Settings, including `/web`, when an employee joins the local shop.
+- Keep the visible Inventory view current when another employee changes stock; preserve unsaved edits and reject stale saves.
+- Support adding materials and checking file hashes over ordinary shop-network HTTP, where secure-context browser crypto APIs are unavailable.
+- Preserve the current five-second nesting/skateboard startup and single shared nesting workspace. Each employee joins with a separate one-use invitation and uses the host inventory.
+- First run shows the welcome introduction, then create-a-shop or join-with-an-invite. The home screen no longer leads with Connect to OUTPUT. Pairing stays optional in Settings and the status dot, and it does not block nesting, inventory, or shop setup.
+- After a shop exists, Invite is on the home screen. The invite code is shown above Done.
+- A second computer on a plain network address can open Join. HTTPS is unchanged and is not required for that.
+- A removed person sees that their access was removed. If Ez Nest cannot be reached, the page says so in plain words. A second nest says someone else is nesting. The material list names rolls that are already in the shop. Log out stays fully visible. Help no longer covers Try tighter fit.
+- Shop updates install only when a signed update manifest checks out and the download matches it. A release with no manifest, or one marked as a database change, is not installed. The previous app is still restored if the new build does not start.
+- A valid shop invitation is still accepted when other addresses have used the shared join-attempt count. Each address keeps its own limit.
 - Use one OUTPUT pairing dialog for Settings, the header, the optional connection banner and reconnect. Keep sharing off until separate consent, show retryable errors, and prevent duplicate submissions.
 - Preserve existing signed-check-in and revocation history when upgrading from earlier builds, so a later unsigned record cannot reopen a revoked connection.
 - Require a valid Windows installer signature for release builds. Dual-platform publication remains blocked until Windows installer signing is configured; unsigned test installers are not release artifacts.
