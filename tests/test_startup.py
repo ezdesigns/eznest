@@ -71,7 +71,7 @@ class StartupScreenTests(unittest.TestCase):
                     self.assertIn('view=' + mode, page.url)
                     start = page.locator('.startup-rider').bounding_box()['x']
                     page.screenshot(path=str(self.shots / f'{mode}-left.png'))
-                    page.wait_for_timeout(4700)
+                    page.wait_for_function("() => { const v=document.querySelector('#app-startup video'); return v && v.paused && v.currentTime >=4.6 && v.currentTime <5; }", timeout=10000)
                     expect(page.locator('#app-startup')).to_be_visible()
                     self.assertGreater(page.locator('.startup-rider').bounding_box()['x'], start + 100)
                     # A busy runner may still be loading the workspace after the
@@ -97,6 +97,70 @@ class StartupScreenTests(unittest.TestCase):
                     self.assertNotIn('startup=', page.url)
                     self.assertFalse(errors, errors)
                     page.close()
+            finally:
+                browser.close()
+
+    def test_ready_workspace_reveals_after_complete_five_second_media(self):
+        from playwright.sync_api import sync_playwright, expect
+        from test_web_mvp import launch_browser
+        with sync_playwright() as pw:
+            browser = launch_browser(pw)
+            try:
+                page = browser.new_page()
+                page.add_init_script("""new MutationObserver(() => {
+                    const v=document.querySelector('#app-startup video');
+                    if (!v || v.dataset.observed) return;
+                    v.dataset.observed='1';
+                    v.addEventListener('playing',()=>window.firstPlayback ??= performance.now());
+                    v.addEventListener('ended',()=>window.completedPlayback={time:v.currentTime,duration:v.duration,at:performance.now()});
+                }).observe(document,{childList:true,subtree:true});""")
+                page.goto(self.fixture.url()+'/?startup=1')
+                page.wait_for_function("() => document.querySelector('video')?.currentTime >1")
+                sample = page.evaluate("""() => {
+                    const v=document.querySelector('video'),lane=document.querySelector('.startup-lane');
+                    return {time:v.currentTime, duration:v.duration, ratio:new DOMMatrix(getComputedStyle(document.querySelector('.startup-rider')).transform).m41/(lane.clientWidth-68)};
+                }""")
+                self.assertAlmostEqual(sample['duration'],5,delta=.01)
+                self.assertAlmostEqual(sample['ratio'],sample['time']/5,delta=.04)
+                self.fixture.wait_ready(page)
+                expect(page.locator('#app-startup')).to_have_count(0)
+                completed = page.evaluate('completedPlayback')
+                self.assertAlmostEqual(completed['time'],5,delta=.02)
+                self.assertAlmostEqual(completed['duration'],5,delta=.01)
+                self.assertGreaterEqual(completed['at']-page.evaluate('firstPlayback'),4800)
+            finally:
+                browser.close()
+
+    def test_media_failure_uses_poster_and_still_waits_for_workspace(self):
+        from playwright.sync_api import sync_playwright, expect
+        from test_web_mvp import launch_browser
+        with sync_playwright() as pw:
+            browser = launch_browser(pw)
+            try:
+                page=browser.new_page()
+                page.route('**/startup-nesting.mp4',lambda route:route.abort())
+                self.state_release.clear()
+                page.goto(self.fixture.url()+'/?startup=1')
+                page.wait_for_function("() => { const v=document.querySelector('video');return v && v.paused && !v.getAttribute('src'); }")
+                expect(page.locator('#app-startup')).to_be_visible()
+                self.state_release.set()
+                self.fixture.wait_ready(page)
+                expect(page.locator('#app-startup')).to_have_count(0)
+            finally:
+                browser.close()
+
+    def test_stalled_media_does_not_strand_a_ready_workspace(self):
+        from playwright.sync_api import sync_playwright, expect
+        from test_web_mvp import launch_browser
+        with sync_playwright() as pw:
+            browser=launch_browser(pw)
+            try:
+                page=browser.new_page()
+                page.add_init_script('HTMLMediaElement.prototype.play = () => new Promise(() => {});')
+                page.goto(self.fixture.url()+'/?startup=1')
+                expect(page.locator('#app-startup')).to_be_visible()
+                self.fixture.wait_ready(page)
+                expect(page.locator('#app-startup')).to_have_count(0)
             finally:
                 browser.close()
 
@@ -128,7 +192,7 @@ class StartupScreenTests(unittest.TestCase):
                 page = browser.new_page(viewport={'width': 390, 'height': 844}, reduced_motion='reduce')
                 self.state_release.clear()
                 page.goto(self.fixture.url() + '/?startup=1')
-                page.wait_for_function("() => document.querySelector('.startup-scene img')?.src.startsWith('data:image/png')")
+                page.wait_for_function("() => { const v=document.querySelector('.startup-scene video'); return v && v.paused && !v.getAttribute('src'); }")
                 before = page.locator('.startup-rider').get_attribute('style')
                 page.wait_for_timeout(300)
                 self.assertEqual(page.locator('.startup-rider').get_attribute('style'), before)

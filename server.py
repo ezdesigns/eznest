@@ -719,7 +719,7 @@ class Handler(BaseHTTPRequestHandler):
         static['/web.js'] = ('web.js', 'text/javascript')
         static['/shop-team.js'] = ('shop-team.js', 'text/javascript')
         static['/shop-team.css'] = ('shop-team.css', 'text/css')
-        for name, mime in [('startup.css', 'text/css'), ('startup.js', 'text/javascript'), ('startup-nesting.gif', 'image/gif'), ('startup-companion.png', 'image/png')]:
+        for name, mime in [('startup.css', 'text/css'), ('startup.js', 'text/javascript'), ('startup-nesting.mp4', 'video/mp4'), ('startup-nesting-poster.png', 'image/png'), ('startup-companion.png', 'image/png')]:
             static['/' + name] = (name, mime)
         static['/workspace-mode.css'] = ('workspace-mode.css', 'text/css')
         for name in ('onboarding-upload.webp', 'onboarding-stickers.webp', 'onboarding-file.webp'):
