@@ -2845,10 +2845,12 @@ function acceptInventory(data) {
   if (changed) $('inventory-status').textContent = '';
   const selected = $('material').value;
   const incoming = new Set(data.materials.map(item => item.id));
-  for (const previous of shopInventory.materials) {
-    if (incoming.has(previous.id)) continue;
-    [...$('material').options].find(option => option.value === previous.id)?.remove();
-    delete materialProfiles[previous.id];
+  // Once the host answers, its inventory replaces stale browser-only presets too.
+  // Keep the saved preferences intact; they are not an independent stock ledger.
+  for (const id of Object.keys(materialProfiles)) {
+    if (incoming.has(id)) continue;
+    [...$('material').options].find(option => option.value === id)?.remove();
+    delete materialProfiles[id];
   }
   shopInventory = data;
   inventoryReady = true;

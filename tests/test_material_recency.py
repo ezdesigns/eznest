@@ -51,9 +51,15 @@ class MaterialRecencyBrowserTests(unittest.TestCase):
             browser=launch_browser(p)
             try:
                 a=browser.new_page(viewport={'width':1280,'height':900});b=browser.new_page()
+                cached = dict(values(), **{'preset-name': 'Old browser-only roll'})
+                b.add_init_script("localStorage.setItem('eznest-placeholders', " + json.dumps(json.dumps({'materialProfiles': {'old-browser-roll': cached}})) + ")")
                 for page in [a,b]:
                     page.add_init_script("localStorage.setItem('eznest-tour-seen','1')")
                     page.goto(self.fixture.url()+'/web');self.fixture.wait_ready(page)
+                expect(b.locator('#material option[value="old-browser-roll"]')).to_have_count(0)
+                self.assertEqual(b.evaluate("JSON.parse(localStorage.getItem('eznest-placeholders')).materialProfiles['old-browser-roll']['preset-name']"), 'Old browser-only roll')
+                self.assertEqual(a.locator('#material option[data-name]').count(), 3)
+                self.assertEqual(b.locator('#material option[data-name]').count(), 3)
                 a.select_option('#material','b')
                 expect(a.locator('#material option[data-name]').first).to_have_attribute('value','b')
                 expect(b.locator('#material option[data-name]').first).to_have_attribute('value','b',timeout=15000)
