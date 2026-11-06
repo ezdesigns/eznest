@@ -462,7 +462,7 @@ async function saveRollForm(another) {
   host.busy = true;
   try {
     const clean = host.validate(values);
-    const id = add ? 'material-' + crypto.randomUUID() : item.id;
+    const id = add ? 'material-' + EZNCrypto.randomUUID() : item.id;
     await host.mutate('/api/materials/save', {id, profile: clean, revision: add ? 0 : item.revision});
     host.updated(id);
     const saved = host.inventory.materials.find(entry => entry.id === id);

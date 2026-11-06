@@ -36,6 +36,9 @@ class PilotUiTests(unittest.TestCase):
                 page.get_by_role('button', name='Create a shop', exact=True).click()
                 page.fill('#team-shop-name', 'Test Print Shop')
                 page.click('#team-create')
+                # Creation writes the shop, then refreshes the session before
+                # dismissing the dialog. Wait for that action to finish.
+                expect(page.locator('#shop-team-dialog')).to_be_hidden(timeout=15000)
                 expect(page.locator('#shop-team-open')).to_have_text('Test Print Shop')
                 expect(page.locator('#setup')).to_be_hidden()
                 ids=page.locator('.top-actions > *').evaluate_all('(nodes)=>nodes.map(n=>n.id)')

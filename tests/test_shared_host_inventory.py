@@ -22,7 +22,9 @@ class SharedHostInventoryTests(unittest.TestCase):
         request = Request(self.host.url() + path, data=json.dumps(data).encode(),
                           headers={'Content-Type': 'application/json', 'X-EZ-Token': server.TOKEN,
                                    'Origin': self.host.url()})
-        with urlopen(request, timeout=2) as response:
+        # Allow the host's ten-second SQLite busy timeout plus HTTP overhead
+        # on a cold Windows runner. This test checks stock integrity, not latency.
+        with urlopen(request, timeout=15) as response:
             return json.load(response)
 
     def test_clients_retry_without_double_consumption_and_reconnect_to_same_stock(self):

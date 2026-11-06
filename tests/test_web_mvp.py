@@ -22,11 +22,11 @@ SCREENSHOTS.mkdir(parents=True, exist_ok=True)
 from test_mixed_cuts import mixed_fixture
 
 
-def launch_browser(playwright):
+def launch_browser(playwright, *, args=()):
     last = None
     for channel in ('chrome', 'msedge'):
         try:
-            return playwright.chromium.launch(channel=channel, headless=True, args=['--no-sandbox', '--disable-dev-shm-usage'])
+            return playwright.chromium.launch(channel=channel, headless=True, args=['--no-sandbox', '--disable-dev-shm-usage', *args])
         except Exception as error:
             last = error
     raise AssertionError('The web page test needs Google Chrome or Microsoft Edge. ' + str(last))
