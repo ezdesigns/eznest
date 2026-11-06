@@ -327,7 +327,13 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 expect(page.locator('#shop-team-dialog')).to_be_visible()
                 page.locator('#team-member-name').fill('Designer A')
                 page.locator('#team-code').fill(code)
-                page.locator('#team-join').click()
+                # Joining writes membership and refreshes the session. Allow the
+                # ten-second SQLite busy timeout plus HTTP overhead on Windows,
+                # while still requiring a successful join and the completed UI.
+                with page.expect_response('**/api/shop-members/join', timeout=15000) as joined:
+                    page.locator('#team-join').click()
+                self.assertEqual(joined.value.status, 200)
+                self.fixture.wait_ready(page)
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()
                 session = page.evaluate("fetch('/api/session').then(r=>r.json())")
                 self.assertTrue(session['authenticated'])
