@@ -45,7 +45,7 @@ class DesktopBuildTests(unittest.TestCase):
             self.assertIs(result['EzNestShopService'], True)
             self.assertEqual(backend.read_bytes(), b'synthetic backend')
             self.assertEqual((app / 'Contents/MacOS/eznest-desktop').read_bytes(), b'synthetic native')
-            for name in ('startup-nesting.gif', 'startup-companion.png'):
+            for name in ('startup-nesting.mp4', 'startup-nesting-poster.png', 'startup-companion.png'):
                 self.assertEqual((app / 'Contents/Resources' / name).read_bytes(), (build_macos.ROOT / name).read_bytes())
             self.assertEqual([call.args[0][-1] for call in run.call_args_list],
                              [str(backend), str(app / 'Contents/MacOS/eznest-desktop'), str(app)])
