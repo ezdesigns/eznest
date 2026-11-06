@@ -166,8 +166,7 @@ function installSettingsHelp() {
 }
 
 async function sha256(data) {
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  return EZNCrypto.sha256(data);
 }
 
 function networkError(error) {
@@ -1835,7 +1834,7 @@ async function saveMaterial() {
       entered['available-length'] = shared.onHandMm == null ? '' : String(shared.onHandMm / EZNQueue.unitScale(entered.unit));
     }
     const values = validateMaterial(entered);
-    const id = presetEditor.id === 'custom' ? 'material-' + crypto.randomUUID() : presetEditor.id;
+    const id = presetEditor.id === 'custom' ? 'material-' + EZNCrypto.randomUUID() : presetEditor.id;
     if (!(materialProfiles[id] && rollNameKey(materialProfiles[id]['preset-name']) === rollNameKey(values['preset-name'])) && Object.entries(materialProfiles).some(([key, item]) => key !== id && rollNameKey(item['preset-name']) === rollNameKey(values['preset-name']))) throw Error('A material with this name already exists.');
     await mutateInventory('/api/materials/save', {id, profile: values, revision: presetEditor.revision});
     savePrefs({material: id, nestWidth: String(Number(values.width) * EZNQueue.unitScale(values.unit) / 25.4)});
@@ -2624,7 +2623,7 @@ async function boot() {
   await window.EZNStartup?.reveal();
   document.body.dataset.ready = '1';
   await autoLoadIllustrator();
-  setInterval(() => { if (!document.hidden && !inventoryBusy && !inventoryPanel.isEditing() && !document.querySelector('dialog[open]')) refreshInventory().catch(() => {}); }, 10000);
+  setInterval(() => { if (!document.hidden && !inventoryBusy && !inventoryPanel.isEditing() && !document.querySelector('dialog[open]:not(#stock)')) refreshInventory().catch(() => {}); }, 10000);
 }
 
 let outputRequired = false;

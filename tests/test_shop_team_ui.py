@@ -18,6 +18,138 @@ class ShopTeamBrowserTests(unittest.TestCase):
     def tearDown(self):
         self.fixture.tearDown()
 
+    def test_join_accepts_the_address_shown_in_host_settings(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as pw:
+            browser = test_web_mvp.launch_browser(pw)
+            try:
+                for path in ('/web', '/web/', '/'):
+                    page = browser.new_page()
+                    page.route('http://shop-pc:8765/**', lambda route: route.fulfill(body='Shop host'))
+                    page.goto(self.fixture.url())
+                    page.click('#tour-next')
+                    page.get_by_role('button', name='Join a shop', exact=True).click()
+                    page.fill('#team-address', 'http://SHOP-PC:8765' + path)
+                    page.get_by_role('button', name='Open shop', exact=True).click()
+                    expect(page).to_have_url('http://shop-pc:8765/?view=simple', timeout=2000)
+                    page.close()
+            finally:
+                browser.close()
+
+    def test_join_still_rejects_unrelated_paths_public_sites_and_secrets_in_urls(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as pw:
+            browser = test_web_mvp.launch_browser(pw)
+            page = browser.new_page()
+            try:
+                page.goto(self.fixture.url())
+                page.click('#tour-next')
+                page.get_by_role('button', name='Join a shop', exact=True).click()
+                for address in ('https://example.com/', 'http://localhost:8765/',
+                                'http://SHOP-PC:8765/api/session', 'http://SHOP-PC:8765/web?code=secret',
+                                'http://user:secret@SHOP-PC:8765/web', 'http://SHOP-PC:8765/web#secret'):
+                    page.fill('#team-address', address)
+                    page.get_by_role('button', name='Open shop', exact=True).click()
+                    expect(page.locator('#shop-team-dialog [role=status]')).to_contain_text('Enter a shop PC name')
+                    self.assertTrue(page.url.startswith(self.fixture.url()))
+            finally:
+                browser.close()
+
+    def test_open_inventory_refreshes_other_members_changes_without_overwriting_edits(self):
+        from playwright.sync_api import sync_playwright, expect
+        import material_inventory
+        from test_material_inventory import values
+        shop_members.create(server.WORK, 'Shared shop')
+        material_inventory.save(server.WORK, 'shared-roll', values(), 0)
+        class RemoteHandler(server.Handler):
+            def loopback_client(self): return False
+        self.fixture.stop()
+        self.fixture.handler_type = RemoteHandler
+        self.fixture.start()
+        with sync_playwright() as pw:
+            browser = test_web_mvp.launch_browser(pw)
+            try:
+                pages = [browser.new_page(), browser.new_page()]
+                pages[0].clock.install()
+                first_code = shop_members.invite(server.WORK)['code']
+                for page, name in zip(pages, ('Alex', 'Sam')):
+                    page.goto(self.fixture.url())
+                    page.fill('#team-member-name', name)
+                    page.fill('#team-code', first_code)
+                    if name == 'Sam':
+                        page.click('#team-join')
+                        expect(page.locator('#shop-team-dialog [role=status]')).to_contain_text('already used')
+                        page.fill('#team-code', shop_members.invite(server.WORK)['code'])
+                    page.click('#team-join')
+                    self.fixture.wait_ready(page)
+                    page.click('#stock-open')
+                    expect(page.locator('#stock-list')).to_contain_text('3.28 ft')
+                reader, writer = pages
+                writer.locator('#stock-list [role=option]').click()
+                writer.get_by_role('button', name='Edit', exact=True).click()
+                writer.fill('#roll-f-left', '2')
+                writer.get_by_role('button', name='Save', exact=True).click()
+                expect(writer.locator('#stock-status')).to_contain_text('2 ft left')
+                reader.bring_to_front()
+                reader.clock.run_for(11000)
+                expect(reader.locator('#stock-list')).to_contain_text('2 ft', timeout=2000)
+                reader.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'local-sharing-stock-desktop.png'))
+                reader.set_viewport_size({'width': 390, 'height': 844})
+                self.assertLessEqual(reader.evaluate('document.documentElement.scrollWidth'), 390)
+                reader.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'local-sharing-stock-mobile.png'))
+                reader.set_viewport_size({'width': 1280, 'height': 900})
+                reader.locator('#stock-list [role=option]').click()
+                reader.get_by_role('button', name='Edit', exact=True).click()
+                reader.fill('#roll-f-name', 'Unsaved roll name')
+                writer.get_by_role('button', name='Edit', exact=True).click()
+                writer.fill('#roll-f-left', '1')
+                writer.get_by_role('button', name='Save', exact=True).click()
+                expect(writer.locator('#stock-status')).to_contain_text('1 ft left')
+                reader.bring_to_front()
+                reader.clock.run_for(11000)
+                expect(reader.locator('#roll-f-name')).to_have_value('Unsaved roll name')
+                reader.get_by_role('button', name='Save', exact=True).click()
+                expect(reader.locator('#stock-panel')).to_contain_text('changed', timeout=2000)
+                self.assertEqual(material_inventory.read(server.WORK)['materials'][0]['onHandMm'], 304.8)
+                reader.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'local-sharing-stale-edit.png'))
+            finally:
+                browser.close()
+
+    def test_member_can_add_stock_on_plain_http_without_secure_context_apis(self):
+        from playwright.sync_api import sync_playwright, expect
+        shop_members.create(server.WORK, 'HTTP shop')
+        class RemoteHandler(server.Handler):
+            def loopback_client(self): return False
+        self.fixture.stop()
+        self.fixture.handler_type = RemoteHandler
+        self.fixture.start()
+        with patch.object(server, 'LAN', True), patch('shop_deploy.host_name', return_value='test-shop'), sync_playwright() as pw:
+            # Resolve a shop hostname directly to the isolated test listener. This
+            # is genuine insecure HTTP, without relying on a physical adapter/VPN.
+            browser = test_web_mvp.launch_browser(pw, args=['--host-resolver-rules=MAP test-shop 127.0.0.1', '--no-proxy-server'])
+            page = browser.new_page()
+            try:
+                page.goto(f'http://test-shop:{server.PORT}/')
+                self.assertFalse(page.evaluate('isSecureContext'))
+                self.assertEqual(page.evaluate('typeof crypto.randomUUID'), 'undefined')
+                page.fill('#team-member-name', 'Designer')
+                page.fill('#team-code', shop_members.invite(server.WORK)['code'])
+                page.click('#team-join')
+                self.fixture.wait_ready(page)
+                page.click('#stock-open')
+                page.get_by_role('button', name='Add roll', exact=True).click()
+                for field, value in [('name', 'Shared gloss'), ('roll', '54'), ('width', '51.5'), ('left', '100')]:
+                    page.fill('#roll-f-' + field, value)
+                page.get_by_role('button', name='Save roll', exact=True).click()
+                expect(page.locator('#stock-status')).to_contain_text('Added Shared gloss', timeout=2000)
+                expect(page.locator('#stock-list')).to_contain_text('Shared gloss', timeout=2000)
+                expect(page.locator('#stock-list')).to_contain_text('100 ft')
+                self.assertEqual(page.evaluate("sha256(new TextEncoder().encode('abc'))"), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad')
+                session = page.evaluate("fetch('/api/session').then(r => r.json())")
+                self.assertNotIn('token', session)
+            finally:
+                browser.close()
+
     def test_walkthrough_navigation_remembered_and_replay_without_connecting(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as pw:

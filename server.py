@@ -717,6 +717,7 @@ class Handler(BaseHTTPRequestHandler):
             static['/' + asset] = (asset, 'text/css' if asset.endswith('.css') else 'text/javascript')
         static['/web.css'] = ('web.css', 'text/css')
         static['/web.js'] = ('web.js', 'text/javascript')
+        static['/browser-crypto.js'] = ('browser-crypto.js', 'text/javascript')
         static['/shop-team.js'] = ('shop-team.js', 'text/javascript')
         static['/shop-team.css'] = ('shop-team.css', 'text/css')
         for name, mime in [('startup.css', 'text/css'), ('startup.js', 'text/javascript'), ('startup-nesting.gif', 'image/gif'), ('startup-companion.png', 'image/png')]:
