@@ -544,7 +544,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {'version': VERSION, 'entries': installer_update.changelog_entries(ROOT)})
         if path == '/api/shop-members':
             try:
-                return self.send(200, shop_members.status(WORK, admin=self.loopback_client()))
+                return self.send(200, shop_members.status(WORK, admin=self.loopback_client(), include_members=True))
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Shop access is unavailable. Check the host PC.'})
         if path == '/api/update':
@@ -1133,6 +1133,8 @@ class Handler(BaseHTTPRequestHandler):
                 UPDATE_CHECK.clear()
                 UPDATE_WAKE.set()
                 return self.send(200, shop_status())
+            if path == '/api/materials/touch':
+                return self.send(200, material_inventory.touch(WORK, data.get('id')))
             if path == '/api/materials/save':
                 saved = material_inventory.save(WORK, data.get('id'), data.get('profile'), data.get('revision'))
                 stock_output.note_change(WORK)

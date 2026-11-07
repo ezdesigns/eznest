@@ -112,6 +112,14 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 expect(reader.locator('#stock-panel')).to_contain_text('changed', timeout=2000)
                 self.assertEqual(material_inventory.read(server.WORK)['materials'][0]['onHandMm'], 304.8)
                 reader.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'local-sharing-stale-edit.png'))
+                writer.click('#stock-close')
+                writer.click('#shop-team-open')
+                expect(writer.locator('.team-person span')).to_have_text(['Alex', 'Sam'])
+                expect(writer.get_by_role('button', name='Remove access', exact=True)).to_have_count(0)
+                writer.set_viewport_size({'width': 390, 'height': 844})
+                expect(writer.locator('.team-person').first).to_be_in_viewport()
+                expect(writer.locator('.team-person').last).to_be_in_viewport()
+                writer.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'shop-people-mobile.png'))
             finally:
                 browser.close()
 
@@ -319,7 +327,13 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 expect(page.locator('#shop-team-dialog')).to_be_visible()
                 page.locator('#team-member-name').fill('Designer A')
                 page.locator('#team-code').fill(code)
-                page.locator('#team-join').click()
+                # Joining writes membership and refreshes the session. Allow the
+                # ten-second SQLite busy timeout plus HTTP overhead on Windows,
+                # while still requiring a successful join and the completed UI.
+                with page.expect_response('**/api/shop-members/join', timeout=15000) as joined:
+                    page.locator('#team-join').click()
+                self.assertEqual(joined.value.status, 200)
+                self.fixture.wait_ready(page)
                 expect(page.locator('#shop-team-dialog')).not_to_be_visible()
                 session = page.evaluate("fetch('/api/session').then(r=>r.json())")
                 self.assertTrue(session['authenticated'])

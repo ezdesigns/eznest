@@ -1699,7 +1699,9 @@ function renderMaterialButtons() {
   $('material').disabled = !!illustratorHandoff || !!presetEditor || busy || saving || document.body.dataset.step === 'confirm';
   for (const option of $('material').options) {
     const stock = lowStock(materialProfiles[option.value]);
-    option.textContent = (option.dataset.name || option.textContent.split(' · ')[0]) + (stock ? ' · ' + stock.split(' · ')[0] : '');
+    const p = materialProfiles[option.value];
+    const size = p ? ` · ${Number(p.roll)} ${p.unit} roll / ${Number(p.width)} ${p.unit} print` : '';
+    option.textContent = (option.dataset.name || option.textContent.split(' · ')[0]) + size + (stock ? ' · ' + stock.split(' · ')[0] : '');
   }
   const prompt = [...$('material').options].find(option => option.value === '');
   const saved = [...$('material').options].filter(option => option.value && option.value !== 'custom');
@@ -1779,6 +1781,8 @@ function chooseMaterial(id) {
   $('material').value = id;
   savePrefs({material: id, materialPicked: true});
   applyMaterial();
+  // A deliberate choice updates the shop-wide order, never stock or reservations.
+  if (shopInventory.materials.some(item => item.id === id)) mutateInventory('/api/materials/touch', {id}).catch(() => {});
   requestNest();
 }
 
@@ -2839,12 +2843,24 @@ function stockFeet(mm) { return mm == null ? 'unknown' : (mm / 304.8).toFixed(2)
 function acceptInventory(data) {
   const changed = JSON.stringify(data) !== JSON.stringify(shopInventory);
   if (changed) $('inventory-status').textContent = '';
+  const selected = $('material').value;
+  const incoming = new Set(data.materials.map(item => item.id));
+  // Once the host answers, its inventory replaces stale browser-only presets too.
+  // Keep the saved preferences intact; they are not an independent stock ledger.
+  for (const id of Object.keys(materialProfiles)) {
+    if (incoming.has(id)) continue;
+    [...$('material').options].find(option => option.value === id)?.remove();
+    delete materialProfiles[id];
+  }
   shopInventory = data;
   inventoryReady = true;
   for (const item of data.materials) {
     const values = {...item.profile, 'available-length': item.availableMm == null ? '' : String(item.availableMm / EZNQueue.unitScale(item.profile.unit))};
     registerMaterial(item.id, values);
+    const option = [...$('material').options].find(entry => entry.value === item.id);
+    $('material').insertBefore(option, $('material').querySelector('[value="custom"]'));
   }
+  $('material').value = [...$('material').options].some(option => option.value === selected) ? selected : '';
   renderMaterialButtons();
   renderInventory();
   if (changed && $('stock')?.open) inventoryPanel.render();

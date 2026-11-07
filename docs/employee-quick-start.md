@@ -24,6 +24,13 @@ about every ten seconds while visible; editing pauses the refresh. Stock use
 requires **Reserve for this job**, then **Confirm material used** after use.
 Take turns nesting: the host has one shared active job.
 
+The rolls most recently chosen by anyone in the shop appear first. Roll labels
+show both the physical width and the width you can print on. Choosing a roll
+does not deduct stock. When you load a new roll, select **Replace roll** and
+confirm its full length; pending reservations stay attached and are still held.
+Click the shop name to see everyone who has joined. Only the host can invite
+people or remove their access.
+
 ## Each job
 
 1. In Illustrator, build a PDF with layers named `print`, `thru-cut`, and

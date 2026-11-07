@@ -58,7 +58,7 @@ def digest(value):
     return hashlib.sha256(value.encode('utf-8')).hexdigest()
 
 
-def status(directory, admin=False):
+def status(directory, admin=False, include_members=False):
     if not (Path(directory) / DB).exists():
         return {'created': False}
     with database(directory) as db:
@@ -68,6 +68,8 @@ def status(directory, admin=False):
         result = {'created': True, **dict(row)}
         if admin:
             result['members'] = [dict(item) for item in db.execute('SELECT id,name,joined FROM members ORDER BY joined')]
+        elif include_members:
+            result['members'] = [dict(item) for item in db.execute('SELECT name FROM members ORDER BY joined')]
         return result
 
 
