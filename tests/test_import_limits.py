@@ -97,6 +97,8 @@ class ImportLimitTests(unittest.TestCase):
             def parse(raw, *args, **kwargs):
                 self.assertIsInstance(raw, MappedPdf)
                 self.assertEqual(raw[:], b'%PDF-small')
+                self.assertEqual(raw.seek(0, 2), 10)
+                self.assertEqual(raw.seek(0), 0)
                 target = bytearray(5); raw.seek(0)
                 self.assertEqual(raw.readinto(target), 5)
                 self.assertEqual(target, b'%PDF-')
@@ -105,6 +107,27 @@ class ImportLimitTests(unittest.TestCase):
                 pdf_io.worker(request, output, source)
             self.assertTrue(json.loads(output.read_text())['ok'])
             source.unlink()  # Mapping and its file handle were closed on Windows.
+
+    def test_mapped_worker_previews_unnamed_cuts_and_accepts_bound_approval(self):
+        from test_sticker_orders import outline_fixture
+        with tempfile.TemporaryDirectory() as folder:
+            request, output, source = [Path(folder)/name for name in ('request.json','result.json','source.pdf')]
+            original=outline_fixture();source.write_bytes(original)
+            request.write_text(json.dumps({'preserveArtwork':True}))
+            pdf_io.worker(request,output,source)
+            review=json.loads(output.read_text())
+            self.assertFalse(review['ok'])
+            self.assertEqual(review['cutReview']['count'],2)
+            self.assertTrue(review['cutReview']['pages'][0]['image'].startswith('data:image/png;base64,'))
+            approval={key:review['cutReview'][key] for key in ('id','sourceHash')}
+            approval['operation']='thru'
+            request.write_text(json.dumps({'preserveArtwork':True,'cutApproval':approval}))
+            pdf_io.worker(request,output,source)
+            accepted=json.loads(output.read_text())
+            self.assertTrue(accepted['ok'],accepted.get('error'))
+            self.assertEqual([p['cutCounts']['thru'] for p in accepted['document']['parts']],[1,1])
+            self.assertEqual(source.read_bytes(),original)
+            source.unlink()
 
     def test_insufficient_disk_space_rejects_before_reading_and_keeps_job(self):
         from collections import namedtuple

@@ -19,6 +19,12 @@ from pypdf.errors import PdfReadError
 
 class MappedPdf(mmap.mmap):
     # PDFium's file callback requires readinto as well as seek/read/tell.
+    def seek(self, offset, whence=os.SEEK_SET):
+        # mmap.seek returns None on Python 3.12. PDFium expects the file-like
+        # contract: seeking to EOF returns the file length.
+        super().seek(offset, whence)
+        return self.tell()
+
     def readinto(self, buffer):
         data = self.read(len(buffer))
         buffer[:len(data)] = data
@@ -141,4 +147,3 @@ class OperationOutput:
     def get_data(self):
         self.finish_path()
         return self.body.getvalue()
-
