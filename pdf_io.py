@@ -9,10 +9,13 @@ import hashlib
 import io
 import json
 import math
+import mmap
+from contextlib import ExitStack
 import re
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
+from pypdf.errors import LimitReachedError
 from pypdf.generic import (ArrayObject, ContentStream, DecodedStreamObject,
                            DictionaryObject, NameObject, NumberObject,
                            TextStringObject)
@@ -22,8 +25,9 @@ from shapely.strtree import STRtree
 
 MM = 25.4 / 72
 IDENTITY = (1, 0, 0, 1, 0, 0)
-from import_limits import MAX_PDF_BYTES, MAX_JSON_PDF_BYTES, MAX_PDF_BASE64_CHARS
-MAX_PAGE_OPERATIONS = 2_000_000
+from import_limits import MAX_JSON_PDF_BYTES, MAX_PDF_BASE64_CHARS
+from pdf_streaming import operations, OperationOutput, print_pdf_context, MappedPdf
+MAX_PAGE_OPERATIONS = 10_000_000
 MAX_CLIP_SEGMENTS = 20_000
 MAX_CLIP_FACES = 2_000
 
@@ -274,10 +278,10 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
         resources=DictionaryObject(resources.get_object())
         xobjects=DictionaryObject(resources['/XObject'] if '/XObject' in resources else {})
         resources[NameObject('/XObject')]=xobjects
-        state=copy.deepcopy(inherited or {'stroke':None,'fill':None,'dashed':False,'textMode':0})
+        state=dict(inherited or {'stroke':None,'fill':None,'dashed':False,'textMode':0})
         state.update(matrix=initial,clips=list(clips or []))
         layers=list(inherited_layers or []); marks=[]; stack=[]
-        paths=[]; commands=[]; points=[]; pending_clip=None; output=[]; path_output_start=0
+        paths=[]; commands=[]; points=[]; pending_clip=None; output=OperationOutput(writer)
 
         for value in resources.get('/Properties',DictionaryObject()).get_object().values():
             value=value.get_object()
@@ -291,10 +295,11 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                 paths.append((commands,points,closed))
             commands=[];points=[]
 
-        for operands,op in content.operations:
+        for operands,op,original in operations(content):
+            output.original=(operands,op,original)
             budget[0]+=1
             if budget[0]>MAX_PAGE_OPERATIONS:raise ValueError('PDF page is too complex. Export a smaller print-only file.')
-            if op==b'q':stack.append(copy.deepcopy(state))
+            if op==b'q':stack.append({**state,'clips':list(state['clips'])})
             elif op==b'Q':
                 if not stack:raise ValueError('PDF graphics state is unbalanced.')
                 state=stack.pop()
@@ -402,9 +407,9 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                     # Removed cut strokes no longer need a million inert path
                     # commands in the print Form. Keep graphics-state operators
                     # and every filled/printed path; only nonpainting paths go.
-                    output[path_output_start:]=[item for item in output[path_output_start:]
-                        if item[1] not in (b'm',b'l',b'c',b'v',b'y',b're',b'h')]
-                path_output_start=len(output)+1
+                    output.finish_path(remove=True)
+                else:
+                    output.finish_path()
             elif op==b'Do':
                 ref=xobjects.get(operands[0])
                 if ref is not None:
@@ -449,8 +454,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                 if layer_type:raise ValueError('Cut layers/colors contain text or non-vector paint. Outline the cut geometry first.')
             output.append((operands,op))
         if stack or marks:raise ValueError('PDF graphics or marked-content state is unbalanced.')
-        content.operations=output
-        return content.get_data(),resources
+        return output.get_data(),resources
 
     body,resources=visit(page.get_contents(),page['/Resources'])
     stream=DecodedStreamObject();stream.set_data(body)
@@ -485,13 +489,15 @@ def group_paths(paths):
     return [{**paths[i],'cutPaths':owned[i]} for i in outer]
 
 
+@print_pdf_context
 def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guide_approval=None, cut_approval=None):
     from cut_mapping import import_mapping,counts
     if not raw[:1024].lstrip().startswith(b'%PDF-'):raise ValueError('Use PDF, or save AI with Create PDF Compatible File enabled.')
     if not isinstance(cut_spot,str) or not cut_spot or len(cut_spot)>80 or any(ord(c)<32 for c in cut_spot):raise ValueError('Enter a valid generic cut spot name.')
     if type(bleed_mm) not in (int,float) or not math.isfinite(bleed_mm) or not 0<=bleed_mm<=25:raise ValueError('Existing artwork bleed must be between 0 and 25 mm.')
     mapping=import_mapping(cut_mapping,cut_spot)
-    reader=PdfReader(io.BytesIO(raw),strict=False)
+    if isinstance(raw, mmap.mmap): raw.seek(0)
+    reader=PdfReader(raw if isinstance(raw, mmap.mmap) else io.BytesIO(raw),strict=False)
     if reader.is_encrypted:raise ValueError('Export an unencrypted PDF for nesting.')
     if not 1<=len(reader.pages)<=25:raise ValueError('Import between 1 and 25 PDF pages at a time.')
     if '/OCProperties' in reader.root_object:
@@ -686,6 +692,7 @@ def sheet_id_operators(width_mm, height_mm, margin_mm, sheet_id):
     return f'q 0 g BT /EZSheetFont 6 Tf {x:.2f} {y:.2f} Td ({sheet_id}) Tj ET Q'
 
 
+@print_pdf_context
 def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutContour', sheet_filter=None, cut_mapping=None, sheet_id=None, preview=False):
     """Transform a piece's print art and every owned cut using one rigid matrix."""
     validate_auto_bleed_export(job, result, documents)
@@ -795,8 +802,11 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
     if preserve:identity=['preserve-artwork-v2',cut_spot,meta['cutMapping']]
     if meta['excludedGuideIds']:identity.append({'excludedGuideIds':meta['excludedGuideIds']})
     if cut_approval:identity.append({'reviewedCutOutlines':cut_approval})
-    ident=hashlib.sha256(raw+json.dumps(identity,sort_keys=True).encode()).hexdigest()
-    meta.update(id=ident,sourceHash=hashlib.sha256(raw).hexdigest())
+    digest=hashlib.sha256(raw)
+    source_hash=digest.hexdigest()
+    digest.update(json.dumps(identity,sort_keys=True).encode())
+    ident=digest.hexdigest()
+    meta.update(id=ident,sourceHash=source_hash)
     # Preview in a separate process through the import worker. PDFium is not thread-safe.
     import pypdfium2 as pdfium
     preview_parts=[];preview_sheets=[];placements=[];preview_items=[];offset=0
@@ -898,20 +908,20 @@ def output_check(job, folder):
 def worker(request, output, source_file=None):
     request=Path(request); output=Path(output)
     print_copy = None
+    sources = ExitStack()
     try:
         data=json.loads(request.read_text(encoding='utf-8'))
         if source_file is not None:
             source = Path(source_file)
-            if source.stat().st_size > MAX_PDF_BYTES:
-                raise ValueError('PDF/AI files are limited to 2 GB.')
             if source.stat().st_size > 32_000_000:
                 from pdf_compact import compact_pdf
                 print_copy = source.with_name(source.stem + '-print.pdf')
                 compact_pdf(source, print_copy)
                 source = print_copy
-            raw = source.read_bytes()
-            if len(raw) > MAX_PDF_BYTES:
-                raise ValueError('PDF/AI files are limited to 2 GB.')
+            if not source.stat().st_size:
+                raise ValueError('The selected file is empty.')
+            stream = sources.enter_context(source.open('rb'))
+            raw = sources.enter_context(MappedPdf(stream.fileno(), 0, access=mmap.ACCESS_READ))
         else:
             content=data['content']
             if not isinstance(content,str) or len(content)>MAX_PDF_BASE64_CHARS:
@@ -924,9 +934,12 @@ def worker(request, output, source_file=None):
         result={'ok':False,'error':str(error),'cutReview':error.review}
     except GuideReviewRequired as error:
         result={'ok':False,'error':str(error),'guideReview':error.review}
+    except (MemoryError, LimitReachedError):
+        result={'ok':False,'error':'This artwork needs more processing memory than is available. Close other large jobs or use a print-only PDF; the original file has not changed.'}
     except Exception as error:
         result={'ok':False,'error':str(error)}
     finally:
+        sources.close()
         if print_copy is not None:
             try:
                 print_copy.unlink(missing_ok=True)

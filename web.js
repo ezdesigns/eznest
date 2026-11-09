@@ -2275,9 +2275,10 @@ async function importPdf(file, operation) {
 async function readEntry(file) {
   const pdf = /\.(pdf|ai)$/i.test(file.name);
   if (!pdf && !/\.svg$/i.test(file.name)) throw Error(file.name + ' is not SVG, PDF, or PDF-compatible AI.');
-  if (file.size > (pdf ? 2_000_000_000 : 8_000_000)) throw Error(file.name + ' is over the ' + (pdf ? '2 GB' : '8 MB') + ' limit.');
+  if (!pdf && file.size > 8_000_000) throw Error(file.name + ' is too large for the SVG reader. Export it as a PDF to import large artwork.');
   let data, revision, unresolvedCut = false;
   if (pdf) {
+    if (file.size > 32_000_000) status('Preparing large artwork… This can take a few minutes.');
     const chosen = $('generic-cut').value;
     try {
       data = await importPdf(file, chosen);

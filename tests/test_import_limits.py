@@ -43,7 +43,7 @@ class ImportLimitTests(unittest.TestCase):
         headers = {'X-EZ-Token':server.TOKEN, 'Content-Length':'100'}
         for change, status in [({'X-EZ-Token':'wrong'},403),
                                ({'Origin':'https://untrusted.invalid'},403),
-                               ({'Content-Length':str(MAX_PDF_BYTES+1)},400)]:
+                               ({'Content-Length':'-1'},400)]:
             with self.subTest(change=change), patch.object(handler, 'import_document') as parse:
                 handler.headers = {**headers, **change}
                 handler.rfile = None  # Any attempt to read the body would fail.
@@ -88,15 +88,44 @@ class ImportLimitTests(unittest.TestCase):
         self.assertEqual(server.STATE, before)
         self.assertFalse(server.DOCUMENT_LOCK.locked())
 
-    def test_file_worker_rejects_over_limit_before_reading(self):
+    def test_file_worker_uses_a_seekable_mapping_not_a_whole_file_copy(self):
+        from pdf_streaming import MappedPdf
         with tempfile.TemporaryDirectory() as folder:
             request, output, source = [Path(folder)/name for name in ('request.json','result.json','source.pdf')]
             request.write_text('{}')
-            source.write_bytes(b'x' * 101)
-            with patch.object(pdf_io, 'MAX_PDF_BYTES', 100), patch.object(pdf_io, 'import_to_store') as parse:
+            source.write_bytes(b'%PDF-small')
+            def parse(raw, *args, **kwargs):
+                self.assertIsInstance(raw, MappedPdf)
+                self.assertEqual(raw[:], b'%PDF-small')
+                target = bytearray(5); raw.seek(0)
+                self.assertEqual(raw.readinto(target), 5)
+                self.assertEqual(target, b'%PDF-')
+                return {'parts':[]}
+            with patch.object(pdf_io, 'import_to_store', side_effect=parse), patch.object(Path, 'read_bytes', side_effect=AssertionError('whole-file read')):
                 pdf_io.worker(request, output, source)
-            self.assertIn('2 GB', json.loads(output.read_text())['error'])
-            parse.assert_not_called()
+            self.assertTrue(json.loads(output.read_text())['ok'])
+            source.unlink()  # Mapping and its file handle were closed on Windows.
+
+    def test_insufficient_disk_space_rejects_before_reading_and_keeps_job(self):
+        from collections import namedtuple
+        usage=namedtuple('usage','total used free')(1000,900,100)
+        handler=server.Handler.__new__(server.Handler);handler.rfile=None
+        before=dict(server.STATE)
+        with tempfile.TemporaryDirectory() as folder, patch.object(server,'WORK',Path(folder)), patch.object(server.shutil,'disk_usage',return_value=usage):
+            with self.assertRaisesRegex(ValueError,'free disk space'):
+                handler.import_document({},200)
+            self.assertEqual(list(Path(folder).iterdir()),[])
+        self.assertEqual(server.STATE,before)
+        self.assertFalse(server.DOCUMENT_LOCK.locked())
+
+    def test_large_binary_upload_is_admitted_without_fixed_size_limit(self):
+        handler=server.Handler.__new__(server.Handler)
+        handler.path='/api/document/import-file';handler.allowed=lambda:True
+        handler.headers={'X-EZ-Token':server.TOKEN,'Content-Length':'3000000000'}
+        handler.send=lambda status,data:(status,data)
+        with patch.object(handler,'import_document',return_value='accepted') as parse:
+            self.assertEqual(handler.handle_post(),'accepted')
+        parse.assert_called_once_with({},upload_size=3000000000)
 
     def test_large_request_allowance_is_only_for_imports(self):
         self.assertGreater(MAX_IMPORT_REQUEST_BYTES, 4 * ((MAX_JSON_PDF_BYTES + 2) // 3))

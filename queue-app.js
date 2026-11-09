@@ -204,7 +204,7 @@ async function importFiles(files,role='required'){
   try{for(const file of files){
     if(!/\.(svg|pdf|ai)$/i.test(file.name)){unsupported++;continue;}
     const pdf=/\.(pdf|ai)$/i.test(file.name);
-    if(file.size>(pdf?2_000_000_000:8_000_000)){failures.push(file.name+' exceeds the '+(pdf?'2 GB':'8 MB')+' limit.');continue;}
+    if(!pdf&&file.size>8_000_000){failures.push(file.name+' is too large for the SVG reader. Export it as a PDF to import large artwork.');continue;}
     status('Importing '+file.name+'…');
     try{if(pdf?await importDocument(file,role,documentOptions):await importText(await file.text(),file.name,{role}))added++;}catch(e){failures.push(file.name+': '+e.message);}
   }}finally{busy=false;importing=false;renderQueue();}

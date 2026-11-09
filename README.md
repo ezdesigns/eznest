@@ -180,7 +180,7 @@ Connecting to OUTPUT is optional. First run opens create-a-shop or join-with-an-
 
 ## Limits
 
-One material and up to 800 pieces. PDF import is 2 GB and 25 pages. The page has Material and stock for the roll on this host. There is no separate order or parts inventory. No EPS, no DeviceN cut colors, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
+One material and up to 800 pieces. PDF/AI uploads stream to disk without a fixed file-size cap; available disk, processing memory, and the 25-page limit still apply. The page has Material and stock for the roll on this host. There is no separate order or parts inventory. No EPS, no DeviceN cut colors, and no direct printer or cutter control. Nesting is heuristic. Read [supported files](docs/PRODUCTION-FILES.md).
 
 Not in v1: job history, order intake, and cost tracking as a product.
 

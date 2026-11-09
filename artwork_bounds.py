@@ -5,6 +5,7 @@ used only to keep neighbouring artwork apart and reserve nesting space. Paint
 that connects multiple cut pieces keeps those pieces together as one unit.
 """
 import ctypes
+from collections import OrderedDict
 import math
 
 from shapely.affinity import affine_transform
@@ -83,10 +84,13 @@ def path_parts(count, segment_at, tolerance):
     return paths
 
 
-def paint_envelopes(page, image_bounds=None):
+def paint_envelopes(page, image_bounds=None, cuts=None):
     import pypdfium2.raw as api
     from pdf_io import matrix
-    budget = [0]
+    budget = [0, 0]
+    cuts = cuts or []
+    cut_tree = STRtree(cuts)
+    clip_cache = OrderedDict()
     crop = box(*page.get_bbox())
     image_bounds = image_bounds or []
     image_tree = STRtree([box(*item['box']) for item in image_bounds])
@@ -96,7 +100,7 @@ def paint_envelopes(page, image_bounds=None):
             raise ValueError('Artwork forms are nested too deeply.')
         for obj in objects:
             budget[0] += 1
-            if budget[0] > 100000:
+            if budget[0] > 1_000_000:
                 raise ValueError('Too many artwork objects to separate safely.')
             local = obj.get_matrix().get() if obj.type in (api.FPDF_PAGEOBJ_PATH, api.FPDF_PAGEOBJ_FORM) else IDENTITY
             total = matrix(parent, local)
@@ -106,11 +110,59 @@ def paint_envelopes(page, image_bounds=None):
             clipping = inherited
             clip = api.FPDFPageObj_GetClipPath(obj)
             if clip:
+                # Illustrator often attaches the same curved clipping boundary
+                # to every tiny fill. PDFium gives each object a different handle,
+                # so key by complete segment data, not a pointer or bounding box.
+                clip_key = []
                 for index in range(max(0, api.FPDFClipPath_CountPaths(clip))):
-                    paths = path_parts(api.FPDFClipPath_CountPathSegments(clip, index),
-                                       lambda k: api.FPDFClipPath_GetPathSegment(clip, index, k), tolerance)
-                    polygons = [enclosing_polygon(p) for p in paths if len(p) >= 3]
-                    clipping = clipping.intersection(transformed(unary_union(polygons), parent).buffer(PAD))
+                    count = api.FPDFClipPath_CountPathSegments(clip,index)
+                    if not 0 <= count <= 100000:
+                        raise ValueError('Artwork path is too complex to separate safely.')
+                    segments=[]
+                    for k in range(count):
+                        segment=api.FPDFClipPath_GetPathSegment(clip,index,k)
+                        x,y=ctypes.c_float(),ctypes.c_float()
+                        if not segment or not api.FPDFPathSegment_GetPoint(segment,x,y):
+                            raise ValueError('An artwork path could not be read.')
+                        segments.append((api.FPDFPathSegment_GetType(segment),bool(api.FPDFPathSegment_GetClose(segment)),x.value,y.value))
+                    clip_key.append(tuple(segments))
+                key=(tuple(clip_key),tuple(parent),tolerance,inherited.wkb)
+                if key in clip_cache:
+                    clipping=clip_cache[key];clip_cache.move_to_end(key)
+                else:
+                    for index in range(len(clip_key)):
+                        paths = path_parts(len(clip_key[index]),
+                                           lambda k: api.FPDFClipPath_GetPathSegment(clip, index, k), tolerance)
+                        polygons = [enclosing_polygon(p) for p in paths if len(p) >= 3]
+                        clipping = clipping.intersection(transformed(unary_union(polygons), parent).buffer(PAD))
+                    clip_cache[key]=clipping
+                    if len(clip_cache)>256:clip_cache.popitem(last=False)
+            # Prove that a fill is fully clipped away or lies inside an existing
+            # cut before flattening its curves. Illustrator patterns often retain
+            # thousands of invisible shapes outside each piece's clipping mask.
+            if obj.type == api.FPDF_PAGEOBJ_PATH:
+                fill, stroke = ctypes.c_int(), ctypes.c_int()
+                if not api.FPDFPath_GetDrawMode(obj, fill, stroke):
+                    raise ValueError('Artwork paint style could not be read.')
+                if fill.value and not stroke.value:
+                    count = api.FPDFPath_CountSegments(obj)
+                    if not 0 <= count <= 100000:
+                        raise ValueError('Artwork path is too complex to separate safely.')
+                    xs, ys = [], []
+                    for index in range(count):
+                        segment = api.FPDFPath_GetPathSegment(obj, index)
+                        x, y = ctypes.c_float(), ctypes.c_float()
+                        if not segment or not api.FPDFPathSegment_GetPoint(segment, x, y):
+                            raise ValueError('An artwork path could not be read.')
+                        xs.append(x.value); ys.append(y.value)
+                    if xs:
+                        # Beziers lie within the convex hull of all control points.
+                        enclosure = transformed(box(min(xs),min(ys),max(xs),max(ys)), total).buffer(PAD).intersection(clipping)
+                        if enclosure.is_empty or any(cuts[i].covers(enclosure) for i in cut_tree.query(enclosure)):
+                            continue
+            budget[1] += 1
+            if budget[1] > 100000:
+                raise ValueError('Too many artwork outlines outside cuts to separate safely.')
             if obj.type == api.FPDF_PAGEOBJ_FORM:
                 yield from visit(page.get_objects(form=obj, max_depth=1), total, clipping, depth+1)
                 continue
@@ -159,7 +211,7 @@ def preserve_artwork(clean, meta):
             try:
                 source = [p for p in meta['pieces'] if p['page'] == page_index]
                 cuts = [Polygon(p['pdfPoints']) for p in source]
-                paint = paint_envelopes(page, [item for item in meta.get('imagePaintBounds',[]) if item['page']==page_index])
+                paint = paint_envelopes(page, [item for item in meta.get('imagePaintBounds',[]) if item['page']==page_index], cuts)
                 # Paint already includes its first enclosure guard. Preserve the
                 # extra export guard too: PDF edge antialiasing can reach beyond
                 # a flattened paint boundary. Only blank guard overlap may split.
