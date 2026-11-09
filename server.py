@@ -11,6 +11,7 @@ import time
 import uuid
 import copy
 import socket
+import shutil
 import sqlite3
 import ssl
 import workload
@@ -747,6 +748,9 @@ class Handler(BaseHTTPRequestHandler):
             if upload_size is not None:
                 if upload_size == 0:
                     raise ValueError('The selected file is empty.')
+                # Allow the upload plus a working copy, leaving space for the shop.
+                if upload_size * 2 + 256_000_000 > shutil.disk_usage(WORK).free:
+                    raise ValueError('The shop PC needs more free disk space to prepare this file. Free some space and try again.')
                 # Read bounded chunks straight to disk. No base64 or full-file
                 # allocation in the HTTP server; the isolated worker parses it.
                 remaining = upload_size
@@ -875,7 +879,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {'error': 'Invalid session'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
-            if not 0 <= size <= request_limit(path):
+            limit = request_limit(path)
+            if size < 0 or (limit is not None and size > limit):
                 raise ValueError('Job is too large.')
             if path == '/api/document/import-file':
                 header = self.headers.get('X-EZ-Import', '{}')

@@ -154,6 +154,9 @@ class WebMvpTests(unittest.TestCase):
             try:
                 uploads = []
                 page.on('request', lambda r: uploads.append(r) if '/api/document/import' in r.url else None)
+                # Browser admission must not reject files above the former 2 GB cap.
+                # Keep the real transport fixture smaller for repeatable CI.
+                page.evaluate("Object.defineProperty(File.prototype, 'size', {get: () => 3_000_000_000})")
                 page.set_input_files('#file', str(path))
                 page.wait_for_function('() => !importing && kits.length === 1', timeout=120000)
                 self.assertEqual(len(uploads), 1)

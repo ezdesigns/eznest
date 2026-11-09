@@ -5,12 +5,18 @@ may be omitted only when its entire transformed paint box misses the export
 clip's bounding box. Unknown extents stay in the output.
 """
 import math
+
+# Per-piece pruning expands PDF tokens into Python objects. Large vector pages
+# instead keep one shared, unchanged page Form with each placement clipping it.
+MAX_PRUNED_PAGE_BYTES = 2_000_000
 from pypdf.generic import ContentStream, DictionaryObject, NameObject
 
 
 def invocation_bounds(page, reader):
     from pdf_io import IDENTITY, matrix, point
     content = ContentStream(page.get_contents(), reader)
+    if len(content.get_data()) > MAX_PRUNED_PAGE_BYTES:
+        return None
     resources = page['/Resources']
     xobjects = resources.get('/XObject', DictionaryObject()).get_object()
     current = IDENTITY
@@ -102,6 +108,16 @@ def remove_empty_groups(operations):
 
 def piece_form(page, writer, analyzed, clip):
     from pdf_io import form_from_page
+    if analyzed is None:
+        cache = getattr(writer, '_eznest_shared_page_forms', None)
+        if cache is None:
+            cache = writer._eznest_shared_page_forms = {}
+        # The readers/pages stay alive for this entire export. Share the stream
+        # across pieces and sheets; do not duplicate megabytes per placement.
+        key = id(page)
+        if key not in cache:
+            cache[key] = form_from_page(page, writer)
+        return cache[key]
     content, names = clipped_commands(*analyzed, clip)
     resources = DictionaryObject(page['/Resources'])
     if '/XObject' in resources:

@@ -1,6 +1,6 @@
-"""Bound local PDF uploads, including their base64 JSON transport overhead."""
+"""Bound in-memory JSON transport; binary PDF uploads use available disk."""
 
-MAX_PDF_BYTES = 2_000_000_000
+MAX_PDF_BYTES = None  # Streamed uploads have no fixed file-size ceiling.
 MAX_JSON_PDF_BYTES = 256_000_000
 MAX_PDF_BASE64_CHARS = 4 * ((MAX_JSON_PDF_BYTES + 2) // 3)
 MAX_IMPORT_REQUEST_BYTES = MAX_PDF_BASE64_CHARS + 1_000_000

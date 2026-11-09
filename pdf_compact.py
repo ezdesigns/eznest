@@ -4,6 +4,7 @@ Reads a seekable file rather than first copying the entire upload into RAM.
 Only identical encoded image streams AND their complete dictionaries/dependencies
 are shared. No downsampling, recoloring, resizing or path edits occur here.
 """
+from pdf_streaming import print_pdf_context
 import hashlib
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject, DictionaryObject, IndirectObject, StreamObject, NameObject
 
 
+@print_pdf_context
 def compact_pdf(source, destination):
     source, destination = Path(source), Path(destination)
     if source.resolve() == destination.resolve():
