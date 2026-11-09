@@ -675,9 +675,14 @@ def regmark_operators(width_mm, height_mm, margin_mm):
 
 
 def form_from_page(page, writer, content=None, resources=None):
-    form = DecodedStreamObject(); form.set_data(page.get_contents().get_data() if content is None else content)
+    from pdf_shading import solid_shadings, compatible_forms
+    bbox = page.get('/CropBox', page.mediabox)
+    content, resources = solid_shadings(page.get_contents().get_data() if content is None else content,
+                                        page['/Resources'] if resources is None else resources, bbox)
+    form = DecodedStreamObject(); form.set_data(content)
     form.update({NameObject('/Type'):NameObject('/XObject'),NameObject('/Subtype'):NameObject('/Form'),
-                 NameObject('/BBox'):page.cropbox.clone(writer),NameObject('/Resources'):(page['/Resources'] if resources is None else resources).clone(writer)})
+                 NameObject('/BBox'):bbox.clone(writer),NameObject('/Resources'):resources.clone(writer)})
+    compatible_forms(form['/Resources'], writer)
     if '/Group' in page: form[NameObject('/Group')]=page['/Group'].clone(writer)
     return writer._add_object(form.flate_encode())
 
