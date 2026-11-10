@@ -102,6 +102,42 @@ class MixedCutsTests(unittest.TestCase):
         self.assertEqual(operations[text_index+1],([0],b'Tr'))
         self.assertEqual(operations[text_index+3][1],b'Tj')
 
+    def test_detached_registration_label_does_not_count_as_print_artwork(self):
+        original = mixed_fixture(registration=False)
+
+        def with_label(registration):
+            writer = PdfWriter(clone_from=io.BytesIO(original))
+            page = writer.pages[0]
+            font = DictionaryObject({
+                NameObject('/Type'): NameObject('/Font'),
+                NameObject('/Subtype'): NameObject('/Type1'),
+                NameObject('/BaseFont'): NameObject('/Helvetica'),
+            })
+            page['/Resources'][NameObject('/Font')] = DictionaryObject({
+                NameObject('/F1'): writer._add_object(font),
+            })
+            label = b'BT /F1 12 Tf 250 220 Td (Registration label) Tj ET'
+            if registration:
+                label = b'/OC /Marks BDC ' + label + b' EMC'
+            stream = DecodedStreamObject()
+            stream.set_data(page.get_contents().get_data() + b'\n' + label)
+            page[NameObject('/Contents')] = writer._add_object(stream)
+            out = io.BytesIO()
+            writer.write(out)
+            return out.getvalue()
+
+        with tempfile.TemporaryDirectory() as directory:
+            baseline = import_to_store(original, directory, cut_mapping=defaults(), preserve=True)
+            imported = import_to_store(with_label(True), directory, cut_mapping=defaults(), preserve=True)
+            self.assertEqual(imported['registrationPaintRemoved'], 1)
+            self.assertEqual(imported['sourcePieceCount'], 2)
+            self.assertEqual([p['points'] for p in imported['parts']],
+                             [p['points'] for p in baseline['parts']])
+            self.assertEqual([p['cutCounts'] for p in imported['parts']],
+                             [p['cutCounts'] for p in baseline['parts']])
+            with self.assertRaisesRegex(ValueError, 'separate artwork group has no cut boundary'):
+                import_to_store(with_label(False), directory, cut_mapping=defaults(), preserve=True)
+
     def test_device_n_dashed_and_clipped_cuts_reject(self):
         for extra in ['[2 2] 0 d','0 0 60 60 re W n']:
             with self.subTest(extra=extra),self.assertRaisesRegex(ValueError,'Review possible guides|clipped'):

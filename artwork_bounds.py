@@ -102,6 +102,10 @@ def paint_envelopes(page, image_bounds=None, cuts=None):
             budget[0] += 1
             if budget[0] > 1_000_000:
                 raise ValueError('Too many artwork objects to separate safely.')
+            # Registration text retains its advance but paints nothing in invisible mode.
+            if (obj.type == api.FPDF_PAGEOBJ_TEXT and
+                    api.FPDFTextObj_GetTextRenderMode(obj) == api.FPDF_TEXTRENDERMODE_INVISIBLE):
+                continue
             local = obj.get_matrix().get() if obj.type in (api.FPDF_PAGEOBJ_PATH, api.FPDF_PAGEOBJ_FORM) else IDENTITY
             total = matrix(parent, local)
             # Frobenius norm bounds amplification under nonuniform transforms.
