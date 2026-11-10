@@ -10,6 +10,7 @@ from shapely.geometry import box
 from artwork_bounds import preserve_artwork
 from pdf_io import export_pdf, read_document
 from pdf_piece_objects import analyze_objects, select_objects
+from pdf_export_forms import invocation_bounds, piece_form
 from test_pdf_production import pdf_fixture
 from test_pdf_export_forms import rendered
 
@@ -44,6 +45,17 @@ class PieceObjectsTests(unittest.TestCase):
         self.assertEqual(counts['pieceObjects'], 1)
         stream = ContentStream(None, None); stream.set_data(content)
         self.assertEqual(sum(op == b'W' for _, op in stream.operations), 1)
+
+    def test_owned_piece_has_local_bounds_and_keeps_source_crop(self):
+        reader, page = page_with_content(b'1 0 0 rg 10 10 20 20 re f 0 0 1 rg 100 10 20 20 re f')
+        original = list(page.cropbox)
+        selected, _ = select_objects(analyze_objects(page, reader), box(-10, -10, 50, 50))
+        writer = PdfWriter()
+        form = piece_form(page, writer, invocation_bounds(page, reader), (-10, -10, 50, 50), selected).get_object()
+        self.assertEqual(list(form['/BBox']), [0, 0, 50, 50])
+        self.assertEqual(list(page.cropbox), original)
+        fallback = piece_form(page, writer, invocation_bounds(page, reader), (-10, -10, 50, 50)).get_object()
+        self.assertEqual(list(fallback['/BBox']), original)
 
     def test_clipping_text_and_oversized_stream_use_existing_export(self):
         reader, page = page_with_content(b'BT 7 Tr ET')
@@ -95,6 +107,8 @@ class PieceObjectsTests(unittest.TestCase):
         for ref in page['/Resources']['/XObject'].values():
             ops = ContentStream(ref.get_object(), page.pdf).operations
             self.assertEqual(sum(op in (b'f', b'f*') for _,op in ops), 1)
+            bounds = ref.get_object()['/BBox']
+            self.assertLess(float(bounds[2])-float(bounds[0]), 200)
         self.assertEqual(clean, documents['doc'][0])
 
 

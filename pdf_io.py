@@ -18,7 +18,7 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.errors import LimitReachedError, PdfReadError
 from pypdf.generic import (ArrayObject, ContentStream, DecodedStreamObject,
                            DictionaryObject, NameObject, NullObject, NumberObject,
-                           TextStringObject)
+                           TextStringObject, RectangleObject)
 from shapely.geometry import Polygon, box, MultiPoint
 from shapely.affinity import rotate, translate
 from shapely.strtree import STRtree
@@ -789,9 +789,14 @@ def regmark_operators(width_mm, height_mm, margin_mm):
     return ' '.join(parts) + ' S'
 
 
-def form_from_page(page, writer, content=None, resources=None):
+def form_from_page(page, writer, content=None, resources=None, bounds=None):
     from pdf_shading import solid_shadings, compatible_forms
     bbox = page.get('/CropBox', page.mediabox)
+    if bounds is not None:
+        # Owned artwork has already been proved to fit inside these bounds.
+        # Retain the source page crop while avoiding a whole-page selection box.
+        bbox = RectangleObject([max(float(bbox[0]), bounds[0]), max(float(bbox[1]), bounds[1]),
+                                min(float(bbox[2]), bounds[2]), min(float(bbox[3]), bounds[3])])
     content, resources = solid_shadings(page.get_contents().get_data() if content is None else content,
                                         page['/Resources'] if resources is None else resources, bbox)
     form = DecodedStreamObject(); form.set_data(content)

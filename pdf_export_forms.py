@@ -147,7 +147,8 @@ def piece_form(page, writer, analyzed, clip, selected=None):
                     names = set(original)
                     break
         resources[NameObject('/XObject')] = DictionaryObject({name: original.raw_get(name) for name in names})
-    return form_from_page(page, writer, content=content, resources=resources)
+    return form_from_page(page, writer, content=content, resources=resources,
+                          bounds=clip if selected is not None else None)
 
 
 def clip_bounds(commands):
