@@ -10,7 +10,7 @@ from collections import Counter
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import DictionaryObject, NameObject, NumberObject, DecodedStreamObject
+from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, DecodedStreamObject
 from cut_mapping import defaults
 from engine import validate_job, validate_result
 from nesting import run
@@ -28,6 +28,18 @@ def outline_fixture(extra=''):
     out = io.BytesIO(); writer.write(out); return out.getvalue()
 
 
+def mixed_outline_fixture(guides=False):
+    from test_mixed_cuts import mixed_fixture
+    extra = 'q 0 G 30 35 8 8 re S Q '
+    if guides:
+        extra += 'q /Thru CS 1 SCN [12] 0 d 5 55 m 140 55 l S Q'
+    writer = PdfWriter(clone_from=io.BytesIO(mixed_fixture(generic=False, extra=extra)))
+    writer.add_page(PdfReader(io.BytesIO(outline_fixture())).pages[0])
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
 def pixels(raw):
     import pypdfium2 as pdfium
     with pdfium.PdfDocument(raw) as doc:
@@ -37,6 +49,52 @@ def pixels(raw):
 
 
 class StickerOrderTests(unittest.TestCase):
+    def test_unnamed_review_is_scoped_to_pages_without_named_cuts(self):
+        raw = mixed_outline_fixture()
+        with self.assertRaises(CutReviewRequired) as raised:
+            read_document(raw)
+        review = raised.exception.review
+        self.assertEqual([page['page'] for page in review['pages']], [2])
+        self.assertEqual(review['count'], 2)
+        approval = {'id': review['id'], 'sourceHash': review['sourceHash'], 'operation': 'kiss'}
+        for pages in ([1], [1, 2], [2, 2], [True], []):
+            with self.subTest(pages=pages), self.assertRaisesRegex(ValueError, 'does not match'):
+                read_document(raw, cut_approval={**approval, 'pages': pages})
+        with self.assertRaisesRegex(ValueError, 'does not match'):
+            read_document(raw, cut_approval=approval)
+
+        clean, meta = read_document(raw, cut_approval={**approval, 'pages': [2]})
+        counts = [(piece['page'], piece['cutCounts']) for piece in meta['pieces']]
+        self.assertEqual(counts, [(0, {'thru': 1, 'kiss': 2, 'contour': 0})] * 2 +
+                                 [(1, {'thru': 0, 'kiss': 1, 'contour': 0})] * 2)
+        # The closed ordinary ink strokes on the named page must stay printed.
+        named_ink = PdfReader(io.BytesIO(clean)).pages[0].get_contents().operations
+        self.assertEqual(sum(operator == b'S' for _, operator in named_ink), 2)
+
+    def test_mixed_approval_rejects_a_different_generic_cut_spot(self):
+        writer = PdfWriter(clone_from=io.BytesIO(mixed_outline_fixture()))
+        page = writer.pages[0]
+        spaces = page['/Resources']['/ColorSpace']
+        brand = spaces['/Brand']
+        spaces[NameObject('/Decoration')] = ArrayObject([brand[0], NameObject('/DecorationInk'), *brand[2:]])
+        stream = DecodedStreamObject()
+        stream.set_data(page.get_contents().get_data().replace(b'0 G 30 35', b'/Decoration CS 1 SCN 30 35'))
+        page[NameObject('/Contents')] = writer._add_object(stream)
+        out = io.BytesIO()
+        writer.write(out)
+        raw = out.getvalue()
+        mapping = defaults()
+        mapping['genericOperation'] = 'contour'
+
+        with self.assertRaises(CutReviewRequired) as raised:
+            read_document(raw, cut_mapping=mapping)
+        review = raised.exception.review
+        approval = {'id': review['id'], 'sourceHash': review['sourceHash'], 'operation': 'kiss', 'pages': [2]}
+        _, meta = read_document(raw, cut_mapping=mapping, cut_approval=approval)
+        self.assertEqual([piece['cutCounts']['contour'] for piece in meta['pieces']], [0, 0, 0, 0])
+        with self.assertRaisesRegex(ValueError, 'does not match'):
+            read_document(raw, cut_spot='DecorationInk', cut_mapping=mapping, cut_approval=approval)
+
     def test_continuous_thousand_uses_one_page_and_best_row_orientation(self):
         job={'settings':{'width':1308.1,'sheetLength':5000,'continuous':True,'maxLength':None,
                          'margin':16.51,'gap':3.048,'seconds':1,'rotations':[0,90,180,270]},
@@ -136,6 +194,8 @@ class StickerOrderTests(unittest.TestCase):
             self.assertEqual([p['cutCounts']['kiss'] for p in parsed['parts']], [1, 1])
             meta=json.loads((Path(directory)/(parsed['documentId']+'.json')).read_text())
             self.assertEqual(meta['reviewedCutOutlines'], approval)
+            scoped = import_to_store(raw, directory, preserve=True, cut_approval={**approval, 'pages': [1]})
+            self.assertEqual(scoped['documentId'], parsed['documentId'])
             # Artwork is wider than its cut; the existing outside ink remains.
             self.assertGreater(meta['pieces'][0]['bounds'][2]-meta['pieces'][0]['bounds'][0],54)
             clean,_=read_document(raw, cut_approval=approval)

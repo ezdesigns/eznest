@@ -2192,7 +2192,8 @@ function reviewCutOutlines(file, review) {
       dialog.removeEventListener('cancel', cancel); choice.onchange = null;
       $('cut-review-cancel').onclick = null; $('cut-review-accept').onclick = null;
       dialog.close(); pages.replaceChildren();
-      resolve(accepted ? {id:review.id, sourceHash:review.sourceHash, operation} : null);
+      resolve(accepted ? {id:review.id, sourceHash:review.sourceHash, operation,
+        pages:review.pages.map(preview => preview.page)} : null);
     };
     const cancel = event => { event.preventDefault(); finish(false); };
     choice.onchange = () => { $('cut-review-accept').disabled = !choice.value; pages.dataset.operation = choice.value; };
@@ -2256,19 +2257,21 @@ async function importPdf(file, operation) {
     {source: 'layer', match: 'exact', name: 'kiss cut', operation: 'kiss'});
   mapping.genericOperation = operation;
   const request = {preserveArtwork: true, cutSpot: 'CutContour', cutMapping: EZNCuts.validate(mapping)};
-  try { return await api('/api/document/import-file', request, file); }
-  catch (error) {
-    if (error.cutReview) {
-      const approval = await reviewCutOutlines(file, error.cutReview);
-      if (!approval) { const cancelled = Error('File not added. Cut review cancelled.'); cancelled.importCancelled = true; throw cancelled; }
-      status('Preparing the reviewed stickers…');
-      return api('/api/document/import-file', {...request, cutApproval: approval}, file);
+  for (;;) {
+    try { return await api('/api/document/import-file', request, file); }
+    catch (error) {
+      if (error.cutReview && !request.cutApproval) {
+        const approval = await reviewCutOutlines(file, error.cutReview);
+        if (!approval) { const cancelled = Error('File not added. Cut review cancelled.'); cancelled.importCancelled = true; throw cancelled; }
+        request.cutApproval = approval;
+        status('Preparing the reviewed stickers…');
+      } else if (error.guideReview && !request.guideApproval) {
+        const approval = await reviewGuides(file, error.guideReview);
+        if (!approval) { const cancelled = Error('File not added. Guide review cancelled.'); cancelled.importCancelled = true; throw cancelled; }
+        request.guideApproval = approval;
+        status('Reading file with the reviewed guides excluded…');
+      } else throw error;
     }
-    if (!error.guideReview) throw error;
-    const approval = await reviewGuides(file, error.guideReview);
-    if (!approval) { const cancelled = Error('File not added. Guide review cancelled.'); cancelled.importCancelled = true; throw cancelled; }
-    status('Reading file with the reviewed guides excluded…');
-    return api('/api/document/import-file', {...request, guideApproval: approval}, file);
   }
 }
 
