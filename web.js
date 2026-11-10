@@ -56,9 +56,9 @@ function savePrefs(patch) {
 function installSettingsHelp() {
   const help = {
     'nesting-effort': ['Nesting effort', 'Quick finds a layout sooner. Best fit spends longer trying arrangements and may use less material. These are search budgets; preparation and checking take extra time. Your artwork, bleed, spacing and allowed turns stay the same. Try tighter fit keeps your best valid result.'],
-    'cut-preset': ['Names your cutter uses', 'Pick the naming style your print software expects. The fields below show exactly what will be saved. This does not change the artwork or blade depth.'],
-    'thru-name': ['Through-cut name', 'The name your print software uses for a full cut. It must match your cutter setup. Changing this name does not set the blade depth.'],
-    'kiss-name': ['Kiss-cut name', 'The name your print software uses to cut the sticker and leave the backing. It must match your cutter setup.'],
+    'cut-preset': ['Names for unnamed cuts', 'PDF and AI cuts keep their original spot names and colors. These defaults are used when a cut has no spot name.'],
+    'thru-name': ['Through-cut default', 'Used when a through-cut has no spot name. Existing PDF and AI spot names and colors are preserved. This does not set blade depth.'],
+    'kiss-name': ['Kiss-cut default', 'Used when a kiss-cut has no spot name. Existing PDF and AI spot names and colors are preserved. This does not set blade depth.'],
     'generic-cut': ['If a cut type is missing', 'Choose how to treat lines named only CutContour in the next file you add. Ask me keeps you in control when the cut type is unclear.'],
     'hot-folder': ['Default print folder', 'The folder selected automatically when you save. Choose My computer to save somewhere else. A folder watched by your print software may start processing saved files.'],
     'printer': ['Printer label (optional)', 'A label for your shop setup. Changing it does not connect a printer or change print quality.'],
@@ -916,7 +916,8 @@ function documentPreview(state) {
       outline.setAttribute('d', cut.d);
       outline.setAttribute('class', 'preview-cut');
       outline.dataset.operation = cut.operation;
-      stroke(outline, cut.operation === 'kiss' ? '#E6007E' : '#0000FF', cut.operation === 'kiss');
+      const sourceColor = /^#[0-9a-f]{6}$/i.test(cut.color || '') ? cut.color : (cut.operation === 'kiss' ? '#E6007E' : '#0000FF');
+      stroke(outline, sourceColor, cut.operation === 'kiss');
       outline.setAttribute('stroke-width', '1');
       group.append(outline);
     }
