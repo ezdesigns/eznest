@@ -860,7 +860,7 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
         groups[operation]=writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject(config['layer'])}))
         tint=DictionaryObject({NameObject('/FunctionType'):NumberObject(2),NameObject('/Domain'):ArrayObject([NumberObject(0),NumberObject(1)]),NameObject('/C0'):ArrayObject([NumberObject(0)]*4),NameObject('/C1'):ArrayObject([NumberObject(v) for v in ([1,1,0,0] if operation=='thru' else [0,1,0,0])]),NameObject('/N'):NumberObject(1)})
         spaces[operation]=ArrayObject([NameObject('/Separation'),NameObject('/'+config['spot']),NameObject('/DeviceCMYK'),writer._add_object(tint)])
-        if operation in source_colors:
+        if operation == 'thru' and operation in source_colors:
             original = source_colors[operation]
             spaces[operation] = ArrayObject([NameObject('/Separation'), NameObject('/'+config['spot']),
                                             original[2].clone(writer), original[3].clone(writer)])

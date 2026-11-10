@@ -76,3 +76,14 @@ class CutAppearanceTests(unittest.TestCase):
                 self.assertEqual(stack[-1], 'Thru-cut'); cuts += 1
         self.assertEqual((art, cuts), (2, 2))
 
+    def test_kiss_cut_keeps_its_existing_pink_output(self):
+        clean, meta = fixture()
+        for piece in meta['pieces']:
+            for cut in piece['cutPaths']:
+                cut['operation'] = 'kiss'
+        result = exported({'doc': (clean, meta)})
+        color = result.pages[0]['/Resources']['/ColorSpace']['/EZCut']
+        self.assertEqual(color[1], '/CutContour_Kiss-cut')
+        self.assertEqual(color[2], '/DeviceCMYK')
+        self.assertEqual(list(color[3].get_object()['/C1']), [0, 1, 0, 0])
+
