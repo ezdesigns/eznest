@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import (ArrayObject, DecodedStreamObject, DictionaryObject,
-                           EncodedStreamObject, IndirectObject, NameObject, NumberObject)
+                           EncodedStreamObject, IndirectObject, NameObject, NullObject, NumberObject)
 from pdf_io import read_document, import_to_store, export_pdf, load_documents, output_check, bleed_artwork_matrix, cut_bounds, prepare_nesting_geometry, MM
 from production import make_package
 
@@ -203,6 +203,20 @@ class PDFProductionTests(unittest.TestCase):
                 writer.write(raw)
                 with self.assertRaisesRegex(ValueError, 'No cut lines found'):
                     read_document(raw.getvalue())
+
+    def test_duplicate_contents_cannot_hide_artwork_on_an_apparently_empty_page(self):
+        writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+        page = writer.add_blank_page(400, 300)
+        page[NameObject('/Contents')] = NullObject()
+        stream = DecodedStreamObject()
+        stream.set_data(b'0 g 20 20 100 70 re f')
+        page[NameObject('/Contenzz')] = writer._add_object(stream)
+        raw = io.BytesIO()
+        writer.write(raw)
+        # Keep xref offsets intact while creating a duplicate dictionary key.
+        duplicate = raw.getvalue().replace(b'/Contenzz', b'/Contents')
+        with self.assertRaisesRegex(ValueError, 'Could not verify blank PDF pages'):
+            read_document(duplicate)
 
     def test_conditional_layers_rejected_and_rotated_pages_preserve_size(self):
         writer=PdfWriter(clone_from=io.BytesIO(pdf_fixture()))

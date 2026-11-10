@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.errors import LimitReachedError
+from pypdf.errors import LimitReachedError, PdfReadError
 from pypdf.generic import (ArrayObject, ContentStream, DecodedStreamObject,
                            DictionaryObject, NameObject, NullObject, NumberObject,
                            TextStringObject)
@@ -481,6 +481,26 @@ def has_content_operators(page):
     return content is not None and next(operations(content), None) is not None
 
 
+def verify_blank_pages(raw, page_count, blank_pages):
+    # Lenient parsing can hide artwork behind a duplicate /Contents key.
+    # Re-read only when there are pages that would otherwise be skipped.
+    stream = raw if isinstance(raw, mmap.mmap) else io.BytesIO(raw)
+    stream.seek(0)
+    message = 'Could not verify blank PDF pages. Re-export a print-only PDF.'
+    try:
+        reader = PdfReader(stream, strict=True)
+        if len(reader.pages) != page_count:
+            raise ValueError(message)
+        for index in sorted(blank_pages):
+            page = reader.pages[index]
+            if page.get('/Annots') or not can_verify_empty_contents(page) or has_content_operators(page):
+                raise ValueError(message)
+    except LimitReachedError:
+        raise
+    except PdfReadError as error:
+        raise ValueError(message) from error
+
+
 def group_paths(paths):
     """Outermost closed contours own contained cuts; ambiguous geometry rejects."""
     from shapely.geometry import LineString
@@ -545,6 +565,8 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         page_paths.append(paths)
     if len(blank_pages) == len(page_paths):
         raise ValueError('No cut lines found. Every PDF page is blank.')
+    if blank_pages:
+        verify_blank_pages(raw, len(page_paths), blank_pages)
     known_cuts=any(not p.get('fromUnlabeled') for paths in page_paths for p in paths)
     if candidates and not known_cuts:
         review=unnamed_cut_review(raw,mapping,candidates,previews=cut_approval is None)
