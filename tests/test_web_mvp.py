@@ -1038,10 +1038,11 @@ class WebMvpTests(unittest.TestCase):
             try:
                 page.locator('#settings').evaluate('node => { node.showModal(); document.querySelector("#settings-cuts").open = true; document.querySelector("#settings-delivery").open = true; }')
                 page.select_option('#cut-preset', 'custom')
-                info = page.locator('#settings').get_by_role('button', name='About Through-cut name', exact=True)
+                info = page.locator('#settings').get_by_role('button', name='About Through-cut default', exact=True)
                 original = page.input_value('#thru-name')
                 info.hover()
-                expect(page.get_by_role('tooltip')).to_contain_text('does not set the blade depth')
+                expect(page.get_by_role('tooltip')).to_contain_text('does not set blade depth')
+                expect(page.get_by_role('tooltip')).to_contain_text('Existing PDF and AI spot names and colors are preserved')
                 page.keyboard.press('Escape')
                 expect(page.get_by_role('tooltip')).to_be_hidden()
                 info.focus()
