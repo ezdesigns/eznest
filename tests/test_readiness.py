@@ -71,7 +71,7 @@ class ReadinessTests(unittest.TestCase):
                         page.evaluate('Promise.all([exportFile(false), exportFile(false)])')
                         self.assertEqual(delivered.call_count, 1)
                     self.assertIn('Saved to', page.locator('#delivery-receipt').inner_text())
-                    self.assertTrue((hot / 'sample-artwork.zip').is_file())
+                    self.assertTrue((hot / 'print sample-artwork.zip').is_file())
                     page.reload(); fixture.wait_ready(page)
                     self.assertEqual(page.get_attribute('body', 'data-step'), 'sent')
                     self.assertEqual(page.locator('#start-over').inner_text(), 'Next job')

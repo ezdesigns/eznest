@@ -625,7 +625,7 @@ class WebMvpTests(unittest.TestCase):
                 with patch('print_export.pick_save_path', return_value=None) as picker:
                     page.click('#confirm-send')
                     expect(page.locator('#confirm-send')).to_be_enabled()
-                    picker.assert_called_once_with('kit', 'pdf')
+                    picker.assert_called_once_with('print kit', 'pdf')
                 self.assertEqual(page.get_attribute('body', 'data-step'), 'confirm')
                 self.assertTrue(page.locator('#delivery-receipt').is_hidden())
                 self.assertFalse(server.STATE.get('released'))
@@ -1171,6 +1171,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertIn('kiss', page.locator('#checks').inner_text().casefold())
                 self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
                 self.assertEqual(page.locator('#preview .preview-cut[data-operation="thru"]').count(), 2)
+                self.assertEqual(page.locator('#preview .preview-cut[data-operation="thru"]').first.get_attribute('stroke'), '#0000FF')
                 self.assertEqual(page.locator('#preview .preview-cut[data-operation="kiss"]').count(), 4)
                 cut_width = page.locator('#preview .preview-cut[data-operation="thru"]').first.evaluate('node => node.getBBox().width')
                 self.assertAlmostEqual(cut_width, 100*25.4/72, places=4)
@@ -1185,10 +1186,13 @@ class WebMvpTests(unittest.TestCase):
                 page.click('#export')
                 page.select_option('#save-destination', 'download')
                 page.select_option('#save-format', 'pdf')
-                self.assertEqual(page.input_value('#save-name'), 'kit')
+                self.assertEqual(page.input_value('#save-name'), 'print kit')
+                self.assertEqual(page.evaluate("defaultPrintName('print Kit.pdf')"), 'print Kit')
+                self.assertEqual(page.evaluate("defaultPrintName('print_Kit.ai')"), 'print_Kit')
+                self.assertEqual(page.evaluate("defaultPrintName('Kit.ai', 2)"), 'print Kit and 1 more')
                 with page.expect_download(timeout=30000) as pending:
                     page.click('#confirm-send')
-                self.assertEqual(pending.value.suggested_filename, 'kit.pdf')
+                self.assertEqual(pending.value.suggested_filename, 'print kit.pdf')
                 page.click('#export')
                 page.fill('#save-name', 'Customer kit - Chrome')
                 with page.expect_download(timeout=30000) as pending:

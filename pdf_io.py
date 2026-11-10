@@ -853,17 +853,23 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
     if bleed_mm and any(meta.get('artworkPreserved') for _,meta in documents.values()):
         raise ValueError('Original artwork preservation does not allow automatic enlargement.')
     groups={};spaces={};keys={}
+    from pdf_cut_colors import source_cut_colors
+    source_colors = source_cut_colors(documents, readers)
     for index,operation in enumerate(active):
         config=mapping['outputs'][operation];keys[operation]=('/EZCut'+(str(index) if index else ''),'/EZCutLayer'+(str(index) if index else ''))
         groups[operation]=writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject(config['layer'])}))
-        tint=DictionaryObject({NameObject('/FunctionType'):NumberObject(2),NameObject('/Domain'):ArrayObject([NumberObject(0),NumberObject(1)]),NameObject('/C0'):ArrayObject([NumberObject(0)]*4),NameObject('/C1'):ArrayObject([NumberObject(v) for v in ([1,0,0,0] if operation=='thru' else [0,1,0,0])]),NameObject('/N'):NumberObject(1)})
+        tint=DictionaryObject({NameObject('/FunctionType'):NumberObject(2),NameObject('/Domain'):ArrayObject([NumberObject(0),NumberObject(1)]),NameObject('/C0'):ArrayObject([NumberObject(0)]*4),NameObject('/C1'):ArrayObject([NumberObject(v) for v in ([1,1,0,0] if operation=='thru' else [0,1,0,0])]),NameObject('/N'):NumberObject(1)})
         spaces[operation]=ArrayObject([NameObject('/Separation'),NameObject('/'+config['spot']),NameObject('/DeviceCMYK'),writer._add_object(tint)])
+        if operation == 'thru' and operation in source_colors:
+            original = source_colors[operation]
+            spaces[operation] = ArrayObject([NameObject('/Separation'), NameObject('/'+config['spot']),
+                                            original[2].clone(writer), original[3].clone(writer)])
     reg_group=reg_space=None
     if draw_marks:
         reg_group=writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject('LNRegmark')}))
         reg_tint=DictionaryObject({NameObject('/FunctionType'):NumberObject(2),NameObject('/Domain'):ArrayObject([NumberObject(0),NumberObject(1)]),NameObject('/C0'):ArrayObject([NumberObject(0)]*4),NameObject('/C1'):ArrayObject([NumberObject(0),NumberObject(0),NumberObject(0),NumberObject(1)]),NameObject('/N'):NumberObject(1)})
         reg_space=ArrayObject([NameObject('/Separation'),NameObject('/LNRegmark'),NameObject('/DeviceCMYK'),writer._add_object(reg_tint)])
-    print_group = writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject('print')})) if job.get('illustrator') else None
+    print_group = writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject('Print')}))
     layers=ArrayObject(([print_group] if print_group else [])+list(groups.values())+([reg_group] if reg_group else []))
     writer.root_object[NameObject('/OCProperties')]=DictionaryObject({NameObject('/OCGs'):layers,NameObject('/D'):DictionaryObject({NameObject('/Order'):layers,NameObject('/ON'):layers})})
     parts={p['id']:p for p in job['parts']}

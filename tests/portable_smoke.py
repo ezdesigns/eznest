@@ -51,8 +51,8 @@ def main():
                 time.sleep(.1)
         else:raise TimeoutError('Portable app did not start.')
         token=session['token']
-        assert b'production-features.js' in request('/')
-        assert b'importDocument' in request('/production-features.js')
+        assert b'/web.js' in request('/')
+        assert b'/api/document/import-file' in request('/web.js')
         parsed=[]
         for forms in (False,True):
             parsed.append(request('/api/document/import',{'content':base64.b64encode(mixed_fixture(forms=forms)).decode(),'bleedMm':1,'cutSpot':'CutContour','cutMapping':defaults()}))
@@ -90,7 +90,7 @@ def main():
                 assert abs(float(page.mediabox.width)*MM-80)<.001
                 assert float(page.mediabox.height)*MM<=40.001
                 assert page['/Resources']['/ColorSpace']['/EZCut'][1]=='/CutContour_Thru-cut'
-                assert {g.get_object()['/Name'] for g in reader.root_object['/OCProperties']['/OCGs']}=={'Thru-cut','Kiss-cut'}
+                assert {g.get_object()['/Name'] for g in reader.root_object['/OCProperties']['/OCGs']}=={'Print','Thru-cut','Kiss-cut'}
                 checked=read_document(raw,cut_mapping=defaults())[1]
                 assert checked['registrationPaintRemoved']==0
                 assert all(p['cutCounts']=={'thru':1,'kiss':2,'contour':0} for p in checked['pieces'])

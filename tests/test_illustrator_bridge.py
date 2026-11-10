@@ -119,7 +119,7 @@ class IllustratorBridgeTests(unittest.TestCase):
                             with ZipFile(server.WORK/'batches'/(state['id']+'.zip')) as pack:
                                 reader = PdfReader(io.BytesIO(pack.read('artwork.pdf')))
                                 names = [o.get_object()['/Name'] for o in reader.root_object['/OCProperties']['/OCGs']]
-                                self.assertEqual(set(names), {'print','thru-cut','kiss cut'})
+                                self.assertEqual(set(names), {'Print','thru-cut','kiss cut'})
                         summary = json.load(urlopen(fixture.url()+'/api/workload'))
                         self.assertEqual(summary['events']['sent_to_folder']['packs'], 1)
                         self.assertFalse(page.locator('#output-network').is_checked())

@@ -263,7 +263,7 @@ class PDFProductionTests(unittest.TestCase):
             self.assertAlmostEqual(float(reader.pages[0].mediabox.width)*MM,100,places=4)
             self.assertAlmostEqual(float(reader.pages[0].mediabox.height)*MM,45,places=4)
             self.assertEqual(str(reader.pages[0]['/Resources']['/ColorSpace']['/EZCut'][1]),'/CutContour')
-            self.assertEqual(reader.root_object['/OCProperties']['/OCGs'][0].get_object()['/Name'],'CutContour')
+            self.assertEqual({g.get_object()['/Name'] for g in reader.root_object['/OCProperties']['/OCGs']}, {'Print', 'CutContour'})
             form=next(iter(reader.pages[0]['/Resources']['/XObject'].values())).get_object()
             self.assertEqual(form['/Subtype'],'/Form')
             self.assertIn(b'1 0 0 0 k',form.get_data())
