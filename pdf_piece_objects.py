@@ -18,7 +18,7 @@ OTHER_PAINT = {b'Do', b'sh', b'INLINE IMAGE'}
 MAX_SOURCE_BYTES = 8_000_000
 
 
-def analyze_objects(page, reader, diagnostics=None):
+def analyze_objects(page, reader, diagnostics=None, keep_unseen=False):
     """Return None when complete-object ownership cannot be established."""
     import pypdfium2 as pdfium
     import pypdfium2.raw as api
@@ -97,8 +97,24 @@ def analyze_objects(page, reader, diagnostics=None):
     if seen != set(range(len(spans))):
         if diagnostics is not None:
             diagnostics.update(total=len(spans), seen=sorted(seen), missing=[(i, spans[i][2].decode()) for i in range(len(spans)) if i not in seen])
-        return None
-    return operations, spans, {i: unary_union(shapes.get(i, [])) for i in seen}
+        if not keep_unseen:
+            return None
+    result = {i: unary_union(shapes.get(i, [])) if i in seen else None for i in range(len(spans))}
+    if keep_unseen:
+        for ident, shape in result.items():
+            if shape is not None or spans[ident][2] not in (b'f', b'f*', b'F'):
+                continue
+            # A move/close-only fill has no area in PDF. Keep its original
+            # operators, but it needs no space even when PDFium omits it.
+            geometry = []
+            for values, op in reversed(operations[:spans[ident][0]]):
+                if op in PATH_PAINT or op == b'n':
+                    break
+                if op in (b'm',b'l',b'c',b'v',b'y',b'h',b're'):
+                    geometry.append(op)
+            if geometry and all(op in (b'm',b'h') for op in geometry):
+                result[ident] = unary_union([])
+    return operations, spans, result
 
 
 def select_objects(analyzed, envelope):
@@ -113,6 +129,16 @@ def select_objects(analyzed, envelope):
             rejected.add(ident)
         elif not envelope.covers(shape):
             return None
+    return select_object_ids(analyzed, set(shapes) - rejected)
+
+
+def select_object_ids(analyzed, keep):
+    """Keep complete original paint operations with their source graphics state."""
+    from pdf_export_forms import remove_empty_groups
+    operations, spans, shapes = analyzed
+    if not set(keep).issubset(shapes):
+        raise ValueError('Artwork selection does not match the original PDF.')
+    rejected = set(shapes) - set(keep)
     starts = {start: (i, end, op) for i, (start, end, op) in enumerate(spans)}
     # Remove the unused geometry as well as its paint. Paths are not graphics
     # state: q/Q must not reset this tracking. Preserve any path used by W/W*.

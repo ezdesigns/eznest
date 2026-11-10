@@ -27,6 +27,7 @@ import macos_service_runtime
 import illustrator_bridge
 import shop_auth
 import shop_members
+import job_workspaces
 from import_limits import request_limit
 import print_export
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -149,6 +150,50 @@ OUTPUT = OutputFolder(WORK / 'output-folder.json')
 DOCUMENT_LOCK = threading.Lock()
 
 
+def job_state():
+    workspace = job_workspaces.CURRENT.get()
+    return workspace.state if workspace is not None else STATE
+
+
+def job_root():
+    workspace = job_workspaces.CURRENT.get()
+    return workspace.directory if workspace is not None else WORK
+
+
+def job_lock():
+    workspace = job_workspaces.CURRENT.get()
+    return workspace.lock if workspace is not None else LOCK
+
+
+def job_process():
+    workspace = job_workspaces.CURRENT.get()
+    return workspace.process if workspace is not None else PROCESS
+
+
+def set_job_process(process):
+    global PROCESS
+    workspace = job_workspaces.CURRENT.get()
+    if workspace is None:
+        PROCESS = process
+    else:
+        workspace.process = process
+
+
+def shop_work_state():
+    """Updates must consider every designer, not only the host's own layout."""
+    states = [STATE] + [item.state for item in job_workspaces.all_for(WORK)]
+    if any(state.get('status') == 'running' for state in states) or DOCUMENT_LOCK.locked():
+        return {'status': 'running'}
+    if any(state.get('status') == 'ready' and not state.get('deliveryCompleted') for state in states):
+        return {'status': 'ready', 'deliveryCompleted': False}
+    return {'status': 'idle'}
+
+
+def active_search_count():
+    processes = [PROCESS] + [item.process for item in job_workspaces.all_for(WORK)]
+    return sum(process is not None and process.poll() is None for process in processes)
+
+
 def shop_status():
     saved = load_shop(WORK)
     build_id = ''
@@ -224,26 +269,26 @@ def apply_web_export(job, data):
 def batch_output_check(job):
     if job.get('documentSources'):
         from pdf_io import output_check
-        return output_check(job, WORK/'documents')
+        return output_check(job, job_root()/'documents')
     return inspect_output(job['outputProfile']) if job.get('outputProfile') else None
 
 
 def persist_state():
-    if STATE.get('status') == 'ready':
-        snapshot = {k:v for k,v in STATE.items() if k not in ('output','incumbent')}
-        temporary = WORK / 'session.tmp'
+    if job_state().get('status') == 'ready':
+        snapshot = {k:v for k,v in job_state().items() if k not in ('output','incumbent')}
+        temporary = job_root() / 'session.tmp'
         temporary.write_text(json.dumps(snapshot), encoding='utf-8')
-        temporary.replace(WORK / 'session.json')
+        temporary.replace(job_root() / 'session.json')
 
 
 def record_workload(kind):
     # A statistics failure must not turn a successful delivery into a failed Send.
     try:
-        ident = illustrator_bridge.tracking_id(STATE.get('job', {}), STATE['id'])
-        workload.record(WORK, ident, kind, STATE['result'])
-        STATE.pop('trackingWarning', None)
+        ident = illustrator_bridge.tracking_id(job_state().get('job', {}), job_state()['id'])
+        workload.record(WORK, ident, kind, job_state()['result'])
+        job_state().pop('trackingWarning', None)
     except (OSError, sqlite3.Error, ValueError):
-        STATE['trackingWarning'] = 'Local activity could not be saved. Check available disk space and folder permissions.'
+        job_state()['trackingWarning'] = 'Local activity could not be saved. Check available disk space and folder permissions.'
     if kind == 'prepared':
         record_telemetry('nest.committed')
     elif kind == 'sent_to_folder':
@@ -275,56 +320,56 @@ def telemetry_paused():
 def record_telemetry(kind):
     # Observability cannot break a valid nest, export or print-folder delivery.
     try:
-        telemetry.observe(WORK, STATE['id'], STATE['job'], STATE['result'], kind)
-        STATE.pop('telemetryWarning', None)
+        telemetry.observe(WORK, job_state()['id'], job_state()['job'], job_state()['result'], kind)
+        job_state().pop('telemetryWarning', None)
     except Exception:
-        STATE['telemetryWarning'] = 'Local job tracking could not be saved. The layout and file operation are unaffected.'
+        job_state()['telemetryWarning'] = 'Local job tracking could not be saved. The layout and file operation are unaffected.'
 
 
 def restore_state():
     try:
-        saved = json.loads((WORK / 'session.json').read_text(encoding='utf-8'))
+        saved = json.loads((job_root() / 'session.json').read_text(encoding='utf-8'))
         if saved.get('status') == 'ready':
             from engine import validate_result
             validate_result(saved['job'], saved['result'])
-            STATE.update(saved)
+            job_state().update(saved)
     except (OSError, ValueError, KeyError, TypeError):
         pass
 
 
 def finish_search(payload):
-    incumbent = STATE.pop('incumbent', None)
-    search_seconds = STATE.get('job', {}).get('settings', {}).get('seconds')
+    incumbent = job_state().pop('incumbent', None)
+    search_seconds = job_state().get('job', {}).get('settings', {}).get('seconds')
     def score(result):
         fillers = sum(s['pieces'] for s in result.get('fillSummary', []))
         return (-fillers, result['usedLength'])
     if incumbent and (not payload.get('ok') or score(payload['result']) >= score(incumbent['result'])):
-        STATE.clear()
-        STATE.update(incumbent)
-        STATE['note'] = 'Kept your best layout; this search did not improve it.' if payload.get('ok') else 'Kept your best layout; the new search could not return a valid improvement.'
+        job_state().clear()
+        job_state().update(incumbent)
+        job_state()['note'] = 'Kept your best layout; this search did not improve it.' if payload.get('ok') else 'Kept your best layout; the new search could not return a valid improvement.'
     else:
-        STATE.update(status='ready' if payload['ok'] else 'error', **payload)
+        job_state().update(status='ready' if payload['ok'] else 'error', **payload)
         if incumbent:
-            STATE['note'] = 'Found a better layout.'
-    if incumbent and STATE.get('status') == 'ready':
+            job_state()['note'] = 'Found a better layout.'
+    if incumbent and job_state().get('status') == 'ready':
         if search_seconds is not None:
-            STATE['job']['settings']['seconds'] = search_seconds
-            if STATE.get('requestJob'):
-                STATE['requestJob']['settings']['seconds'] = search_seconds
+            job_state()['job']['settings']['seconds'] = search_seconds
+            if job_state().get('requestJob'):
+                job_state()['requestJob']['settings']['seconds'] = search_seconds
         # Only compare equal quantities. Filler jobs can trade length for more
         # pieces, which is not a like-for-like material saving.
-        if score(STATE['result'])[0] == score(incumbent['result'])[0]:
+        if score(job_state()['result'])[0] == score(incumbent['result'])[0]:
             baseline = incumbent.get('nestSavings', {}).get('baselineLengthMm', incumbent['result']['usedLength'])
-            saved = max(0, baseline - STATE['result']['usedLength'])
-            STATE['nestSavings'] = {'baselineLengthMm': baseline, 'savedLengthMm': saved,
+            saved = max(0, baseline - job_state()['result']['usedLength'])
+            job_state()['nestSavings'] = {'baselineLengthMm': baseline, 'savedLengthMm': saved,
                                     'percent': 100 * saved / baseline if baseline > 0 else 0}
         else:
-            STATE.pop('nestSavings', None)
-    if STATE.get('status') == 'ready' and STATE.get('job', {}).get('productionJobs'):
-        STATE['manifest'] = manifest(STATE['job'], STATE['result'], STATE['id'])
-        check=batch_output_check(STATE['job'])
-        if check: STATE['manifest']['outputCheck']=check
-    if STATE.get('status') == 'ready':
+            job_state().pop('nestSavings', None)
+    if job_state().get('status') == 'ready' and job_state().get('job', {}).get('productionJobs'):
+        job_state()['manifest'] = manifest(job_state()['job'], job_state()['result'], job_state()['id'])
+        check=batch_output_check(job_state()['job'])
+        if check: job_state()['manifest']['outputCheck']=check
+    if job_state().get('status') == 'ready':
         record_telemetry('nest.created')
     persist_state()
 
@@ -518,7 +563,28 @@ class Handler(BaseHTTPRequestHandler):
             body['pinAlert'] = shop_auth.alert_status()
         return body
 
+    def workspace_owner(self):
+        header = self.headers.get('Cookie') if self.headers else None
+        if shop_members.configured(WORK):
+            member = shop_members.member(WORK, shop_auth.read_cookie(header, shop_members.COOKIE))
+            if member:
+                return 'member-' + member['id']
+        elif not self.loopback_client() and self.cookie_ok():
+            # Legacy PIN shops have a separate working job per signed-in browser.
+            cookie = shop_auth.read_cookie(header)
+            return 'browser-' + hashlib.sha256(cookie.encode()).hexdigest()
+        # Preserve the host's pre-upgrade job and Illustrator integration at WORK.
+        # Unauthenticated remote requests are rejected before any job route runs.
+        return None
+
     def do_GET(self):
+        try:
+            with job_workspaces.select(WORK, self.workspace_owner(), restore_state):
+                return self._get()
+        except (OSError, sqlite3.Error):
+            return self.send(503, {'error':'Your job workspace is temporarily unavailable. Try again shortly.'})
+
+    def _get(self):
         if not self.allowed():
             return self.send(403, {'error': 'Invalid host'})
         path = self.route_path()
@@ -635,13 +701,13 @@ class Handler(BaseHTTPRequestHandler):
             if not self.loopback_client():
                 return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
             try:
-                return self.send(200, illustrator_bridge.read(WORK, path.rsplit('/', 1)[-1]))
+                return self.send(200, illustrator_bridge.read(job_root(), path.rsplit('/', 1)[-1]))
             except (OSError, ValueError):
                 return self.send(404, {'error': 'Illustrator handoff not found or changed. Export again.'})
         if path == '/api/workload':
             try:
                 info = workload.summary(WORK)
-                info['warning'] = STATE.get('trackingWarning')
+                info['warning'] = job_state().get('trackingWarning')
                 return self.send(200, info)
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Local activity is unavailable. Check disk space and folder permissions.'})
@@ -656,7 +722,7 @@ class Handler(BaseHTTPRequestHandler):
                 info = telemetry.status(WORK)
                 delivery = telemetry_sender.status(WORK, paused=telemetry_paused)
                 info.update(localOnly=not delivery['enabled'], hubConnected=None if delivery['enabled'] else False, outputDelivery=delivery)
-                info.update(eventTypes=telemetry.KINDS, warning=STATE.get('telemetryWarning'))
+                info.update(eventTypes=telemetry.KINDS, warning=job_state().get('telemetryWarning'))
                 return self.send(200, info)
             except (OSError, sqlite3.Error):
                 return self.send(503, {'error': 'Local job tracking is unavailable.'})
@@ -677,7 +743,7 @@ class Handler(BaseHTTPRequestHandler):
             ident = path.rsplit('/',1)[-1]
             if len(ident) != 32 or any(c not in '0123456789abcdef' for c in ident):
                 return self.send(404, {'error':'Batch not found'})
-            source = WORK / 'batches' / (ident+'.zip')
+            source = job_root() / 'batches' / (ident+'.zip')
             if not source.exists():
                 return self.send(404, {'error':'Batch not found'})
             if path.startswith('/api/print/'):
@@ -687,17 +753,17 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, archive.read('artwork.pdf'), 'application/pdf', 'Print.pdf')
             return self.send(200, source.read_bytes(), 'application/zip', 'EZ-Nest-Batch-'+ident[:8]+'.zip')
         if path == '/api/state':
-            with LOCK:
-                if STATE.get('status') == 'running' and PROCESS.poll() is not None:
-                    output = Path(STATE['output'])
+            with job_lock():
+                if job_state().get('status') == 'running' and job_process().poll() is not None:
+                    output = Path(job_state()['output'])
                     if output.exists():
                         payload = json.loads(output.read_text())
                         finish_search(payload)
                     else:
                         finish_search({'ok': False, 'error': 'The engine stopped without returning a layout.'})
-                public = {k: v for k, v in STATE.items() if k not in ('output', 'incumbent')}
-                if public.get('status') == 'running' and STATE.get('output'):
-                    progress = Path(STATE['output']).with_name('progress.json')
+                public = {k: v for k, v in job_state().items() if k not in ('output', 'incumbent')}
+                if public.get('status') == 'running' and job_state().get('output'):
+                    progress = Path(job_state()['output']).with_name('progress.json')
                     try:
                         live = json.loads(progress.read_text(encoding='utf-8'))
                         if live.get('ok') and live.get('result'):
@@ -706,7 +772,7 @@ class Handler(BaseHTTPRequestHandler):
                         pass
             return self.send(200, public)
         if path == '/api/selection':
-            source = WORK / 'selection.json'
+            source = job_root() / 'selection.json'
             if not source.exists():
                 return self.send(404, {'error': 'Capture paths in Illustrator first, or load the sample job.'})
             try:
@@ -749,14 +815,14 @@ class Handler(BaseHTTPRequestHandler):
         if not DOCUMENT_LOCK.acquire(blocking=False):
             raise ValueError('Wait for the current document import to finish.')
         ident = uuid.uuid4().hex
-        request, output = WORK/(ident+'-import.json'), WORK/(ident+'-import-result.json')
-        upload = WORK/(ident+'-upload.pdf')
+        request, output = job_root()/(ident+'-import.json'), job_root()/(ident+'-import-result.json')
+        upload = job_root()/(ident+'-upload.pdf')
         try:
             if upload_size is not None:
                 if upload_size == 0:
                     raise ValueError('The selected file is empty.')
                 # Allow the upload plus a working copy, leaving space for the shop.
-                if upload_size * 2 + 256_000_000 > shutil.disk_usage(WORK).free:
+                if upload_size * 2 + 256_000_000 > shutil.disk_usage(job_root()).free:
                     raise ValueError('The shop PC needs more free disk space to prepare this file. Free some space and try again.')
                 # Read bounded chunks straight to disk. No base64 or full-file
                 # allocation in the HTTP server; the isolated worker parses it.
@@ -777,7 +843,7 @@ class Handler(BaseHTTPRequestHandler):
             args = [*worker, str(request), str(output)]
             if upload_size is not None:
                 args.append(str(upload))
-            subprocess.run(args, cwd=WORK, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300 if upload_size is not None else 120, check=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+            subprocess.run(args, cwd=job_root(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300 if upload_size is not None else 120, check=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
             payload = json.loads(output.read_text(encoding='utf-8'))
             if payload.get('cutReview'):
                 status, response = 409, {'error':payload['error'], 'cutReview':payload['cutReview']}
@@ -803,6 +869,13 @@ class Handler(BaseHTTPRequestHandler):
         return self.handle_post()
 
     def handle_post(self):
+        try:
+            with job_workspaces.select(WORK, self.workspace_owner(), restore_state):
+                return self._handle_post()
+        except (OSError, sqlite3.Error):
+            return self.send(503, {'error':'Your job workspace is temporarily unavailable. Try again shortly.'})
+
+    def _handle_post(self):
         if not self.allowed() or not self.browser_site_ok('POST'):
             return self.send(403, {'error': 'Invalid session'})
         path = self.route_path()
@@ -883,7 +956,6 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(503, {'error': 'Shop access is unavailable. Check the host PC.'})
 
     def _dispatch_post(self, path, access_data):
-        global PROCESS
         if path.startswith('/api/shop-members/'):
             return self._membership(path, access_data)
         if path == '/api/login':
@@ -927,8 +999,8 @@ class Handler(BaseHTTPRequestHandler):
                     UPDATE_QUEUE.cancel()
                     return self.send(200, {'ok': True})
                 UPDATE_QUEUE.queue(data['ticket'])
-                with LOCK:
-                    ready = UPDATE_QUEUE.claim(data['ticket'], STATE)
+                with job_lock():
+                    ready = UPDATE_QUEUE.claim(data['ticket'], shop_work_state())
                     if ready:
                         persist_state()
                 # launchd owns the process lifetime. The privileged installer
@@ -980,11 +1052,11 @@ class Handler(BaseHTTPRequestHandler):
                     if data:
                         raise ValueError('Check-in takes no additional data.')
                     return self.send(200, output_gate.check_in(WORK, local=True))
-                with LOCK:
+                with job_lock():
                     if path == '/api/telemetry/link':
                         if set(data) - {'id', 'jobCodes', 'rollId'}:
                             raise ValueError('Only job codes and an opaque roll ID may be linked.')
-                        if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id') or STATE.get('released'):
+                        if job_state().get('status') != 'ready' or data.get('id') != job_state().get('id') or job_state().get('released'):
                             raise ValueError('Link the current finished layout before freezing it.')
                         record_telemetry('nest.created')
                         telemetry.link(WORK, data.get('id'), data.get('jobCodes'), data.get('rollId'))
@@ -1014,8 +1086,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError('Download an update for the selected channel first.')
                     if UPDATE_QUEUE.status()['queued']:
                         raise ValueError('An update is already waiting.')
-                    with LOCK:
-                        if STATE.get('status') == 'running' or (STATE.get('status') == 'ready' and not STATE.get('deliveryCompleted')):
+                    with job_lock():
+                        if shop_work_state().get('status') != 'idle':
                             raise ValueError('Save the current print file or choose Start over before updating.')
                         persist_state()
                     result = installer_update.begin_apply(WORK, installer_update.install_root())
@@ -1045,8 +1117,8 @@ class Handler(BaseHTTPRequestHandler):
                     if path.endswith('/queue'):
                         UPDATE_QUEUE.queue(data.get('ticket'))
                         return self.send(200, {'ok': True, 'queued': True})
-                    with LOCK:
-                        ready = UPDATE_QUEUE.claim(data.get('ticket'), STATE)
+                    with job_lock():
+                        ready = UPDATE_QUEUE.claim(data.get('ticket'), shop_work_state())
                         if ready:
                             persist_state()
                     self.send(200, {'ok': True, 'ready': ready, 'pid': os.getpid()})
@@ -1057,8 +1129,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/illustrator/intake':
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Illustrator pilot requires this PC.'})
-                with LOCK:
-                    info = illustrator_bridge.accept(WORK, data)
+                with job_lock():
+                    info = illustrator_bridge.accept(job_root(), data)
                 return self.send(200, {'ok': True, 'id': info['id'], 'url': f'http://127.0.0.1:{PORT}/web?illustrator=' + info['id']})
             if path == '/api/document/import':
                 return self.import_document(data)
@@ -1072,10 +1144,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Browse folders on the PC running Ez Nest.'})
                 return self.send(200, print_export.browse_folders(data.get('path'), OUTPUT.root))
             if path == '/api/export/save':
-                with LOCK:
-                    if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id') or not STATE.get('released'):
+                with job_lock():
+                    if job_state().get('status') != 'ready' or data.get('id') != job_state().get('id') or not job_state().get('released'):
                         raise ValueError('Review and freeze the current layout before saving.')
-                    package = (WORK/'batches'/(STATE['id']+'.zip')).read_bytes()
+                    package = (job_root()/'batches'/(job_state()['id']+'.zip')).read_bytes()
                     if hashlib.sha256(package).hexdigest() != data.get('sha256'):
                         raise ValueError('The saved layout changed. Review it again.')
                 name, content = print_export.export_content(package, data.get('name'), data.get('format'))
@@ -1103,11 +1175,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, saved)
                 if mode == 'folder':
                     with FOLDER_LOCK:
-                        stage_pack(data.get('stagingFolder') or '', STATE['id'], package, FOLDER.root)
-                with LOCK:
-                    STATE['exportReceipt'] = {'path': saved['path'], 'destination': mode, 'format': data['format']}
+                        stage_pack(data.get('stagingFolder') or '', job_state()['id'], package, FOLDER.root)
+                with job_lock():
+                    job_state()['exportReceipt'] = {'path': saved['path'], 'destination': mode, 'format': data['format']}
                     if mode == 'folder':
-                        STATE['deliveryCompleted'] = True
+                        job_state()['deliveryCompleted'] = True
                         record_workload('sent_to_folder')
                     else:
                         record_telemetry('nest.exported')
@@ -1172,22 +1244,28 @@ class Handler(BaseHTTPRequestHandler):
                 stock_output.note_change(WORK)
                 return self.send(200, saved)
             if path == '/api/materials/reserve':
-                with LOCK:
-                    if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
+                with job_lock():
+                    if job_state().get('status') != 'ready' or data.get('id') != job_state().get('id'):
                         raise ValueError('The layout changed. Reload and review the current layout before reserving stock.')
-                    key = STATE['job'].get('inventoryMaterialId')
+                    key = job_state()['job'].get('inventoryMaterialId')
                     if not key:
                         raise ValueError('Save the material to shop inventory and nest again before reserving stock.')
-                    if not STATE.get('manifest', {}).get('productionReady'):
-                        check = batch_output_check(STATE['job'])
+                    if not job_state().get('manifest', {}).get('productionReady'):
+                        check = batch_output_check(job_state()['job'])
                         if check and not check.get('ready'):
                             raise ValueError('Resolve the print-file checks before reserving material.')
-                    result = STATE['result']
+                    result = job_state()['result']
                     fingerprint = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
-                    saved = material_inventory.reserve(WORK, key, STATE['id'], result['usedLength'], result['width'], fingerprint)
+                    saved = material_inventory.reserve(WORK, key, job_state()['id'], result['usedLength'], result['width'], fingerprint)
                     stock_output.note_change(WORK)
                     return self.send(200, saved)
             if path == '/api/materials/transition':
+                if job_workspaces.CURRENT.get() is not None:
+                    ident = data.get('id')
+                    if not isinstance(ident, str) or len(ident) != 32 or any(c not in '0123456789abcdef' for c in ident):
+                        raise ValueError('Choose one of your own jobs to update its material usage.')
+                    if ident != job_state().get('id') and not (job_root()/ident/'job.json').is_file():
+                        raise ValueError('Choose one of your own jobs to update its material usage.')
                 saved = material_inventory.transition(WORK, data.get('id'), data.get('action'))
                 stock_output.note_change(WORK)
                 return self.send(200, saved)
@@ -1201,10 +1279,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, macos_update.start(WORK, 'download'))
                 if UPDATE_QUEUE.status()['queued']:
                     raise ValueError('Cancel the waiting update before downloading another.')
-                with LOCK:
-                    if STATE.get('status') == 'running':
+                with job_lock():
+                    if shop_work_state().get('status') == 'running':
                         raise ValueError('Stop the current search before updating.')
-                    if data.get('when') == 'now' and STATE.get('status') == 'ready' and not STATE.get('deliveryCompleted'):
+                    if data.get('when') == 'now' and shop_work_state().get('status') == 'ready':
                         raise ValueError('Save the current print file or choose Start over before updating.')
                 import installer_update
                 result = pull_latest(WORK, VERSION, when=data.get('when') or 'restart', install_root=installer_update.install_root())
@@ -1237,28 +1315,30 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         raise ValueError('Unknown folder action.')
                 return self.send(200,result)
-            with LOCK:
+            with job_lock():
                 if path in ('/api/solve', '/api/improve'):
-                    if STATE.get('status') == 'running':
-                        raise ValueError('Someone else is nesting. Wait until they finish.')
+                    if job_state().get('status') == 'running':
+                        raise ValueError('Your job is already nesting. Stop it before starting another layout.')
+                    if active_search_count() >= 2:
+                        raise ValueError('The shop PC is preparing two layouts. Your upload is kept; try nesting again when one finishes.')
                     incumbent = None
                     if path == '/api/improve':
-                        if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
+                        if job_state().get('status') != 'ready' or data.get('id') != job_state().get('id'):
                             raise ValueError('Calculate a current layout before improving it.')
-                        if STATE.get('released'):
+                        if job_state().get('released'):
                             raise ValueError('This batch is frozen. Start a new layout to make changes.')
                         seconds = data.get('seconds')
                         if seconds is not None and (type(seconds) is not int or seconds not in (5, 30, 90)):
                             raise ValueError('Choose Quick, Balanced or Best fit.')
-                        incumbent = copy.deepcopy(STATE)
-                        data = copy.deepcopy(STATE.get('requestJob', STATE['job']))
+                        incumbent = copy.deepcopy(job_state())
+                        data = copy.deepcopy(job_state().get('requestJob', job_state()['job']))
                         data['settings']['seed'] = secrets.randbelow(2147483647)
                         data['settings']['seconds'] = seconds if seconds is not None else max(30, data['settings']['seconds'])
                     for part in data.get('parts', []) + [p for fill in data.get('fillJobs', []) for p in fill['parts']]:
                         part.pop('nestingPoints', None)
                     validate_request(data)
                     if data.get('illustrator'):
-                        handoff = illustrator_bridge.read(WORK, data['illustrator']['id'])
+                        handoff = illustrator_bridge.read(job_root(), data['illustrator']['id'])
                         # Match the source PDF, not a client-supplied tracking identity.
                         sources = data.get('documentSources', [])
                         if len(sources) != 1:
@@ -1269,7 +1349,7 @@ class Handler(BaseHTTPRequestHandler):
                         from pdf_io import load_documents
                         complete={**data,'productionJobs':data.get('productionJobs',[])+[f['source'] for f in data.get('fillJobs',[])],
                                   'parts':data['parts']+[p for f in data.get('fillJobs',[]) for p in f['parts']]}
-                        documents = load_documents(complete,WORK/'documents')
+                        documents = load_documents(complete,job_root()/'documents')
                         if data.get('illustrator') and any(meta['sourceHash'] != data['illustrator']['revision'] for _, meta in documents.values()):
                             raise ValueError('Illustrator source does not match this handoff.')
                     from pdf_io import prepare_nesting_geometry
@@ -1278,55 +1358,55 @@ class Handler(BaseHTTPRequestHandler):
                     if 'outputProfile' in data:
                         data['outputProfile'] = validate_profile(data['outputProfile'])
                     run_id = uuid.uuid4().hex
-                    directory = WORK / run_id
+                    directory = job_root() / run_id
                     directory.mkdir()
                     request, output = directory / 'job.json', directory / 'result.json'
                     request.write_text(json.dumps(data), encoding='utf-8')
                     worker = [sys.executable, '--nest-worker'] if getattr(sys, 'frozen', False) else [sys.executable, str(ROOT / 'nesting.py')]
-                    PROCESS = subprocess.Popen([*worker, str(request), str(output)], cwd=directory, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
-                    STATE.clear()
-                    STATE.update(status='running', id=run_id, output=str(output), job=data)
+                    set_job_process(subprocess.Popen([*worker, str(request), str(output)], cwd=directory, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0))
+                    job_state().clear()
+                    job_state().update(status='running', id=run_id, output=str(output), job=data)
                     if incumbent:
-                        STATE['incumbent'] = incumbent
+                        job_state()['incumbent'] = incumbent
                 elif path == '/api/cancel':
                     keep = data.get('keepBest') is True
-                    if PROCESS and PROCESS.poll() is None:
-                        PROCESS.terminate()
-                        PROCESS.wait(timeout=5)
+                    if job_process() and job_process().poll() is None:
+                        job_process().terminate()
+                        job_process().wait(timeout=5)
                     live = None
-                    if keep and STATE.get('status') == 'running' and STATE.get('output'):
+                    if keep and job_state().get('status') == 'running' and job_state().get('output'):
                         try:
-                            payload = json.loads(Path(STATE['output']).with_name('progress.json').read_text(encoding='utf-8'))
+                            payload = json.loads(Path(job_state()['output']).with_name('progress.json').read_text(encoding='utf-8'))
                             if payload.get('ok') and payload.get('result'):
                                 live = payload['result']
                         except (OSError, ValueError):
                             live = None
                     if live:
-                        STATE.pop('output', None)
+                        job_state().pop('output', None)
                         # Stopping a retry must not replace the previous best
                         # with a worse intermediate arrangement.
                         finish_search({'ok':True, 'result':live})
-                        STATE['note'] = 'Stopped. Your best layout is retained.'
+                        job_state()['note'] = 'Stopped. Your best layout is retained.'
                     else:
-                        incumbent = STATE.get('incumbent')
-                        STATE.clear()
-                        STATE.update(incumbent or {'status': 'cancelled', 'note': 'Stopped before a layout was ready.'})
+                        incumbent = job_state().get('incumbent')
+                        job_state().clear()
+                        job_state().update(incumbent or {'status': 'cancelled', 'note': 'Stopped before a layout was ready.'})
                         if incumbent:
-                            STATE['note'] = 'Search cancelled; your best layout is retained.'
+                            job_state()['note'] = 'Search cancelled; your best layout is retained.'
                     persist_state()
                 elif path == '/api/output/undo':
-                    if STATE.get('status') != 'ready' or not STATE.get('released') or data.get('id') != STATE.get('id'):
+                    if job_state().get('status') != 'ready' or not job_state().get('released') or data.get('id') != job_state().get('id'):
                         raise ValueError('Send a layout before undoing it.')
                     if not OUTPUT.root:
                         raise ValueError('No hot folder is set.')
                     import shutil
                     root = OUTPUT.root.resolve(strict=True)
-                    destination = root / ('eznest-' + STATE['id'])
+                    destination = root / ('eznest-' + job_state()['id'])
                     if not destination.is_dir() or destination.is_symlink() or not destination.resolve().is_relative_to(root):
                         raise ValueError('That file is no longer in the hot folder.')
                     shutil.rmtree(destination)
                     record_workload('removed_from_folder')
-                    STATE.update(savedPath='', deliveryCompleted=False)
+                    job_state().update(savedPath='', deliveryCompleted=False)
                     persist_state()
                     return self.send(200, {'ok': True})
                 elif path == '/api/shutdown':
@@ -1334,69 +1414,69 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(403, {'error': 'Stop Ez Nest on the PC running it.'})
                     if macos_service_runtime.active():
                         raise ValueError('The shop host stays available when a browser closes. The administrator controls its system service.')
-                    if STATE.get('status') == 'running':
-                        raise ValueError('Stop the current search before closing eznest.')
+                    if shop_work_state().get('status') == 'running':
+                        raise ValueError('Wait for all designers to finish nesting before closing Ez Nest.')
                     persist_state()
                     self.send(200, {'ok': True})
                     threading.Thread(target=self.server.shutdown, daemon=True).start()
                     return
                 elif path == '/api/work/discard':
-                    if STATE.get('status') == 'running':
+                    if job_state().get('status') == 'running':
                         raise ValueError('Stop the search before starting over.')
-                    STATE.clear()
-                    STATE.update(status='idle')
-                    (WORK/'session.json').unlink(missing_ok=True)
+                    job_state().clear()
+                    job_state().update(status='idle')
+                    (job_root()/'session.json').unlink(missing_ok=True)
                     return self.send(200, {'ok': True})
                 elif path == '/api/release':
-                    if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
+                    if job_state().get('status') != 'ready' or data.get('id') != job_state().get('id'):
                         raise ValueError('Calculate and review the current layout before exporting.')
-                    export_job = copy.deepcopy(STATE['job'])
-                    if not STATE.get('released'):
+                    export_job = copy.deepcopy(job_state()['job'])
+                    if not job_state().get('released'):
                         apply_web_export(export_job, data)
                     check = batch_output_check(export_job)
                     if check and not check['ready'] and data.get('workingOnly') is not True:
                         raise ValueError('This layout does not meet the shop output requirements. Save working files explicitly or use a supported output profile.')
-                    if not STATE.get('released'):
+                    if not job_state().get('released'):
                         documents=None
                         if export_job.get('documentSources'):
                             from pdf_io import load_documents
-                            documents=load_documents(export_job,WORK/'documents')
+                            documents=load_documents(export_job,job_root()/'documents')
                         from pdf_io import prepare_nesting_geometry, validate_auto_bleed_export
                         prepare_nesting_geometry(export_job, documents)
-                        validate_auto_bleed_export(export_job, STATE['result'], documents)
-                        content, details = make_package(export_job,STATE['result'],STATE['id'],data.get('artwork'),data['map'],documents,check)
-                        directory = WORK / 'batches'
+                        validate_auto_bleed_export(export_job, job_state()['result'], documents)
+                        content, details = make_package(export_job,job_state()['result'],job_state()['id'],data.get('artwork'),data['map'],documents,check)
+                        directory = job_root() / 'batches'
                         directory.mkdir(exist_ok=True)
-                        temporary = directory / (STATE['id']+'.tmp')
+                        temporary = directory / (job_state()['id']+'.tmp')
                         temporary.write_bytes(content)
-                        temporary.replace(directory / (STATE['id']+'.zip'))
-                        STATE.update(job=export_job, released=True, manifest=details, deliveryCompleted=False)
+                        temporary.replace(directory / (job_state()['id']+'.zip'))
+                        job_state().update(job=export_job, released=True, manifest=details, deliveryCompleted=False)
                         persist_state()
-                    package = (WORK/'batches'/(STATE['id']+'.zip')).read_bytes()
+                    package = (job_root()/'batches'/(job_state()['id']+'.zip')).read_bytes()
                     record_workload('prepared')
                     digest = hashlib.sha256(package).hexdigest()
                     with FOLDER_LOCK:
-                        saved = None if data.get('downloadOnly') is True else OUTPUT.save(STATE['id'], package, FOLDER.root)
+                        saved = None if data.get('downloadOnly') is True else OUTPUT.save(job_state()['id'], package, FOLDER.root)
                         if saved:
                             record_workload('sent_to_folder')
                         if data.get('downloadOnly') is not True:
-                            stage_pack(data.get('stagingFolder') or '', STATE['id'], package, FOLDER.root)
-                    STATE.update(deliveryCompleted=bool(saved) or STATE.get('deliveryCompleted',False), savedPath=saved or (STATE.get('savedPath') if data.get('downloadOnly') is True else None), sha256=digest)
+                            stage_pack(data.get('stagingFolder') or '', job_state()['id'], package, FOLDER.root)
+                    job_state().update(deliveryCompleted=bool(saved) or job_state().get('deliveryCompleted',False), savedPath=saved or (job_state().get('savedPath') if data.get('downloadOnly') is True else None), sha256=digest)
                     persist_state()
-                    return self.send(200, {'ok':True,'id':STATE['id'],'url':'/api/batch/'+STATE['id'], 'savedPath':saved,'outputCheck':check,'deliveryCompleted':STATE['deliveryCompleted'],'sha256':digest})
+                    return self.send(200, {'ok':True,'id':job_state()['id'],'url':'/api/batch/'+job_state()['id'], 'savedPath':saved,'outputCheck':check,'deliveryCompleted':job_state()['deliveryCompleted'],'sha256':digest})
                 elif path == '/api/delivery/complete':
-                    if STATE.get('status')!='ready' or data.get('id')!=STATE.get('id') or not STATE.get('released') or not (WORK/'batches'/(STATE['id']+'.zip')).is_file():
+                    if job_state().get('status')!='ready' or data.get('id')!=job_state().get('id') or not job_state().get('released') or not (job_root()/'batches'/(job_state()['id']+'.zip')).is_file():
                         raise ValueError('Download the current frozen batch before completing its delivery.')
-                    STATE['deliveryCompleted']=True
+                    job_state()['deliveryCompleted']=True
                     persist_state()
                     return self.send(200,{'ok':True})
                 elif path == '/api/prepare-apply':
-                    if STATE.get('status') != 'ready' or data.get('id') != STATE.get('id'):
+                    if job_state().get('status') != 'ready' or data.get('id') != job_state().get('id'):
                         raise ValueError('Calculate a current validated layout first.')
-                    if not STATE['job'].get('captureId'):
+                    if not job_state()['job'].get('captureId'):
                         raise ValueError('Sample jobs cannot be applied to Illustrator. Capture your own paths first.')
-                    payload = {'captureId': STATE['job']['captureId'], 'runId': STATE['id'], 'result': STATE['result']}
-                    (WORK / 'apply.json').write_text(json.dumps(payload), encoding='utf-8')
+                    payload = {'captureId': job_state()['job']['captureId'], 'runId': job_state()['id'], 'result': job_state()['result']}
+                    (job_root() / 'apply.json').write_text(json.dumps(payload), encoding='utf-8')
                 else:
                     return self.send(404, {'error': 'Not found'})
             self.send(200, {'ok': True})

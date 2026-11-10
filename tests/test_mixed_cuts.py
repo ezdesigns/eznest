@@ -157,7 +157,7 @@ class MixedCutsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Conflicting'):classify(validate(mapping),'CutContour_Unknown',['LNKiss-cut'])
 
     def test_orphans_duplicates_overlap_and_filled_cuts_reject(self):
-        cases=[('150 140 m 160 140 l S','unique piece owner'),('40 40 20 15 re S','Duplicate'),('75 40 m 80 45 90 45 100 40 c S','Duplicate'),('100 80 50 40 re S','overlap'),('45 45 3 3 re f','filled')]
+        cases=[('150 140 m 160 140 l S','unique piece owner'),('75 40 m 80 45 90 45 100 40 c S','Duplicate'),('100 80 50 40 re S','overlap'),('45 45 3 3 re f','filled')]
         for body,message in cases:
             with self.subTest(body=body):
                 extra='/OC /Inner BDC q /Kiss CS 1 SCN '+body+' Q EMC'

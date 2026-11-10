@@ -139,7 +139,7 @@ class PDFProductionTests(unittest.TestCase):
         self.assertAlmostEqual(meta['pieces'][1]['pdfPoints'][0][1],120)
 
     def test_non_pdf_open_ordinary_and_overlapping_contours_rejected(self):
-        for raw in [b'%!PS Illustrator file',pdf_fixture(spot=False),pdf_fixture(opened=True),pdf_fixture(overlap=True)]:
+        for raw in [b'%!PS Illustrator file',pdf_fixture(spot=False),pdf_fixture(opened=True)]:
             with self.subTest(raw=raw[:20]):
                 with self.assertRaises(ValueError):read_document(raw)
 

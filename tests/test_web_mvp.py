@@ -33,6 +33,35 @@ def launch_browser(playwright, *, args=()):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_prepared_artwork_requires_preview_acceptance_and_cancel_keeps_job_empty(self):
+        from playwright.sync_api import sync_playwright, expect
+        from test_automatic_prepare import fixture
+        raw=fixture('q 10 10 100 90 re W n 1 0 0 rg 0 0 120 120 re f Q '
+                    '0 1 0 rg 200 30 20 20 re f /Contour CS 1 SCN 20 20 80 70 re S',named=True)
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                page.set_input_files('#file',{'name':'Prepared.pdf','mimeType':'application/pdf','buffer':raw})
+                dialog=page.locator('#preparation-review')
+                expect(dialog).to_be_visible(timeout=30000)
+                expect(dialog).to_contain_text('Print-only artwork: no cut lines')
+                self.assertEqual(page.evaluate('kits.length'),0)
+                page.set_viewport_size({'width':390,'height':640})
+                self.assertLessEqual(dialog.bounding_box()['height'],608)
+                page.screenshot(path=str(SCREENSHOTS/'prepared-artwork-review-mobile.png'))
+                page.keyboard.press('Escape')
+                page.wait_for_function('() => !importing')
+                self.assertEqual(page.evaluate('kits.length'),0)
+                page.set_input_files('#file',[])
+                page.set_input_files('#file',{'name':'Prepared.pdf','mimeType':'application/pdf','buffer':raw})
+                expect(dialog).to_be_visible(timeout=30000)
+                page.click('#preparation-accept')
+                page.wait_for_function('() => !importing && kits.length === 1')
+                self.assertTrue(page.evaluate('kits[0].data.reviewed'))
+                self.assertEqual(page.evaluate('kits[0].data.parts.length'),2)
+            finally:
+                browser.close()
+
     def test_continuous_pdf_review_and_saved_screens_replace_setup(self):
         from playwright.sync_api import sync_playwright, expect
         from pypdf import PdfReader

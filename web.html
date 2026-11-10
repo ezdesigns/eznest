@@ -488,6 +488,13 @@
   <p class="hint">Confirm only if every highlighted outline is an intended cut. These strokes will move from the printed artwork into the cut file. Artwork size and existing bleed stay unchanged.</p>
   <div class="guide-actions"><button id="cut-review-cancel" type="button">Cancel</button><button id="cut-review-accept" class="primary" type="button" disabled>Use these cut lines</button></div>
 </dialog>
+<dialog id="preparation-review" aria-labelledby="preparation-title">
+  <h2 id="preparation-title">Check prepared artwork</h2>
+  <p id="preparation-file"></p>
+  <p>Ez Nest kept the original artwork and bleed. Check these items before continuing.</p>
+  <div id="preparation-pieces"></div>
+  <div class="guide-actions"><button id="preparation-cancel" type="button">Cancel import</button><button id="preparation-accept" class="primary" type="button">Use prepared pieces</button></div>
+</dialog>
 <dialog id="guide-review" aria-labelledby="guide-title" aria-describedby="guide-summary">
   <h2 id="guide-title">Review possible guides</h2>
   <p id="guide-file"></p>

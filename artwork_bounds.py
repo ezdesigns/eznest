@@ -216,6 +216,9 @@ def preserve_artwork(clean, meta):
             page = document[page_index]
             try:
                 source = [p for p in meta['pieces'] if p['page'] == page_index]
+                if source and all('sourceObjectIds' in p for p in source):
+                    pieces.extend(source)
+                    continue
                 cuts = [Polygon(p['pdfPoints']) for p in source]
                 paint = paint_envelopes(page, [item for item in meta.get('imagePaintBounds',[]) if item['page']==page_index], cuts)
                 # Paint already includes its first enclosure guard. Preserve the
@@ -292,6 +295,19 @@ def preserve_artwork(clean, meta):
                     pieces.append(piece)
             finally:
                 page.close()
-    meta.update(pieces=pieces, artworkPreserved=True, sourcePieceCount=original_count,
-                warnings=['Original artwork and existing bleed retained without resizing. Connected artwork stays together. Review artwork, scale and cuts before printing.'])
+    warnings = [w for w in meta.get('warnings',[]) if 'duplicate cut' in w or 'guide line' in w]
+    prepared = [p for p in pieces if 'sourceObjectIds' in p]
+    if prepared:
+        warnings.append(f'{len(prepared)} pieces prepared from original artwork groups. All artwork, bleed and retained cut paths are unchanged.')
+        matched = sum(p.get('automaticArtworkMatches',0) for p in prepared)
+        if matched:
+            warnings.append(f'{matched} loose artwork objects were matched automatically to their graphics. Check the piece previews before printing.')
+        print_only = sum(bool(p.get('printOnly')) for p in prepared)
+        if print_only:
+            warnings.append(f'{print_only} separate print-only artwork item(s) have no cuts. They are kept in the layout; no cut lines were invented. Review before printing.')
+        crossing = sum(p.get('retainedCrossingCuts',0) for p in prepared)
+        if crossing:
+            warnings.append(f'{crossing} crossing cut pair(s) belong to the same source graphic. Both original outlines are retained. Check these cuts before production.')
+    warnings.append('Original artwork and existing bleed retained without resizing. Connected artwork stays together. Review artwork, scale and cuts before printing.')
+    meta.update(pieces=pieces, artworkPreserved=True, sourcePieceCount=original_count, warnings=warnings)
     return meta
