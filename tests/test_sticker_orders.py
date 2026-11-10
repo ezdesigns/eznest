@@ -90,6 +90,21 @@ class StickerOrderTests(unittest.TestCase):
         self.assertEqual([page.rotation for page in PdfReader(io.BytesIO(clean)).pages], [0] * 4)
         self.assertEqual([piece['cutCounts']['kiss'] for piece in meta['pieces']], [1] * 8)
 
+    def test_rotated_cut_review_rejects_an_outline_outside_the_visible_page(self):
+        writer = PdfWriter()
+        page = writer.add_blank_page(100, 50)
+        page.cropbox = RectangleObject((0, 0, 160, 50))
+        page.rotate(90)
+        stream = DecodedStreamObject()
+        stream.set_data(b'0 G 10 10 10 10 re S 120 10 10 10 re S')
+        page[NameObject('/Contents')] = writer._add_object(stream)
+        raw = io.BytesIO()
+        writer.write(raw)
+
+        for approval in (None, {'id': 'unused', 'sourceHash': 'unused', 'operation': 'kiss', 'pages': [1]}):
+            with self.subTest(approval=approval), self.assertRaisesRegex(ValueError, 'outside the visible PDF page'):
+                read_document(raw.getvalue(), cut_approval=approval)
+
     def test_unnamed_review_is_scoped_to_pages_without_named_cuts(self):
         raw = mixed_outline_fixture()
         with self.assertRaises(CutReviewRequired) as raised:
