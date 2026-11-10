@@ -62,7 +62,7 @@ class CutAppearanceTests(unittest.TestCase):
             self.assertEqual(clean, original)
 
     def test_conflicting_same_name_colors_are_explained_not_recolored(self):
-        with self.assertRaisesRegex(ValueError, 'different colors'):
+        with self.assertRaisesRegex(ValueError, 'different color definitions'):
             exported({'a': fixture(), 'b': fixture((0, 1, 1))})
 
     def test_distinct_names_in_the_same_operation_keep_both_colors(self):
@@ -104,13 +104,42 @@ class CutAppearanceTests(unittest.TestCase):
         self.assertEqual(list(color[3].get_object()['/C1']), [0,1,0])
 
     def test_legacy_metadata_keeps_original_names_and_colors(self):
-        clean,meta=fixture((1,0,0),name='Shop Kiss',operation='kiss',forms=True)
+        clean,meta=fixture((1,0,0),name='Shop Kiss',operation='kiss',forms=True,tint=.4)
         for piece in meta['pieces']:
             for cut in piece['cutPaths']: cut.pop('sourceColor')
         result=exported({'doc':(clean,meta)})
         space=result.pages[0]['/Resources']['/ColorSpace']['/EZCut']
         self.assertEqual(space[1],'/Shop Kiss')
         self.assertEqual(list(space[3].get_object()['/C1']),[1,0,0])
+        tints=[float(args[0]) for args,op in ContentStream(result.pages[0].get_contents(),result).operations if op==b'SCN']
+        self.assertEqual(tints,[.4,.4])
+
+    def test_legacy_mixed_tints_require_reimport_instead_of_guessing(self):
+        clean,meta=fixture(tint=.4)
+        writer=PdfWriter(clone_from=io.BytesIO(clean));page=writer.pages[0];stream=DecodedStreamObject()
+        stream.set_data(page.get_contents().get_data().replace(b'0.4 SCN',b'0.7 SCN',1))
+        page[NameObject('/Contents')]=writer._add_object(stream)
+        raw=io.BytesIO();writer.write(raw)
+        for piece in meta['pieces']:
+            for cut in piece['cutPaths']:cut.pop('sourceColor')
+        with self.assertRaisesRegex(ValueError,'different tints'):
+            exported({'doc':(raw.getvalue(),meta)})
+
+    def test_unnamed_cut_cannot_replace_an_original_spot_definition(self):
+        named=fixture(name='CutContour_Thru-cut')
+        clean,meta=fixture()
+        writer=PdfWriter(clone_from=io.BytesIO(clean))
+        for piece in meta['pieces']:
+            for cut in piece['cutPaths']:
+                cut['sourceSpot']=None;cut['sourceColor']['values']=[0,0,0]
+                writer.pages[cut['page']]['/Resources']['/ColorSpace'][NameObject(cut['sourceColor']['resource'])]=NameObject('/DeviceRGB')
+        raw=io.BytesIO();writer.write(raw)
+        # Put unnamed cuts first to verify that source names are reserved ahead.
+        result=exported({'unnamed':(raw.getvalue(),meta),'named':named})
+        spaces={str(s[1]):s for s in result.pages[0]['/Resources']['/ColorSpace'].values()}
+        self.assertEqual(set(spaces),{'/CutContour_Thru-cut','/CutContour_Thru-cut_2'})
+        self.assertEqual(list(spaces['/CutContour_Thru-cut'][3].get_object()['/C1']),[0,0,1])
+        self.assertEqual(list(spaces['/CutContour_Thru-cut_2'][3].get_object()['/C1']),[0,0,0])
 
     def test_layer_only_process_colors_keep_their_values(self):
         from test_mixed_cuts import mixed_fixture
@@ -141,4 +170,11 @@ class CutAppearanceTests(unittest.TestCase):
         clean,meta=fixture()
         meta['pieces'][0]['cutPaths'][0]['sourceColor']['resource']='/Missing'
         with self.assertRaisesRegex(ValueError,'original cut color is unavailable'):
+            exported({'doc':(clean,meta)})
+
+    def test_old_unnamed_cut_without_color_metadata_requires_reimport(self):
+        clean,meta=fixture()
+        cut=meta['pieces'][0]['cutPaths'][0]
+        cut.pop('sourceColor');cut['sourceSpot']=None
+        with self.assertRaisesRegex(ValueError,'original color of its unnamed cuts'):
             exported({'doc':(clean,meta)})

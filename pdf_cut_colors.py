@@ -4,7 +4,7 @@ import io
 import math
 
 from pypdf import PdfWriter
-from pypdf.generic import (ArrayObject, DictionaryObject, StreamObject, NameObject,
+from pypdf.generic import (ArrayObject, DictionaryObject, StreamObject, NameObject, ContentStream,
                            NumberObject, FloatObject, DecodedStreamObject)
 
 
@@ -55,7 +55,8 @@ class CutColors:
     """One color resource per source definition, never one per operation."""
     def __init__(self, documents, readers, mapping):
         self.spaces, self.paths, self._colors = {}, {}, {}
-        names, known, legacy = {}, {}, {}
+        self.names_by_operation = {}
+        names, known, legacy, entries = {}, {}, {}, []
         for ident, (_, meta) in documents.items():
             reader = readers[ident]
             for piece in meta['pieces']:
@@ -72,15 +73,15 @@ class CutColors:
                         # Compatibility for stored jobs imported before color metadata.
                         cache_key = (ident, cut['page'], name)
                         if cache_key not in legacy:
-                            legacy[cache_key] = self._legacy_space(reader.pages[cut['page']], name)
-                        space, values = legacy[cache_key], [1.0]
+                            page=reader.pages[cut['page']]
+                            legacy[cache_key]=(self._legacy_space(page,name),self._legacy_tint(page,reader,name))
+                        space, values = legacy[cache_key]
                     else:
-                        # Generated cuts and legacy unnamed paths have no spot name.
-                        space = NameObject('/DeviceCMYK')
-                        values = [1, 1, 0, 0] if cut['operation'] == 'thru' else [0, 1, 0, 0]
+                        raise ValueError('This older saved job does not include the original color of its unnamed cuts. Re-add the original file; no colors were changed.')
                     if not values or any(not math.isfinite(v) for v in values):
                         raise ValueError('Invalid source cut color values. Re-add the original file.')
-                    if isinstance(space, list) and space[0] == '/Separation':
+                    original_spot = isinstance(space, list) and space[0] == '/Separation'
+                    if original_spot:
                         if len(space) != 4 or len(values) != 1:
                             raise ValueError('Invalid source cut spot color.')
                         if name and str(space[1]).removeprefix('/') != name:
@@ -90,17 +91,66 @@ class CutColors:
                             raise ValueError('The original cut spot is unavailable. Re-add the original file.')
                         space = named_process_color(mapping['outputs'][cut['operation']]['spot'], space, values)
                         values = [1.0]
-                    name = str(space[1]).removeprefix('/')
-                    signature = _signature(space[2:])
-                    if name in names and names[name] != signature:
-                        raise ValueError('Cut spot "'+name+'" has different colors in these files. Use matching spot definitions or nest the files separately; no colors were changed.')
-                    names[name] = signature
-                    identity = (name, signature)
-                    if identity not in known:
-                        key = '/EZCut' + (str(len(known)) if known else '')
-                        known[identity] = key
-                        self.spaces[key] = space
-                    self.paths[(ident, cut['id'])] = (known[identity], values)
+                    entries.append((ident,cut,space,values,original_spot))
+        # Reserve every original name first. Newly named process cuts must not
+        # override a source spot that happens to be encountered later.
+        for ident,cut,space,values,original in entries:
+            if not original: continue
+            name = str(space[1]).removeprefix('/')
+            signature = _signature(space[2:])
+            if name in names and names[name] != signature:
+                raise ValueError('Cut spot "'+name+'" has different color definitions in these files. Use matching spot definitions or nest the files separately; no colors were changed.')
+            names[name] = signature
+        for ident,cut,space,values,original in entries:
+            name = str(space[1]).removeprefix('/')
+            signature = _signature(space[2:])
+            if not original:
+                base,number=name,2
+                while name in names and names[name] != signature:
+                    name=base+'_'+str(number);number+=1
+                space=ArrayObject([space[0],NameObject('/'+name),space[2],space[3]])
+            names[name]=signature
+            identity=(name,signature)
+            if identity not in known:
+                key='/EZCut'+(str(len(known)) if known else '')
+                known[identity]=key;self.spaces[key]=space
+            self.paths[(ident,cut['id'])]=(known[identity],values)
+            self.names_by_operation.setdefault(cut['operation'],set()).add(name)
+
+    @staticmethod
+    def _legacy_tint(page, reader, name):
+        # Older stores retained the color operators but not per-path tint
+        # metadata. Recover a uniform tint; never guess among different tints.
+        tints,visited=set(),set()
+        def visit(stream,resources,inherited=(None,(0.0,)),depth=0):
+            identity=(id(stream),inherited)
+            if identity in visited:return
+            if depth>16 or len(visited)>=10000:
+                raise ValueError('Re-add the original file to preserve its cut tints.')
+            visited.add(identity);state=inherited;stack=[]
+            resources=resources.get_object()
+            for args,op in ContentStream(stream,reader).operations:
+                if op==b'q':stack.append(state)
+                elif op==b'Q':state=stack.pop() if stack else inherited
+                elif op==b'CS':
+                    ref=resources.get('/ColorSpace',DictionaryObject()).get_object().get(args[0])
+                    space=ref.get_object() if ref is not None else args[0]
+                    spot=str(space[1]).removeprefix('/') if isinstance(space,list) and space[0]=='/Separation' else None
+                    state=(spot,tuple(initial_color(space)))
+                elif op in (b'SC',b'SCN'):
+                    state=(state[0],tuple(float(v) for v in args if isinstance(v,(int,float))))
+                elif op in (b'G',b'RG',b'K'):state=(None,tuple(map(float,args)))
+                elif op in (b'n',b'S',b's',b'f',b'f*',b'F',b'B',b'B*',b'b',b'b*') and state[0]==name:
+                    tints.add(state[1])
+                elif op==b'Do':
+                    ref=resources.get('/XObject',DictionaryObject()).get_object().get(args[0])
+                    obj=ref.get_object() if ref is not None else None
+                    if obj is not None and obj.get('/Subtype')=='/Form':
+                        visit(obj,obj.get('/Resources',resources),state,depth+1)
+        visit(page.get_contents(),page['/Resources'])
+        if len(tints)>1:
+            raise ValueError('This older saved job has different tints for cut spot "'+name+'". Re-add the original file to preserve each tint; no colors were changed.')
+        return list(next(iter(tints))) if tints else [1.0]
 
     @staticmethod
     def _legacy_space(page, name):

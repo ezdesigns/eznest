@@ -189,11 +189,14 @@ def validate_svg_payload(text):
 def make_package(job, result, run_id, artwork, sheet_map, pdf_documents=None, output_check=None):
     data = manifest(job, result, run_id)
     if pdf_documents is not None:
-        # Report what the PDF actually retains, not the unnamed-cut defaults.
-        for operation, config in data['cutOutputs'].items():
-            names=sorted({cut.get('sourceSpot') or config['spot']
-                          for _,meta in pdf_documents.values() for piece in meta['pieces']
-                          for cut in piece['cutPaths'] if cut['operation']==operation})
+        # Report the actual retained spots, including names assigned to unnamed
+        # process cuts without colliding with an original spot definition.
+        from pypdf import PdfReader
+        from pdf_cut_colors import CutColors
+        from cut_mapping import output_mapping
+        colors=CutColors(pdf_documents,{key:PdfReader(io.BytesIO(raw)) for key,(raw,_) in pdf_documents.items()},output_mapping(job.get('outputProfile') or {}))
+        for operation,config in data['cutOutputs'].items():
+            names=sorted(colors.names_by_operation.get(operation,[]))
             config.update(spots=names,spot=', '.join(names),preserveSource=True)
     root = validate_svg_payload(artwork) if pdf_documents is None else None
     validate_svg_payload(sheet_map)
