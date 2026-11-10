@@ -19,7 +19,7 @@ from pypdf.errors import LimitReachedError, PdfReadError
 from pypdf.generic import (ArrayObject, ContentStream, DecodedStreamObject,
                            DictionaryObject, NameObject, NullObject, NumberObject,
                            TextStringObject, RectangleObject)
-from shapely.geometry import Polygon, box, MultiPoint
+from shapely.geometry import Polygon, LineString, box, MultiPoint
 from shapely.affinity import rotate, translate
 from shapely.strtree import STRtree
 
@@ -555,6 +555,42 @@ def verify_blank_pages(raw, page_count, blank_pages):
         raise ValueError(message) from error
 
 
+def prepare_duplicate_cuts(paths, resources, generic_spot):
+    """Remove only proven duplicate strokes, never approximate or reshape a cut."""
+    from pdf_cut_colors import _signature
+    groups = {}
+    for path in paths:
+        if not path.get('boundary', path['closed']):
+            continue
+        # Compare original vector commands, not an approximation of curved paths.
+        key = json.dumps(path['commands'], separators=(',', ':'))
+        groups.setdefault(key, []).append(path)
+    removed = set()
+    def definition(path):
+        source = path.get('sourceColor')
+        if not source:
+            return None
+        space = resources['/ColorSpace'][source['resource']]
+        return (path['operation'], path.get('sourceSpot'), _signature(space), tuple(source['values']))
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        explicit = [p for p in group if p['operation'] in ('thru', 'kiss') and p.get('sourceSpot') != generic_spot]
+        definitions = {definition(p) for p in explicit}
+        if explicit and len(definitions) == 1 and None not in definitions:
+            # A named through/kiss cut disambiguates its identical generic copy.
+            keeper = explicit[0]
+            for path in group:
+                generic_copy = path.get('sourceSpot') == generic_spot and path['operation'] in ('contour', keeper['operation'])
+                if path is not keeper and (generic_copy or definition(path) == definition(keeper)):
+                    removed.add(path['id'])
+        elif not explicit:
+            definitions = {definition(p) for p in group}
+            if len(definitions) == 1 and None not in definitions:
+                removed.update(p['id'] for p in group[1:])
+    return [path for path in paths if path['id'] not in removed], len(removed)
+
+
 def group_paths(paths):
     """Outermost closed contours own contained cuts; ambiguous geometry rejects."""
     from shapely.geometry import LineString
@@ -583,12 +619,17 @@ def group_paths(paths):
 
 
 @print_pdf_context
-def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guide_approval=None, cut_approval=None):
-    from cut_mapping import import_mapping,counts
+def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guide_approval=None, cut_approval=None, prepare=False):
+    from cut_mapping import import_mapping,counts,classify
     if not raw[:1024].lstrip().startswith(b'%PDF-'):raise ValueError('Use PDF, or save AI with Create PDF Compatible File enabled.')
     if not isinstance(cut_spot,str) or not cut_spot or len(cut_spot)>80 or any(ord(c)<32 for c in cut_spot):raise ValueError('Enter a valid generic cut spot name.')
     if type(bleed_mm) not in (int,float) or not math.isfinite(bleed_mm) or not 0<=bleed_mm<=25:raise ValueError('Existing artwork bleed must be between 0 and 25 mm.')
     mapping=import_mapping(cut_mapping,cut_spot)
+    extraction_mapping = mapping
+    if not mapping['genericOperation']:
+        # First give exact copies of a named cut a chance to disambiguate a
+        # generic stroke. Any remaining generic path still requires a choice.
+        extraction_mapping = {**mapping, 'genericOperation': 'contour'}
     if isinstance(raw, mmap.mmap): raw.seek(0)
     reader=PdfReader(raw if isinstance(raw, mmap.mmap) else io.BytesIO(raw),strict=False)
     if reader.is_encrypted:raise ValueError('Export an unencrypted PDF for nesting.')
@@ -633,7 +674,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
             rotated_pages[i] = (rotation, visible_page_bounds(page))
         first_candidate = len(candidates)
         operation = unnamed_operation if approved_pages is None or i + 1 in approved_pages else None
-        paths, removed, blank = extract_page(page, writer, cut_spot, i, mapping, candidates, operation, image_bounds)
+        paths, removed, blank = extract_page(page, writer, cut_spot, i, extraction_mapping, candidates, operation, image_bounds)
         if any(not path.get('fromUnlabeled') for path in paths):
             known_cuts = True
             # Ordinary closed ink on pages with mapped cuts is not a fallback cut candidate.
@@ -672,12 +713,32 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         excluded=expected
     elif guide_approval is not None:
         raise ValueError('This file has no matching guide review. Add the original file again.')
+    duplicate_cuts = 0
     for i,(page,paths) in enumerate(zip(writer.pages,page_paths)):
         # Keep original page indexes for artwork and previews. Only pages with
         # no source operators can skip the cut requirement.
         if i in blank_pages:
             continue
         paths=[p for p in paths if p['id'] not in excluded]
+        paths, removed_duplicates = prepare_duplicate_cuts(paths, page['/Resources'], cut_spot)
+        duplicate_cuts += removed_duplicates
+        if not mapping['genericOperation']:
+            for path in paths:
+                if path['operation'] == 'contour' and not path.get('fromUnlabeled'):
+                    classify(mapping, path.get('sourceSpot'), path.get('sourceLayers', []), cut_spot)
+        prepared = None
+        if prepare and len(paths) <= 200:
+            from pdf_source_groups import prepare_groups
+            crop = box(*map(float,page.cropbox))
+            if any(not crop.buffer(.001).covers(LineString(p['pdfPoints'])) for p in paths):
+                raise ValueError('A cut path extends outside its PDF page. Nothing was removed.')
+            prepared = prepare_groups(page, writer, paths)
+        if prepared:
+            for piece_number,piece in enumerate(prepared,1):
+                name = f'Page {i+1} · print-only artwork {piece_number} (no cuts)' if piece.get('printOnly') else f'Page {i+1} · piece {piece_number}'
+                piece.update(id='pdf-'+str(len(pieces)+1),name=name)
+                pieces.append(piece)
+            continue
         page_pieces=group_paths(paths);crop=box(*map(float,page.cropbox))
         envelopes=[Polygon(p['pdfPoints']).buffer(bleed_mm/MM,join_style=2) if bleed_mm else Polygon(p['pdfPoints']) for p in page_pieces]
         envelope_tree=STRtree(envelopes)
@@ -699,8 +760,9 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
     warnings=['Review piece ownership, cut types, size and existing bleed. Ink coverage and nested separate pieces are not automatically identified.']
     if registration_removed:warnings.append(f'{registration_removed} registration paint object(s) removed. Let the RIP generate new sheet registration marks.')
     if excluded:warnings.append(f'{len(excluded)} dashed guide line(s) excluded after operator review. Original artwork and remaining cuts are unchanged.')
+    if duplicate_cuts:warnings.append(f'{duplicate_cuts} identical duplicate cut outline(s) removed from the working copy. Original artwork and retained cuts are unchanged.')
     return buf.getvalue(),{'modelVersion':2,'pieces':pieces,'bleedMm':bleed_mm,'cutSpot':cut_spot,'cutMapping':mapping,
-                          'registrationPaintRemoved':registration_removed,'excludedGuideIds':excluded,'reviewedCutOutlines':cut_approval,'imagePaintBounds':image_bounds,'warnings':warnings,'pages':len(reader.pages)}
+                          'registrationPaintRemoved':registration_removed,'preparedDuplicateCuts':duplicate_cuts,'excludedGuideIds':excluded,'reviewedCutOutlines':cut_approval,'imagePaintBounds':image_bounds,'warnings':warnings,'pages':len(reader.pages)}
 
 
 def cut_bounds(piece):
@@ -861,10 +923,10 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
                 output_intents.append(profiles);writer.root_object[NameObject('/OutputIntents')]=intents.clone(writer)
         for page_index,page in enumerate(reader.pages):
             analyzed[(ident,page_index)]=invocation_bounds(page,reader)
-            if meta.get('artworkPreserved') and not preview:
+            if meta.get('artworkPreserved') and not preview or any(p['page']==page_index and 'sourceObjectIds' in p for p in meta['pieces']):
                 from pdf_piece_objects import analyze_objects
                 try:
-                    object_pages[(ident,page_index)] = analyze_objects(page,reader)
+                    object_pages[(ident,page_index)] = analyze_objects(page,reader,keep_unseen=any(p['page']==page_index and 'sourceObjectIds' in p for p in meta['pieces']))
                 except ValueError:
                     # Uncertain object ownership retains the established export;
                     # optimization must never discard artwork or block a job.
@@ -919,7 +981,13 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
                 source_page=readers[ident].pages[piece['page']]
                 clip=clip_bounds(piece['clipCommands'])
                 selected = None
-                if (ident,piece['page']) in object_pages and all(op in ('m','l','h') for op,_ in piece['clipCommands']):
+                if 'sourceObjectIds' in piece:
+                    from pdf_piece_objects import select_object_ids
+                    owned = object_pages.get((ident,piece['page']))
+                    if owned is None or len(owned[1]) != piece['sourceObjectCount']:
+                        raise ValueError('Prepared artwork could not be verified. Add the original file again.')
+                    selected = select_object_ids(owned,piece['sourceObjectIds'])
+                elif (ident,piece['page']) in object_pages and all(op in ('m','l','h') for op,_ in piece['clipCommands']):
                     from pdf_piece_objects import select_objects
                     envelope=Polygon([values for op,values in piece['clipCommands'] if op in ('m','l')])
                     selected=select_objects(object_pages[(ident,piece['page'])],envelope)
@@ -961,13 +1029,13 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
 
 def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, preserve=False, guide_approval=None, cut_approval=None):
     folder=Path(folder); folder.mkdir(parents=True,exist_ok=True)
-    clean,meta=read_document(raw,0 if preserve else bleed_mm,cut_spot,cut_mapping,guide_approval,cut_approval)
+    clean,meta=read_document(raw,0 if preserve else bleed_mm,cut_spot,cut_mapping,guide_approval,cut_approval,prepare=preserve)
     if preserve:
         from artwork_bounds import preserve_artwork
         meta=preserve_artwork(clean,meta)
     identity=[2,bleed_mm,cut_spot,meta['cutMapping']]
     if preserve:identity=['preserve-artwork-v2',cut_spot,meta['cutMapping']]
-    identity.append('source-cut-colors-v1')
+    identity.append('source-cut-colors-v1-duplicate-preparation-v1')
     if meta['excludedGuideIds']:identity.append({'excludedGuideIds':meta['excludedGuideIds']})
     if cut_approval:
         # The review ID already binds the candidate pages. Keep existing document IDs stable.
@@ -1026,10 +1094,13 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
             preview_cuts.append({'operation':cut['operation'],'d':' '.join(commands),
                                  'color':preview_colors.preview_color(ident,cut),'sourceSpot':cut.get('sourceSpot')})
         preview_parts.append({'id':piece['id'],'name':piece['name'],'points':piece['points'],'quantity':1,
-                              'documentId':ident,'pdfPieceId':piece['id'],'sourcePieceCount':piece.get('sourcePieceCount',1),'cutCounts':piece['cutCounts'],'cutRefs':unknown,'previewCuts':preview_cuts,'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h})
+                              'documentId':ident,'pdfPieceId':piece['id'],'sourcePieceCount':piece.get('sourcePieceCount',1),'cutCounts':piece['cutCounts'],'cutRefs':unknown,'previewCuts':preview_cuts,'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h,
+                              'preparationNotes':(['Print-only artwork: no cut lines'] if piece.get('printOnly') else [])+
+                              (['Check automatically matched artwork'] if piece.get('automaticArtworkMatches') else [])+
+                              (['Check crossing source cuts: both outlines retained'] if piece.get('retainedCrossingCuts') else [])})
     (folder/(ident+'.pdf')).write_bytes(clean)
     (folder/(ident+'.json')).write_text(json.dumps(meta),encoding='utf-8')
-    return {'format':'pdf','documentId':ident,'parts':preview_parts,'warnings':meta['warnings'],'excludedGuideCount':len(meta['excludedGuideIds']),'bleedMm':meta['bleedMm'],'artworkPreserved':bool(meta.get('artworkPreserved')),'sourcePieceCount':meta.get('sourcePieceCount',len(meta['pieces'])),'reviewed':False,'modelVersion':2,'registrationPaintRemoved':meta['registrationPaintRemoved'],'cutMapping':meta['cutMapping']}
+    return {'format':'pdf','documentId':ident,'parts':preview_parts,'warnings':meta['warnings'],'preparationReview':any(p['preparationNotes'] for p in preview_parts),'excludedGuideCount':len(meta['excludedGuideIds']),'bleedMm':meta['bleedMm'],'artworkPreserved':bool(meta.get('artworkPreserved')),'sourcePieceCount':meta.get('sourcePieceCount',len(meta['pieces'])),'reviewed':False,'modelVersion':2,'registrationPaintRemoved':meta['registrationPaintRemoved'],'cutMapping':meta['cutMapping']}
 
 
 def load_documents(job, folder, require_review=True):

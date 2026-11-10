@@ -178,6 +178,13 @@ class ShopRequestBoundaries(unittest.TestCase):
         local.do_POST()
         self.assertEqual(local.sent[0][0], 200)
         self.assertTrue((staging / ('eznest-' + batch) / 'batch.json').is_file())
+        # Designers deliver their own prepared batch, never the host's active job.
+        import job_workspaces
+        with job_workspaces.select(self.root, designer.workspace_owner(), server.restore_state):
+            own_batches = server.job_root() / 'batches'
+            own_batches.mkdir(exist_ok=True)
+            (own_batches / (batch + '.zip')).write_bytes(payload)
+            server.job_state().update(status='ready', released=True, id=batch, job={})
         for path, data in (
             ('/api/release', {'id': batch}),
             ('/api/export/save', {'id': batch, 'name': 'test.zip', 'format': 'pack', 'destination': 'folder',

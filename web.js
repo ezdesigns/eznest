@@ -2212,6 +2212,31 @@ function reviewCutOutlines(file, review) {
   });
 }
 
+function reviewPreparation(file, data) {
+  const dialog = $('preparation-review'), pieces = $('preparation-pieces');
+  $('preparation-file').textContent = file.name;
+  pieces.replaceChildren();
+  for (const part of data.parts.filter(part => part.preparationNotes?.length)) {
+    const card = document.createElement('article');
+    const image = document.createElement('img'); image.src = part.preview; image.alt = part.name;
+    const name = document.createElement('strong'); name.textContent = part.name;
+    const note = document.createElement('p'); note.textContent = part.preparationNotes.join('. ') + '.';
+    card.append(image, name, note); pieces.append(card);
+  }
+  return new Promise(resolve => {
+    const finish = accepted => {
+      dialog.removeEventListener('cancel', cancel);
+      $('preparation-cancel').onclick = null; $('preparation-accept').onclick = null;
+      dialog.close(); pieces.replaceChildren(); resolve(accepted);
+    };
+    const cancel = event => { event.preventDefault(); finish(false); };
+    dialog.addEventListener('cancel', cancel);
+    $('preparation-cancel').onclick = () => finish(false);
+    $('preparation-accept').onclick = () => finish(true);
+    dialog.showModal(); $('preparation-cancel').focus();
+  });
+}
+
 function reviewGuides(file, review) {
   const dialog = $('guide-review');
   $('guide-file').textContent = file.name;
@@ -2298,6 +2323,7 @@ async function readEntry(file) {
         unresolvedCut = true;
       } else throw error;
     }
+    if (data.preparationReview && !await reviewPreparation(file, data)) throw Error('Import cancelled. Your original file is unchanged.');
     data.reviewed = true;
     data.format = 'pdf';
     revision = data.documentId;

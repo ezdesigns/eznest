@@ -323,6 +323,13 @@ main { min-height: auto; padding: 20px 0 24px; gap: 18px; }
 #guide-review h3 { margin: 12px 0 6px; font-size: 14px; }
 #cut-review { width: min(780px, calc(100vw - 24px)); max-height: 90vh; padding: 24px; border: 1px solid #ddd; border-radius: 14px; }
 #cut-review::backdrop { background: #0006; }
+#preparation-review { width:min(780px,calc(100vw - 24px)); max-height:calc(100dvh - 32px); overflow:auto; padding:24px; border:1px solid #ddd; border-radius:14px; }
+#preparation-review::backdrop { background:#0006; }
+#preparation-file { overflow-wrap:anywhere; font-weight:600; }
+#preparation-pieces { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin:20px 0; }
+#preparation-pieces article { min-width:0; }
+#preparation-pieces img { width:100%; height:160px; object-fit:contain; background:#f4f5f6; border-radius:8px; }
+#preparation-pieces p { font-size:13px; line-height:1.5; }
 #cut-review-file { overflow-wrap: anywhere; font-weight: 600; }
 #cut-review p { margin: 12px 0; }
 #cut-review h3 { margin: 12px 0 6px; font-size: 14px; }

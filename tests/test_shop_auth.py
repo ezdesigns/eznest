@@ -102,7 +102,7 @@ class ShopAuthTests(unittest.TestCase):
             posted.handle_post()
             self.assertEqual(posted.sent[0][0], 403)
 
-    def test_a_running_search_tells_the_other_person_someone_else_is_nesting(self):
+    def test_a_running_search_cannot_be_replaced_in_the_same_workspace(self):
         previous = dict(server.STATE)
         server.STATE.clear()
         server.STATE.update(status='running')
@@ -111,7 +111,7 @@ class ShopAuthTests(unittest.TestCase):
                                 headers={'X-EZ-Token': server.TOKEN, 'Origin': 'http://127.0.0.1:8765'})
             item.handle_post()
             self.assertEqual(item.sent[0][0], 400)
-            self.assertEqual(item.sent[0][1]['error'], 'Someone else is nesting. Wait until they finish.')
+            self.assertEqual(item.sent[0][1]['error'], 'Your job is already nesting. Stop it before starting another layout.')
         finally:
             server.STATE.clear()
             server.STATE.update(previous)
