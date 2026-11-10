@@ -174,7 +174,7 @@ class MixedCutsTests(unittest.TestCase):
             raw=export_pdf(job,result,docs,cut_mapping=defaults())
             (Path(directory)/'out.pdf').write_bytes(raw)
             reader=PdfReader(io.BytesIO(raw));self.assertEqual(len(reader.pages),2)
-            self.assertEqual({g.get_object()['/Name'] for g in reader.root_object['/OCProperties']['/OCGs']},{'Thru-cut','Kiss-cut'})
+            self.assertEqual({g.get_object()['/Name'] for g in reader.root_object['/OCProperties']['/OCGs']},{'Print','Thru-cut','Kiss-cut'})
             _,meta=read_document(raw,cut_mapping=defaults())
             self.assertEqual(len(meta['pieces']),4)
             self.assertEqual(meta['registrationPaintRemoved'],0)

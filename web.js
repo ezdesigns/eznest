@@ -875,7 +875,7 @@ function emphasizeCuts(svg) {
       node.setAttribute('stroke-dasharray', '8 6');
       node.setAttribute('stroke-width', '3');
     } else if (/thru-cut/i.test(node.id)) {
-      node.setAttribute('stroke', '#00B7FF');
+      node.setAttribute('stroke', '#0000FF');
       node.setAttribute('stroke-width', '3');
       node.removeAttribute('stroke-dasharray');
     } else if (/regmark|reg-mark/i.test(node.id)) {
@@ -916,7 +916,7 @@ function documentPreview(state) {
       outline.setAttribute('d', cut.d);
       outline.setAttribute('class', 'preview-cut');
       outline.dataset.operation = cut.operation;
-      stroke(outline, cut.operation === 'kiss' ? '#E6007E' : '#00B7FF', cut.operation === 'kiss');
+      stroke(outline, cut.operation === 'kiss' ? '#E6007E' : '#0000FF', cut.operation === 'kiss');
       outline.setAttribute('stroke-width', '1');
       group.append(outline);
     }
@@ -1497,7 +1497,7 @@ function openConfirm() {
   const jobs = current.job.productionJobs || [];
   const sourceName = jobs[0]?.sourceFile || jobs[0]?.name || 'Print';
   const savedName = current.exportReceipt?.path?.split(/[\\/]/).pop()?.replace(/\.(pdf|zip)$/i, '');
-  $('save-name').value = current.downloadName || savedName || cleanPrintName(sourceName.replace(/\.(pdf|ai|svg)$/i, '') + (jobs.length > 1 ? ' and ' + (jobs.length - 1) + ' more' : ''));
+  $('save-name').value = current.downloadName || savedName || defaultPrintName(sourceName, jobs.length);
   $('save-destination').value = $('hot-folder').value.trim() ? 'folder' : localSave ? 'choose' : 'download';
   $('save-destination').querySelector('[value="folder"]').disabled = !$('hot-folder').value.trim();
   $('save-destination').querySelector('[value="choose"]').hidden = !localSave;
@@ -1523,6 +1523,12 @@ function cleanPrintName(value) {
   let name = String(value).replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').replace(/[. ]+$/g, '').trim().slice(0, 100);
   if (!name || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) name = 'Print';
   return name;
+}
+
+function defaultPrintName(sourceName, jobCount = 1) {
+  const base = String(sourceName || 'Untitled').replace(/\.(pdf|ai|svg)$/i, '').trim();
+  const prefixed = /^print(?:\s|[-_]|$)/i.test(base) ? base : 'print ' + base;
+  return cleanPrintName(prefixed + (jobCount > 1 ? ' and ' + (jobCount - 1) + ' more' : ''));
 }
 
 function updateSaveChoice() {

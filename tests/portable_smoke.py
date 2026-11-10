@@ -90,7 +90,7 @@ def main():
                 assert abs(float(page.mediabox.width)*MM-80)<.001
                 assert float(page.mediabox.height)*MM<=40.001
                 assert page['/Resources']['/ColorSpace']['/EZCut'][1]=='/CutContour_Thru-cut'
-                assert {g.get_object()['/Name'] for g in reader.root_object['/OCProperties']['/OCGs']}=={'Thru-cut','Kiss-cut'}
+                assert {g.get_object()['/Name'] for g in reader.root_object['/OCProperties']['/OCGs']}=={'Print','Thru-cut','Kiss-cut'}
                 checked=read_document(raw,cut_mapping=defaults())[1]
                 assert checked['registrationPaintRemoved']==0
                 assert all(p['cutCounts']=={'thru':1,'kiss':2,'contour':0} for p in checked['pieces'])
