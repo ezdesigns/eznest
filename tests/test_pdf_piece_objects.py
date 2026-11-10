@@ -58,6 +58,24 @@ class PieceObjectsTests(unittest.TestCase):
         self.assertEqual(counts['pieceObjects'], 1)
         self.assertIn(b'0 1 -1 0 80 20 cm', content)
 
+    def test_removed_text_keeps_font_state_needed_by_next_run(self):
+        reader, page = page_with_content(b'BT /F 12 Tf 20 20 Td (Outside) Tj ET BT 150 20 Td (Inside) Tj ET')
+        page['/Resources'][NameObject('/Font')] = DictionaryObject({NameObject('/F'):
+            DictionaryObject({NameObject('/Type'):NameObject('/Font'), NameObject('/Subtype'):NameObject('/Type1'),
+                              NameObject('/BaseFont'):NameObject('/Helvetica')})})
+        analyzed = analyze_objects(page, reader)
+        selected, counts = select_objects(analyzed, box(140, 0, 250, 80))
+        self.assertEqual(counts['pieceObjects'], 1)
+        outputs = []
+        for content in (b'q 140 0 110 80 re W n '+page.get_contents().get_data()+b' Q', selected):
+            writer=PdfWriter(); target=writer.add_page(page)
+            stream=DecodedStreamObject();stream.set_data(content)
+            target[NameObject('/Contents')]=writer._add_object(stream)
+            data=io.BytesIO();writer.write(data);outputs.append(rendered(data.getvalue()))
+        self.assertTrue(np.array_equal(*outputs))
+        self.assertIn(b'/F 12 Tf', selected)
+        self.assertNotIn(b'Outside', selected)
+
     def test_full_export_retains_bleed_cuts_pixels_and_original(self):
         original = pdf_fixture()
         clean, meta = read_document(original)

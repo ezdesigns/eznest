@@ -40,6 +40,8 @@ def analyze_objects(page, reader, diagnostics=None):
         end = index
         if op == b'BT':
             while end < len(operations) and operations[end][1] != b'ET':
+                if end != index and operations[end][1] in PATH_PAINT | OTHER_PAINT | {b'BT'}:
+                    return None
                 end += 1
             if end == len(operations):
                 return None
@@ -135,6 +137,14 @@ def select_objects(analyzed, envelope):
             if span[2] in PATH_PAINT:
                 # Consuming the path still applies any pending W/W* clipping.
                 result.append(([], b'n'))
+            elif span[2] == b'BT':
+                # Text state (including the font) persists across BT/ET. Keep
+                # that state while dropping the rejected run's visible text.
+                for values, op in operations[index:span[1]+1]:
+                    if op == b'"':
+                        result.extend([([values[0]], b'Tw'), ([values[1]], b'Tc')])
+                    elif op not in (b'Tj', b'TJ', b"'"):
+                        result.append((values, op))
             index = span[1] + 1
             continue
         if span is not None:
