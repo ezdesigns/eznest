@@ -546,7 +546,21 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
             validate_layer_usage(group.get_object())
     writer=PdfWriter();pieces=[];registration_removed=0;path_count=0;page_paths=[];candidates=[];image_bounds=[]
     blank_pages = set()
-    unnamed_operation=cut_approval.get('operation') if isinstance(cut_approval,dict) else None
+    known_cuts = False
+    unnamed_operation = None
+    approved_pages = None
+    approval_error = 'The cut review does not match this file. Add it again and review its outlines.'
+    if cut_approval is not None:
+        approval_fields = {'id', 'sourceHash', 'operation'}
+        if (not isinstance(cut_approval, dict) or set(cut_approval) not in (approval_fields, approval_fields | {'pages'})
+                or cut_approval['operation'] not in ('kiss', 'thru')):
+            raise ValueError(approval_error)
+        unnamed_operation = cut_approval['operation']
+        if 'pages' in cut_approval:
+            approved_pages = cut_approval['pages']
+            if (not isinstance(approved_pages, list) or len(approved_pages) > len(reader.pages)
+                    or any(type(number) is not int or not 1 <= number <= len(reader.pages) for number in approved_pages)):
+                raise ValueError(approval_error)
     for i,original in enumerate(reader.pages):
         if original.get('/Annots'):raise ValueError('Flatten annotations/forms in a print-only PDF before nesting.')
         if float(original.get('/UserUnit',1))!=1:raise ValueError('PDF UserUnit scaling is unsupported. Export at actual size with standard PDF units.')
@@ -556,7 +570,13 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         # Rotation normalization inserts operators even in an empty stream.
         if page.rotation and (not can_verify_empty_contents(original) or has_content_operators(page)):
             page.transfer_rotation_to_content()
-        paths, removed, blank = extract_page(page, writer, cut_spot, i, mapping, candidates, unnamed_operation, image_bounds)
+        first_candidate = len(candidates)
+        operation = unnamed_operation if approved_pages is None or i + 1 in approved_pages else None
+        paths, removed, blank = extract_page(page, writer, cut_spot, i, mapping, candidates, operation, image_bounds)
+        if any(not path.get('fromUnlabeled') for path in paths):
+            known_cuts = True
+            # Ordinary closed ink on pages with mapped cuts is not a fallback cut candidate.
+            del candidates[first_candidate:]
         registration_removed += removed
         path_count += len(paths)
         if path_count>5000:raise ValueError('Use no more than 5000 cut paths per file.')
@@ -567,14 +587,14 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         raise ValueError('No cut lines found. Every PDF page is blank.')
     if blank_pages:
         verify_blank_pages(raw, len(page_paths), blank_pages)
-    known_cuts=any(not p.get('fromUnlabeled') for paths in page_paths for p in paths)
-    if candidates and not known_cuts:
+    if candidates:
         review=unnamed_cut_review(raw,mapping,candidates,previews=cut_approval is None)
         if cut_approval is None: raise CutReviewRequired(review)
-        if (not isinstance(cut_approval,dict) or set(cut_approval)!={'id','sourceHash','operation'} or
-                cut_approval['id']!=review['id'] or cut_approval['sourceHash']!=review['sourceHash'] or
-                unnamed_operation not in ('kiss','thru')):
-            raise ValueError('The cut review does not match this file. Add it again and review its outlines.')
+        review_pages = sorted({candidate['page'] + 1 for candidate in candidates})
+        # Older approvals had no page list and were only valid on documents with no mapped cuts.
+        scope_matches = not known_cuts if approved_pages is None else approved_pages == review_pages
+        if cut_approval['id'] != review['id'] or cut_approval['sourceHash'] != review['sourceHash'] or not scope_matches:
+            raise ValueError(approval_error)
     elif cut_approval is not None:
         raise ValueError('This file has no matching unnamed cut review. Add the original file again.')
     review=guide_review(raw,mapping,cut_spot,page_paths)
@@ -855,7 +875,9 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
     identity=[2,bleed_mm,cut_spot,meta['cutMapping']]
     if preserve:identity=['preserve-artwork-v2',cut_spot,meta['cutMapping']]
     if meta['excludedGuideIds']:identity.append({'excludedGuideIds':meta['excludedGuideIds']})
-    if cut_approval:identity.append({'reviewedCutOutlines':cut_approval})
+    if cut_approval:
+        # The review ID already binds the candidate pages. Keep existing document IDs stable.
+        identity.append({'reviewedCutOutlines': {key: cut_approval[key] for key in ('id', 'sourceHash', 'operation')}})
     digest=hashlib.sha256(raw)
     source_hash=digest.hexdigest()
     digest.update(json.dumps(identity,sort_keys=True).encode())

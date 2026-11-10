@@ -137,6 +137,31 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.evaluate('kits[1].data.parts.map(p => p.cutCounts.kiss)'),[1,1])
             finally:browser.close()
 
+    def test_mixed_pdf_reviews_unnamed_cuts_and_named_page_guides(self):
+        from playwright.sync_api import sync_playwright, expect
+        from test_sticker_orders import mixed_outline_fixture
+
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                page.set_input_files('#file', {'name': 'mixed.pdf', 'mimeType': 'application/pdf',
+                                               'buffer': mixed_outline_fixture(guides=True)})
+                expect(page.locator('#cut-review')).to_be_visible(timeout=15000)
+                expect(page.locator('#cut-review-pages h3')).to_have_text(['Page 2'])
+                page.select_option('#cut-review-operation', 'thru')
+                page.click('#cut-review-accept')
+                expect(page.locator('#guide-review')).to_be_visible(timeout=15000)
+                expect(page.locator('#guide-pages h3')).to_have_text(['Page 1'])
+                page.click('#guide-exclude')
+                page.wait_for_function('() => !importing && kits.length === 1', timeout=15000)
+                data = page.evaluate('kits[0].data')
+                self.assertEqual(data['excludedGuideCount'], 2)
+                self.assertEqual([part['cutCounts'] for part in data['parts']],
+                                 [{'thru': 1, 'kiss': 2, 'contour': 0}] * 2 +
+                                 [{'thru': 1, 'kiss': 0, 'contour': 0}] * 2)
+            finally:
+                browser.close()
+
     def test_large_pdf_streams_without_base64_and_keeps_cuts(self):
         from playwright.sync_api import sync_playwright, expect
         from pypdf import PdfReader, PdfWriter
