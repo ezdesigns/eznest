@@ -15,9 +15,9 @@ import re
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.errors import LimitReachedError
+from pypdf.errors import LimitReachedError, PdfReadError
 from pypdf.generic import (ArrayObject, ContentStream, DecodedStreamObject,
-                           DictionaryObject, NameObject, NumberObject,
+                           DictionaryObject, NameObject, NullObject, NumberObject,
                            TextStringObject)
 from shapely.geometry import Polygon, box, MultiPoint
 from shapely.affinity import rotate, translate
@@ -459,7 +459,46 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
     body,resources=visit(page.get_contents(),page['/Resources'])
     stream=DecodedStreamObject();stream.set_data(body)
     page[NameObject('/Contents')]=writer._add_object(stream);page[NameObject('/Resources')]=resources
-    return paths_found,removed[0]
+    return paths_found, removed[0], budget[0] == 0
+
+
+def can_verify_empty_contents(page):
+    """Filtered streams can decode to nothing after a lenient parser recovery."""
+    contents = page.get('/Contents')
+    if contents is None or isinstance(contents, NullObject):
+        return True
+    contents = contents.get_object()
+    streams = contents if isinstance(contents, ArrayObject) else (contents,)
+    for entry in streams:
+        stream = entry.get_object() if entry is not None else None
+        if not isinstance(stream, DecodedStreamObject) or '/F' in stream or '/Filter' in stream:
+            return False
+    return True
+
+
+def has_content_operators(page):
+    content = page.get_contents()
+    return content is not None and next(operations(content), None) is not None
+
+
+def verify_blank_pages(raw, page_count, blank_pages):
+    # Lenient parsing can hide artwork behind a duplicate /Contents key.
+    # Re-read only when there are pages that would otherwise be skipped.
+    stream = raw if isinstance(raw, mmap.mmap) else io.BytesIO(raw)
+    stream.seek(0)
+    message = 'Could not verify blank PDF pages. Re-export a print-only PDF.'
+    try:
+        reader = PdfReader(stream, strict=True)
+        if len(reader.pages) != page_count:
+            raise ValueError(message)
+        for index in sorted(blank_pages):
+            page = reader.pages[index]
+            if page.get('/Annots') or not can_verify_empty_contents(page) or has_content_operators(page):
+                raise ValueError(message)
+    except LimitReachedError:
+        raise
+    except PdfReadError as error:
+        raise ValueError(message) from error
 
 
 def group_paths(paths):
@@ -506,6 +545,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         for group in properties.get('/OCGs',[]):
             validate_layer_usage(group.get_object())
     writer=PdfWriter();pieces=[];registration_removed=0;path_count=0;page_paths=[];candidates=[];image_bounds=[]
+    blank_pages = set()
     unnamed_operation=cut_approval.get('operation') if isinstance(cut_approval,dict) else None
     for i,original in enumerate(reader.pages):
         if original.get('/Annots'):raise ValueError('Flatten annotations/forms in a print-only PDF before nesting.')
@@ -513,10 +553,20 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         # Native Illustrator editing data is not PDF paint and is not needed in
         # the local print source. Preserve the original uploaded AI separately.
         page=writer.add_page(original, excluded_keys=['/PieceInfo', '/Thumb'])
-        if page.rotation:page.transfer_rotation_to_content()
-        paths,removed=extract_page(page,writer,cut_spot,i,mapping,candidates,unnamed_operation,image_bounds);registration_removed+=removed;path_count+=len(paths)
+        # Rotation normalization inserts operators even in an empty stream.
+        if page.rotation and (not can_verify_empty_contents(original) or has_content_operators(page)):
+            page.transfer_rotation_to_content()
+        paths, removed, blank = extract_page(page, writer, cut_spot, i, mapping, candidates, unnamed_operation, image_bounds)
+        registration_removed += removed
+        path_count += len(paths)
         if path_count>5000:raise ValueError('Use no more than 5000 cut paths per file.')
+        if blank and can_verify_empty_contents(original):
+            blank_pages.add(i)
         page_paths.append(paths)
+    if len(blank_pages) == len(page_paths):
+        raise ValueError('No cut lines found. Every PDF page is blank.')
+    if blank_pages:
+        verify_blank_pages(raw, len(page_paths), blank_pages)
     known_cuts=any(not p.get('fromUnlabeled') for paths in page_paths for p in paths)
     if candidates and not known_cuts:
         review=unnamed_cut_review(raw,mapping,candidates,previews=cut_approval is None)
@@ -539,6 +589,10 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
     elif guide_approval is not None:
         raise ValueError('This file has no matching guide review. Add the original file again.')
     for i,(page,paths) in enumerate(zip(writer.pages,page_paths)):
+        # Keep original page indexes for artwork and previews. Only pages with
+        # no source operators can skip the cut requirement.
+        if i in blank_pages:
+            continue
         paths=[p for p in paths if p['id'] not in excluded]
         page_pieces=group_paths(paths);crop=box(*map(float,page.cropbox))
         envelopes=[Polygon(p['pdfPoints']).buffer(bleed_mm/MM,join_style=2) if bleed_mm else Polygon(p['pdfPoints']) for p in page_pieces]

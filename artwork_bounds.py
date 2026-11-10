@@ -220,6 +220,8 @@ def preserve_artwork(clean, meta):
                 # extra export guard too: PDF edge antialiasing can reach beyond
                 # a flattened paint boundary. Only blank guard overlap may split.
                 combined = unary_union([p.buffer(PAD) for p in cuts] + [p for p in paint if not p.is_empty])
+                if combined.is_empty:
+                    continue
                 cores = list(combined.geoms) if combined.geom_type == 'MultiPolygon' else [combined]
                 cores = [g for g in cores if g.geom_type == 'Polygon']
                 guarded = [Polygon(g.exterior).buffer(PAD) for g in cores]

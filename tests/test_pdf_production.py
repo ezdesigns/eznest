@@ -10,7 +10,8 @@ from zipfile import ZipFile
 from unittest.mock import patch
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, DecodedStreamObject
+from pypdf.generic import (ArrayObject, DecodedStreamObject, DictionaryObject,
+                           EncodedStreamObject, IndirectObject, NameObject, NullObject, NumberObject)
 from pdf_io import read_document, import_to_store, export_pdf, load_documents, output_check, bleed_artwork_matrix, cut_bounds, prepare_nesting_geometry, MM
 from production import make_package
 
@@ -141,6 +142,81 @@ class PDFProductionTests(unittest.TestCase):
         for raw in [b'%!PS Illustrator file',pdf_fixture(spot=False),pdf_fixture(opened=True),pdf_fixture(overlap=True)]:
             with self.subTest(raw=raw[:20]):
                 with self.assertRaises(ValueError):read_document(raw)
+
+    def test_blank_pages_keep_original_page_numbers_and_artwork(self):
+        original = pdf_fixture()
+        writer = PdfWriter()
+        writer.add_blank_page(400, 300)
+        writer.add_page(PdfReader(io.BytesIO(original)).pages[0])
+        last_page = writer.add_blank_page(400, 300)
+        last_page.rotate(90)
+        empty_stream = DecodedStreamObject()
+        empty_stream.set_data(b' \n% Empty artboard\n')
+        last_page[NameObject('/Contents')] = writer._add_object(empty_stream)
+        raw = io.BytesIO()
+        writer.write(raw)
+
+        with tempfile.TemporaryDirectory() as directory:
+            baseline = import_to_store(original, directory, preserve=True)
+            imported = import_to_store(raw.getvalue(), directory, preserve=True)
+            self.assertEqual(imported['sourcePieceCount'], 2)
+            self.assertEqual([part['name'] for part in imported['parts']],
+                             ['Page 2 · piece 1', 'Page 2 · piece 2'])
+            for before, after in zip(baseline['parts'], imported['parts'], strict=True):
+                for field in ('preview', 'points', 'cutCounts'):
+                    self.assertEqual(before[field], after[field], field)
+
+    def test_no_cuts_still_rejects_blank_document_and_painted_page(self):
+        blank_writer = PdfWriter()
+        blank_writer.add_blank_page(400, 300)
+        blank = io.BytesIO()
+        blank_writer.write(blank)
+        with self.assertRaisesRegex(ValueError, 'No cut lines found'):
+            read_document(blank.getvalue())
+
+        writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+        page = writer.add_blank_page(400, 300)
+        stream = DecodedStreamObject()
+        stream.set_data(b'0 g 20 20 100 70 re f')
+        page[NameObject('/Contents')] = writer._add_object(stream)
+        raw = io.BytesIO()
+        writer.write(raw)
+        with self.assertRaisesRegex(ValueError, 'No cut lines found'):
+            read_document(raw.getvalue())
+
+    def test_invalid_content_cannot_be_mistaken_for_an_empty_page(self):
+        for kind in ('invalid stream array', 'missing stream reference', 'corrupt Flate stream'):
+            with self.subTest(kind=kind):
+                writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+                page = writer.add_blank_page(400, 300)
+                if kind == 'invalid stream array':
+                    content = ArrayObject([NumberObject(17)])
+                elif kind == 'missing stream reference':
+                    content = IndirectObject(510, 0, writer)
+                else:
+                    stream = EncodedStreamObject()
+                    stream[NameObject('/Filter')] = NameObject('/FlateDecode')
+                    stream._data = b'not a zlib stream at all'
+                    content = writer._add_object(stream)
+                page[NameObject('/Contents')] = content
+                raw = io.BytesIO()
+                writer.write(raw)
+                with self.assertRaisesRegex(ValueError, 'No cut lines found'):
+                    read_document(raw.getvalue())
+
+    def test_duplicate_contents_cannot_hide_artwork_on_an_apparently_empty_page(self):
+        writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+        page = writer.add_blank_page(400, 300)
+        page[NameObject('/Contents')] = NullObject()
+        stream = DecodedStreamObject()
+        stream.set_data(b'0 g 20 20 100 70 re f')
+        page[NameObject('/Contenzz')] = writer._add_object(stream)
+        raw = io.BytesIO()
+        writer.write(raw)
+        # Keep xref offsets intact while creating a duplicate dictionary key.
+        duplicate = raw.getvalue().replace(b'/Contenzz', b'/Contents')
+        with self.assertRaisesRegex(ValueError, 'Could not verify blank PDF pages'):
+            read_document(duplicate)
 
     def test_conditional_layers_rejected_and_rotated_pages_preserve_size(self):
         writer=PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
