@@ -127,6 +127,10 @@ def piece_form(page, writer, analyzed, clip, selected=None):
     resources = DictionaryObject(page['/Resources'])
     if '/XObject' in resources:
         original = resources['/XObject']
+        if selected is not None:
+            # Whole-object selection removes paint, not resource definitions.
+            # Masks, patterns and glyphs can still refer to this shared scope.
+            names = set(original)
         fonts = resources.get('/Font', DictionaryObject()).get_object()
         if any(font.get_object().get('/Subtype') == '/Type3' for font in fonts.values()):
             # Glyph streams can resolve images from the page without a top-level Do.
