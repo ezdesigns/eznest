@@ -52,6 +52,8 @@ class AutomaticPrepareTests(unittest.TestCase):
         mapping=defaults();mapping['genericOperation']='kiss'
         with self.assertRaisesRegex(ValueError,'Duplicate'):
             read_document(raw,cut_mapping=mapping)
+        with tempfile.TemporaryDirectory() as folder, self.assertRaisesRegex(ValueError,'Duplicate'):
+            import_to_store(raw,folder,preserve=True,cut_mapping=mapping)
 
     def test_custom_explicit_generic_rule_still_works(self):
         mapping=defaults()

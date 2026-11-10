@@ -80,6 +80,15 @@ def prepare_groups(page, reader, paths):
     if not paths or len(paths) > 200:
         return None
     closed = {i:Polygon(p['pdfPoints']) for i,p in enumerate(paths) if p.get('boundary',p['closed'])}
+    # Exact safe duplicates have already been removed by the importer. Any
+    # remaining coincident paths carry conflicting identity/style or are open
+    # tool strokes; source grouping must not bypass their rejection.
+    boundaries = list(closed.values())
+    open_cuts = [LineString(p['pdfPoints']) for p in paths if not p.get('boundary',p['closed'])]
+    if any(a.equals(b) for n,a in enumerate(boundaries) for b in boundaries[n+1:]):
+        return None
+    if any(a.equals(b) for n,a in enumerate(open_cuts) for b in open_cuts[n+1:]):
+        return None
     outer = [i for i,p in closed.items() if not any(j != i and q.covers(p) for j,q in closed.items())]
     if not outer:
         return None
