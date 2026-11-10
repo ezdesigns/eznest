@@ -188,6 +188,13 @@ def validate_svg_payload(text):
 
 def make_package(job, result, run_id, artwork, sheet_map, pdf_documents=None, output_check=None):
     data = manifest(job, result, run_id)
+    if pdf_documents is not None:
+        # Report what the PDF actually retains, not the unnamed-cut defaults.
+        for operation, config in data['cutOutputs'].items():
+            names=sorted({cut.get('sourceSpot') or config['spot']
+                          for _,meta in pdf_documents.values() for piece in meta['pieces']
+                          for cut in piece['cutPaths'] if cut['operation']==operation})
+            config.update(spots=names,spot=', '.join(names),preserveSource=True)
     root = validate_svg_payload(artwork) if pdf_documents is None else None
     validate_svg_payload(sheet_map)
     if output_check is not None: data['outputCheck']=output_check

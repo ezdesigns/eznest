@@ -55,7 +55,7 @@ def main():
         assert b'/api/document/import-file' in request('/web.js')
         parsed=[]
         for forms in (False,True):
-            parsed.append(request('/api/document/import',{'content':base64.b64encode(mixed_fixture(forms=forms)).decode(),'bleedMm':1,'cutSpot':'CutContour','cutMapping':defaults()}))
+            parsed.append(request('/api/document/import',{'content':base64.b64encode(mixed_fixture(forms=forms,generic=False)).decode(),'bleedMm':1,'cutSpot':'CutContour','cutMapping':defaults()}))
         job=document_job(parsed[0]);job['settings'].update(width=80,sheetLength=40,gap=3,margin=5,costPerSquareMeter=17.5,currency='USD')
         second=document_job(parsed[1]);source=second['productionJobs'][0]
         source.update(id='second',code='B',customer='Customer Two',order='ORDER-13',partIds=['second:'+p['pdfPieceId'] for p in second['parts']])

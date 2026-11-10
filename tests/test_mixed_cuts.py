@@ -190,16 +190,17 @@ class MixedCutsTests(unittest.TestCase):
             with ZipFile(io.BytesIO(package)) as z:
                 self.assertIn('thruPaths,kissPaths,genericPaths',z.read('piece-checklist.csv').decode('utf-8-sig'))
                 self.assertIn('Kiss-cut',z.read('sorting-guide.html').decode())
-                self.assertIn('kiss: 8 paths; spot CutContour_Kiss-cut; layer Kiss-cut',z.read('READ ME.txt').decode())
+                self.assertIn('kiss: 8 paths; spot CutContour; layer Kiss-cut',z.read('READ ME.txt').decode())
+                self.assertEqual(manifest['cutOutputs']['kiss']['spots'],['CutContour'])
 
-    def test_custom_output_names_and_old_store_require_reimport(self):
+    def test_custom_defaults_do_not_rename_source_spots_and_old_store_requires_reimport(self):
         with tempfile.TemporaryDirectory() as directory:
             parsed=import_to_store(mixed_fixture(),directory,cut_mapping=defaults());job=document_job(parsed);docs=load_documents(job,directory)
             custom=defaults();custom['outputs']['thru'].update(spot='Shop Through',layer='Through',toolHint='SP9 (confirm locally)')
             custom['outputs']['kiss'].update(spot='Shop Kiss',layer='Kiss')
             result={'width':100,'usedLength':50,'placements':[{'id':job['parts'][0]['id'],'x':5,'y':5,'rotation':0}]}
             raw=export_pdf(job,result,docs,cut_mapping=custom);page=PdfReader(io.BytesIO(raw)).pages[0]
-            self.assertEqual({str(c[1]) for c in page['/Resources']['/ColorSpace'].values()},{'/Shop Through','/Shop Kiss'})
+            self.assertEqual({str(c[1]) for c in page['/Resources']['/ColorSpace'].values()},{'/CutContour'})
             self.assertNotIn(b'SP9',raw)
             job['outputProfile']['registrationOwner']='none';self.assertFalse(output_check(job,directory)['ready'])
             path=Path(directory)/(parsed['documentId']+'.json');meta=json.loads(path.read_text());meta.pop('modelVersion');path.write_text(json.dumps(meta))

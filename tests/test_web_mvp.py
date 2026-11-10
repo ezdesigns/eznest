@@ -1160,7 +1160,7 @@ class WebMvpTests(unittest.TestCase):
     def test_pdf_export_keeps_named_cut_spots(self):
         from playwright.sync_api import sync_playwright
         source = Path(self.tmp.name) / 'kit.pdf'
-        source.write_bytes(mixed_fixture())
+        source.write_bytes(mixed_fixture(generic=False))
         with sync_playwright() as playwright:
             browser, page = self.open_page(playwright)
             try:
@@ -1171,7 +1171,7 @@ class WebMvpTests(unittest.TestCase):
                 self.assertIn('kiss', page.locator('#checks').inner_text().casefold())
                 self.assertIn('cuts ok', page.locator('#gate').inner_text().casefold())
                 self.assertEqual(page.locator('#preview .preview-cut[data-operation="thru"]').count(), 2)
-                self.assertEqual(page.locator('#preview .preview-cut[data-operation="thru"]').first.get_attribute('stroke'), '#0000FF')
+                self.assertEqual(page.locator('#preview .preview-cut[data-operation="thru"]').first.get_attribute('stroke'), '#ED028C')
                 self.assertEqual(page.locator('#preview .preview-cut[data-operation="kiss"]').count(), 4)
                 cut_width = page.locator('#preview .preview-cut[data-operation="thru"]').first.evaluate('node => node.getBBox().width')
                 self.assertAlmostEqual(cut_width, 100*25.4/72, places=4)
@@ -1504,7 +1504,7 @@ class WebMvpTests(unittest.TestCase):
         from playwright.sync_api import sync_playwright
         good = Path(self.tmp.name) / 'kit.ai'
         bad = Path(self.tmp.name) / 'poster.ai'
-        good.write_bytes(mixed_fixture())
+        good.write_bytes(mixed_fixture(generic=False))
         bad.write_bytes(b'%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 200 100\n')
         shots = SCREENSHOTS
         shots.mkdir(parents=True, exist_ok=True)

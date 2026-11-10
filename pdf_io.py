@@ -269,6 +269,17 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
     from shapely.geometry import LineString
     from cut_mapping import classify
     paths_found=[]; budget=[0]; removed=[0]; mask_bounds={}
+    source_colors={}; source_keys={}
+
+    def remember_color(state):
+        space=state['strokeSpace']
+        identity=str(space) if isinstance(space,NameObject) else id(space)
+        if identity not in source_keys:
+            key='/EZNSourceCut'+str(len(source_keys))
+            existing=page['/Resources'].get('/ColorSpace',DictionaryObject()).get_object()
+            while key in existing or key in source_colors:key+='x'
+            source_keys[identity]=key;source_colors[NameObject(key)]=space
+        return {'resource':source_keys[identity],'values':list(state['strokeValues'])}
 
     def image_extent(obj):
         # Only proven zero-alpha borders may be excluded from nesting space.
@@ -309,7 +320,8 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
         resources=DictionaryObject(resources.get_object())
         xobjects=DictionaryObject(resources['/XObject'] if '/XObject' in resources else {})
         resources[NameObject('/XObject')]=xobjects
-        state=dict(inherited or {'stroke':None,'fill':None,'dashed':False,'textMode':0})
+        state=dict(inherited or {'stroke':None,'fill':None,'dashed':False,'textMode':0,
+                                'strokeSpace':NameObject('/DeviceGray'),'strokeValues':[0.0]})
         state.update(matrix=initial,clips=list(clips or []))
         layers=list(inherited_layers or []); marks=[]; stack=[]
         paths=[]; commands=[]; points=[]; pending_clip=None; output=OperationOutput(writer)
@@ -344,7 +356,15 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                             if classify(mapping,str(name).removeprefix('/'),[],cut_spot):
                                 raise ValueError('DeviceN cut colors are not supported. Export cut colors as Separation spots or use a supported layer-mapped source.')
                 state['stroke' if op==b'CS' else 'fill']=spot_name(resources,operands[0])
-            elif op in (b'G',b'RG',b'K'):state['stroke']=None
+                if op==b'CS':
+                    from pdf_cut_colors import initial_color
+                    state['strokeSpace']=space if space is not None else operands[0]
+                    state['strokeValues']=initial_color(state['strokeSpace'])
+            elif op in (b'SC',b'SCN'):state['strokeValues']=[float(v) for v in operands if isinstance(v,(int,float))]
+            elif op in (b'G',b'RG',b'K'):
+                state['stroke']=None
+                state['strokeSpace']=NameObject({b'G':'/DeviceGray',b'RG':'/DeviceRGB',b'K':'/DeviceCMYK'}[op])
+                state['strokeValues']=[float(v) for v in operands]
             elif op in (b'g',b'rg',b'k'):state['fill']=None
             elif op==b'd':state['dashed']=bool(operands[0])
             elif op==b'Tr':state['textMode']=int(operands[0])
@@ -426,6 +446,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                             # interior (which can legitimately surround a hole).
                             if any(not c.buffer(.001).covers(line) for c in state['clips']):raise ValueError('A cut path is clipped. Correct its source clipping structure.')
                             paths_found.append({'id':f'p{page_index+1}-cut{len(paths_found)+1}','page':page_index,'commands':cmd,'pdfPoints':pts,'closed':closed,'boundary':boundary,'operation':stroke_type,'sourceSpot':state['stroke'],'sourceLayers':list(layers)})
+                            paths_found[-1]['sourceColor']=remember_color(state)
                             if from_unlabeled: paths_found[-1]['fromUnlabeled']=True
                             if state['dashed']:paths_found[-1]['possibleGuide']=True
                             if len(paths_found)>2000:raise ValueError('Use no more than 2000 cut paths per page.')
@@ -488,6 +509,8 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
         return output.get_data(),resources
 
     body,resources=visit(page.get_contents(),page['/Resources'])
+    spaces=DictionaryObject(resources.get('/ColorSpace',DictionaryObject()).get_object())
+    spaces.update(source_colors);resources[NameObject('/ColorSpace')]=spaces
     stream=DecodedStreamObject();stream.set_data(body)
     page[NameObject('/Contents')]=writer._add_object(stream);page[NameObject('/Resources')]=resources
     return paths_found, removed[0], budget[0] == 0
@@ -852,18 +875,12 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
     bleed_mm=settings.get('autoBleedMm') or 0
     if bleed_mm and any(meta.get('artworkPreserved') for _,meta in documents.values()):
         raise ValueError('Original artwork preservation does not allow automatic enlargement.')
-    groups={};spaces={};keys={}
-    from pdf_cut_colors import source_cut_colors
-    source_colors = source_cut_colors(documents, readers)
+    groups={};keys={}
+    from pdf_cut_colors import CutColors
+    cut_colors=CutColors(documents,readers,mapping)
     for index,operation in enumerate(active):
         config=mapping['outputs'][operation];keys[operation]=('/EZCut'+(str(index) if index else ''),'/EZCutLayer'+(str(index) if index else ''))
         groups[operation]=writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject(config['layer'])}))
-        tint=DictionaryObject({NameObject('/FunctionType'):NumberObject(2),NameObject('/Domain'):ArrayObject([NumberObject(0),NumberObject(1)]),NameObject('/C0'):ArrayObject([NumberObject(0)]*4),NameObject('/C1'):ArrayObject([NumberObject(v) for v in ([1,1,0,0] if operation=='thru' else [0,1,0,0])]),NameObject('/N'):NumberObject(1)})
-        spaces[operation]=ArrayObject([NameObject('/Separation'),NameObject('/'+config['spot']),NameObject('/DeviceCMYK'),writer._add_object(tint)])
-        if operation == 'thru' and operation in source_colors:
-            original = source_colors[operation]
-            spaces[operation] = ArrayObject([NameObject('/Separation'), NameObject('/'+config['spot']),
-                                            original[2].clone(writer), original[3].clone(writer)])
     reg_group=reg_space=None
     if draw_marks:
         reg_group=writer._add_object(DictionaryObject({NameObject('/Type'):NameObject('/OCG'),NameObject('/Name'):TextStringObject('LNRegmark')}))
@@ -879,7 +896,7 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
         if not 0<sheet['usedLength']<=5000 or not 0<result['width']<=5000:raise ValueError('PDF sheets are limited to 5000 mm per side. Set a maximum sheet length for a longer batch.')
         page_width=sheet.get('previewWidth',result['width']) if preview else result['width']
         page=writer.add_blank_page(width=page_width/MM,height=sheet['usedLength']/MM)
-        color_spaces={NameObject(keys[op][0]):spaces[op] for op in active}
+        color_spaces={NameObject(key):space.clone(writer) for key,space in cut_colors.spaces.items()}
         properties={NameObject(keys[op][1]):groups[op] for op in active}
         if print_group:
             properties[NameObject('/EZPrint')] = print_group
@@ -926,8 +943,8 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
             if print_group:
                 chunk = chunk.replace(str(key)+' Do', '/OC /EZPrint BDC\n'+str(key)+' Do\nEMC')
             for path in piece['cutPaths']:
-                color,layer=keys[path['operation']]
-                chunk+='/OC '+layer+' BDC\n/EZOverprint gs\n'+color+' CS 1 SCN\n0.25 w\n'+path_text(path['commands'])+'\nS\nEMC\n'
+                layer=keys[path['operation']][1]
+                chunk+='/OC '+layer+' BDC\n/EZOverprint gs\n'+cut_colors.paint(ident,path)+'\n0.25 w\n'+path_text(path['commands'])+'\nS\nEMC\n'
             chunks.append(chunk+'Q')
         if draw_marks:
             band=settings.get('markMargin') or settings.get('margin') or 0
@@ -950,6 +967,7 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
         meta=preserve_artwork(clean,meta)
     identity=[2,bleed_mm,cut_spot,meta['cutMapping']]
     if preserve:identity=['preserve-artwork-v2',cut_spot,meta['cutMapping']]
+    identity.append('source-cut-colors-v1')
     if meta['excludedGuideIds']:identity.append({'excludedGuideIds':meta['excludedGuideIds']})
     if cut_approval:
         # The review ID already binds the candidate pages. Keep existing document IDs stable.
@@ -973,6 +991,8 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
     # Keep a large order's screen thumbnails bounded. The print export below
     # still uses the original PDF objects at their original resolution.
     preview_edge=min(600, max(32, int(math.sqrt(6_000_000 / len(meta['pieces'])))))
+    from pdf_cut_colors import CutColors
+    preview_colors=CutColors({ident:(clean,meta)},{ident:PdfReader(io.BytesIO(clean))},meta['cutMapping'])
     with pdfium.PdfDocument(preview) as doc:
       for index,piece in enumerate(meta['pieces']):
         w=preview_sheets[index]['previewWidth']; h=preview_sheets[index]['usedLength']
@@ -1003,7 +1023,8 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
             for command,values in display_commands:
                 coords=[((value-x0) if index%2==0 else (y1-value))*MM for index,value in enumerate(values)]
                 commands.append(('Z' if command=='h' else command.upper())+' '+' '.join(f'{v:.6f}' for v in coords))
-            preview_cuts.append({'operation':cut['operation'],'d':' '.join(commands)})
+            preview_cuts.append({'operation':cut['operation'],'d':' '.join(commands),
+                                 'color':preview_colors.preview_color(ident,cut),'sourceSpot':cut.get('sourceSpot')})
         preview_parts.append({'id':piece['id'],'name':piece['name'],'points':piece['points'],'quantity':1,
                               'documentId':ident,'pdfPieceId':piece['id'],'sourcePieceCount':piece.get('sourcePieceCount',1),'cutCounts':piece['cutCounts'],'cutRefs':unknown,'previewCuts':preview_cuts,'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h})
     (folder/(ident+'.pdf')).write_bytes(clean)
