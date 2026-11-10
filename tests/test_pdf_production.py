@@ -142,6 +142,46 @@ class PDFProductionTests(unittest.TestCase):
             with self.subTest(raw=raw[:20]):
                 with self.assertRaises(ValueError):read_document(raw)
 
+    def test_blank_pages_keep_original_page_numbers_and_artwork(self):
+        original = pdf_fixture()
+        writer = PdfWriter()
+        writer.add_blank_page(400, 300)
+        writer.add_page(PdfReader(io.BytesIO(original)).pages[0])
+        last_page = writer.add_blank_page(400, 300)
+        empty_stream = DecodedStreamObject()
+        empty_stream.set_data(b' \n% Empty artboard\n')
+        last_page[NameObject('/Contents')] = writer._add_object(empty_stream)
+        raw = io.BytesIO()
+        writer.write(raw)
+
+        with tempfile.TemporaryDirectory() as directory:
+            baseline = import_to_store(original, directory, preserve=True)
+            imported = import_to_store(raw.getvalue(), directory, preserve=True)
+            self.assertEqual(imported['sourcePieceCount'], 2)
+            self.assertEqual([part['name'] for part in imported['parts']],
+                             ['Page 2 · piece 1', 'Page 2 · piece 2'])
+            for before, after in zip(baseline['parts'], imported['parts'], strict=True):
+                for field in ('preview', 'points', 'cutCounts'):
+                    self.assertEqual(before[field], after[field], field)
+
+    def test_no_cuts_still_rejects_blank_document_and_painted_page(self):
+        blank_writer = PdfWriter()
+        blank_writer.add_blank_page(400, 300)
+        blank = io.BytesIO()
+        blank_writer.write(blank)
+        with self.assertRaisesRegex(ValueError, 'No cut lines found'):
+            read_document(blank.getvalue())
+
+        writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+        page = writer.add_blank_page(400, 300)
+        stream = DecodedStreamObject()
+        stream.set_data(b'0 g 20 20 100 70 re f')
+        page[NameObject('/Contents')] = writer._add_object(stream)
+        raw = io.BytesIO()
+        writer.write(raw)
+        with self.assertRaisesRegex(ValueError, 'No cut lines found'):
+            read_document(raw.getvalue())
+
     def test_conditional_layers_rejected_and_rotated_pages_preserve_size(self):
         writer=PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
         properties=DictionaryObject({NameObject('/HiddenCut'):DictionaryObject({NameObject('/Type'):NameObject('/OCMD')})})

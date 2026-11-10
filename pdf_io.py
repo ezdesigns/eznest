@@ -459,7 +459,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
     body,resources=visit(page.get_contents(),page['/Resources'])
     stream=DecodedStreamObject();stream.set_data(body)
     page[NameObject('/Contents')]=writer._add_object(stream);page[NameObject('/Resources')]=resources
-    return paths_found,removed[0]
+    return paths_found, removed[0], budget[0] == 0
 
 
 def group_paths(paths):
@@ -506,6 +506,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         for group in properties.get('/OCGs',[]):
             validate_layer_usage(group.get_object())
     writer=PdfWriter();pieces=[];registration_removed=0;path_count=0;page_paths=[];candidates=[];image_bounds=[]
+    blank_pages = set()
     unnamed_operation=cut_approval.get('operation') if isinstance(cut_approval,dict) else None
     for i,original in enumerate(reader.pages):
         if original.get('/Annots'):raise ValueError('Flatten annotations/forms in a print-only PDF before nesting.')
@@ -514,9 +515,15 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         # the local print source. Preserve the original uploaded AI separately.
         page=writer.add_page(original, excluded_keys=['/PieceInfo', '/Thumb'])
         if page.rotation:page.transfer_rotation_to_content()
-        paths,removed=extract_page(page,writer,cut_spot,i,mapping,candidates,unnamed_operation,image_bounds);registration_removed+=removed;path_count+=len(paths)
+        paths, removed, blank = extract_page(page, writer, cut_spot, i, mapping, candidates, unnamed_operation, image_bounds)
+        registration_removed += removed
+        path_count += len(paths)
         if path_count>5000:raise ValueError('Use no more than 5000 cut paths per file.')
+        if blank:
+            blank_pages.add(i)
         page_paths.append(paths)
+    if len(blank_pages) == len(page_paths):
+        raise ValueError('No cut lines found. Every PDF page is blank.')
     known_cuts=any(not p.get('fromUnlabeled') for paths in page_paths for p in paths)
     if candidates and not known_cuts:
         review=unnamed_cut_review(raw,mapping,candidates,previews=cut_approval is None)
@@ -539,6 +546,10 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
     elif guide_approval is not None:
         raise ValueError('This file has no matching guide review. Add the original file again.')
     for i,(page,paths) in enumerate(zip(writer.pages,page_paths)):
+        # Keep original page indexes for artwork and previews. Only pages with
+        # no source operators can skip the cut requirement.
+        if i in blank_pages:
+            continue
         paths=[p for p in paths if p['id'] not in excluded]
         page_pieces=group_paths(paths);crop=box(*map(float,page.cropbox))
         envelopes=[Polygon(p['pdfPoints']).buffer(bleed_mm/MM,join_style=2) if bleed_mm else Polygon(p['pdfPoints']) for p in page_pieces]
