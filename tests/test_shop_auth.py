@@ -228,8 +228,8 @@ class ShopAuthTests(unittest.TestCase):
         shop_auth.set_pin(server.WORK, '48151623')
         os.utime(server.WORK / 'shop-pin.json', ns=(7, 7))  # changed since the last check
         with patch.object(Path, 'read_bytes', side_effect=PermissionError('locked by another program')):
-            item = self.handler('/api/login', body=b'{"pin":"48151623"}')
-            item._login()
+            item = self.handler('/api/login', body=b'{"pin":"48151623"}', ip='127.0.0.1', host='127.0.0.1:8765')
+            item.do_POST()
         status, data, _ = item.sent[-1]
         self.assertEqual(status, 503)
         self.assertIn("can't be read", data['error'])

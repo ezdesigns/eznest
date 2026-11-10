@@ -1678,7 +1678,7 @@ function convertUnit(next) {
 }
 
 function stagingPath() {
-  if (!$('staging-on').checked) return '';
+  if (!hostComputer || !$('staging-on').checked) return '';
   return $('staging-folder').value.trim();
 }
 
@@ -2581,6 +2581,7 @@ async function boot() {
   await ensureStyles();
   let session = await EZNShop.start();
   hostComputer = session.localPC === true;
+  $('settings-backup').hidden = !hostComputer;
   token = session.token || '';
   localSave = session.localSave === true;
   renderOutputLink(session.outputLink, session.localPC);
