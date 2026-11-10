@@ -51,8 +51,8 @@ def main():
                 time.sleep(.1)
         else:raise TimeoutError('Portable app did not start.')
         token=session['token']
-        assert b'production-features.js' in request('/')
-        assert b'importDocument' in request('/production-features.js')
+        assert b'/web.js' in request('/')
+        assert b'/api/document/import-file' in request('/web.js')
         parsed=[]
         for forms in (False,True):
             parsed.append(request('/api/document/import',{'content':base64.b64encode(mixed_fixture(forms=forms)).decode(),'bleedMm':1,'cutSpot':'CutContour','cutMapping':defaults()}))
