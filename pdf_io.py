@@ -167,9 +167,11 @@ class CutReviewRequired(ValueError):
         self.review = review
 
 
-def unnamed_cut_review(raw, mapping, candidates, previews=True):
+def unnamed_cut_review(raw, mapping, candidates, previews=True, cut_spot=None):
     source_hash = hashlib.sha256(raw).hexdigest()
     identity = [source_hash, mapping, [p['id'] for p in candidates]]
+    if cut_spot is not None:
+        identity.append(cut_spot)
     review = {'id':hashlib.sha256(json.dumps(identity,sort_keys=True).encode()).hexdigest(),
               'sourceHash':source_hash, 'count':len(candidates), 'pages':[]}
     if not previews:
@@ -588,7 +590,10 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
     if blank_pages:
         verify_blank_pages(raw, len(page_paths), blank_pages)
     if candidates:
-        review=unnamed_cut_review(raw,mapping,candidates,previews=cut_approval is None)
+        # In a mixed file the generic spot can change mapped cuts on other pages
+        # without changing the unnamed candidates. Keep legacy IDs for all-unnamed files.
+        review = unnamed_cut_review(raw, mapping, candidates, previews=cut_approval is None,
+                                    cut_spot=cut_spot if known_cuts else None)
         if cut_approval is None: raise CutReviewRequired(review)
         review_pages = sorted({candidate['page'] + 1 for candidate in candidates})
         # Older approvals had no page list and were only valid on documents with no mapped cuts.

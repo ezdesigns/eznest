@@ -10,7 +10,7 @@ from collections import Counter
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import DictionaryObject, NameObject, NumberObject, DecodedStreamObject
+from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, DecodedStreamObject
 from cut_mapping import defaults
 from engine import validate_job, validate_result
 from nesting import run
@@ -70,6 +70,30 @@ class StickerOrderTests(unittest.TestCase):
         # The closed ordinary ink strokes on the named page must stay printed.
         named_ink = PdfReader(io.BytesIO(clean)).pages[0].get_contents().operations
         self.assertEqual(sum(operator == b'S' for _, operator in named_ink), 2)
+
+    def test_mixed_approval_rejects_a_different_generic_cut_spot(self):
+        writer = PdfWriter(clone_from=io.BytesIO(mixed_outline_fixture()))
+        page = writer.pages[0]
+        spaces = page['/Resources']['/ColorSpace']
+        brand = spaces['/Brand']
+        spaces[NameObject('/Decoration')] = ArrayObject([brand[0], NameObject('/DecorationInk'), *brand[2:]])
+        stream = DecodedStreamObject()
+        stream.set_data(page.get_contents().get_data().replace(b'0 G 30 35', b'/Decoration CS 1 SCN 30 35'))
+        page[NameObject('/Contents')] = writer._add_object(stream)
+        out = io.BytesIO()
+        writer.write(out)
+        raw = out.getvalue()
+        mapping = defaults()
+        mapping['genericOperation'] = 'contour'
+
+        with self.assertRaises(CutReviewRequired) as raised:
+            read_document(raw, cut_mapping=mapping)
+        review = raised.exception.review
+        approval = {'id': review['id'], 'sourceHash': review['sourceHash'], 'operation': 'kiss', 'pages': [2]}
+        _, meta = read_document(raw, cut_mapping=mapping, cut_approval=approval)
+        self.assertEqual([piece['cutCounts']['contour'] for piece in meta['pieces']], [0, 0, 0, 0])
+        with self.assertRaisesRegex(ValueError, 'does not match'):
+            read_document(raw, cut_spot='DecorationInk', cut_mapping=mapping, cut_approval=approval)
 
     def test_continuous_thousand_uses_one_page_and_best_row_orientation(self):
         job={'settings':{'width':1308.1,'sheetLength':5000,'continuous':True,'maxLength':None,
