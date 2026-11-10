@@ -10,7 +10,8 @@ from zipfile import ZipFile
 from unittest.mock import patch
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, DecodedStreamObject
+from pypdf.generic import (ArrayObject, DecodedStreamObject, DictionaryObject,
+                           EncodedStreamObject, IndirectObject, NameObject, NumberObject)
 from pdf_io import read_document, import_to_store, export_pdf, load_documents, output_check, bleed_artwork_matrix, cut_bounds, prepare_nesting_geometry, MM
 from production import make_package
 
@@ -148,6 +149,7 @@ class PDFProductionTests(unittest.TestCase):
         writer.add_blank_page(400, 300)
         writer.add_page(PdfReader(io.BytesIO(original)).pages[0])
         last_page = writer.add_blank_page(400, 300)
+        last_page.rotate(90)
         empty_stream = DecodedStreamObject()
         empty_stream.set_data(b' \n% Empty artboard\n')
         last_page[NameObject('/Contents')] = writer._add_object(empty_stream)
@@ -181,6 +183,26 @@ class PDFProductionTests(unittest.TestCase):
         writer.write(raw)
         with self.assertRaisesRegex(ValueError, 'No cut lines found'):
             read_document(raw.getvalue())
+
+    def test_invalid_content_cannot_be_mistaken_for_an_empty_page(self):
+        for kind in ('invalid stream array', 'missing stream reference', 'corrupt Flate stream'):
+            with self.subTest(kind=kind):
+                writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+                page = writer.add_blank_page(400, 300)
+                if kind == 'invalid stream array':
+                    content = ArrayObject([NumberObject(17)])
+                elif kind == 'missing stream reference':
+                    content = IndirectObject(510, 0, writer)
+                else:
+                    stream = EncodedStreamObject()
+                    stream[NameObject('/Filter')] = NameObject('/FlateDecode')
+                    stream._data = b'not a zlib stream at all'
+                    content = writer._add_object(stream)
+                page[NameObject('/Contents')] = content
+                raw = io.BytesIO()
+                writer.write(raw)
+                with self.assertRaisesRegex(ValueError, 'No cut lines found'):
+                    read_document(raw.getvalue())
 
     def test_conditional_layers_rejected_and_rotated_pages_preserve_size(self):
         writer=PdfWriter(clone_from=io.BytesIO(pdf_fixture()))

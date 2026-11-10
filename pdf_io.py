@@ -17,7 +17,7 @@ from pathlib import Path
 from pypdf import PdfReader, PdfWriter
 from pypdf.errors import LimitReachedError
 from pypdf.generic import (ArrayObject, ContentStream, DecodedStreamObject,
-                           DictionaryObject, NameObject, NumberObject,
+                           DictionaryObject, NameObject, NullObject, NumberObject,
                            TextStringObject)
 from shapely.geometry import Polygon, box, MultiPoint
 from shapely.affinity import rotate, translate
@@ -462,6 +462,25 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
     return paths_found, removed[0], budget[0] == 0
 
 
+def can_verify_empty_contents(page):
+    """Filtered streams can decode to nothing after a lenient parser recovery."""
+    contents = page.get('/Contents')
+    if contents is None or isinstance(contents, NullObject):
+        return True
+    contents = contents.get_object()
+    streams = contents if isinstance(contents, ArrayObject) else (contents,)
+    for entry in streams:
+        stream = entry.get_object() if entry is not None else None
+        if not isinstance(stream, DecodedStreamObject) or '/F' in stream or '/Filter' in stream:
+            return False
+    return True
+
+
+def has_content_operators(page):
+    content = page.get_contents()
+    return content is not None and next(operations(content), None) is not None
+
+
 def group_paths(paths):
     """Outermost closed contours own contained cuts; ambiguous geometry rejects."""
     from shapely.geometry import LineString
@@ -514,12 +533,14 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         # Native Illustrator editing data is not PDF paint and is not needed in
         # the local print source. Preserve the original uploaded AI separately.
         page=writer.add_page(original, excluded_keys=['/PieceInfo', '/Thumb'])
-        if page.rotation:page.transfer_rotation_to_content()
+        # Rotation normalization inserts operators even in an empty stream.
+        if page.rotation and (not can_verify_empty_contents(original) or has_content_operators(page)):
+            page.transfer_rotation_to_content()
         paths, removed, blank = extract_page(page, writer, cut_spot, i, mapping, candidates, unnamed_operation, image_bounds)
         registration_removed += removed
         path_count += len(paths)
         if path_count>5000:raise ValueError('Use no more than 5000 cut paths per file.')
-        if blank:
+        if blank and can_verify_empty_contents(original):
             blank_pages.add(i)
         page_paths.append(paths)
     if len(blank_pages) == len(page_paths):
