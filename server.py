@@ -374,6 +374,13 @@ class Handler(BaseHTTPRequestHandler):
         return shop_name_allowed(name)
 
     def allowed(self):
+        # This server accepts direct connections only. A proxy running on the
+        # host must not inherit host authority from its loopback socket.
+        for name in self.headers:
+            name = name.lower()
+            if name in ('forwarded', 'via', 'x-real-ip') or name.startswith(('cf-', 'x-forwarded-')):
+                self.close_connection = True
+                return False
         return self.local_name(self.headers.get('Host'))
 
     def client_ip(self):
@@ -793,26 +800,41 @@ class Handler(BaseHTTPRequestHandler):
         return self.send(status, response)
 
     def do_POST(self):
+        return self.handle_post()
+
+    def handle_post(self):
+        if not self.allowed() or not self.browser_site_ok('POST'):
+            return self.send(403, {'error': 'Invalid session'})
+        path = self.route_path()
+        access_data = None
+        if path in ('/api/login', '/api/shop-members/join'):
+            if UPDATE_QUEUE.stopping or macos_service_runtime.maintenance():
+                return self.send(503, {'error': 'Installing an update. Wait for eznest to restart.'})
+            if path == '/api/login' and shop_members.configured(WORK):
+                return self.send(403, {'error': 'Use an invitation from the shop host to join this shop.'})
+            # A client can pause its upload before authenticating. Read the
+            # small public body before taking the shared operations lock.
+            try:
+                access_data = self._read_shop_request()
+            except (ValueError, TypeError):
+                error = 'Could not sign in.' if path == '/api/login' else 'Check the shop name, teammate name, or invitation and try again.'
+                return self.send(400, {'error': error})
         # Hold admission through import, save and delivery. An update claim cannot
         # slip between a busy check and a new operation starting on another PC.
         with OPERATIONS:
-            if (UPDATE_QUEUE.stopping or macos_service_runtime.maintenance()) and self.route_path() != '/api/macos-service/cancel':
+            if (UPDATE_QUEUE.stopping or macos_service_runtime.maintenance()) and path != '/api/macos-service/cancel':
                 return self.send(503, {'error': 'Installing an update. Wait for eznest to restart.'})
-            return self.handle_post()
+            return self._dispatch_post(path, access_data)
 
-    def _login(self):
+    def _read_shop_request(self):
+        size = int(self.headers.get('Content-Length', '0'))
+        if not 0 <= size <= 4000:
+            raise ValueError('Shop request is too large.')
+        return json.loads(self.rfile.read(size) or b'{}')
+
+    def _login(self, data):
         if shop_members.configured(WORK):
             return self.send(403, {'error': 'Use an invitation from the shop host to join this shop.'})
-        try:
-            size = int(self.headers.get('Content-Length', '0'))
-        except ValueError:
-            return self.send(400, {'error': 'Could not sign in.'})
-        if not 0 <= size <= 4000:
-            return self.send(400, {'error': 'Could not sign in.'})
-        try:
-            data = json.loads(self.rfile.read(size) or b'{}')
-        except (ValueError, TypeError):
-            return self.send(400, {'error': 'Could not sign in.'})
         pin = data.get('pin') if isinstance(data, dict) else ''
         result = shop_auth.login_attempt(WORK, self.client_ip(), pin if isinstance(pin, str) else '')
         if result == 'unreadable':
@@ -831,17 +853,15 @@ class Handler(BaseHTTPRequestHandler):
         shop_auth.revoke_session(shop_auth.read_cookie(self.headers.get('Cookie') if self.headers else None))
         return self.send(200, {'ok': True}, extra_headers=[('Set-Cookie', shop_auth.clear_cookie_header(secure=TLS)), ('Set-Cookie', shop_members.cookie('', secure=TLS))])
 
-    def _membership(self, path):
-        if path != '/api/shop-members/join' and not (self.loopback_client() and self.token_ok()):
+    def _membership(self, path, access_data):
+        joining = path == '/api/shop-members/join'
+        if not joining and not (self.loopback_client() and self.token_ok()):
             return self.send(403, {'error': 'Manage the shop and invitations on the host PC.'})
         try:
-            size = int(self.headers.get('Content-Length', '0'))
-            if not 0 <= size <= 4000:
-                raise ValueError('Shop request is too large.')
-            data = json.loads(self.rfile.read(size) or b'{}')
+            data = access_data if joining else self._read_shop_request()
             if not isinstance(data, dict):
                 raise ValueError('Supply a shop request.')
-            if path == '/api/shop-members/join':
+            if joining:
                 result = shop_members.join(WORK, data.get('code'), data.get('name'), self.client_ip())
                 if 'error' in result:
                     return self.send(result['status'], {'error': result['error']})
@@ -862,15 +882,12 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, sqlite3.Error):
             return self.send(503, {'error': 'Shop access is unavailable. Check the host PC.'})
 
-    def handle_post(self):
+    def _dispatch_post(self, path, access_data):
         global PROCESS
-        if not self.allowed() or not self.browser_site_ok('POST'):
-            return self.send(403, {'error': 'Invalid session'})
-        path = self.route_path()
         if path.startswith('/api/shop-members/'):
-            return self._membership(path)
+            return self._membership(path, access_data)
         if path == '/api/login':
-            return self._login()
+            return self._login(access_data)
         if path == '/api/logout':
             return self._logout()
         if not self.authenticated():
@@ -891,6 +908,12 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Invalid import options.')
                 return self.import_document(options, upload_size=size)
             data = json.loads(self.rfile.read(size) or '{}')
+            uses_staging = (
+                (path == '/api/release' and data.get('downloadOnly') is not True)
+                or (path == '/api/export/save' and data.get('destination') == 'folder')
+            )
+            if uses_staging and data.get('stagingFolder') and not (self.loopback_client() and self.token_ok()):
+                return self.send(403, {'error': 'Choose the extra copy folder on the PC running Ez Nest.'})
             if path in ('/api/macos-service/claim', '/api/macos-service/cancel'):
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Approve updates on the server Mac.'})
@@ -1307,6 +1330,8 @@ class Handler(BaseHTTPRequestHandler):
                     persist_state()
                     return self.send(200, {'ok': True})
                 elif path == '/api/shutdown':
+                    if not (self.loopback_client() and self.token_ok()):
+                        return self.send(403, {'error': 'Stop Ez Nest on the PC running it.'})
                     if macos_service_runtime.active():
                         raise ValueError('The shop host stays available when a browser closes. The administrator controls its system service.')
                     if STATE.get('status') == 'running':

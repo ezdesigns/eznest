@@ -22,6 +22,8 @@ Shop network is off until the host is started with `--lan`, and that start is re
 
 Use shop network only on a trusted private network. Do not forward port 8765, and do not put this host on the internet or on guest Wi-Fi.
 
+Use direct connections to Ez Nest. Do not point Cloudflare Tunnel or a reverse proxy at the listener. Ez Nest rejects recognized proxy headers. A proxy that hides all forwarding metadata can appear to be a local connection and inherit host access.
+
 Without `--lan`, Ez Nest binds to `127.0.0.1` only. A saved shop setting cannot open the listener by itself.
 
 ### Shop PIN
@@ -60,7 +62,7 @@ The Windows shop task can take the same pair as `-TlsCert` and `-TlsKey` on `ins
 
 An IPv4-mapped IPv6 address such as `::ffff:127.0.0.1` is treated as `127.0.0.1`. `::ffff:` followed by any other IPv4 address is that IPv4 address for the PIN lock and the session binding.
 
-Shop settings, first-time setup, the source-folder queue, the hot-folder connection, and the OUTPUT address can be changed only from the shop computer (`127.0.0.1`). After the PIN, designer browsers can still nest and use shared stock.
+Shop settings, first-time setup, the source-folder queue, the hot-folder connection, the optional extra copy destination, and the OUTPUT address can be changed only from the shop computer (`127.0.0.1`). The host also controls stopping Ez Nest. After the PIN, designer browsers can still nest and use shared stock.
 
 ### Firewall
 
