@@ -106,9 +106,9 @@ def remove_empty_groups(operations):
     return output
 
 
-def piece_form(page, writer, analyzed, clip):
+def piece_form(page, writer, analyzed, clip, selected=None):
     from pdf_io import form_from_page
-    if analyzed is None:
+    if selected is None and analyzed is None:
         cache = getattr(writer, '_eznest_shared_page_forms', None)
         if cache is None:
             cache = writer._eznest_shared_page_forms = {}
@@ -118,7 +118,12 @@ def piece_form(page, writer, analyzed, clip):
         if key not in cache:
             cache[key] = form_from_page(page, writer)
         return cache[key]
-    content, names = clipped_commands(*analyzed, clip)
+    if selected is None:
+        content, names = clipped_commands(*analyzed, clip)
+    else:
+        content = selected
+        parsed = ContentStream(None, None); parsed.set_data(content)
+        names = {values[0] for values, op in parsed.operations if op == b'Do'}
     resources = DictionaryObject(page['/Resources'])
     if '/XObject' in resources:
         original = resources['/XObject']

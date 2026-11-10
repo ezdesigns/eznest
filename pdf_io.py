@@ -706,6 +706,7 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
     writer=PdfWriter();writer.pdf_header='%PDF-1.7'
     from pdf_export_forms import invocation_bounds, piece_form, clip_bounds
     forms={};readers={};analyzed={};output_intents=[]
+    object_pages={}
     for ident,(raw,meta) in documents.items():
         reader=PdfReader(io.BytesIO(raw));readers[ident]=reader
         if reader.pdf_header>writer.pdf_header:writer.pdf_header=reader.pdf_header
@@ -715,7 +716,16 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
             if output_intents and output_intents[0]!=profiles:raise ValueError('Source PDFs have different output profiles. Use compatible source PDFs before mixing jobs.')
             if not output_intents:
                 output_intents.append(profiles);writer.root_object[NameObject('/OutputIntents')]=intents.clone(writer)
-        for page_index,page in enumerate(reader.pages):analyzed[(ident,page_index)]=invocation_bounds(page,reader)
+        for page_index,page in enumerate(reader.pages):
+            analyzed[(ident,page_index)]=invocation_bounds(page,reader)
+            if meta.get('artworkPreserved') and not preview:
+                from pdf_piece_objects import analyze_objects
+                try:
+                    object_pages[(ident,page_index)] = analyze_objects(page,reader)
+                except ValueError:
+                    # Uncertain object ownership retains the established export;
+                    # optimization must never discard artwork or block a job.
+                    object_pages[(ident,page_index)] = None
     active=[op for op in OPERATIONS if any(c['operation']==op for raw,meta in documents.values() for p in meta['pieces'] for c in p['cutPaths'])]
     settings=job.get('settings') or {}
     draw_marks=settings.get('drawRegmarks') is True
@@ -765,11 +775,19 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
             if form_id not in forms:
                 source_page=readers[ident].pages[piece['page']]
                 clip=clip_bounds(piece['clipCommands'])
-                forms[form_id]=(piece_form(source_page,writer,analyzed[(ident,piece['page'])],clip)
-                                if clip is not None else form_from_page(source_page,writer))
+                selected = None
+                if (ident,piece['page']) in object_pages and all(op in ('m','l','h') for op,_ in piece['clipCommands']):
+                    from pdf_piece_objects import select_objects
+                    envelope=Polygon([values for op,values in piece['clipCommands'] if op in ('m','l')])
+                    selected=select_objects(object_pages[(ident,piece['page'])],envelope)
+                ref=(piece_form(source_page,writer,analyzed[(ident,piece['page'])],clip,selected=selected[0])
+                     if selected is not None and clip is not None else
+                     piece_form(source_page,writer,analyzed[(ident,piece['page'])],clip)
+                     if clip is not None else form_from_page(source_page,writer))
+                forms[form_id]=(ref,selected is not None)
             if form_id not in form_keys:
                 key=NameObject('/Art'+str(len(resources['/XObject'])+1))
-                form_keys[form_id]=key;resources['/XObject'][key]=forms[form_id]
+                form_keys[form_id]=key;resources['/XObject'][key]=forms[form_id][0]
             key=form_keys[form_id]
             placement_cm=' '.join(f'{v:.9f}' for v in (c,-s,s,c,tx,ty))
             bleed=bleed_artwork_matrix(cut_bounds(piece), bleed_mm) if piece.get('cutPaths') else None
@@ -777,7 +795,8 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
                 bleed_cm=' '.join(f'{v:.9f}' for v in bleed)
                 chunk='q\n'+placement_cm+' cm\nq\n'+bleed_cm+' cm\nq\n'+path_text(piece['clipCommands'])+'\nW n\n'+str(key)+' Do\nQ\nQ\n'
             else:
-                chunk='q\n'+placement_cm+' cm\nq\n'+path_text(piece['clipCommands'])+'\nW n\n'+str(key)+' Do\nQ\n'
+                clip_commands='' if forms[form_id][1] else path_text(piece['clipCommands'])+'\nW n\n'
+                chunk='q\n'+placement_cm+' cm\nq\n'+clip_commands+str(key)+' Do\nQ\n'
             if print_group:
                 chunk = chunk.replace(str(key)+' Do', '/OC /EZPrint BDC\n'+str(key)+' Do\nEMC')
             for path in piece['cutPaths']:

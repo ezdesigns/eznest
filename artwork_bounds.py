@@ -84,7 +84,7 @@ def path_parts(count, segment_at, tolerance):
     return paths
 
 
-def paint_envelopes(page, image_bounds=None, cuts=None):
+def paint_envelopes(page, image_bounds=None, cuts=None, label_for=None):
     import pypdfium2.raw as api
     from pdf_io import matrix
     budget = [0, 0]
@@ -95,10 +95,11 @@ def paint_envelopes(page, image_bounds=None, cuts=None):
     image_bounds = image_bounds or []
     image_tree = STRtree([box(*item['box']) for item in image_bounds])
 
-    def visit(objects, parent=IDENTITY, inherited=crop, depth=0):
+    def visit(objects, parent=IDENTITY, inherited=crop, depth=0, inherited_label=None):
         if depth > 15:
             raise ValueError('Artwork forms are nested too deeply.')
         for obj in objects:
+            label = label_for(obj) if label_for is not None and depth == 0 else inherited_label
             budget[0] += 1
             if budget[0] > 1_000_000:
                 raise ValueError('Too many artwork objects to separate safely.')
@@ -164,7 +165,7 @@ def paint_envelopes(page, image_bounds=None, cuts=None):
             if budget[1] > 100000:
                 raise ValueError('Too many artwork outlines outside cuts to separate safely.')
             if obj.type == api.FPDF_PAGEOBJ_FORM:
-                yield from visit(page.get_objects(form=obj, max_depth=1), total, clipping, depth+1)
+                yield from visit(page.get_objects(form=obj, max_depth=1), total, clipping, depth+1, label)
                 continue
             bounds = transformed(box(*obj.get_bounds()), parent)
             shape = bounds
@@ -195,7 +196,8 @@ def paint_envelopes(page, image_bounds=None, cuts=None):
                 # Bounds-based paint needs the same enclosure guard as paths.
                 shape = shape.buffer(PAD)
             if not shape.is_empty:
-                yield shape.intersection(clipping)
+                envelope = shape.intersection(clipping)
+                yield (label, envelope) if label_for is not None else envelope
 
     return list(visit(page.get_objects(max_depth=1)))
 
