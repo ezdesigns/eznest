@@ -167,7 +167,21 @@ class CutReviewRequired(ValueError):
         self.review = review
 
 
-def unnamed_cut_review(raw, mapping, candidates, previews=True, cut_spot=None):
+def cut_preview_bounds(page, normalized):
+    rotation = normalized[0] if normalized is not None else 0
+    if rotation % 90 or page.get_rotation() != rotation % 360:
+        raise ValueError('Could not verify PDF page rotation for cut review.')
+    if normalized is None:
+        return page.get_bbox()
+    # PDFium renders the original with its rotation applied. The candidates
+    # already use the normalized coordinates, including the rotated crop offset.
+    source = normalized[1]
+    media, crop = source.mediabox, source.cropbox
+    return (max(float(media.left), float(crop.left)), max(float(media.bottom), float(crop.bottom)),
+            min(float(media.right), float(crop.right)), min(float(media.top), float(crop.top)))
+
+
+def unnamed_cut_review(raw, mapping, candidates, previews=True, cut_spot=None, rotated_pages=None):
     source_hash = hashlib.sha256(raw).hexdigest()
     identity = [source_hash, mapping, [p['id'] for p in candidates]]
     if cut_spot is not None:
@@ -181,10 +195,14 @@ def unnamed_cut_review(raw, mapping, candidates, previews=True, cut_spot=None):
         for index in sorted({p['page'] for p in candidates}):
             page = doc[index]
             try:
-                if page.get_rotation():
-                    raise ValueError('Name the cut paths in this rotated PDF before importing it.')
-                left,bottom,right,top = page.get_bbox()
-                bitmap = page.render(scale=min(2,900/max(page.get_size())))
+                normalized = rotated_pages.get(index) if rotated_pages else None
+                left, bottom, right, top = cut_preview_bounds(page, normalized)
+                width, height = right - left, top - bottom
+                render_width, render_height = page.get_size()
+                if normalized is not None and not (math.isclose(width, render_width, abs_tol=.01)
+                                                    and math.isclose(height, render_height, abs_tol=.01)):
+                    raise ValueError('Could not align the rotated PDF crop for cut review.')
+                bitmap = page.render(scale=min(2,900/max(render_width, render_height)))
                 try:
                     buffer=io.BytesIO();bitmap.to_pil().save(buffer,format='PNG')
                 finally:
@@ -196,7 +214,7 @@ def unnamed_cut_review(raw, mapping, candidates, previews=True, cut_spot=None):
                     sample=pts[::stride]
                     if sample[-1]!=pts[-1]: sample.append(pts[-1])
                     paths.append({'id':p['id'],'d':'M'+' L'.join(f'{x:.3f} {-y:.3f}' for x,y in sample)+' Z'})
-                review['pages'].append({'page':index+1,'viewBox':[left,-top,right-left,top-bottom],
+                review['pages'].append({'page':index+1,'viewBox':[left,-top,width,height],
                     'image':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode('ascii'),'paths':paths})
             finally:
                 page.close()
@@ -548,6 +566,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
             validate_layer_usage(group.get_object())
     writer=PdfWriter();pieces=[];registration_removed=0;path_count=0;page_paths=[];candidates=[];image_bounds=[]
     blank_pages = set()
+    rotated_pages = {}
     known_cuts = False
     unnamed_operation = None
     approved_pages = None
@@ -570,8 +589,14 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         # the local print source. Preserve the original uploaded AI separately.
         page=writer.add_page(original, excluded_keys=['/PieceInfo', '/Thumb'])
         # Rotation normalization inserts operators even in an empty stream.
-        if page.rotation and (not can_verify_empty_contents(original) or has_content_operators(page)):
+        rotation = page.rotation
+        if rotation and (not can_verify_empty_contents(original) or has_content_operators(page)):
+            # pypdf replaces content in place. Detach streams that other pages may share.
+            content = page.get_contents()
+            if content is not None:
+                page[NameObject('/Contents')] = content
             page.transfer_rotation_to_content()
+            rotated_pages[i] = (rotation, page)
         first_candidate = len(candidates)
         operation = unnamed_operation if approved_pages is None or i + 1 in approved_pages else None
         paths, removed, blank = extract_page(page, writer, cut_spot, i, mapping, candidates, operation, image_bounds)
@@ -593,7 +618,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         # In a mixed file the generic spot can change mapped cuts on other pages
         # without changing the unnamed candidates. Keep legacy IDs for all-unnamed files.
         review = unnamed_cut_review(raw, mapping, candidates, previews=cut_approval is None,
-                                    cut_spot=cut_spot if known_cuts else None)
+                                    cut_spot=cut_spot if known_cuts else None, rotated_pages=rotated_pages)
         if cut_approval is None: raise CutReviewRequired(review)
         review_pages = sorted({candidate['page'] + 1 for candidate in candidates})
         # Older approvals had no page list and were only valid on documents with no mapped cuts.
