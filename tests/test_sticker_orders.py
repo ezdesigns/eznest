@@ -1,5 +1,6 @@
 """Synthetic large-order, lossless print-copy and explicit cut-review checks."""
 import opt_out
+import base64
 import copy
 import hashlib
 import io
@@ -10,7 +11,7 @@ from collections import Counter
 from pathlib import Path
 
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, DecodedStreamObject
+from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, DecodedStreamObject, RectangleObject
 from cut_mapping import defaults
 from engine import validate_job, validate_result
 from nesting import run
@@ -49,6 +50,61 @@ def pixels(raw):
 
 
 class StickerOrderTests(unittest.TestCase):
+    def test_rotated_cut_review_aligns_with_the_rendered_crop(self):
+        from PIL import Image
+
+        turns = (90, 180, 270, 360)
+        writer = PdfWriter()
+        source = PdfReader(io.BytesIO(outline_fixture())).pages[0]
+        for turn in turns:
+            page = writer.add_page(source)
+            page[NameObject('/Contents')] = writer.pages[0].raw_get('/Contents')
+            page.mediabox = RectangleObject((4, 5, 164, 85))
+            page.cropbox = RectangleObject((7, 6, 169, 70))
+            page.rotate(turn)
+        raw = io.BytesIO()
+        writer.write(raw)
+
+        with self.assertRaises(CutReviewRequired) as raised:
+            read_document(raw.getvalue())
+        review = raised.exception.review
+        self.assertEqual(review['count'], 8)
+        self.assertEqual([preview['page'] for preview in review['pages']], [1, 2, 3, 4])
+        for turn, preview in zip(turns, review['pages'], strict=True):
+            with self.subTest(turn=turn):
+                left, top, width, height = preview['viewBox']
+                expected = (64, 157) if turn % 180 else (157, 64)
+                self.assertAlmostEqual(width, expected[0])
+                self.assertAlmostEqual(height, expected[1])
+                with Image.open(io.BytesIO(base64.b64decode(preview['image'].split(',')[1]))) as png:
+                    gray = png.convert('L')
+                for path in preview['paths']:
+                    vertices = [tuple(map(float, pair.split())) for pair in path['d'][1:-2].split(' L')]
+                    for (x1, y1), (x2, y2) in zip(vertices, vertices[1:] + vertices[:1]):
+                        x = round(((x1+x2)/2-left) * gray.width / width)
+                        y = round(((y1+y2)/2-top) * gray.height / height)
+                        self.assertTrue(2 <= x < gray.width-2 and 2 <= y < gray.height-2)
+                        self.assertLess(gray.crop((x-2, y-2, x+3, y+3)).getextrema()[0], 45)
+        approval = {'id': review['id'], 'sourceHash': review['sourceHash'], 'operation': 'kiss', 'pages': [1, 2, 3, 4]}
+        clean, meta = read_document(raw.getvalue(), cut_approval=approval)
+        self.assertEqual([page.rotation for page in PdfReader(io.BytesIO(clean)).pages], [0] * 4)
+        self.assertEqual([piece['cutCounts']['kiss'] for piece in meta['pieces']], [1] * 8)
+
+    def test_rotated_cut_review_rejects_an_outline_outside_the_visible_page(self):
+        writer = PdfWriter()
+        page = writer.add_blank_page(100, 50)
+        page.cropbox = RectangleObject((0, 0, 160, 50))
+        page.rotate(90)
+        stream = DecodedStreamObject()
+        stream.set_data(b'0 G 10 10 10 10 re S 120 10 10 10 re S')
+        page[NameObject('/Contents')] = writer._add_object(stream)
+        raw = io.BytesIO()
+        writer.write(raw)
+
+        for approval in (None, {'id': 'unused', 'sourceHash': 'unused', 'operation': 'kiss', 'pages': [1]}):
+            with self.subTest(approval=approval), self.assertRaisesRegex(ValueError, 'outside the visible PDF page'):
+                read_document(raw.getvalue(), cut_approval=approval)
+
     def test_unnamed_review_is_scoped_to_pages_without_named_cuts(self):
         raw = mixed_outline_fixture()
         with self.assertRaises(CutReviewRequired) as raised:
