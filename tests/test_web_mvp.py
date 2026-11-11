@@ -85,7 +85,10 @@ class WebMvpTests(unittest.TestCase):
                 expect(page.locator('#start-nesting')).to_be_enabled()
                 page.screenshot(path=str(SCREENSHOTS/'upload-new-job-ready.png'), full_page=True)
                 # Adding a file is explicitly different from replacing the job.
-                page.set_input_files('#more', original)
+                expect(page.locator('#add-files')).to_be_visible()
+                with page.expect_file_chooser() as adding:
+                    page.click('#add-files')
+                adding.value.set_files(original)
                 page.wait_for_function('() => !importing && kits.length === 2')
                 self.assertEqual(len(solves), 1)
                 self.start_nesting(page)

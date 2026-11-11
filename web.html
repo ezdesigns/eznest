@@ -361,7 +361,6 @@
   <div class="preview-tools" id="preview-tools" hidden>
     <strong>Print layout</strong>
     <button id="fill-spare-open" class="link" type="button" hidden>Fill spare space</button>
-    <label id="add-files" class="link" hidden>Add files<input id="more" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple></label>
     <label>Zoom <select id="preview-zoom" aria-label="Preview zoom">
       <option value="1">Fit width</option><option value="1.5">150%</option>
       <option value="2">200%</option><option value="3">300%</option>
@@ -381,6 +380,7 @@
     <h2 class="job-heading"><span><span class="step-number">1</span> Upload job</span><button id="upload-new-job" class="link" type="button" hidden>Upload new job</button></h2>
     <p id="job-empty" class="hint">Add a print file to get started.</p>
   <ul id="files" class="files" hidden></ul>
+  <label id="add-files" class="link" hidden>Add files to this job<input id="more" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple></label>
   <details id="job-options" hidden><summary>Copies <span id="copies-summary"></span></summary><p class="hint">Repeat every piece in this job.</p><div class="quiet">
 
     <div class="sets"><span id="copies-label">Full sets</span>
