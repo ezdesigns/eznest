@@ -1062,30 +1062,6 @@ function setNestingEffort(seconds) {
   $('effort-summary').textContent = $('nesting-effort').selectedOptions[0].textContent;
 }
 
-function addHatch(frame) {
-  const defs = document.createElementNS(NS, 'defs');
-  const pattern = document.createElementNS(NS, 'pattern');
-  pattern.setAttribute('id', 'ez-waste');
-  pattern.setAttribute('patternUnits', 'userSpaceOnUse');
-  pattern.setAttribute('width', '6');
-  pattern.setAttribute('height', '6');
-  pattern.setAttribute('patternTransform', 'rotate(45)');
-  const backing = document.createElementNS(NS, 'rect');
-  backing.setAttribute('width', '6');
-  backing.setAttribute('height', '6');
-  backing.setAttribute('fill', '#9a9a9a');
-  const line = document.createElementNS(NS, 'line');
-  line.setAttribute('x1', '0');
-  line.setAttribute('y1', '0');
-  line.setAttribute('x2', '0');
-  line.setAttribute('y2', '6');
-  line.setAttribute('stroke', '#7d7d7d');
-  line.setAttribute('stroke-width', '2');
-  pattern.append(backing, line);
-  defs.append(pattern);
-  frame.append(defs);
-}
-
 function addRuler(frame, sheet, width) {
   const inch = 25.4;
   const scale = width / 42;
@@ -1171,14 +1147,13 @@ function renderSheet(frame, state, index) {
   const h = sheet.usedLength + pad * 2 + 2;
   fit(frame, w, h);
   frame.setAttribute('viewBox', `${x} ${y} ${w} ${h}`);
-  addHatch(frame);
   const roll = document.createElementNS(NS, 'rect');
   roll.setAttribute('x', '0');
   roll.setAttribute('y', String(sheet.offset));
   roll.setAttribute('width', result.width);
   roll.setAttribute('height', sheet.usedLength);
-  roll.setAttribute('fill', 'url(#ez-waste)');
-  roll.setAttribute('stroke', '#111');
+  roll.setAttribute('fill', '#fff');
+  roll.setAttribute('stroke', '#bbc3ba');
   roll.setAttribute('stroke-width', '0.6');
   frame.append(roll);
   addRuler(frame, sheet, result.width);

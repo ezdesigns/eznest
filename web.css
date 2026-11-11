@@ -27,7 +27,7 @@
   --workbench-line: #dcded8;
   --font-sans: "Red Hat Display", "Segoe UI", sans-serif;
   --alarm: #D92F00;
-  --canvas: #9a9a9a;
+  --canvas: #e9ece8;
   --thru: #0000FF;
   --kiss: #E6007E;
   font: 16px/1.45 "Red Hat Display", "Segoe UI", sans-serif;
@@ -302,6 +302,7 @@ main { min-height: auto; padding: 20px 0 24px; gap: 18px; }
 .preview-tools label { font-size: 12px; }
 .preview-tools select { width: 110px; font-size: 13px; }
 .sheet-frame { max-height: 58vh; min-height: 300px; }
+body:is([data-step="check"], [data-step="confirm"], [data-step="sent"]) .sheet-frame { min-height: 0; }
 .key { font-size: 11px; justify-content: flex-start; }
 .material-area { width: 100%; display: grid; gap: 6px; padding: 12px 0 0; border-top: 1px solid #e7e7e1; }
 .material-heading { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; }
