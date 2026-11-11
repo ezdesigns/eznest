@@ -104,6 +104,28 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(server.STATE,{'status':'idle'})
             finally:browser.close()
 
+    def test_large_multifile_draft_stages_assets_without_exceeding_json_limit(self):
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                raw=mixed_fixture(generic=False,registration=False)
+                page.set_input_files('#file',[{'name':name,'mimeType':'application/pdf','buffer':raw} for name in ('First.pdf','Second.pdf')])
+                page.wait_for_function('() => !importing && kits.length === 2')
+                # Large independent metadata assets must not be combined into
+                # a single request beyond the API's 48 MB transport ceiling.
+                staged=[]
+                page.on('request',lambda r:staged.append(r.url) if r.url.endswith('/api/work/draft/artwork') else None)
+                page.evaluate("() => { kits.forEach((entry,index) => entry.data.extraMetadata=String(index)+'x'.repeat(25_000_000)); requestNest(); }")
+                page.wait_for_function('() => !draftPending && !draftDirty && !draftError',timeout=60000)
+                self.assertEqual(len(staged),2)
+                import job_drafts
+                saved=job_drafts.read(server.WORK)
+                self.assertEqual(len(saved['draft']['entries']),2)
+                self.assertIsNone(page.evaluate('current'))
+                self.assertEqual(server.STATE,{'status':'idle'})
+            finally:browser.close()
+
     def test_stale_browser_tab_cannot_replace_saved_draft(self):
         from playwright.sync_api import sync_playwright,expect
         with sync_playwright() as playwright:

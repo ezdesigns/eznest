@@ -88,6 +88,22 @@ def validate_artwork(root, data, role, documents=None):
             raise ValueError('Saved geometry does not match the imported artwork.')
 
 
+def stage_artwork(root, payload):
+    """Stage a large job's assets separately; publish only in save()."""
+    check(root, payload.get('revision'))
+    asset = key(payload.get('dataKey'))
+    raw, role = payload.get('raw'), payload.get('role')
+    if role not in ('required', 'fill') or not isinstance(raw, str) or hashlib.sha256(raw.encode('utf-8')).hexdigest() != asset:
+        raise ValueError('Invalid draft artwork.')
+    artwork = json.loads(raw)
+    validate_artwork(root, artwork, role)
+    folder = Path(root)/'draft-artwork'
+    folder.mkdir(exist_ok=True)
+    if not (folder/(asset+'.json')).exists():
+        atomic(folder/(asset+'.json'), artwork)
+    return {'ok': True}
+
+
 def save(root, payload):
     check(root, payload.get('revision'))
     entries, fields, supplied = payload.get('entries'), payload.get('fields'), payload.get('assets', {})

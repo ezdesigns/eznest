@@ -65,6 +65,18 @@ class DraftTests(unittest.TestCase):
         self.assertIsNone(self.request('Alice','/api/work/draft')[1]['draft'])
         self.assertEqual(self.request('Alice','/api/work/draft',payload)[0],409)
 
+    def test_staging_artwork_does_not_publish_or_replace_a_job(self):
+        payload,data=self.payload('Alice')
+        key=payload['entries'][0]['dataKey']
+        staged={'revision':None,'dataKey':key,'raw':payload['assets'][key],'role':'required'}
+        self.assertEqual(self.request('Alice','/api/work/draft/artwork',staged)[0],200)
+        self.assertIsNone(self.request('Alice','/api/work/draft')[1]['draft'])
+        self.assertEqual(self.request('Bob','/api/work/draft/artwork',staged)[0],400)
+        payload['assets']={}
+        self.assertEqual(self.request('Alice','/api/work/draft',payload)[0],200)
+        self.assertEqual(self.request('Alice','/api/work/draft/artwork',staged)[0],409)
+        self.assertEqual(self.request('Alice','/api/work/draft')[1]['assets'][key],data)
+
     def test_failed_save_and_foreign_artwork_keep_previous_draft(self):
         payload,data=self.payload('Alice')
         saved=self.request('Alice','/api/work/draft',payload)[1]

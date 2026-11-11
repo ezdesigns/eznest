@@ -1331,9 +1331,11 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError('Unknown folder action.')
                 return self.send(200,result)
             with job_lock():
-                if path == '/api/work/draft':
+                if path in ('/api/work/draft', '/api/work/draft/artwork'):
                     if job_state().get('status') == 'running':
                         raise job_drafts.Conflict('This job is nesting in another tab. Wait for it, then refresh.')
+                    if path.endswith('/artwork'):
+                        return self.send(200, job_drafts.stage_artwork(job_root(), data))
                     result = job_drafts.save(job_root(), data)
                     job_state().clear(); job_state().update(status='idle')
                     (job_root()/'session.json').unlink(missing_ok=True)

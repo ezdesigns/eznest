@@ -65,6 +65,15 @@ async function persistDraft(snapshot) {
     if (!draftAssets.has(dataKey)) assets[dataKey] = raw;
     entries.push({...entry, dataKey});
   }
+  // Several large files must not become one oversized metadata request.
+  // Staging artwork never replaces the old job; only the final commit does.
+  if (new Blob([JSON.stringify(assets)]).size > 24_000_000) {
+    for (const [dataKey, raw] of Object.entries(assets)) {
+      await api('/api/work/draft/artwork', {revision:draftRevision, dataKey, raw, role:entries.find(entry => entry.dataKey === dataKey).role});
+      draftAssets.add(dataKey);
+      delete assets[dataKey];
+    }
+  }
   const saved = await api('/api/work/draft', {revision:draftRevision, entries, fields:snapshot.fields, illustrator:snapshot.illustrator, assets});
   draftRevision = saved.revision;
   entries.forEach(entry => draftAssets.add(entry.dataKey));
