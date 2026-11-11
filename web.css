@@ -943,3 +943,16 @@ body:is([data-step="confirm"], [data-step="sent"]) #sticker-fill { display: none
   .preview-tools #add-files { margin-left: 0; }
   .preview-tools > label:last-child { margin-left: auto; }
 }
+
+/* Keep review and save visible on shorter shop laptop displays. */
+@media (min-width: 1001px) and (max-height: 800px) {
+  body[data-step="check"] main { gap: 12px; padding-top: 16px; }
+  body[data-step="check"] .workbench-heading { padding-bottom: 0; }
+  body[data-step="check"] .workbench-heading p,
+  body[data-step="check"] .material-area > .step-hint,
+  body[data-step="check"] .effort-heading .hint { display: none; }
+  body[data-step="check"] .job-panel { gap: 10px; padding: 16px; }
+  body[data-step="check"] .job-panel .files li { gap: 4px; padding: 8px 0; }
+  body[data-step="check"] .material-area { gap: 4px; padding-top: 8px; }
+  body[data-step="check"] .layout-options { padding-top: 8px; }
+}
