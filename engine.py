@@ -63,7 +63,7 @@ def number(value, name, low, high):
     return float(value)
 
 
-def validate_job(job):
+def validate_job(job, *, allow_oversize=False):
     settings = job['settings']
     if 'continuous' in settings and type(settings['continuous']) is not bool:
         raise ValueError('Continuous print must be on or off.')
@@ -115,7 +115,7 @@ def validate_job(job):
             bounds = rotate(polygon, angle, origin=(0, 0)).bounds
             if bounds[2] - bounds[0] <= width - 2 * margin + 0.001 and (length is None or bounds[3] - bounds[1] <= length - 2 * margin + 0.001):
                 fits = True
-        if not fits:
+        if not fits and not allow_oversize:
             raise ValueError(f'{ident}: part is too large for this material and rotation mode.')
     if total > cap:
         raise ValueError(f'This build supports {cap} pieces. Use automatic print sections for larger quantities.')

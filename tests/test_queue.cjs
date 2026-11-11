@@ -1,5 +1,6 @@
 const assert=require('node:assert/strict');
 const {compose,codeFor}=require('../queue-core.js');
+const {stickerEntries}=require('../queue-core.js');
 const preset={id:'vinyl',name:'Vinyl',settings:{width:180}};
 function entry(id){return {id,name:id,sourceFile:id+'.svg',revision:'hash-'+id,sets:2,selected:true,status:'ready',materialId:'vinyl',data:{svgSource:{defs:'<defs/>'},parts:[{id:'same-id',name:'Part',quantity:1,points:[[0,0],[10,0],[10,10]]}]}};}
 const batch=compose([entry('a'),entry('b')],preset);
@@ -28,6 +29,17 @@ const clean=importPresets(shared)[0];assert.equal(clean.settings.width,1346.2);a
 assert.throws(()=>importPresets({...shared,version:2}),/version/);
 assert.throws(()=>importPresets({...shared,presets:[{...shared.presets[0],settings:{...clean.settings,gap:-1}}]}),/Invalid/);
 console.log('Sticker fill composition and portable preset validation passed.');
+const imported={...entry('stickers'),data:{format:'pdf',documentId:'b'.repeat(64),reviewed:true,artworkPreserved:true,parts:[
+  {id:'one',pdfPieceId:'one',quantity:1,points:[[0,0],[10,0],[10,10]]},
+  {id:'two',pdfPieceId:'two',quantity:1,points:[[0,0],[12,0],[12,10]]}]}};
+const original=JSON.stringify(imported), stickers=stickerEntries(imported);
+stickers[0].sets=7;stickers[1].sets=23;
+const gang=compose([{...imported,id:'main'},...stickers],{...preset,settings:{...preset.settings,continuous:true}});
+assert.deepEqual(gang.fillJobs.map(f=>f.maxSets),[7,23]);
+assert.deepEqual(gang.fillJobs.map(f=>f.source.selectedPieceIds),[['one'],['two']]);
+assert.equal(gang.parts.length,2);
+assert.equal(JSON.stringify(imported),original,'sticker selection must not mutate the imported document');
+assert.notEqual(stickers[0].id,stickers[1].id);
 const automaticPreset={...shared.presets[0],settings:{...clean.settings,maxLength:null}};
 assert.equal(importPresets({...shared,presets:[automaticPreset]})[0].settings.maxLength,null);
 const automaticBatch=compose([entry('kit')],{...preset,settings:{width:180,maxLength:120}},'combined',{maxLength:null});

@@ -11,6 +11,7 @@ let localSave = false;
 let folderView = null;
 let browsingFolders = false;
 let kits = [];
+let stickers = [];
 let fileSerial = 0;
 let current = null;
 let busy = false;
@@ -470,7 +471,7 @@ function namedCuts(markup) {
 
 function cutTotals() {
   const totals = {thru: 0, kiss: 0, contour: 0};
-  for (const entry of kits) {
+  for (const entry of [...kits, ...stickers]) {
     if (entry.data.format === 'pdf') {
       for (const part of entry.data.parts) for (const key of Object.keys(totals)) totals[key] += part.cutCounts?.[key] || 0;
     } else {
@@ -497,7 +498,7 @@ function mappedOperation(source, name) {
 
 function unknownRefs() {
   const found = [];
-  for (const entry of kits) {
+  for (const entry of [...kits, ...stickers]) {
     for (const part of entry.data?.parts || []) {
       for (const ref of part.cutRefs || []) {
         const operation = mappedOperation(ref.source, ref.name);
@@ -537,6 +538,7 @@ function inputIssue() {
 }
 
 function quantityIssue() {
+  if (stickers.some(entry => !Number.isInteger(entry.sets) || entry.sets < 1 || entry.sets > PIECE_CAP)) return 'Enter a sticker quantity from 1 to ' + PIECE_CAP;
   if (!kits.length) return '';
   let total = 0;
   for (const entry of kits) {
@@ -632,6 +634,7 @@ function showScreen(name) {
   $('legend').hidden = empty;
   $('piece-review').hidden = empty || name === 'nest' || !current?.result;
   $('nest-savings').hidden = empty || name === 'nest' || !(EZNResults.comparison(current)?.savedFt >= .005);
+  $('fill-result').hidden = empty || name === 'nest' || !current?.result?.fillSummary?.length;
   $('readout').hidden = empty;
   $('export').hidden = empty || confirming || name === 'nest';
   $('start-nesting').hidden = !!current?.result || !['drop', 'configure', 'blocked'].includes(name);
@@ -673,6 +676,71 @@ function syncFiles() {
   const locked = busy || importing || !!presetEditor || document.body.dataset.step === 'nest';
   $('nesting-effort').disabled = locked || saving || !!current?.released || ['confirm', 'sent'].includes(document.body.dataset.step);
   for (const node of $('files').querySelectorAll('input, button')) node.disabled = locked;
+  $('sticker-fill').hidden = !kits.length || !!illustratorHandoff || ['confirm', 'sent'].includes(document.body.dataset.step);
+  for (const node of $('sticker-fill').querySelectorAll('input, button')) node.disabled = locked || saving || !!current?.released;
+}
+
+function renderStickers() {
+  const list = $('sticker-files');
+  list.replaceChildren();
+  $('sticker-fill-count').textContent = stickers.length ? stickers.length + (stickers.length === 1 ? ' design' : ' designs') : 'Optional';
+  for (const entry of stickers) {
+    const part = entry.data.parts[0];
+    const row = document.createElement('li');
+    const image = document.createElement('img');
+    image.alt = ''; image.loading = 'lazy';
+    if (part.preview) image.src = part.preview;
+    const name = document.createElement('span'); name.className = 'sticker-name'; name.textContent = entry.name;
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'link sticker-remove'; remove.textContent = '×';
+    remove.setAttribute('aria-label', 'Remove sticker ' + entry.name);
+    remove.addEventListener('click', () => { stickers = stickers.filter(item => item.id !== entry.id); renderStickers(); requestNest(); });
+    const label = document.createElement('label'); label.className = 'sticker-quantity';
+    const perPiece = part.sourcePieceCount || 1;
+    label.append(document.createTextNode(perPiece > 1 ? `Groups needed (${perPiece} stickers each)` : 'Quantity needed'));
+    const input = document.createElement('input'); input.type = 'number'; input.min = '1'; input.max = String(PIECE_CAP); input.step = '1'; input.inputMode = 'numeric'; input.value = String(entry.sets);
+    input.setAttribute('aria-label', 'Sticker quantity for ' + entry.name);
+    input.addEventListener('input', () => { entry.sets = Number(input.value); requestNest(); });
+    input.addEventListener('change', () => { if (!input.checkValidity() || !Number.isInteger(entry.sets)) status('Enter a whole sticker quantity from 1 to ' + PIECE_CAP + '.', true); });
+    label.append(input); row.append(image, name, remove, label); list.append(row);
+  }
+  syncFiles();
+}
+
+function showFillResult(state) {
+  const summaries = state.result?.fillSummary || [];
+  $('fill-result-list').replaceChildren();
+  const request = state.requestJob?.fillJobs || [];
+  let total = 0;
+  for (const item of summaries) {
+    const parts = request.find(fill => fill.source.id === item.id)?.parts || state.job.parts.filter(part => part.sourceJobId === item.id);
+    const per = parts.reduce((sum, part) => sum + (part.perSet || 1) * (part.sourcePieceCount || 1), 0) || 1;
+    const added = item.sets * per, left = (item.maxSets - item.sets) * per;
+    total += added;
+    const row = document.createElement('li'), name = document.createElement('span'), numbers = document.createElement('span');
+    name.textContent = item.name; numbers.textContent = `${added.toLocaleString()} added · ${left.toLocaleString()} remaining`;
+    row.append(name, numbers); $('fill-result-list').append(row);
+  }
+  $('fill-result-heading').textContent = total ? `+${total.toLocaleString()} extra ${total === 1 ? 'sticker' : 'stickers'}` : 'No extra stickers fitted';
+  $('fill-result-note').textContent = state.result?.fillLimited ? 'The fill search reached its limit. Remaining stickers are not included in this print.' : 'Remaining stickers are not included in this print.';
+}
+
+async function importStickers(fileList) {
+  if (!kits.length || busy || importing || saving || illustratorHandoff || current?.released) return;
+  const files = [...fileList];
+  if (!files.length) return;
+  const format = kits[0].data.format;
+  if (files.some(file => (/\.(pdf|ai)$/i.test(file.name) ? 'pdf' : 'svg') !== format)) throw Error('Use PDF or AI stickers with a PDF job, and SVG stickers with an SVG job.');
+  importing = true; renderActions(); status('Reading stickers…');
+  const added = [];
+  try {
+    for (const file of files) added.push(...EZNQueue.stickerEntries(await readEntry(file)));
+    if (stickers.length + added.length > 800) throw Error('Add up to 800 different sticker designs to one run.');
+    stickers.push(...added);
+    current = null;
+    $('sticker-fill').open = true;
+    renderStickers();
+  } finally { importing = false; renderActions(); }
+  requestNest();
 }
 
 function renderFiles() {
@@ -1245,6 +1313,7 @@ function showResult(state) {
   blockReason = '';
   document.body.dataset.nestWidth = state.result ? String(state.result.width) : '';
   showMetrics(state);
+  showFillResult(state);
   showLock(state);
   showSheetId(state);
   showNestSavings(state);
@@ -1340,9 +1409,9 @@ async function nest() {
     if (inventoryReady && sharedStock) $('available-length').value = sharedStock.availableMm == null ? '' : String(sharedStock.availableMm / scale());
     if (inputIssue()) { showBlocked(inputIssue()); return; }
     const roll = preset();
-    const job = EZNQueue.compose(kits, roll, 'combined');
+    const job = EZNQueue.compose([...kits, ...stickers], roll, 'combined');
     if (inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) job.inventoryMaterialId = $('material').value;
-    job.outputProfile = profileFor(kits);
+    job.outputProfile = profileFor([...kits, ...stickers]);
     job.webOptions = {units: $('unit').value, material: $('material').value, sets: sets(), genericCut: $('generic-cut').value,
       sectionLengthMm: $('sheet').value.trim() ? Number($('sheet').value) * scale() : null,
       rollCost: $('roll-cost').value.trim() ? Number($('roll-cost').value) : null,
@@ -1639,6 +1708,9 @@ function nextKit() {
   $('illustrator-load').hidden = false;
   renderMaterialButtons();
   kits = [];
+  stickers = [];
+  $('sticker-fill').open = false;
+  renderStickers();
   current = null;
   blockReason = '';
   activeSheet = 0;
@@ -2347,8 +2419,8 @@ async function importFiles(fileList, replace) {
   if (illustratorHandoff && !replace) throw Error('Start over before adding files to another Illustrator attempt.');
   const incomingPdf = files.some(file => /\.(pdf|ai)$/i.test(file.name));
   const incomingSvg = files.some(file => /\.svg$/i.test(file.name));
-  const havePdf = !replace && kits.some(entry => entry.data?.format === 'pdf');
-  const haveSvg = !replace && kits.some(entry => entry.data?.format === 'svg');
+  const havePdf = !replace && [...kits, ...stickers].some(entry => entry.data?.format === 'pdf');
+  const haveSvg = !replace && [...kits, ...stickers].some(entry => entry.data?.format === 'svg');
   if ((incomingPdf && incomingSvg) || (incomingPdf && haveSvg) || (incomingSvg && havePdf)) {
     throw Error('Nest SVG files in one batch and PDF files in another. That keeps the original artwork.');
   }
@@ -2370,6 +2442,7 @@ async function importFiles(fileList, replace) {
     if (pendingRenest) { pendingRenest = false; requestNest(); }
   }
   kits = replace ? entries : kits.concat(entries);
+  if (replace) { stickers = []; renderStickers(); }
   current = null;
   blockReason = '';
   leaving = false;
@@ -2411,23 +2484,42 @@ function confirmCut() {
 async function chooseCut(operation) {
   if (busy || saving || !unresolved()) return;
   const output = operation === 'kiss' ? $('kiss-name').value.trim() : $('thru-name').value.trim();
-  if (kits.some(entry => entry.data?.format === 'pdf')) {
-    if (kits.some(entry => !entry.file)) {
+  const entries = [...kits, ...stickers];
+  if (entries.some(entry => entry.data?.format === 'pdf')) {
+    if (entries.some(entry => !entry.file)) {
       showBlocked('Add the original files again to choose their cut type. Your saved layout is unchanged.');
       return;
     }
-    const files = kits.map(entry => entry.file).filter(Boolean);
     $('generic-cut').value = operation;
+    importing = true; renderActions();
+    let changed = false;
     try {
-      await importFiles(files, true);
+      const loaded = new Map(), replacements = [];
+      for (const entry of entries) {
+        if (!loaded.has(entry.file)) loaded.set(entry.file, await readEntry(entry.file));
+        const fresh = loaded.get(entry.file);
+        let data = fresh.data;
+        if (entry.data.selectedPieceIds) {
+          const parts = data.parts.filter(part => entry.data.selectedPieceIds.includes(part.pdfPieceId || part.id));
+          if (parts.length !== entry.data.parts.length) throw Error('The selected stickers changed. Re-add the sticker file.');
+          data = {...data, parts: parts.map(part => ({...part, quantity:1})), selectedPieceIds: entry.data.selectedPieceIds};
+        }
+        replacements.push({...entry, revision:fresh.revision, data, unresolved:false});
+      }
+      kits = replacements.filter(entry => entry.role !== 'fill');
+      stickers = replacements.filter(entry => entry.role === 'fill');
+      renderFiles(); renderStickers();
+      changed = true;
     } catch (error) {
       showImportError(error);
     } finally {
       $('generic-cut').value = '';
+      importing = false; renderActions();
     }
+    if (changed) requestNest();
     return;
   }
-  for (const entry of kits) {
+  for (const entry of entries) {
     for (const part of entry.data?.parts || []) {
       const unknowns = (part.cutRefs || []).filter(ref => !['thru', 'kiss', 'regmark'].includes(mappedOperation(ref.source, ref.name)));
       if (part.svg && part.svg.markup) {
@@ -2446,19 +2538,22 @@ async function chooseCut(operation) {
 }
 
 function restoreJob(state) {
-  const job = state.job;
+  const job = state.requestJob || state.job;
   if (!job?.productionJobs?.length || job.materialId !== 'web-roll') return;
-  kits = job.productionJobs.map(source => {
+  const allParts = [...job.parts, ...(job.fillJobs || []).flatMap(fill => fill.parts)];
+  const entries = [...job.productionJobs, ...(job.fillJobs || []).map(fill => fill.source)].map(source => {
     const document = job.documentSources?.[source.id];
-    const parts = job.parts.filter(part => part.sourceJobId === source.id).map(part => ({
+    const parts = allParts.filter(part => part.sourceJobId === source.id).map(part => ({
       ...part, id: part.originalPartId, quantity: part.perSet || 1
     }));
     return {...source, origin: 'files', selected: true, status: 'ready', data: {
       ...(document || {}), format: document ? 'pdf' : 'svg',
-      svgSource: job.svgSources?.[source.id], parts
+      svgSource: job.svgSources?.[source.id], parts, selectedPieceIds:source.selectedPieceIds
     }};
   });
-  fileSerial = Math.max(kits.length, ...kits.map(entry => Number(entry.id.match(/-(\d+)$/)?.[1] || 0) + 1));
+  kits = entries.filter(entry => entry.role !== 'fill');
+  stickers = entries.filter(entry => entry.role === 'fill');
+  fileSerial = Math.max(entries.length, ...entries.map(entry => Number(entry.id.match(/^web-[^-]+-(\d+)/)?.[1] || 0) + 1));
   const options = job.webOptions || {};
   $('print-layout').value = job.settings?.continuous ? 'continuous' : 'sections';
   const settings = job.settings;
@@ -2495,6 +2590,8 @@ function restoreJob(state) {
   activeMaterial = $('material').value;
   renderMaterialButtons();
   renderFiles();
+  renderStickers();
+  $('sticker-fill').open = stickers.length > 0;
   showWidth();
 }
 
@@ -3511,6 +3608,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('more').addEventListener('change', async event => {
     try { await importFiles(event.target.files); }
     catch (error) { showImportError(error); }
+    finally { event.target.value = ''; }
+  });
+  $('add-stickers').addEventListener('click', () => $('sticker-upload').click());
+  $('sticker-upload').addEventListener('change', async event => {
+    try { await importStickers(event.target.files); }
+    catch (error) { status(error.message, true); }
     finally { event.target.value = ''; }
   });
   $('stop').addEventListener('click', stopNest);

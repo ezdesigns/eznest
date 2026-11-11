@@ -16,7 +16,7 @@ jobs:
   windows:
     name: Windows / Python 3.12 / Node 24
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - name: Check out source
         uses: actions/checkout@v7

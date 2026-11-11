@@ -343,7 +343,9 @@ def finish_search(payload):
     def score(result):
         fillers = sum(s['pieces'] for s in result.get('fillSummary', []))
         return (-fillers, result['usedLength'])
-    if incumbent and (not payload.get('ok') or score(payload['result']) >= score(incumbent['result'])):
+    extends_gang_run = (incumbent and incumbent['result'].get('fillSummary') is not None
+                       and payload.get('ok') and payload['result']['usedLength'] > incumbent['result']['usedLength'] + .001)
+    if incumbent and (not payload.get('ok') or extends_gang_run or score(payload['result']) >= score(incumbent['result'])):
         job_state().clear()
         job_state().update(incumbent)
         job_state()['note'] = 'Kept your best layout; this search did not improve it.' if payload.get('ok') else 'Kept your best layout; the new search could not return a valid improvement.'

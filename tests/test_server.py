@@ -253,6 +253,12 @@ class ServerTests(unittest.TestCase):
                 improved=copy.deepcopy(server.STATE)
             saved=json.loads((server.WORK/'session.json').read_text())
             self.assertEqual(saved['nestSavings']['percent'],20)
+            # Extra optional stickers must not make Try tighter fit use more roll.
+            gang=copy.deepcopy(improved);gang['result']['fillSummary']=[{'pieces':2}]
+            server.STATE.clear();server.STATE.update(status='running',id='longer-fill',incumbent=gang)
+            server.finish_search({'ok':True,'result':{'usedLength':95,'fillSummary':[{'pieces':4}]}})
+            self.assertEqual(server.STATE['result']['usedLength'],80)
+            self.assertEqual(server.STATE['result']['fillSummary'][0]['pieces'],2)
             # A new quantity/filler outcome must not reuse an unrelated saving.
             server.STATE.clear();server.STATE.update(status='running',id='fill',incumbent=improved)
             server.finish_search({'ok':True,'result':{'usedLength':95,'fillSummary':[{'pieces':1}]}})

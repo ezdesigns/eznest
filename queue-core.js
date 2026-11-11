@@ -2,7 +2,7 @@
 (function(root){
   function codeFor(index){let s='';for(let n=index+1;n>0;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s;}
   function compose(entries,preset,mode='combined',options={}){
-    const cap=preset.settings.sheetLength!=null?5000:800;
+    const cap=preset.settings.sheetLength!=null||preset.settings.continuous?5000:800;
     const selected=entries.filter(e=>e.selected&&!isPrepared(e));
     if(!selected.length)throw Error('Select at least one ready job.');
     if(mode==='single'&&selected.length!==1)throw Error('Choose one job for this print.');
@@ -17,6 +17,7 @@
       if(entry.materialId!==preset.id)throw Error('Use one material preset per batch. Change the selected jobs or their assigned material.');
       if(!Number.isInteger(entry.sets)||entry.sets<1||entry.sets>cap)throw Error('Sets must be a whole number from 1 to '+cap+'.');
       const source={id:entry.id,code:codeFor(index),name:entry.name,sourceFile:entry.sourceFile||entry.name,revision:entry.revision,sets:entry.sets,materialId:entry.materialId,partIds:[],role:entry.role==='fill'?'fill':'required',customer:entry.customer||'',order:entry.order||'',kit:entry.kit||''};
+      if(source.role==='fill'&&entry.data.selectedPieceIds)source.selectedPieceIds=[...entry.data.selectedPieceIds];
       const parts=[];
       if(pdf){job.documentSources=job.documentSources||{};job.documentSources[entry.id]={documentId:entry.data.documentId,reviewed:entry.data.reviewed,bleedMm:entry.data.bleedMm,artworkPreserved:entry.data.artworkPreserved===true,excludedGuideCount:entry.data.excludedGuideCount||0};}
       else job.svgSources[entry.id]=entry.data.svgSource;
@@ -32,6 +33,14 @@
     return job;
   }
   function count(entry){return (entry.data?.parts||[]).reduce((sum,p)=>sum+(p.quantity||1),0)*entry.sets;}
+  // A sticker is an existing imported piece, never a newly cropped outline.
+  function stickerEntries(entry){
+    return entry.data.parts.map((part,index)=>({...entry,
+      id:entry.id+'-sticker-'+index,role:'fill',sets:1,
+      name:entry.data.parts.length===1?entry.name:entry.name+' · '+(part.name||'Sticker '+(index+1)),
+      data:{...entry.data,parts:[{...part,quantity:1}],selectedPieceIds:[part.pdfPieceId||part.id]}
+    }));
+  }
   function isPrepared(entry){return !!entry.preparedRevision&&entry.preparedRevision===entry.revision;}
   function markPrepared(entries,state){
     if(!state?.released||state.deliveryCompleted!==true||!state.manifest||!state.id||state.manifest.outputCheck?.ready===false)return 0;
@@ -82,5 +91,5 @@
     if(document?.format!=='eznest.material-presets'||document.version!==1||!Array.isArray(document.presets)||!document.presets.length||document.presets.length>100)throw Error('Choose an eznest material preset file (version 1).');
     return document.presets.map(validatePreset);
   }
-  const api={compose,count,codeFor,validatePreset,importPresets,isPrepared,markPrepared,restorePrepared,groupName,unitScale};root.EZNQueue=api;if(typeof module!=='undefined')module.exports=api;
+  const api={compose,count,stickerEntries,codeFor,validatePreset,importPresets,isPrepared,markPrepared,restorePrepared,groupName,unitScale};root.EZNQueue=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:this);

@@ -345,6 +345,12 @@
   <section id="nest-savings" class="nest-savings" aria-live="polite" hidden>
     <span id="savings-label">Material saved</span><strong id="savings-value"></strong><span id="savings-context"></span>
   </section>
+  <section id="fill-result" class="fill-result" aria-live="polite" hidden>
+    <strong id="fill-result-heading"></strong>
+    <span>No extra roll length. Original bleed kept.</span>
+    <ul id="fill-result-list"></ul>
+    <p id="fill-result-note" class="hint"></p>
+  </section>
   </div>
   <div id="sheet-tabs" class="tabs" hidden></div>
   <div class="preview-tools" id="preview-tools" hidden>
@@ -418,6 +424,14 @@
       </select>
     </label>
   </section>
+  <details id="sticker-fill" class="sticker-fill" hidden>
+    <summary>Fill spare space <span id="sticker-fill-count" class="hint">Optional</span></summary>
+    <p class="hint">Add stickers for this material. We’ll fit what we can without making the print longer.</p>
+    <ul id="sticker-files" class="sticker-files"></ul>
+    <button id="add-stickers" class="link sticker-add" type="button">+ Add stickers</button>
+    <input id="sticker-upload" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple hidden>
+    <p class="hint">Quantities apply to this run. Nesting does not mark an order printed.</p>
+  </details>
   <div id="nest-row" class="nest-row">
   <button id="start-nesting" class="primary" type="button" disabled>Nest</button>
   <button id="start-over-idle" class="link" type="button" disabled>Start over</button>

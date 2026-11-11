@@ -19,8 +19,7 @@ def validate_request(job):
         if job.get('fillJobs') and job.get('fillArea')=='length':
             raise ValueError('For automatic sheets, fill only leftover space. Use a single length for fixed-area sticker fill.')
     fills = job.get('fillJobs', [])
-    if fills and sum(p.get('quantity', 1) for p in job.get('parts', [])) > PIECE_CAP:
-        raise ValueError('For large orders, nest the requested quantities without optional filler jobs.')
+    cap = ORDER_PIECE_CAP if job['settings'].get('sheetLength') is not None or job['settings'].get('continuous') else PIECE_CAP
     if not isinstance(fills, list) or len(fills) > PIECE_CAP:
         raise ValueError(f'Choose up to {PIECE_CAP} sticker designs.')
     if job.get('fillArea', 'gaps') not in ('gaps', 'length'):
@@ -37,14 +36,16 @@ def validate_request(job):
             validate_identity(job)
     for fill in fills:
         limit = fill['maxSets']
-        if type(limit) is not int or not 1 <= limit <= PIECE_CAP:
-            raise ValueError(f'Sticker fill limit must be 1–{PIECE_CAP} complete sets.')
+        if type(limit) is not int or not 1 <= limit <= cap:
+            raise ValueError(f'Sticker fill limit must be 1–{cap} complete sets.')
         source = fill['source']
         if source.get('role') != 'fill' or source['sets'] != limit:
             raise ValueError('Invalid sticker fill identity.')
         sample = {**job, 'parts': [{**p, 'quantity': p['perSet']} for p in fill['parts']],
                   'productionJobs': [{**source, 'sets': 1}]}
-        validate_job(sample)
+        # Optional artwork that is too large simply remains unfilled. Still
+        # validate its coordinates, quantities and polygon before searching.
+        validate_job(sample, allow_oversize=True)
         validate_identity(sample)
         groups.append(source)
     for group in groups:
@@ -71,7 +72,9 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
     width, margin, gap = settings['width'], settings['margin'], settings['gap']
     length = settings['maxLength'] if job.get('fillArea') == 'length' or not shapes else result['usedLength']
     guard = 0.10
-    left, top, right, bottom = margin + guard, margin + guard, width - margin - guard, length - margin - guard
+    # Required layouts can touch the exact operator margin after compaction.
+    # An extra edge inset would reject equal-height stickers in genuine gaps.
+    left, top, right, bottom = margin, margin, width - margin, length - margin
     deadline = started + (budget if budget is not None else min(15, max(3, settings['seconds'])))
     angles = settings['rotations'] if settings['rotations'] is not None else list(range(0, 360, 15))
     placed = list(result.get('placements', []))
@@ -89,7 +92,7 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
         for angle, polygon in orientations[part['id']]:
             x0, y0, x1, y1 = polygon.bounds
             w, h = x1 - x0, y1 - y0
-            if w > right - left or h > bottom - top:
+            if w > right - left + 1e-7 or h > bottom - top + 1e-7:
                 continue
             # Contacts recover close fits; a bounded grid also enters concavities.
             step = max(0.5, min(w, h) / 4, max(right-left, bottom-top) / 120)
@@ -152,8 +155,12 @@ def fill_stickers(job, result, budget=None, copy_limit=PIECE_CAP):
     area = sum(p.area for p in shapes)
     final = {**result, 'placements':placed, 'width':width, 'usedLength':used, 'area':area,
              'utilization':area/(width*used), 'validated':True, 'fillSummary':summaries,
+             'fillBaseLength': result['usedLength'],
              'fillLimited': len(placed) >= copy_limit or time.monotonic() >= deadline,
              'fillElapsed':time.monotonic()-started}
+    if settings.get('continuous'):
+        final['placements'] = [{**p, 'sheet':0} for p in placed]
+        final['sheets'] = [{'index':0, 'offset':0, 'usedLength':used, 'pieces':len(placed), 'area':area}]
     validate_result(resolved, final)
     validate_identity(resolved)
     return resolved, final
@@ -231,10 +238,13 @@ def _run(job):
     progress = job.pop('_progress', None)
     validate_request(job)
     if job['settings'].get('continuous'):
-        if job.get('fillJobs'):
-            raise ValueError('Use requested quantities without optional filler jobs for a continuous print.')
         from sheets import continuous_nest
-        return {'ok': True, 'result': continuous_nest(job, progress)}
+        required = {k:v for k,v in job.items() if k != 'fillJobs'}
+        result = continuous_nest(required, progress)
+        if job.get('fillJobs'):
+            resolved, result = fill_stickers(job, result, copy_limit=ORDER_PIECE_CAP)
+            return {'ok':True, 'job':resolved, 'result':result, 'requestJob':job}
+        return {'ok': True, 'result': result}
     if job['settings'].get('sheetLength') is not None:
         from sheets import split_nest, subset
         if not job.get('parts'):
@@ -244,7 +254,7 @@ def _run(job):
             # Fill each sheet without extending it; carry remaining whole-set limits.
             merged=copy.deepcopy(job); merged.pop('fillJobs',None)
             summaries={f['source']['id']:{'id':f['source']['id'],'name':f['source']['name'],'code':f['source']['code'],'sets':0,'maxSets':f['maxSets'],'pieces':0} for f in job['fillJobs']}
-            placements=[]; remaining=PIECE_CAP-len(result['placements'])
+            placements=[]; remaining=ORDER_PIECE_CAP-len(result['placements']); limited=False
             for sheet in result['sheets']:
                 local=[{**p,'y':p['y']-sheet['offset']} for p in result['placements'] if p['sheet']==sheet['index']]
                 local_job=subset(job,local); local_job['settings']={**job['settings'],'maxLength':sheet['usedLength']}; local_job['fillArea']='gaps'
@@ -252,14 +262,15 @@ def _run(job):
                 local_job['fillJobs']=[]
                 for fill in job['fillJobs']:
                     available=min(fill['maxSets']-summaries[fill['source']['id']]['sets'],remaining//sum(p['perSet'] for p in fill['parts']))
-                    if available>0: local_job['fillJobs'].append({**fill,'maxSets':available})
+                    if available>0: local_job['fillJobs'].append({**fill,'source':{**fill['source'],'sets':available},'maxSets':available})
                 # fill_stickers validates identities; sheet subsets are incomplete
                 # sets, so run geometry fill with a per-sheet synthetic identity.
                 if local_job['fillJobs']:
                     local_job['productionJobs']=[{**s,'sets':1,'partIds':[p['id'] for p in local_job['parts'] if p['sourceJobId']==s['id']]} for s in job['productionJobs'] if any(p['sourceJobId']==s['id'] for p in local_job['parts'])]
                     local_job['parts']=[{**p,'perSet':p['quantity']} for p in local_job['parts']]
-                    resolved,filled=fill_stickers(local_job,{'width':result['width'],'usedLength':sheet['usedLength'],'placements':local},budget=max(1,min(5,job['settings']['seconds']/len(result['sheets']))),copy_limit=len(local)+remaining)
+                    resolved,filled=fill_stickers(local_job,{'width':result['width'],'usedLength':sheet['usedLength'],'placements':local},budget=max(1,min(5,job['settings']['seconds']/len(result['sheets']))),copy_limit=min(PIECE_CAP,len(local)+remaining))
                     local=filled['placements']
+                    limited=limited or filled['fillLimited']
                     for summary in filled['fillSummary']:
                         target=summaries[summary['id']]; target['sets']+=summary['sets']; target['pieces']+=summary['pieces']; remaining-=summary['pieces']
                 placements.extend({**p,'sheet':sheet['index'],'y':p['y']+sheet['offset']} for p in local)
@@ -268,7 +279,7 @@ def _run(job):
                 if count:
                     merged['productionJobs'].append({**fill['source'],'sets':count})
                     merged['parts'].extend({**p,'quantity':p['perSet']*count} for p in fill['parts'])
-            result.update(placements=placements,fillSummary=list(summaries.values()),fillLimited=remaining<=0)
+            result.update(placements=placements,fillSummary=list(summaries.values()),fillLimited=limited or remaining<=0,fillBaseLength=result['usedLength'])
             shapes=validate_result(merged,result); result['area']=sum(s.area for s in shapes); result['utilization']=result['area']/(result['width']*result['usedLength'])
             for sheet in result['sheets']:
                 sheet['pieces']=sum(p['sheet']==sheet['index'] for p in result['placements'])
