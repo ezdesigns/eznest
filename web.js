@@ -628,7 +628,8 @@ function showScreen(name) {
   const confirming = name === 'confirm';
   $('drop-screen').hidden = !empty;
   $('upload-title').textContent = kits.length ? 'Files ready to nest' : 'Upload your print here';
-  $('upload-hint').textContent = kits.length ? 'Choose material and effort, then Nest. Click here to add files.' : 'Click to choose files or drop them here';
+  $('upload-hint').textContent = kits.length ? 'Choose your material, then click Start nesting.' : 'Click to choose files or drop them here';
+  $('drop').querySelector('.upload-action').textContent = kits.length ? 'Upload new job' : 'Choose files';
   $('job-empty').hidden = kits.length > 0;
   $('sheet-frame').hidden = empty;
   $('preview-tools').hidden = empty;
@@ -667,6 +668,8 @@ function showScreen(name) {
 
 function syncFiles() {
   const show = kits.length > 0 && !['drop', 'confirm', 'sent'].includes(document.body.dataset.step);
+  $('upload-new-job').hidden = !kits.length;
+  $('upload-new-job').disabled = busy || importing || saving || !!presetEditor;
   $('files').hidden = !show;
   $('copies-summary').textContent = kits.some(entry => entry.sets !== 1) ? kits.map(entry => entry.sets + '×').join(', ') : '';
   $('start-nesting').disabled = busy || importing || saving || !!presetEditor || !kits.length || !!inputIssue();
@@ -1383,11 +1386,15 @@ function requestNest() {
 
 async function nest() {
   if (busy || importing || saving || !kits.length) return;
+  // Lock immediately, including while inventory is being refreshed. A double
+  // click must not submit two searches or allow an upload to change this job.
+  busy = true;
+  renderActions();
   try {
     await refreshInventory().catch(() => {});
     const sharedStock = shopInventory.materials.find(item => item.id === $('material').value);
     if (inventoryReady && sharedStock) $('available-length').value = sharedStock.availableMm == null ? '' : String(sharedStock.availableMm / scale());
-    if (inputIssue()) { showBlocked(inputIssue()); return; }
+    if (inputIssue()) { busy = false; showBlocked(inputIssue()); return; }
     const roll = preset();
     const job = EZNQueue.compose([...kits, ...stickers], roll, 'combined');
     if (inventoryReady && shopInventory.materials.some(item => item.id === $('material').value)) job.inventoryMaterialId = $('material').value;
@@ -2417,18 +2424,22 @@ async function importFiles(fileList, replace) {
         throw error;
       }
     }
+    // Keep the previous job if selection is cancelled, import fails, or the
+    // server refuses the reset. Only this designer's working state is cleared.
+    if (replace) await api('/api/work/discard', {});
   } finally {
     importing = false;
     renderActions();
     if (pendingRenest) { pendingRenest = false; requestNest(); }
   }
+  if (replace) nextKit();
   kits = replace ? entries : kits.concat(entries);
-  if (replace) { stickers = []; renderStickers(); }
   current = null;
   blockReason = '';
   leaving = false;
   renderFiles();
   requestNest();
+  status('File ready. Click Start nesting.');
 }
 
 function renameCut(markup, from, to) {
@@ -3361,7 +3372,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderMaterialButtons();
   $('file').addEventListener('change', async event => {
     if (ignoreFileChange) { ignoreFileChange = false; event.target.value = ''; return; }
-    try { await importFiles(event.target.files); }
+    try { await importFiles(event.target.files, true); }
     catch (error) { showImportError(error); }
     finally { event.target.value = ''; }
   });
@@ -3586,6 +3597,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('choose-confirm').addEventListener('click', confirmCut);
   $('start-over').addEventListener('click', startOver);
   $('start-over-idle').addEventListener('click', startOver);
+  $('upload-new-job').addEventListener('click', () => $('file').click());
   $('more').addEventListener('change', async event => {
     try { await importFiles(event.target.files); }
     catch (error) { showImportError(error); }
@@ -3652,7 +3664,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (document.querySelector('dialog[open]') || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #mode-switch, #top-actions, #stock, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #stop, #improve, #update, #setup, #edit-material')) return;
+    if (document.querySelector('dialog[open]') || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #mode-switch, #top-actions, #stock, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #upload-new-job, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }
