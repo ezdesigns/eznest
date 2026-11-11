@@ -12,6 +12,7 @@ let folderView = null;
 let browsingFolders = false;
 let kits = [];
 let stickers = [];
+let fillPanelOpened = false;
 let fileSerial = 0;
 let current = null;
 let busy = false;
@@ -676,7 +677,10 @@ function syncFiles() {
   const locked = busy || importing || !!presetEditor || document.body.dataset.step === 'nest';
   $('nesting-effort').disabled = locked || saving || !!current?.released || ['confirm', 'sent'].includes(document.body.dataset.step);
   for (const node of $('files').querySelectorAll('input, button')) node.disabled = locked;
-  $('sticker-fill').hidden = !kits.length || !!illustratorHandoff || ['confirm', 'sent'].includes(document.body.dataset.step);
+  const canFill = kits.length > 0 && !illustratorHandoff && !['confirm', 'sent'].includes(document.body.dataset.step);
+  $('sticker-fill').hidden = !canFill || (!!current?.result && !stickers.length && !fillPanelOpened);
+  $('fill-spare-open').hidden = !canFill || !current?.result || !!current?.released || stickers.length > 0 || fillPanelOpened;
+  $('fill-spare-open').disabled = locked || saving;
   for (const node of $('sticker-fill').querySelectorAll('input, button')) node.disabled = locked || saving || !!current?.released;
 }
 
@@ -1309,6 +1313,7 @@ function showBlocked(message) {
 }
 
 function showResult(state) {
+  if (current?.id !== state.id) { $('sticker-fill').open = false; fillPanelOpened = false; }
   current = state;
   blockReason = '';
   document.body.dataset.nestWidth = state.result ? String(state.result.width) : '';
@@ -1709,6 +1714,7 @@ function nextKit() {
   renderMaterialButtons();
   kits = [];
   stickers = [];
+  fillPanelOpened = false;
   $('sticker-fill').open = false;
   renderStickers();
   current = null;
@@ -2591,7 +2597,7 @@ function restoreJob(state) {
   renderMaterialButtons();
   renderFiles();
   renderStickers();
-  $('sticker-fill').open = stickers.length > 0;
+  $('sticker-fill').open = false;
   showWidth();
 }
 
@@ -3611,6 +3617,10 @@ document.addEventListener('DOMContentLoaded', () => {
     finally { event.target.value = ''; }
   });
   $('add-stickers').addEventListener('click', () => $('sticker-upload').click());
+  $('fill-spare-open').addEventListener('click', () => {
+    fillPanelOpened = true; syncFiles(); $('sticker-fill').open = true;
+    $('add-stickers').focus();
+  });
   $('sticker-upload').addEventListener('change', async event => {
     try { await importStickers(event.target.files); }
     catch (error) { status(error.message, true); }
