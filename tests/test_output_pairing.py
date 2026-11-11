@@ -671,7 +671,10 @@ class OutputScreenTests(unittest.TestCase):
                         helper.wait_ready(page)
                         # First viewport pairs, second viewport exercises the same reconnect entry.
                         page.click('#settings-open')
-                        page.click('#output-settings-open')
+                        with page.expect_response('**/api/telemetry/output', timeout=15000) as sharing:
+                            page.click('#output-settings-open')
+                        self.assertEqual(sharing.value.status, 200)
+                        self.assertTrue(sharing.value.body())
                         entry = '#output-pair' if width == 1280 else '#output-reconnect'
                         expect(page.locator(entry)).to_be_enabled()
                         page.click(entry)

@@ -77,7 +77,7 @@ class StartupScreenTests(unittest.TestCase):
                     # A busy runner may still be loading the workspace after the
                     # animation interval. Synchronize on the held server request.
                     self.assertTrue(self.state_requested.wait(10), 'Workspace request must be waiting before reveal')
-                    self.assertEqual(page.locator('header').evaluate('n => getComputedStyle(n).visibility'), 'hidden')
+                    self.assertEqual(page.locator('body > header').evaluate('n => getComputedStyle(n).visibility'), 'hidden')
                     if mode == 'simple':
                         page.evaluate("() => { window.startupExport = exportFile; window.startupExportCalls = 0; exportFile = () => window.startupExportCalls++; document.body.dataset.step = 'confirm'; }")
                         page.keyboard.press('Enter')
@@ -89,7 +89,7 @@ class StartupScreenTests(unittest.TestCase):
                     page.screenshot(path=str(self.shots / f'{mode}-mobile.png'))
                     self.state_release.set()
                     expect(page.locator('#app-startup')).to_have_count(0, timeout=15000)
-                    expect(page.locator('header')).to_be_visible()
+                    expect(page.locator('body > header')).to_be_visible()
                     expect(page.locator('#mode-switch')).to_have_count(0)
                     page.reload()
                     self.fixture.wait_ready(page)

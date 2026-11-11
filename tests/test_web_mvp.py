@@ -564,6 +564,8 @@ class WebMvpTests(unittest.TestCase):
                 save_box=page.locator('#export').bounding_box()
                 self.assertLessEqual(save_box['y']+save_box['height'],768)
                 self.assertGreaterEqual(save_box['y'],0)
+                expect(page.locator('#material-summary')).to_be_visible()
+                expect(page.locator('#material-summary')).to_contain_text('reserved')
                 self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
                 self.assertEqual(page.locator('.job-panel select[aria-label="Material"]:visible').count(),1)
                 self.assertTrue(page.locator('.file-name').evaluate('n => n.scrollWidth <= n.clientWidth && n.scrollHeight <= n.clientHeight'))
