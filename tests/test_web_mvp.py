@@ -33,6 +33,96 @@ def launch_browser(playwright, *, args=()):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_unfinished_draft_survives_refresh_close_and_failed_save_without_nesting(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                solves=[]
+                page.on('request',lambda r: solves.append(r) if r.url.endswith('/api/solve') else None)
+                page.set_input_files('#file', {'name':'Unfinished.pdf','mimeType':'application/pdf','buffer':mixed_fixture(generic=False,registration=False)})
+                page.wait_for_function('() => !importing && kits.length === 1')
+                page.locator('#files input').fill('3')
+                page.select_option('#nesting-effort','5')
+                page.locator('#sticker-fill summary').click()
+                page.set_input_files('#sticker-upload', {'name':'Extras.pdf','mimeType':'application/pdf','buffer':mixed_fixture(generic=False,registration=False)})
+                page.wait_for_function('() => !importing && stickers.length === 2')
+                page.locator('#sticker-files input').nth(0).fill('17')
+                page.wait_for_function('() => !draftPending && !draftDirty && !draftError')
+                expect(page.locator('#draft-status')).to_contain_text('Saved')
+                self.assertEqual(solves,[])
+                self.assertEqual(server.STATE,{'status':'idle'})
+                expected=page.evaluate('JSON.stringify({kits:kits.map(e => [e.name,e.sets,e.data]),stickers:stickers.map(e => [e.name,e.sets,e.data]),material:$("material").value,effort:$("nesting-effort").value})')
+                page.reload();self.wait_ready(page)
+                actual='JSON.stringify({kits:kits.map(e => [e.name,e.sets,e.data]),stickers:stickers.map(e => [e.name,e.sets,e.data]),material:$("material").value,effort:$("nesting-effort").value})'
+                self.assertEqual(page.evaluate(actual),expected)
+                context=page.context;page.close();page=context.new_page()
+                page.goto(self.url());self.wait_ready(page)
+                self.assertEqual(page.evaluate(actual),expected)
+                self.assertIsNone(page.evaluate('current'))
+                page.set_viewport_size({'width':1366,'height':768})
+                page.screenshot(path=str(SCREENSHOTS/'private-draft-restored.png'),full_page=True)
+                # A network interruption is visible and retry preserves all changes.
+                page.route('**/api/work/draft',lambda route: route.fulfill(status=503,content_type='application/json',body='{"error":"Temporarily unavailable"}') if route.request.method=='POST' else route.continue_())
+                page.locator('#files input').fill('4')
+                page.wait_for_function('() => !!draftError')
+                expect(page.locator('#draft-retry')).to_be_visible()
+                page.unroute('**/api/work/draft')
+                page.click('#draft-retry')
+                page.wait_for_function('() => !draftPending && !draftDirty && !draftError')
+                page.reload();self.wait_ready(page)
+                self.assertEqual(page.locator('#files input').input_value(),'4')
+                self.start_nesting(page)
+                page.wait_for_function('() => !busy && current?.result',timeout=90000)
+                ident=page.evaluate('current.id')
+                page.reload();self.wait_ready(page)
+                self.assertEqual(page.evaluate('current.id'),ident)
+                page.click('#start-over')
+                page.wait_for_function('() => !leaving && kits.length === 0')
+                page.reload();self.wait_ready(page)
+                self.assertEqual(page.evaluate('kits.length'),0)
+            finally:browser.close()
+
+    def test_restored_pdf_can_choose_cut_without_original_file(self):
+        from playwright.sync_api import sync_playwright
+        from test_pdf_production import pdf_fixture
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                page.set_input_files('#file',{'name':'Choose-cut.pdf','mimeType':'application/pdf','buffer':pdf_fixture()})
+                page.wait_for_function('() => !importing && kits.length === 1')
+                ident=page.evaluate('kits[0].data.documentId')
+                original=(server.WORK/'documents'/(ident+'.pdf')).read_bytes()
+                page.reload();self.wait_ready(page)
+                self.assertTrue(page.evaluate('kits[0].unresolved && !kits[0].file'))
+                page.evaluate('chooseCut("thru")')
+                page.wait_for_function('() => !importing && !draftPending && !draftDirty && !draftError')
+                self.assertFalse(page.evaluate('kits[0].unresolved'), page.locator('#status').inner_text())
+                self.assertEqual((server.WORK/'documents'/(ident+'.pdf')).read_bytes(),original)
+                page.reload();self.wait_ready(page)
+                self.assertFalse(page.evaluate('kits[0].unresolved'), page.locator('#status').inner_text())
+                self.assertEqual(server.STATE,{'status':'idle'})
+            finally:browser.close()
+
+    def test_stale_browser_tab_cannot_replace_saved_draft(self):
+        from playwright.sync_api import sync_playwright,expect
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                page.set_input_files('#file',str(Path(__file__).resolve().parents[1]/'sample-artwork.svg'))
+                page.wait_for_function('() => !importing && kits.length === 1')
+                other=page.context.new_page();other.goto(self.url());self.wait_ready(other)
+                page.locator('#files input').fill('8')
+                page.wait_for_function('() => !draftPending && !draftDirty && !draftError')
+                other.locator('#files input').fill('2')
+                other.wait_for_function('() => draftError?.code === "draft_conflict"')
+                expect(other.locator('#draft-status')).to_contain_text('another tab')
+                other.on('dialog',lambda d:d.accept())
+                other.reload();self.wait_ready(other)
+                self.assertEqual(other.locator('#files input').input_value(),'8')
+                self.assertIsNone(other.evaluate('current'))
+            finally:browser.close()
+
     def test_upload_new_job_replaces_only_after_success_and_waits_for_start(self):
         from playwright.sync_api import sync_playwright, expect
         with sync_playwright() as playwright:
