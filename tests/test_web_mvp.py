@@ -33,6 +33,71 @@ def launch_browser(playwright, *, args=()):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_upload_new_job_replaces_only_after_success_and_waits_for_start(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                solves = []
+                page.on('request', lambda r: solves.append(r.url) if r.url.endswith('/api/solve') else None)
+                raw = mixed_fixture(generic=False, registration=False)
+                original = {'name':'First.pdf','mimeType':'application/pdf','buffer':raw}
+                page.select_option('#nesting-effort', '5')
+                page.set_input_files('#file', original)
+                page.wait_for_function('() => !importing && kits.length === 1')
+                self.assertEqual(solves, [])
+                expect(page.locator('#start-nesting')).to_have_text('Start nesting')
+                page.locator('#sticker-fill summary').click()
+                page.set_input_files('#sticker-upload', original)
+                page.wait_for_function('() => !importing && stickers.length === 2')
+                # Two fast activations while stock refresh is pending start one search.
+                page.evaluate('''() => {
+                    const refresh = refreshInventory;
+                    refreshInventory = async (...args) => {
+                        await new Promise(r => setTimeout(r, 250)); return refresh(...args);
+                    };
+                    document.querySelector('#start-nesting').click();
+                    document.querySelector('#start-nesting').dispatchEvent(new MouseEvent('click'));
+                }''')
+                page.wait_for_function('() => !busy && current?.result', timeout=90000)
+                self.assertEqual(len(solves), 1)
+                before = page.evaluate('current.id')
+                # Opening/cancelling the picker must not erase a reviewed layout.
+                with page.expect_file_chooser():
+                    page.click('#upload-new-job')
+                page.set_input_files('#file', [])
+                self.assertEqual(page.evaluate('current.id'), before)
+                page.set_input_files('#file', {'name':'Broken.pdf','mimeType':'application/pdf','buffer':b'bad'})
+                expect(page.locator('#status')).to_contain_text('Broken.pdf:')
+                expect(page.locator('#export')).to_be_enabled()
+                self.assertEqual(page.evaluate('current.id'), before)
+                self.assertEqual(server.STATE['id'], before)
+                page.set_input_files('#file', {'name':'Replacement.pdf','mimeType':'application/pdf','buffer':raw})
+                page.wait_for_function("() => !importing && kits[0]?.name === 'Replacement.pdf'")
+                self.assertEqual(page.evaluate('kits.length'), 1)
+                self.assertEqual(page.evaluate('stickers.length'), 0)
+                self.assertEqual(page.evaluate('current'), None)
+                self.assertEqual(page.input_value('#sets'), '1')
+                self.assertEqual(server.STATE, {'status':'idle'})
+                self.assertFalse((server.WORK/'session.json').exists())
+                self.assertEqual(len(solves), 1)
+                expect(page.locator('#export')).to_be_hidden()
+                expect(page.locator('#start-nesting')).to_be_enabled()
+                page.screenshot(path=str(SCREENSHOTS/'upload-new-job-ready.png'), full_page=True)
+                # Adding a file is explicitly different from replacing the job.
+                expect(page.locator('#add-files')).to_be_visible()
+                with page.expect_file_chooser() as adding:
+                    page.click('#add-files')
+                adding.value.set_files(original)
+                page.wait_for_function('() => !importing && kits.length === 2')
+                self.assertEqual(len(solves), 1)
+                self.start_nesting(page)
+                page.wait_for_function('() => !busy && current?.result', timeout=90000)
+                self.assertEqual(len(solves), 2)
+                self.assertEqual(len(server.STATE['job']['productionJobs']), 2)
+            finally:
+                browser.close()
+
     def test_gang_run_quantities_survive_reload_and_export_one_pdf(self):
         from playwright.sync_api import sync_playwright, expect
         from pypdf import PdfReader

@@ -268,6 +268,10 @@ main { min-height: auto; padding: 20px 0 24px; gap: 18px; }
 .canvas-area { min-width: 0; display: grid; gap: 12px; }
 .job-panel { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 16px; padding: 20px; background: #fff; border: 1px solid #e1e1da; border-radius: 14px; }
 .job-panel h2 { margin: 0; font-size: 16px; }
+.job-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.job-heading > span { display: flex; align-items: center; gap: 8px; }
+#upload-new-job { font-size: 12px; font-weight: 400; }
+.canvas-area > #add-files { justify-self: end; display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; }
 .job-panel .quiet { display: grid; gap: 12px; }
 .job-panel .width, .job-panel .sets { justify-content: space-between; font-size: 13px; }
 .job-panel .width input { margin-left: auto; background: #f3f3f0; width: 70px; }
