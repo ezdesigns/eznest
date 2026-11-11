@@ -8,6 +8,8 @@ const OUTPUT_WEBSITE_URL = 'https://output.jeezlabs.io/';
 const OUTPUT_WAITLIST_URL = new URL('waitlist', OUTPUT_WEBSITE_URL).href;
 let token = '';
 let localSave = false;
+let choosingSaveLocation = false;
+function browserSaveAvailable() { return window.isSecureContext && typeof window.showSaveFilePicker === 'function'; }
 let folderView = null;
 let browsingFolders = false;
 let kits = [];
@@ -917,7 +919,7 @@ function applySetsToFiles() {
 function renderActions() {
   document.body.dataset.saving = String(saving);
   $('confirm').setAttribute('aria-busy', String(saving));
-  if (saving) $('confirm-send').textContent = 'Preparing file…';
+  if (saving) $('confirm-send').textContent = choosingSaveLocation ? 'Choose a save location…' : 'Preparing file…';
   else updateSaveChoice();
   const confirming = document.body.dataset.step === 'confirm';
   syncFiles();
@@ -1656,7 +1658,7 @@ function openConfirm() {
   $('save-destination').value = $('hot-folder').value.trim() ? 'folder' : localSave ? 'choose' : 'download';
   $('save-destination').querySelector('[value="folder"]').disabled = !$('hot-folder').value.trim();
   $('save-destination').querySelector('[value="choose"]').hidden = !localSave;
-  $('save-destination').querySelector('[value="download"]').hidden = localSave;
+  $('save-destination').querySelector('[value="download"]').hidden = false;
   const onePdf = !!current.job.documentSources && (current.result.sheets || [1]).length === 1;
   $('save-format').querySelector('[value="pdf"]').disabled = !onePdf;
   $('save-format').value = onePdf ? 'pdf' : 'pack';
@@ -1736,8 +1738,17 @@ async function exportFile(forceDownload) {
   saving = true;
   renderActions();
   try {
-    let chosenPath = null;
-    if (mode === 'choose') {
+    let chosenPath = null, browserFile = null;
+    if (mode === 'choose' && browserSaveAvailable()) {
+      choosingSaveLocation = true; renderActions();
+      status('Choose where to save your print file.');
+      // Open directly from the click, before any network or PDF work, so the
+      // browser keeps the user gesture and owns the window on this computer.
+      browserFile = await window.showSaveFilePicker({suggestedName:name,
+        types:[{description:pdf ? 'Print PDF' : 'Complete print pack',
+          accept:pdf ? {'application/pdf':['.pdf']} : {'application/zip':['.zip']}}]});
+      choosingSaveLocation = false; renderActions();
+    } else if (mode === 'choose') {
       status('Choose a location in the Windows save window.');
       const selection = await api('/api/export/pick', {name: base, format});
       if (selection.cancelled) { status(''); return; }
@@ -1746,7 +1757,7 @@ async function exportFile(forceDownload) {
     current.downloadName = base;
     status(pdf ? 'Preparing your PDF with the original artwork and cut lines…' : 'Preparing your print pack…');
     if (!current.released) await lock(true);
-    if (mode !== 'download') {
+    if (mode !== 'download' && !browserFile) {
       status('Saving…');
       const request = {id: current.id, sha256: current.sha256, name: base, format, destination: mode, path: chosenPath,
         stagingFolder: mode === 'folder' ? stagingPath() : ''};
@@ -1771,6 +1782,15 @@ async function exportFile(forceDownload) {
       if (!printResponse.ok) throw Error('Save the complete print pack for this layout.');
       bytes = await printResponse.arrayBuffer();
     }
+    if (browserFile) {
+      const writable = await browserFile.createWritable();
+      try { await writable.write(bytes); await writable.close(); }
+      catch (error) { try { await writable.abort(); } catch {} throw error; }
+      current.exportReceipt = {path:browserFile.name, destination:'browser', format};
+      current.downloadName = browserFile.name.replace(/\.(pdf|zip)$/i, '');
+      showSent();
+      return;
+    }
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([bytes], {type: pdf ? 'application/pdf' : 'application/zip'}));
     link.download = name;
@@ -1781,8 +1801,10 @@ async function exportFile(forceDownload) {
     showSent();
     $('delivery-receipt').textContent = 'Downloaded ' + name;
   } catch (error) {
-    status(error.message, true);
+    if (error.name === 'AbortError') status('Save cancelled. Your layout is still ready.');
+    else status(error.message + (mode === 'choose' ? ' You can also choose Browser download under Save to.' : ''), true);
   } finally {
+    choosingSaveLocation = false;
     saving = false;
     renderActions();
   }
@@ -2818,7 +2840,7 @@ async function boot() {
   hostComputer = session.localPC === true;
   $('settings-backup').hidden = !hostComputer;
   token = session.token || '';
-  localSave = session.localSave === true;
+  localSave = browserSaveAvailable();
   renderOutputLink(session.outputLink, session.localPC);
   renderOutputRequired(session);
   if (session.accessRemoved) status('Your access was removed.', true);

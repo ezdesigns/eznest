@@ -876,6 +876,46 @@ class WebMvpTests(unittest.TestCase):
             finally:
                 browser.close()
 
+    def test_browser_owned_save_cancel_failure_and_success(self):
+        from playwright.sync_api import sync_playwright,expect
+        with sync_playwright() as playwright:
+            browser,page=self.open_page(playwright)
+            try:
+                page.select_option('#nesting-effort','5')
+                page.set_input_files('#file',{'name':'Browser save.pdf','mimeType':'application/pdf','buffer':mixed_fixture(generic=False,registration=False)})
+                self.start_nesting(page)
+                page.wait_for_function('() => !busy && current?.result',timeout=90000)
+                requests=[]
+                page.on('request',lambda r:requests.append(r.url) if '/api/export/pick' in r.url else None)
+                page.evaluate("window.showSaveFilePicker = async () => { throw new DOMException('Cancelled','AbortError'); }; localSave=true")
+                page.click('#export');page.click('#confirm-send')
+                expect(page.locator('#confirm-send')).to_be_enabled()
+                expect(page.locator('#status')).to_contain_text('Save cancelled')
+                self.assertFalse(server.STATE.get('released'))
+                self.assertEqual(page.get_attribute('body','data-step'),'confirm')
+                page.evaluate("() => { window.showSaveFilePicker = async () => { throw new DOMException('Picker unavailable','SecurityError'); }; }")
+                page.click('#confirm-send')
+                expect(page.locator('#status')).to_contain_text('Browser download')
+                self.assertFalse(page.locator('#save-destination option[value=download]').get_attribute('hidden'))
+                page.evaluate("""() => {
+                  window.savedBytes=null; window.savedClosed=false; window.saveAborted=false;
+                  window.showSaveFilePicker=async options => {
+                    window.pickerName=options.suggestedName; window.pickerActive=navigator.userActivation.isActive;
+                    return {name:'Chosen print.pdf',createWritable:async () => ({
+                      write:async bytes => {window.savedBytes=Array.from(new Uint8Array(bytes));},
+                      close:async () => {window.savedClosed=true;}, abort:async () => {window.saveAborted=true;}
+                    })};
+                  };
+                }""")
+                page.click('#confirm-send')
+                expect(page.locator('#delivery-receipt')).to_have_text('Saved to Chosen print.pdf')
+                self.assertTrue(page.evaluate('savedClosed'))
+                self.assertEqual(bytes(page.evaluate('savedBytes.slice(0,4)')),b'%PDF')
+                self.assertEqual(page.evaluate('pickerName'),'print Browser save.pdf')
+                self.assertTrue(page.evaluate('pickerActive'))
+                self.assertEqual(requests,[])
+            finally:browser.close()
+
     def test_windows_save_cancel_save_and_retained_receipt(self):
         from playwright.sync_api import sync_playwright, expect
         source = Path(self.tmp.name) / 'kit.pdf'
@@ -887,7 +927,7 @@ class WebMvpTests(unittest.TestCase):
         with sync_playwright() as playwright:
             browser, page = self.open_page(playwright)
             try:
-                page.evaluate('localSave = true')
+                page.evaluate('window.showSaveFilePicker = undefined; localSave = true')
                 page.set_input_files('#file', str(source))
                 self.start_nesting(page)
                 page.wait_for_function("() => /cuts ok/i.test(document.querySelector('#gate')?.textContent || '')", timeout=90000)
