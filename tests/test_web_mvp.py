@@ -920,15 +920,21 @@ class WebMvpTests(unittest.TestCase):
                 expect(page.locator('#status')).to_contain_text('Browser download')
                 self.assertFalse(page.locator('#save-destination option[value=download]').get_attribute('hidden'))
                 page.evaluate("""() => {
-                  window.savedBytes=null; window.savedClosed=false; window.saveAborted=false;
+                  window.savedBytes=null; window.savedClosed=false; window.saveAborted=false; window.failSave=true;
                   window.showSaveFilePicker=async options => {
                     window.pickerName=options.suggestedName; window.pickerActive=navigator.userActivation.isActive;
                     return {name:'Chosen print.pdf',createWritable:async () => ({
                       write:async bytes => {window.savedBytes=Array.from(new Uint8Array(bytes));},
-                      close:async () => {window.savedClosed=true;}, abort:async () => {window.saveAborted=true;}
+                      close:async () => {if(window.failSave) throw Error('Disk full'); window.savedClosed=true;}, abort:async () => {window.saveAborted=true;}
                     })};
                   };
                 }""")
+                page.click('#confirm-send')
+                expect(page.locator('#status')).to_contain_text('Disk full')
+                self.assertTrue(page.evaluate('saveAborted'))
+                self.assertFalse(server.STATE.get('exportReceipt'))
+                expect(page.locator('#saved-heading')).to_be_hidden()
+                page.evaluate('window.failSave=false')
                 page.click('#confirm-send')
                 expect(page.locator('#delivery-receipt')).to_have_text('Saved to Chosen print.pdf')
                 self.assertTrue(page.evaluate('savedClosed'))
@@ -939,6 +945,8 @@ class WebMvpTests(unittest.TestCase):
                 page.screenshot(path=str(SCREENSHOTS/'save-again-desktop.png'),full_page=True)
                 page.set_viewport_size({'width':390,'height':844})
                 page.screenshot(path=str(SCREENSHOTS/'save-again-mobile.png'),full_page=True)
+                page.reload();self.wait_ready(page)
+                expect(page.locator('#delivery-receipt')).to_have_text('Saved to Chosen print.pdf')
             finally:browser.close()
 
     def test_windows_save_cancel_save_and_retained_receipt(self):

@@ -100,5 +100,12 @@ class DraftTests(unittest.TestCase):
         saved=self.request('Alice','/api/work/draft')[1]
         self.assertEqual(saved['runId'],state['id'])
         self.assertEqual(saved['revision'],started['draftRevision'])
+        code,released=self.request('Alice','/api/release',{'id':state['id'],'map':'<svg xmlns="http://www.w3.org/2000/svg"/>','downloadOnly':True})
+        self.assertEqual(code,200,released)
+        receipt={'id':state['id'],'sha256':released['sha256'],'name':'print finished','format':'pdf'}
+        self.assertEqual(self.request('Bob','/api/export/receipt',receipt)[0],400)
+        self.assertEqual(self.request('Alice','/api/export/receipt',receipt)[0],200)
+        self.assertEqual(self.request('Alice','/api/state')[1]['exportReceipt']['path'],'print finished.pdf')
+
         self.assertEqual(self.request('Alice','/api/work/discard',{'draftRevision':saved['revision']})[0],200)
         self.assertIsNotNone(self.request('Bob','/api/work/draft')[1]['draft'])

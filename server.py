@@ -1154,6 +1154,19 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Use browser download on another computer.'})
                 target = print_export.pick_save_path(data.get('name'), data.get('format'))
                 return self.send(200, {'path': target, 'cancelled': target is None})
+            if path == '/api/export/receipt':
+                # A browser-owned picker cannot report a full local path. Keep
+                # the confirmed filename in this designer's saved job instead.
+                filename = print_export.export_filename(data.get('name'), data.get('format'))
+                with job_lock():
+                    if (job_state().get('status') != 'ready' or not job_state().get('released')
+                            or data.get('id') != job_state().get('id')
+                            or data.get('sha256') != job_state().get('sha256')):
+                        raise ValueError('The layout changed. Keep the file you saved and refresh the job.')
+                    job_state()['exportReceipt'] = {'path': filename, 'destination': 'browser', 'format': data['format']}
+                    persist_state()
+                    record_telemetry('nest.exported')
+                return self.send(200, {'ok': True})
             if path == '/api/export/folders':
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Browse folders on the PC running Ez Nest.'})

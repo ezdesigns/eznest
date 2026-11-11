@@ -1798,6 +1798,11 @@ async function exportFile(forceDownload) {
       current.exportReceipt = {path:browserFile.name, destination:'browser', format};
       current.downloadName = browserFile.name.replace(/\.(pdf|zip)$/i, '');
       showSent();
+      try {
+        await api('/api/export/receipt', {id:current.id, sha256:current.sha256, name:current.downloadName, format});
+      } catch {
+        status('Your file is saved. Its receipt could not be kept in Ez Nest; keep the file you saved.');
+      }
       return;
     }
     const link = document.createElement('a');
