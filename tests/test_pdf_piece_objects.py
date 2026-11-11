@@ -1,5 +1,9 @@
+import hashlib
 import io
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -8,7 +12,7 @@ from pypdf.generic import ContentStream, DecodedStreamObject, DictionaryObject, 
 from shapely.geometry import box
 
 from artwork_bounds import preserve_artwork
-from pdf_io import export_pdf, read_document
+from pdf_io import export_pdf, read_document, import_to_store
 from pdf_piece_objects import analyze_objects, select_objects
 from pdf_export_forms import invocation_bounds, piece_form
 from test_pdf_production import pdf_fixture
@@ -27,6 +31,56 @@ def page_with_content(content):
 
 
 class PieceObjectsTests(unittest.TestCase):
+    def test_marked_pdf_import_keeps_piece_identity_source_hash_and_cut_mapping(self):
+        from cut_mapping import defaults
+        from test_mixed_cuts import mixed_fixture
+        raw = mixed_fixture(generic=False, registration=False)
+        mapping = defaults()
+        with tempfile.TemporaryDirectory() as folder:
+            first = import_to_store(raw, folder, preserve=True, cut_mapping=mapping)
+            second = import_to_store(raw, folder, preserve=True, cut_mapping=mapping)
+            self.assertEqual(first['documentId'], second['documentId'])
+            self.assertEqual([p['id'] for p in first['parts']], [p['id'] for p in second['parts']])
+            self.assertEqual([p['cutCounts'] for p in first['parts']],
+                             [{'thru': 1, 'kiss': 2, 'contour': 0}] * 2)
+            self.assertEqual(first['cutMapping'], mapping)
+            meta = json.loads((Path(folder)/(first['documentId']+'.json')).read_text())
+            self.assertEqual(meta['sourceHash'], hashlib.sha256(raw).hexdigest())
+            # Analysis marks belong only to the temporary PDF, never the print source.
+            stored = PdfReader(Path(folder)/(first['documentId']+'.pdf'))
+            self.assertFalse(any(op == b'BDC' and str(values[0]).startswith('/EZPiece')
+                                 for values, op in stored.pages[0].get_contents().operations))
+
+    def test_unreadable_or_out_of_range_object_ownership_rejects_import(self):
+        import pypdfium2.raw as api
+        from test_mixed_cuts import mixed_fixture
+        raw = mixed_fixture(generic=False, registration=False)
+        read_value = api.FPDFPageObjMark_GetParamIntValue
+        for fault in ('unreadable', -1, 1_000_000):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as folder:
+                def damaged_mark(mark, key, value):
+                    if fault == 'unreadable':
+                        return 0
+                    result = read_value(mark, key, value)
+                    value.value = fault
+                    return result
+                with patch.object(api, 'FPDFPageObjMark_GetParamIntValue', side_effect=damaged_mark):
+                    with self.assertRaisesRegex(ValueError, 'identify a PDF artwork object|ownership could not be proved'):
+                        import_to_store(raw, folder, preserve=True)
+                self.assertEqual(list(Path(folder).iterdir()), [])
+
+    def test_unbalanced_source_marks_reject_import_without_storing_artwork(self):
+        writer = PdfWriter(clone_from=io.BytesIO(pdf_fixture()))
+        page = writer.pages[0]
+        stream = DecodedStreamObject()
+        stream.set_data(page.get_contents().get_data() + b' /Unclosed BMC')
+        page[NameObject('/Contents')] = writer._add_object(stream)
+        raw = io.BytesIO(); writer.write(raw)
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaisesRegex(ValueError, 'marked-content state is unbalanced'):
+                import_to_store(raw.getvalue(), folder, preserve=True)
+            self.assertEqual(list(Path(folder).iterdir()), [])
+
     def test_only_whole_objects_are_selected(self):
         reader, page = page_with_content(b'1 0 0 rg 10 10 20 20 re f 0 0 1 rg 100 10 20 20 re f')
         before = page.get_contents().get_data()

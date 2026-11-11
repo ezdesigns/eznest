@@ -2,7 +2,7 @@
 html { overflow-y: scroll; }
 .workspace-header.shop-header, .workspace-header.app-header {
   display: flex; align-items: center; flex-wrap: nowrap; gap: 16px;
-  position: relative; height: 65px; min-height: 65px; padding: 12px 24px;
+  position: relative; height: auto; min-height: 72px; padding: 12px 24px;
   border: 0; border-bottom: 1px solid #e2e4de; background: #f7f7f4;
   color: #1c1c1c; font-family: "Red Hat Display", "Segoe UI", sans-serif;
 }
@@ -21,19 +21,19 @@ html { overflow-y: scroll; }
 .workspace-header .workspace-tools { position: static; display: flex; align-items: center; flex-wrap: nowrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
 .workspace-header .workspace-tools :is(button, #settings-open) {
   position: static; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  height: 36px; min-height: 36px; margin: 0; padding: 0 10px; border: 0; border-radius: 8px;
-  color: #1c1c1c; background: #f7f7f4; font: 400 12px/1 "Red Hat Display", "Segoe UI", sans-serif;
+  height: 44px; min-height: 44px; margin: 0; padding: 0 10px; border: 0; border-radius: 8px;
+  color: #1c1c1c; background: #f7f7f4; font: 400 13px/1 "Red Hat Display", "Segoe UI", sans-serif;
 }
 .workspace-header .workspace-tools :is(button, #settings-open):hover { background: #eceeea; }
-.workspace-header .workspace-tools #shop-team-open { width: 116px; max-width: 116px; justify-content: flex-start; font-weight: 700; }
+.workspace-header .workspace-tools #shop-team-open { width: auto; max-width: 240px; justify-content: flex-start; font-weight: 700; }
 .workspace-header .workspace-tools #shop-team-open span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .workspace-header .workspace-tools #stock-open { width: 102px; }
 .workspace-header .workspace-tools #settings-open { width: 100px; }
 .workspace-header .workspace-tools svg { display: block; flex: none; }
 .workspace-header #output-link { justify-self: end; }
-.workspace-header #output-link .output-dot { width: 32px; padding: 0; }
+.workspace-header #output-link .output-dot { width: 44px; height: 44px; min-height: 44px; padding: 0; }
 @media (max-width: 720px) {
-  .workspace-header.shop-header, .workspace-header.app-header { height: 109px; min-height: 109px; padding: 12px 16px; gap: 8px; flex-wrap: wrap; }
+  .workspace-header.shop-header, .workspace-header.app-header { height: auto; min-height: 120px; padding: 12px 16px; gap: 8px; flex-wrap: wrap; }
   .workspace-identity { width: 100%; gap: 16px; }
   .workspace-header .workspace-tools { width: 100%; justify-content: flex-end; margin-left: 0; }
   .workspace-header .workspace-tools #shop-team-open { flex: 1; width: auto; max-width: none; }
@@ -42,6 +42,6 @@ html { overflow-y: scroll; }
   #settings-support .help-card { position: fixed; left: 16px; right: 16px; bottom: 80px; width: auto; }
 }
 @media (max-width: 440px) {
-  .workspace-header .workspace-tools #stock-open, .workspace-header .workspace-tools #settings-open { width: 36px; padding: 0; }
+  .workspace-header .workspace-tools #stock-open, .workspace-header .workspace-tools #settings-open { width: 44px; padding: 0; }
   .workspace-header .workspace-tools #stock-open > span, .workspace-header .workspace-tools #settings-open > span { display: none; }
 }

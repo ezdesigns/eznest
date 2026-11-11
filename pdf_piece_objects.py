@@ -75,7 +75,7 @@ def analyze_objects(page, reader, diagnostics=None, keep_unseen=False):
                 continue
             name = ctypes.string_at(buffer, size.value).decode('utf-16-le').rstrip('\0')
             if name == mark_name:
-                value = ctypes.c_long()
+                value = ctypes.c_int()
                 if not api.FPDFPageObjMark_GetParamIntValue(mark, b'id', value):
                     raise ValueError('Could not identify a PDF artwork object.')
                 found.append(value.value)

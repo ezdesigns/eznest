@@ -277,6 +277,10 @@
 </dialog>
 
 <main>
+  <header class="workbench-heading">
+    <h1>Print workspace</h1>
+    <p>Prepare your layout, review every piece, then save for printing.</p>
+  </header>
   <div class="workspace-grid">
   <section class="canvas-area" aria-label="Layout">
 <section id="setup" hidden>
@@ -328,6 +332,7 @@
   </section>
   <div id="drop-screen" class="upload-area">
     <label id="drop" class="drop"><svg class="upload-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 21V5m-6 6 6-6 6 6M6 20v6a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><strong id="upload-title">Upload your print here</strong><span id="upload-hint">Click to choose files or drop them here</span>
+      <span class="upload-action" aria-hidden="true">Choose files</span>
       <input id="file" type="file" accept=".svg,.pdf,.ai,image/svg+xml,application/pdf" multiple>
     </label>
     <p class="hint import-hint">PDF, SVG or PDF-compatible AI</p>
