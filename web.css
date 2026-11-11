@@ -860,3 +860,24 @@ body[data-step="sent"] #inventory-open { display: block; }
 #setup-shop[data-mode=connect] h2 { font-size:30px; }
 #setup-shop[data-mode=connect] .output-benefits { display:none; }
 @media(max-width:540px) { #setup-shop.output-brand, #max-output-dialog.output-brand { padding:24px; } .output-brand .output-benefits { grid-template-columns:1fr; } .top-actions #shop-team-open { max-width:130px; margin-right:auto; padding-right:10px; } }
+/* Optional sticker fill stays beside the job; outcomes stay beside the layout. */
+.sticker-fill { margin: 18px 0; padding-top: 14px; border-top: 1px solid #e4e7eb; }
+.sticker-fill > summary { cursor: pointer; font-weight: 600; }
+.sticker-fill > summary span { margin-left: 6px; font-weight: 400; }
+.sticker-files { list-style: none; padding: 0; margin: 12px 0; max-height: 340px; overflow: auto; overscroll-behavior: contain; }
+.sticker-files li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 12px 0; border-bottom: 1px solid #e4e7eb; }
+.sticker-files img { width: 44px; height: 44px; object-fit: contain; }
+.sticker-files .sticker-name { font-size: 13px; overflow-wrap: anywhere; }
+.sticker-files .sticker-quantity { grid-column: 2 / 4; display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.sticker-files input[type=number] { width: 88px; min-width: 0; padding: 7px; }
+.sticker-files .sticker-remove { padding: 4px; min-width: 28px; font-size: 20px; }
+.sticker-add input { display: none; }
+.sticker-add:has(input:disabled) { opacity: .5; pointer-events: none; }
+.fill-result { grid-column: 1 / -1; padding: 16px 24px; margin: 0; border-top: 1px solid #e4e7eb; }
+.fill-result > strong { display: block; color: #0866e9; font-size: 20px; }
+.fill-result > span { display: block; font-size: 13px; margin-top: 4px; }
+.fill-result ul { padding: 0; list-style: none; max-height: 180px; overflow: auto; margin: 10px 0 0; }
+.fill-result li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 13px; padding: 4px 0; }
+.fill-result li span:first-child { overflow-wrap: anywhere; min-width: 0; flex: 1; }
+.fill-result li span:last-child { font-variant-numeric: tabular-nums; }
+body:is([data-step="confirm"], [data-step="sent"]) #sticker-fill { display: none; }

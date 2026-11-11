@@ -33,6 +33,92 @@ def launch_browser(playwright, *, args=()):
 
 
 class WebMvpTests(unittest.TestCase):
+    def test_gang_run_quantities_survive_reload_and_export_one_pdf(self):
+        from playwright.sync_api import sync_playwright, expect
+        from pypdf import PdfReader
+        from engine import validate_result
+        with sync_playwright() as playwright:
+            browser, page = self.open_page(playwright)
+            try:
+                page.click('#edit-material')
+                page.fill('#width', '500')
+                page.locator('#material-advanced').evaluate('n => n.open = true')
+                page.select_option('#print-layout', 'continuous')
+                page.click('#save-material')
+                page.wait_for_function("() => !document.querySelector('#save-material').disabled")
+                page.select_option('#nesting-effort', '5')
+                raw = mixed_fixture(generic=False, registration=False)
+                page.set_input_files('#file', {'name':'Main.pdf','mimeType':'application/pdf','buffer':raw})
+                page.wait_for_function('() => !importing && kits.length === 1')
+                page.locator('#sticker-fill summary').click()
+                page.set_input_files('#sticker-upload', {'name':'Stickers.pdf','mimeType':'application/pdf','buffer':raw})
+                page.wait_for_function('() => !importing && stickers.length === 2')
+                fields = page.locator('#sticker-files input[type=number]')
+                fields.nth(0).fill('2')
+                fields.nth(1).fill('100')
+                page.screenshot(path=str(SCREENSHOTS/'gang-fill-configure-desktop.png'), full_page=True)
+                page.set_viewport_size({'width':390,'height':844})
+                self.assertTrue(page.evaluate('() => document.documentElement.scrollWidth <= innerWidth'))
+                page.screenshot(path=str(SCREENSHOTS/'gang-fill-configure-mobile.png'), full_page=True)
+                page.set_viewport_size({'width':1280,'height':900})
+                self.start_nesting(page)
+                page.wait_for_function("() => !busy && current?.result", timeout=90000)
+                self.assertEqual(page.get_attribute('body','data-step'), 'check', page.locator('#checks').inner_text())
+                result = copy.deepcopy(server.STATE['result'])
+                self.assertEqual(result['usedLength'], result['fillBaseLength'])
+                self.assertEqual(len(result['sheets']), 1)
+                self.assertGreater(sum(s['sets'] for s in result['fillSummary']), 0)
+                self.assertLessEqual(result['fillSummary'][0]['sets'], 2)
+                self.assertLess(result['fillSummary'][1]['sets'], 100)
+                validate_result(server.STATE['job'], result)
+                expect(page.locator('#fill-result')).to_contain_text('remaining')
+                page.screenshot(path=str(SCREENSHOTS/'gang-fill-result-desktop.png'), full_page=True)
+                page.reload(); self.wait_ready(page)
+                self.assertEqual(page.locator('#files li').count(), 1)
+                self.assertEqual(page.locator('#sticker-files input').nth(0).input_value(), '2')
+                self.assertEqual(page.locator('#sticker-files input').nth(1).input_value(), '100')
+                self.assertEqual(page.evaluate('current.result.fillSummary'), result['fillSummary'])
+                page.click('#export')
+                expect(page.locator('#sticker-fill')).to_be_hidden()
+                page.select_option('#save-destination', 'download')
+                self.assertEqual(page.input_value('#save-format'), 'pdf')
+                with page.expect_download(timeout=90000) as pending:
+                    page.click('#confirm-send')
+                target = Path(self.tmp.name)/'gang-run.pdf'; pending.value.save_as(str(target))
+                reader = PdfReader(target)
+                self.assertEqual(len(reader.pages), 1)
+                self.assertEqual(reader.pages[0].get_contents().get_data().count(b'\nS\n'), 3*len(result['placements']))
+                self.assertEqual(server.STATE['requestJob']['fillJobs'][1]['maxSets'], 100)
+            finally: browser.close()
+
+    def test_gang_run_rejects_bad_quantity_and_mixed_formats_without_losing_job(self):
+        from playwright.sync_api import sync_playwright, expect
+        with sync_playwright() as playwright:
+            browser,page = self.open_page(playwright)
+            try:
+                raw = mixed_fixture(generic=False, registration=False)
+                page.set_input_files('#file', {'name':'Main.pdf','mimeType':'application/pdf','buffer':raw})
+                page.wait_for_function('() => !importing && kits.length === 1')
+                page.locator('#sticker-fill summary').click()
+                page.set_input_files('#sticker-upload', {'name':'Wrong.svg','mimeType':'image/svg+xml','buffer':b'<svg/>'})
+                expect(page.locator('#status')).to_contain_text('Use PDF or AI stickers')
+                self.assertEqual(page.evaluate('kits.length'), 1)
+                page.set_input_files('#sticker-upload', {'name':'Stickers.pdf','mimeType':'application/pdf','buffer':raw})
+                page.wait_for_function('() => !importing && stickers.length === 2')
+                qty = page.locator('#sticker-files input').first
+                for value in ('0','1.5','5001'):
+                    qty.fill(value)
+                    expect(page.locator('#start-nesting')).to_be_disabled()
+                qty.fill('7')
+                expect(page.locator('#start-nesting')).to_be_enabled()
+                page.locator('#sticker-files button').first.click()
+                self.assertEqual(page.evaluate('stickers.length'), 1)
+                self.assertEqual(page.evaluate('kits.length'), 1)
+                page.click('#start-over-idle')
+                page.wait_for_function('() => kits.length === 0 && stickers.length === 0')
+                expect(page.locator('#sticker-fill')).to_be_hidden()
+            finally: browser.close()
+
     def test_prepared_artwork_requires_preview_acceptance_and_cancel_keeps_job_empty(self):
         from playwright.sync_api import sync_playwright, expect
         from test_automatic_prepare import fixture

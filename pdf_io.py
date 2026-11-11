@@ -1112,17 +1112,31 @@ def load_documents(job, folder, require_review=True):
             raise ValueError('Review the detected PDF pieces and confirm existing bleed in Job options before exporting.')
         ident=data.get('documentId','')
         if len(ident)!=64 or any(c not in '0123456789abcdef' for c in ident): raise ValueError('Invalid document identity.')
-        try:
-            raw=(Path(folder)/(ident+'.pdf')).read_bytes()
-            meta=json.loads((Path(folder)/(ident+'.json')).read_text(encoding='utf-8'))
-        except (OSError,ValueError):
-            raise ValueError('A source PDF is unavailable. Re-add the original file.')
+        if ident in documents:
+            raw,meta=documents[ident]
+        else:
+            try:
+                raw=(Path(folder)/(ident+'.pdf')).read_bytes()
+                meta=json.loads((Path(folder)/(ident+'.json')).read_text(encoding='utf-8'))
+            except (OSError,ValueError):
+                raise ValueError('A source PDF is unavailable. Re-add the original file.')
         if meta.get('modelVersion')!=2: raise ValueError('Re-add this PDF/AI file to review its cut types with the updated importer.')
         data['excludedGuideCount']=len(meta.get('excludedGuideIds',[]))
         documents[ident]=(raw,meta)
-        actual={p['pdfPieceId']:p for p in job['parts'] if p.get('sourceJobId')==source['id']}
-        if set(actual)!=set(p['id'] for p in meta['pieces']): raise ValueError('PDF source pieces no longer match this job. Re-import it.')
-        for p in meta['pieces']:
+        source_parts=[p for p in job['parts'] if p.get('sourceJobId')==source['id']]
+        actual={p['pdfPieceId']:p for p in source_parts}
+        expected=set(p['id'] for p in meta['pieces'])
+        selected=source.get('selectedPieceIds')
+        if selected is not None:
+            # Only explicitly selected optional stickers may use a subset.
+            # Each one is still checked against its complete stored artwork.
+            if (source.get('role')!='fill' or not isinstance(selected,list) or not selected
+                    or any(not isinstance(s,str) for s in selected) or len(set(selected))!=len(selected)
+                    or not set(selected).issubset(expected)):
+                raise ValueError('Invalid sticker selection. Re-add the sticker file.')
+            expected=set(selected)
+        if len(actual)!=len(source_parts) or set(actual)!=expected: raise ValueError('PDF source pieces no longer match this job. Re-import it.')
+        for p in (p for p in meta['pieces'] if p['id'] in expected):
             item=actual[p['id']]
             item['cutCounts']=p['cutCounts']
             if item.get('documentId')!=ident or item['points']!=p['points']: raise ValueError('PDF geometry does not match the original import.')
