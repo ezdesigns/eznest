@@ -51,7 +51,7 @@ def key(value):
     return value
 
 
-def validate_artwork(root, data, role):
+def validate_artwork(root, data, role, documents=None):
     if not isinstance(data, dict) or data.get('format') not in ('pdf', 'svg'):
         raise ValueError('Invalid draft artwork.')
     parts = data.get('parts')
@@ -69,8 +69,11 @@ def validate_artwork(root, data, role):
     folder = Path(root)/'documents'
     if not (folder/(ident+'.pdf')).is_file():
         raise ValueError('This artwork is not in your workspace. Upload it again.')
-    meta = json.loads((folder/(ident+'.json')).read_text(encoding='utf-8'))
-    expected = {p['id']: p for p in meta['pieces']}
+    documents = documents if documents is not None else {}
+    if ident not in documents:
+        meta = json.loads((folder/(ident+'.json')).read_text(encoding='utf-8'))
+        documents[ident] = {p['id']: p for p in meta['pieces']}
+    expected = documents[ident]
     selected = data.get('selectedPieceIds')
     if selected is not None:
         if (role != 'fill' or not isinstance(selected, list) or not selected
@@ -97,7 +100,7 @@ def save(root, payload):
     if not isinstance(supplied, dict) or len(supplied) > len(entries):
         raise ValueError('Invalid draft artwork.')
     folder = Path(root)/'draft-artwork'; folder.mkdir(exist_ok=True)
-    assets, clean, seen = {}, [], set()
+    assets, clean, seen, documents = {}, [], set(), {}
     for entry in entries:
         if not isinstance(entry, dict):
             raise ValueError('Invalid draft entry.')
@@ -118,7 +121,7 @@ def save(root, payload):
             else:
                 try: assets[asset] = json.loads((folder/(asset+'.json')).read_text(encoding='utf-8'))
                 except FileNotFoundError: raise ValueError('Draft artwork is missing. Upload it again.') from None
-        validate_artwork(root, assets[asset], role)
+        validate_artwork(root, assets[asset], role, documents)
         item = {k: entry[k] for k in ('id', 'role', 'sets', 'dataKey')}
         for name in ('name', 'sourceFile', 'revision'):
             value = entry.get(name, '')
@@ -149,12 +152,12 @@ def save(root, payload):
 def public(root):
     record = read(root)
     if record['draft']:
-        assets = {}
+        assets, documents = {}, {}
         for entry in record['draft']['entries']:
             ident = key(entry['dataKey'])
             if ident not in assets:
                 assets[ident] = json.loads((Path(root)/'draft-artwork'/(ident+'.json')).read_text(encoding='utf-8'))
-            validate_artwork(root, assets[ident], entry['role'])
+            validate_artwork(root, assets[ident], entry['role'], documents)
         record['assets'] = assets
     return record
 
