@@ -914,6 +914,9 @@ class WebMvpTests(unittest.TestCase):
                 self.assertEqual(page.evaluate('pickerName'),'print Browser save.pdf')
                 self.assertTrue(page.evaluate('pickerActive'))
                 self.assertEqual(requests,[])
+                page.screenshot(path=str(SCREENSHOTS/'save-again-desktop.png'),full_page=True)
+                page.set_viewport_size({'width':390,'height':844})
+                page.screenshot(path=str(SCREENSHOTS/'save-again-mobile.png'),full_page=True)
             finally:browser.close()
 
     def test_windows_save_cancel_save_and_retained_receipt(self):
