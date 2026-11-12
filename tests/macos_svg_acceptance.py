@@ -1,4 +1,4 @@
-"""Visible SVG import/export regression against the installed runner service only.
+"""Visible SVG import/export regression for source and installed runner acceptance.
 
 No account browser, saved context, source application, or JavaScript state bypass.
 Playwright is installed only by the guarded disposable acceptance workflows.
@@ -32,7 +32,9 @@ def svg_file_flow(api, root):
     source.write_bytes(SVG)
     # The Playwright driver and browser inherit no Actions or OUTPUT credentials.
     previous = dict(os.environ)
-    browser_env = {key: previous[key] for key in ('HOME', 'PATH', 'TMPDIR') if key in previous}
+    browser_keys = ('HOME', 'PATH', 'TMPDIR', 'SYSTEMROOT', 'TEMP', 'TMP',
+                    'PROGRAMFILES', 'PROGRAMFILES(X86)', 'LOCALAPPDATA')
+    browser_env = {key: previous[key] for key in browser_keys if key in previous}
     os.environ.clear(); os.environ.update(browser_env)
     try:
         with sync_playwright() as playwright:
@@ -48,6 +50,15 @@ def svg_file_flow(api, root):
                 page = context.new_page()
                 print('SVG_STAGE: page-load', flush=True)
                 page.goto(ORIGIN + '/?view=simple', wait_until='domcontentloaded')
+                # A new installation pauses boot until the user finishes the welcome.
+                # Exercise the real controls; do not seed storage or bypass shop setup.
+                expect(page.locator('body[data-ready="1"], #shop-team-dialog[open]').first).to_be_visible(timeout=60000)
+                if page.get_by_role('button', name='Close welcome', exact=True).is_visible():
+                    print('SVG_STAGE: welcome', flush=True)
+                    page.get_by_role('button', name='Continue', exact=True).click()
+                if page.get_by_role('button', name='Use this PC for now', exact=True).is_visible():
+                    print('SVG_STAGE: local-setup', flush=True)
+                    page.get_by_role('button', name='Use this PC for now', exact=True).click()
                 expect(page.locator('body')).to_have_attribute('data-ready', '1', timeout=60000)
                 print('SVG_STAGE: optional-output', flush=True)
                 if page.locator('#output-required').is_visible():
