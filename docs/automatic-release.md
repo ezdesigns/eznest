@@ -20,7 +20,12 @@ A subsequent version-bump PR activates the build path; existing versions remain 
 
 - Windows reuses `windows-installer.yml`, including pinned Inno Setup, checksums,
   source/version pin and an actual fresh install on the disposable Windows VM.
-  It still produces an **unsigned Windows preview**. The old tag-only publisher
+  The owner approved **rc.9 only** as an unsigned Windows testing preview on
+  2026-11-12. It supports manual installation; Windows may show an unknown-publisher
+  warning. The planner explicitly identifies that version, and missing output or
+  any other version requires trusted Authenticode signing. Future release candidates
+  do not inherit this exception. The installed one-click updater's signature and
+  signed-manifest protections are unchanged. The old tag-only publisher
   is removed; tags/PR/manual runs can build candidates but cannot publish alone.
 - Mac runs on a disposable GitHub-hosted macOS 26 Apple-Silicon VM. It requires
   the approved publisher's Developer ID Application and Installer identities.

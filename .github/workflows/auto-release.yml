@@ -70,6 +70,7 @@ jobs:
       sha: ${{ steps.plan.outputs.sha }}
       version: ${{ steps.plan.outputs.version }}
       tag: ${{ steps.plan.outputs.tag }}
+      windows_require_signed: ${{ steps.plan.outputs.windows_require_signed }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -91,6 +92,9 @@ jobs:
     uses: ./.github/workflows/windows-installer.yml
     with:
       source_sha: ${{ needs.plan.outputs.sha }}
+      # Only the owner's rc.9 manual-install preview has an unsigned exception.
+      # Missing/unrecognized planner output fails closed to signed releases.
+      require_signed: ${{ needs.plan.outputs.windows_require_signed != 'false' }}
 
   macos:
     needs: plan

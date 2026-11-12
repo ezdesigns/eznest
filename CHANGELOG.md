@@ -4,6 +4,7 @@
 
 ## 1.0.0-rc.9
 
+- Windows remains an unsigned testing preview for manual installation. Windows may show an unknown-publisher warning. Protected one-click updates are not enabled by this release; future versions still require trusted signing unless separately approved.
 - New local Windows installs start Ez Nest quietly after Windows sign-in by default. Updates preserve the existing startup choice and data location; shared hosts keep their existing startup task.
 - Keep each designer's uploaded job private and saved before nesting. Updates retain shop identity, designer sign-ins, stock, reservations and unfinished jobs. A host can approve restoring an existing member's access if their browser has lost its sign-in, without creating another person or losing the saved job.
 - Improve Save to My Computer and download retry handling. Preserve ordinary printed artwork on mixed cut layers, with review for matching unnamed cut outlines.
