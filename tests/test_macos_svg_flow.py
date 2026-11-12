@@ -2,7 +2,6 @@
 import json
 import os
 from pathlib import Path
-import sys
 import time
 import unittest
 from unittest.mock import patch
@@ -37,8 +36,9 @@ class SourceAPI:
         return status, json.loads(raw)
 
 
-@unittest.skipUnless(sys.platform == 'darwin', 'Mac browser environment regression; no native installation')
 class FreshMacSvgFlowTests(unittest.TestCase):
+    # Match a clean installed service, rather than the shared fixture's existing shop.
+    seed_shop = False
     setUp = web_fixture.WebMvpTests.setUp
     tearDown = web_fixture.WebMvpTests.tearDown
     start = web_fixture.WebMvpTests.start
@@ -56,8 +56,10 @@ class FreshMacSvgFlowTests(unittest.TestCase):
                 patch.object(svg, 'ORIGIN', self.url()), \
                 patch.object(web_fixture.server.Handler, 'do_GET', delayed_session):
             api = SourceAPI(self.url())
+            self.assertFalse(api.request('/api/session')[1]['shopIdentity']['created'])
             self.assertEqual(api.request('/api/materials')[1]['materials'], [])
             exported = svg.svg_file_flow(api, Path(self.tmp.name))
+            self.assertFalse(api.request('/api/session')[1]['shopIdentity']['created'])
             stock = api.request('/api/materials')[1]['materials']
             self.assertEqual(len(stock), 1)
             self.assertEqual(stock[0]['profile']['preset-name'], 'CI synthetic SVG stock')
