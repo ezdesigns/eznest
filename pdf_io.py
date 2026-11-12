@@ -1098,6 +1098,16 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
                               'preparationNotes':(['Print-only artwork: no cut lines'] if piece.get('printOnly') else [])+
                               (['Check automatically matched artwork'] if piece.get('automaticArtworkMatches') else [])+
                               (['Check crossing source cuts: both outlines retained'] if piece.get('retainedCrossingCuts') else [])})
+    # Keep the source only while an operator still needs to choose a cut type.
+    # The prepared PDF has cut strokes separated out and cannot be re-imported
+    # for that choice after the browser's File object is gone.
+    if any(part['cutRefs'] for part in preview_parts):
+        source = folder/(ident+'.source.pdf')
+        temporary = source.with_suffix('.tmp')
+        with temporary.open('wb') as stream:
+            for offset in range(0, len(raw), 1_048_576):
+                stream.write(raw[offset:offset+1_048_576])
+        temporary.replace(source)
     (folder/(ident+'.pdf')).write_bytes(clean)
     (folder/(ident+'.json')).write_text(json.dumps(meta),encoding='utf-8')
     return {'format':'pdf','documentId':ident,'parts':preview_parts,'warnings':meta['warnings'],'preparationReview':any(p['preparationNotes'] for p in preview_parts),'excludedGuideCount':len(meta['excludedGuideIds']),'bleedMm':meta['bleedMm'],'artworkPreserved':bool(meta.get('artworkPreserved')),'sourcePieceCount':meta.get('sourcePieceCount',len(meta['pieces'])),'reviewed':False,'modelVersion':2,'registrationPaintRemoved':meta['registrationPaintRemoved'],'cutMapping':meta['cutMapping']}

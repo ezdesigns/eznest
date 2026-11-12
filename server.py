@@ -28,6 +28,7 @@ import illustrator_bridge
 import shop_auth
 import shop_members
 import job_workspaces
+import job_drafts
 from import_limits import request_limit
 import print_export
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -441,6 +442,20 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return self.client_ip() in ('127.0.0.1', '::1')
 
+    def host_browser_on_lan(self):
+        """Recognize the host's own LAN connection, never a forwarded header.
+
+        Only used to redirect its welcome page to loopback. API authorization
+        stays loopback-only and joined members keep their existing workspace.
+        """
+        if not LAN or TLS or self.loopback_client():
+            return False
+        try:
+            local = shop_auth.normalize_ip(self.connection.getsockname()[0])
+            return local not in ('0.0.0.0', '::', '127.0.0.1', '::1') and self.client_ip() == local
+        except (AttributeError, OSError, ValueError):
+            return False
+
     def route_path(self):
         path = urlparse(self.path).path or '/'
         if path == '/web/':
@@ -590,6 +605,11 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.send(403, {'error': 'Invalid host'})
         path = self.route_path()
+        if path in ('/', '/web') and self.host_browser_on_lan() and not self.cookie_ok():
+            query = urlparse(self.path).query
+            target = f'http://127.0.0.1:{PORT}/' + ('?' + query if query else '')
+            return self.send(307, b'', 'text/plain; charset=utf-8',
+                             extra_headers=(('Location', target),))
         if path == '/web':
             # Older installers and Illustrator links keep working at the one app entry.
             query = urlparse(self.path).query
@@ -599,7 +619,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/session':
             if not self.browser_site_ok('GET'):
                 return self.send(403, {'error': 'Invalid session'})
-            return self.send(200, self.session_body())
+            token = shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.COOKIE)
+            remembered = shop_members.member(WORK, token, renew=True)
+            headers = [('Set-Cookie', shop_members.cookie(token, secure=TLS))] if remembered else None
+            return self.send(200, self.session_body(), extra_headers=headers)
         if path.startswith('/api/'):
             if path == '/api/health':
                 if not self.loopback_client():
@@ -754,6 +777,18 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(409, {'error':'Save the complete pack for a multi-sheet or SVG layout.'})
                     return self.send(200, archive.read('artwork.pdf'), 'application/pdf', 'Print.pdf')
             return self.send(200, source.read_bytes(), 'application/zip', 'EZ-Nest-Batch-'+ident[:8]+'.zip')
+        if path == '/api/work/draft':
+            with job_lock():
+                try: return self.send(200, job_drafts.public(job_root()))
+                except (OSError, ValueError, KeyError, TypeError):
+                    return self.send(503, {'error': 'Your saved draft is unavailable. It has been kept on the shop PC. Try again.'})
+        if path.startswith('/api/document/source/'):
+            ident = path.rsplit('/', 1)[-1]
+            if len(ident) != 64 or any(c not in '0123456789abcdef' for c in ident):
+                return self.send(404, {'error': 'Source not found'})
+            source = job_root()/'documents'/(ident+'.source.pdf')
+            if not source.is_file(): return self.send(404, {'error': 'Source not found'})
+            return self.send(200, source.read_bytes(), 'application/pdf')
         if path == '/api/state':
             with job_lock():
                 if job_state().get('status') == 'running' and job_process().poll() is not None:
@@ -1141,6 +1176,19 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {'error': 'Use browser download on another computer.'})
                 target = print_export.pick_save_path(data.get('name'), data.get('format'))
                 return self.send(200, {'path': target, 'cancelled': target is None})
+            if path == '/api/export/receipt':
+                # A browser-owned picker cannot report a full local path. Keep
+                # the confirmed filename in this designer's saved job instead.
+                filename = print_export.export_filename(data.get('name'), data.get('format'))
+                with job_lock():
+                    if (job_state().get('status') != 'ready' or not job_state().get('released')
+                            or data.get('id') != job_state().get('id')
+                            or data.get('sha256') != job_state().get('sha256')):
+                        raise ValueError('The layout changed. Keep the file you saved and refresh the job.')
+                    job_state()['exportReceipt'] = {'path': filename, 'destination': 'browser', 'format': data['format']}
+                    persist_state()
+                    record_telemetry('nest.exported')
+                return self.send(200, {'ok': True})
             if path == '/api/export/folders':
                 if not self.loopback_client():
                     return self.send(403, {'error': 'Browse folders on the PC running Ez Nest.'})
@@ -1318,11 +1366,25 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError('Unknown folder action.')
                 return self.send(200,result)
             with job_lock():
+                if path in ('/api/work/draft', '/api/work/draft/artwork'):
+                    if job_state().get('status') == 'running':
+                        raise job_drafts.Conflict('This job is nesting in another tab. Wait for it, then refresh.')
+                    if path.endswith('/artwork'):
+                        return self.send(200, job_drafts.stage_artwork(job_root(), data))
+                    result = job_drafts.save(job_root(), data)
+                    job_state().clear(); job_state().update(status='idle')
+                    (job_root()/'session.json').unlink(missing_ok=True)
+                    return self.send(200, result)
                 if path in ('/api/solve', '/api/improve'):
                     if job_state().get('status') == 'running':
                         raise ValueError('Your job is already nesting. Stop it before starting another layout.')
                     if active_search_count() >= 2:
                         raise ValueError('The shop PC is preparing two layouts. Your upload is kept; try nesting again when one finishes.')
+                    if path == '/api/solve':
+                        saved_draft = job_drafts.read(job_root())
+                        revision = data.pop('draftRevision', None)
+                        if saved_draft['draft'] is not None or revision is not None:
+                            job_drafts.check(job_root(), revision)
                     incumbent = None
                     if path == '/api/improve':
                         if job_state().get('status') != 'ready' or data.get('id') != job_state().get('id'):
@@ -1364,12 +1426,14 @@ class Handler(BaseHTTPRequestHandler):
                     directory.mkdir()
                     request, output = directory / 'job.json', directory / 'result.json'
                     request.write_text(json.dumps(data), encoding='utf-8')
+                    revision = job_drafts.bind(job_root(), run_id)
                     worker = [sys.executable, '--nest-worker'] if getattr(sys, 'frozen', False) else [sys.executable, str(ROOT / 'nesting.py')]
                     set_job_process(subprocess.Popen([*worker, str(request), str(output)], cwd=directory, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0))
                     job_state().clear()
                     job_state().update(status='running', id=run_id, output=str(output), job=data)
                     if incumbent:
                         job_state()['incumbent'] = incumbent
+                    return self.send(200, {'ok': True, 'draftRevision': revision})
                 elif path == '/api/cancel':
                     keep = data.get('keepBest') is True
                     if job_process() and job_process().poll() is None:
@@ -1425,10 +1489,13 @@ class Handler(BaseHTTPRequestHandler):
                 elif path == '/api/work/discard':
                     if job_state().get('status') == 'running':
                         raise ValueError('Stop the search before starting over.')
+                    if job_drafts.read(job_root())['draft'] is not None or 'draftRevision' in data:
+                        job_drafts.check(job_root(), data.get('draftRevision'))
+                    revision = job_drafts.clear(job_root())
                     job_state().clear()
                     job_state().update(status='idle')
                     (job_root()/'session.json').unlink(missing_ok=True)
-                    return self.send(200, {'ok': True})
+                    return self.send(200, {'ok': True, 'draftRevision': revision})
                 elif path == '/api/release':
                     if job_state().get('status') != 'ready' or data.get('id') != job_state().get('id'):
                         raise ValueError('Calculate and review the current layout before exporting.')
@@ -1482,6 +1549,8 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     return self.send(404, {'error': 'Not found'})
             self.send(200, {'ok': True})
+        except job_drafts.Conflict as error:
+            self.send(409, {'error': str(error), 'code': 'draft_conflict'})
         except Exception as error:
             self.send(400, {'error': str(error)})
 

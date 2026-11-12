@@ -15,7 +15,9 @@ import uuid
 
 DB = 'shop-members.sqlite3'
 INVITE_SECONDS = 15 * 60
-SESSION_SECONDS = 30 * 24 * 60 * 60
+# Remember this browser for a year, renewed when the person opens Ez Nest.
+# The host can still revoke access immediately; expired sessions stay expired.
+SESSION_SECONDS = 365 * 24 * 60 * 60
 SOURCE_ATTEMPTS = 10
 SHARED_ATTEMPTS = 200
 COOKIE = 'eznest_member'
@@ -136,12 +138,14 @@ def join(directory, code, name, source, now=None):
         return {'token': token, 'member': {'id': member, 'name': name}}
 
 
-def member(directory, token, now=None):
+def member(directory, token, now=None, *, renew=False):
     if not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', token) or not (Path(directory) / DB).exists():
         return None
     now = time.time() if now is None else now
     with database(directory) as db:
         row = db.execute('SELECT m.id,m.name FROM sessions s JOIN members m ON m.id=s.member WHERE s.hash=? AND s.expires>?', (digest(token), now)).fetchone()
+        if row and renew:
+            db.execute('UPDATE sessions SET expires=? WHERE hash=?', (now + SESSION_SECONDS, digest(token)))
         return dict(row) if row else None
 
 

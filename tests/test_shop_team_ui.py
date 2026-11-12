@@ -70,7 +70,6 @@ class ShopTeamBrowserTests(unittest.TestCase):
             browser = test_web_mvp.launch_browser(pw)
             try:
                 pages = [browser.new_page(), browser.new_page()]
-                pages[0].clock.install()
                 first_code = shop_members.invite(server.WORK)['code']
                 for page, name in zip(pages, ('Alex', 'Sam')):
                     page.goto(self.fixture.url())
@@ -91,8 +90,9 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 writer.get_by_role('button', name='Save', exact=True).click()
                 expect(writer.locator('#stock-status')).to_contain_text('2 ft left')
                 reader.bring_to_front()
-                reader.clock.run_for(11000)
-                expect(reader.locator('#stock-list')).to_contain_text('2 ft', timeout=2000)
+                # Let the real ten-second poll complete. Advancing a fake
+                # clock can fire fetch's abort timer before real HTTP finishes.
+                expect(reader.locator('#stock-list')).to_contain_text('2 ft', timeout=20000)
                 reader.screenshot(path=str(test_web_mvp.SCREENSHOTS / 'local-sharing-stock-desktop.png'))
                 reader.set_viewport_size({'width': 390, 'height': 844})
                 self.assertLessEqual(reader.evaluate('document.documentElement.scrollWidth'), 390)
@@ -106,7 +106,8 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 writer.get_by_role('button', name='Save', exact=True).click()
                 expect(writer.locator('#stock-status')).to_contain_text('1 ft left')
                 reader.bring_to_front()
-                reader.clock.run_for(11000)
+                # Observe a full poll interval while the unsaved form is open.
+                reader.wait_for_timeout(11000)
                 expect(reader.locator('#roll-f-name')).to_have_value('Unsaved roll name')
                 reader.get_by_role('button', name='Save', exact=True).click()
                 expect(reader.locator('#stock-panel')).to_contain_text('changed', timeout=2000)
@@ -376,7 +377,13 @@ class ShopTeamBrowserTests(unittest.TestCase):
         shop_members.create(server.WORK, 'Lan Shop')
         code = shop_members.invite(server.WORK)['code']
         self.fixture.stop()
-        service = server.ThreadingHTTPServer(('0.0.0.0', 0), server.Handler)
+        class RemoteHandler(server.Handler):
+            # The browser still runs on this runner, so connecting to its LAN
+            # address now correctly redirects to host access. Simulate the TCP
+            # peer of another PC while keeping real insecure HTTP transport.
+            # Separate membership tests cover peer-based host detection.
+            def client_ip(self): return '192.0.2.44'
+        service = server.ThreadingHTTPServer(('0.0.0.0', 0), RemoteHandler)
         service.daemon_threads = False
         port = service.server_port
         thread = threading.Thread(target=service.serve_forever, daemon=True)

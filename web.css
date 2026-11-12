@@ -640,7 +640,8 @@ body:is([data-step="confirm"], [data-step="sent"]) #job-options { display: none;
 #piece-review-count { display: block; margin-top: 4px; font-weight: 400; }
 #saved-heading .hint { margin-top: 8px; }
 body[data-step="sent"] #start-over { grid-column: 1 / -1; grid-row: 1; background: #111; color: white; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 700; min-height: 44px; }
-body[data-step="sent"] #export { background: transparent; color: #264665; border: 1px solid #bdc9d5; font-size: 13px; }
+body[data-step="sent"] #export { min-height: 44px; padding: 0 18px; border-radius: 10px; background: #fff; color: var(--ink); border: 1px solid #bdc9d5; font-size: 14px; font-weight: 600; text-decoration: none; }
+body[data-step="sent"] #export:hover:enabled { background: #f2f4f6; }
 body[data-saving="true"] #confirm-send::before { content: ''; display: inline-block; width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; margin-right: 8px; vertical-align: -2px; animation: saving-spin .8s linear infinite; }
 @keyframes saving-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { body[data-saving="true"] #confirm-send::before { animation: none; } }

@@ -8,6 +8,8 @@ const OUTPUT_WEBSITE_URL = 'https://output.jeezlabs.io/';
 const OUTPUT_WAITLIST_URL = new URL('waitlist', OUTPUT_WEBSITE_URL).href;
 let token = '';
 let localSave = false;
+let choosingSaveLocation = false;
+function browserSaveAvailable() { return window.isSecureContext && typeof window.showSaveFilePicker === 'function'; }
 let folderView = null;
 let browsingFolders = false;
 let kits = [];
@@ -33,6 +35,104 @@ let inventoryBusy = false;
 let inventoryGen = 0; // bumped on every inventory change so an older poll answer is ignored
 let presetEditor = null;
 let activeMaterial = '';
+let draftRevision = null, draftEnabled = false, draftDirty = false, draftPending = null, draftError = null;
+const draftAssets = new Set();
+const DRAFT_FIELDS = ['material','unit','preset-name','roll','width','nest-width','mark-margin','gap','margin','rotations','sheet','print-layout','roll-length','roll-cost','available-length','low-stock','auto-bleed','bleed','cost','sets','nesting-effort','generic-cut','thru-name','kiss-name','cut-preset','draw-marks'];
+
+function draftNotice(message, error = false) {
+  $('draft-status').hidden = !message;
+  $('draft-message').textContent = message;
+  $('draft-status').classList.toggle('error', error);
+  $('draft-retry').hidden = !error || draftError?.code === 'draft_conflict';
+}
+
+function draftSnapshot(entries = [...kits, ...stickers], fields = {}, handoff = illustratorHandoff) {
+  return {
+    entries: entries.map(entry => ({id:entry.id, name:entry.name, sourceFile:entry.sourceFile || entry.name,
+      revision:entry.revision, role:entry.role, sets:entry.sets, unresolved:!!entry.unresolved,
+      raw:JSON.stringify(entry.data)})),
+    fields: {...Object.fromEntries(DRAFT_FIELDS.map(id => [id, $(id).type === 'checkbox' ? $(id).checked : $(id).value])), ...fields},
+    illustrator: handoff ? {id:handoff.id, documentId:handoff.documentId} : null
+  };
+}
+
+async function persistDraft(snapshot) {
+  if (!draftEnabled) throw Error('Refresh to load your saved job before making changes.');
+  const entries = [], assets = {};
+  for (const item of snapshot.entries) {
+    const {raw, ...entry} = item;
+    const dataKey = await sha256(new TextEncoder().encode(raw));
+    if (!draftAssets.has(dataKey)) assets[dataKey] = raw;
+    entries.push({...entry, dataKey});
+  }
+  // Several large files must not become one oversized metadata request.
+  // Staging artwork never replaces the old job; only the final commit does.
+  if (new Blob([JSON.stringify(assets)]).size > 24_000_000) {
+    for (const [dataKey, raw] of Object.entries(assets)) {
+      await api('/api/work/draft/artwork', {revision:draftRevision, dataKey, raw, role:entries.find(entry => entry.dataKey === dataKey).role});
+      draftAssets.add(dataKey);
+      delete assets[dataKey];
+    }
+  }
+  const saved = await api('/api/work/draft', {revision:draftRevision, entries, fields:snapshot.fields, illustrator:snapshot.illustrator, assets});
+  draftRevision = saved.revision;
+  entries.forEach(entry => draftAssets.add(entry.dataKey));
+}
+
+function queueDraftSave() {
+  if (!draftEnabled || !kits.length || current?.result || busy || importing || leaving || presetEditor) return;
+  draftDirty = true;
+  drainDraft();
+}
+
+function drainDraft() {
+  if (draftError?.code === 'draft_conflict' || draftPending) return;
+  draftError = null;
+  draftNotice('Saving…');
+  draftPending = (async () => {
+    try {
+      while (draftDirty) {
+        draftDirty = false;
+        await persistDraft(draftSnapshot());
+      }
+      draftNotice('Saved · You can come back later');
+    } catch (error) {
+      draftError = error;
+      draftNotice(error.code === 'draft_conflict' ? error.message : 'Changes not saved. Keep this tab open and retry.', true);
+    } finally { draftPending = null; }
+  })();
+}
+
+async function flushDraft() {
+  if (draftPending) await draftPending;
+  if (draftError) throw draftError;
+  if (draftDirty) { drainDraft(); if (draftPending) await draftPending; }
+  if (draftError) throw draftError;
+}
+
+function restoreDraft(record) {
+  const draft = record.draft;
+  const entries = draft.entries.map(entry => ({...entry, data:record.assets[entry.dataKey], origin:'files', selected:true, status:'ready', materialId:'web-roll'}));
+  kits = entries.filter(entry => entry.role === 'required');
+  stickers = entries.filter(entry => entry.role === 'fill');
+  for (const entry of draft.entries) draftAssets.add(entry.dataKey);
+  fileSerial = Math.max(entries.length, ...entries.map(entry => Number(entry.id.match(/^web-[^-]+-(\d+)/)?.[1] || 0) + 1));
+  for (const [id, value] of Object.entries(draft.fields)) {
+    if (!DRAFT_FIELDS.includes(id)) continue;
+    if ($(id).type === 'checkbox') $(id).checked = value === true;
+    else $(id).value = value;
+  }
+  $('unit').dataset.current = $('unit').value;
+  for (const node of document.querySelectorAll('span[data-unit]')) node.textContent = $('unit').value;
+  setNestingEffort(draft.fields['nesting-effort']);
+  activeMaterial = $('material').value;
+  illustratorHandoff = draft.illustrator;
+  current = null;
+  renderMaterialButtons(); renderFiles(); renderStickers(); showWidth();
+  showScreen('configure'); renderActions();
+  draftNotice('Saved · You can come back later');
+  status('Your job is ready. Click Start nesting.');
+}
 // OUTPUT browser approval stays closed until its receiving endpoint is available.
 // EZ39-9: OUTPUT has no stock-summary receiving endpoint yet; keep sharing off until it ships.
 const STOCK_SHARE_ENDPOINT_READY = false;
@@ -740,14 +840,18 @@ async function importStickers(fileList) {
   importing = true; renderActions(); status('Reading stickers…');
   const added = [];
   try {
+    await flushDraft();
     for (const file of files) added.push(...EZNQueue.stickerEntries(await readEntry(file)));
     if (stickers.length + added.length > 800) throw Error('Add up to 800 different sticker designs to one run.');
+    draftNotice('Saving…');
+    await persistDraft(draftSnapshot([...kits, ...stickers, ...added]));
     stickers.push(...added);
     current = null;
     $('sticker-fill').open = true;
     renderStickers();
   } finally { importing = false; renderActions(); }
-  requestNest();
+  requestNest(false);
+  draftNotice('Saved · You can come back later');
 }
 
 function renderFiles() {
@@ -803,9 +907,9 @@ function renderFiles() {
 }
 
 function removeFile(id) {
-  if (saving) return;
+  if (saving || busy || importing) return;
+  if (kits.length === 1) { startOver(); return; }
   kits = kits.filter(entry => entry.id !== id);
-  if (!kits.length) { startOver(); return; }
   renderFiles();
   requestNest();
 }
@@ -824,7 +928,7 @@ function applySetsToFiles() {
 function renderActions() {
   document.body.dataset.saving = String(saving);
   $('confirm').setAttribute('aria-busy', String(saving));
-  if (saving) $('confirm-send').textContent = 'Preparing file…';
+  if (saving) $('confirm-send').textContent = choosingSaveLocation ? 'Choose a save location…' : 'Preparing file…';
   else updateSaveChoice();
   const confirming = document.body.dataset.step === 'confirm';
   syncFiles();
@@ -1370,7 +1474,7 @@ async function poll() {
   renderActions();
 }
 
-function requestNest() {
+function requestNest(saveDraft = true) {
   clearTimeout(nestTimer);
   if (presetEditor || leaving || saving || !kits.length) return;
   if (busy || importing) { pendingRenest = true; return; }
@@ -1382,6 +1486,7 @@ function requestNest() {
   $('job-checks').textContent = '';
   status('');
   renderActions();
+  if (saveDraft) queueDraftSave();
 }
 
 async function nest() {
@@ -1391,6 +1496,7 @@ async function nest() {
   busy = true;
   renderActions();
   try {
+    await flushDraft();
     await refreshInventory().catch(() => {});
     const sharedStock = shopInventory.materials.find(item => item.id === $('material').value);
     if (inventoryReady && sharedStock) $('available-length').value = sharedStock.availableMm == null ? '' : String(sharedStock.availableMm / scale());
@@ -1428,7 +1534,9 @@ async function nest() {
     showLive({job});
     renderActions();
     status('Finding a tighter fit… You can stop and keep the best layout.');
-    await api('/api/solve', job);
+    const started = await api('/api/solve', {...job, draftRevision});
+    draftRevision = started.draftRevision ?? draftRevision;
+    draftNotice('');
     setTimeout(poll, 300);
   } catch (error) {
     busy = false;
@@ -1442,7 +1550,8 @@ async function improve() {
     busy = true;
     showScreen('nest');
     status('Trying a better fit…');
-    await api('/api/improve', {id: current.id, seconds: Number($('nesting-effort').value)});
+    const started = await api('/api/improve', {id: current.id, seconds: Number($('nesting-effort').value)});
+    draftRevision = started.draftRevision ?? draftRevision;
     setTimeout(poll, 300);
   } catch (error) {
     busy = false;
@@ -1558,7 +1667,7 @@ function openConfirm() {
   $('save-destination').value = $('hot-folder').value.trim() ? 'folder' : localSave ? 'choose' : 'download';
   $('save-destination').querySelector('[value="folder"]').disabled = !$('hot-folder').value.trim();
   $('save-destination').querySelector('[value="choose"]').hidden = !localSave;
-  $('save-destination').querySelector('[value="download"]').hidden = localSave;
+  $('save-destination').querySelector('[value="download"]').hidden = false;
   const onePdf = !!current.job.documentSources && (current.result.sheets || [1]).length === 1;
   $('save-format').querySelector('[value="pdf"]').disabled = !onePdf;
   $('save-format').value = onePdf ? 'pdf' : 'pack';
@@ -1638,8 +1747,17 @@ async function exportFile(forceDownload) {
   saving = true;
   renderActions();
   try {
-    let chosenPath = null;
-    if (mode === 'choose') {
+    let chosenPath = null, browserFile = null;
+    if (mode === 'choose' && browserSaveAvailable()) {
+      choosingSaveLocation = true; renderActions();
+      status('Choose where to save your print file.');
+      // Open directly from the click, before any network or PDF work, so the
+      // browser keeps the user gesture and owns the window on this computer.
+      browserFile = await window.showSaveFilePicker({suggestedName:name,
+        types:[{description:pdf ? 'Print PDF' : 'Complete print pack',
+          accept:pdf ? {'application/pdf':['.pdf']} : {'application/zip':['.zip']}}]});
+      choosingSaveLocation = false; renderActions();
+    } else if (mode === 'choose') {
       status('Choose a location in the Windows save window.');
       const selection = await api('/api/export/pick', {name: base, format});
       if (selection.cancelled) { status(''); return; }
@@ -1648,7 +1766,7 @@ async function exportFile(forceDownload) {
     current.downloadName = base;
     status(pdf ? 'Preparing your PDF with the original artwork and cut lines…' : 'Preparing your print pack…');
     if (!current.released) await lock(true);
-    if (mode !== 'download') {
+    if (mode !== 'download' && !browserFile) {
       status('Saving…');
       const request = {id: current.id, sha256: current.sha256, name: base, format, destination: mode, path: chosenPath,
         stagingFolder: mode === 'folder' ? stagingPath() : ''};
@@ -1673,6 +1791,20 @@ async function exportFile(forceDownload) {
       if (!printResponse.ok) throw Error('Save the complete print pack for this layout.');
       bytes = await printResponse.arrayBuffer();
     }
+    if (browserFile) {
+      const writable = await browserFile.createWritable();
+      try { await writable.write(bytes); await writable.close(); }
+      catch (error) { try { await writable.abort(); } catch {} throw error; }
+      current.exportReceipt = {path:browserFile.name, destination:'browser', format};
+      current.downloadName = browserFile.name.replace(/\.(pdf|zip)$/i, '');
+      showSent();
+      try {
+        await api('/api/export/receipt', {id:current.id, sha256:current.sha256, name:current.downloadName, format});
+      } catch {
+        status('Your file is saved. Its receipt could not be kept in Ez Nest; keep the file you saved.');
+      }
+      return;
+    }
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([bytes], {type: pdf ? 'application/pdf' : 'application/zip'}));
     link.download = name;
@@ -1683,14 +1815,17 @@ async function exportFile(forceDownload) {
     showSent();
     $('delivery-receipt').textContent = 'Downloaded ' + name;
   } catch (error) {
-    status(error.message, true);
+    if (error.name === 'AbortError') status('Save cancelled. Your layout is still ready.');
+    else status(error.message + (mode === 'choose' ? ' You can also choose Browser download under Save to.' : ''), true);
   } finally {
+    choosingSaveLocation = false;
     saving = false;
     renderActions();
   }
 }
 
 function nextKit() {
+  draftNotice('');
   illustratorHandoff = null;
   $('illustrator-load').hidden = false;
   renderMaterialButtons();
@@ -1727,7 +1862,12 @@ async function startOver() {
     try { await api('/api/cancel', {}); } catch { /* The next drop starts clean. */ }
   }
   busy = false;
-  try { await api('/api/work/discard', {}); }
+  try {
+    await flushDraft();
+    const cleared = await api('/api/work/discard', {draftRevision});
+    draftRevision = cleared.draftRevision;
+    draftDirty = false; draftError = null;
+  }
   catch (error) { leaving = false; status(error.message, true); return; }
   nextKit();
   leaving = false;
@@ -2417,6 +2557,7 @@ async function importFiles(fileList, replace) {
   status('Reading ' + files.length + (files.length === 1 ? ' file…' : ' files…'));
   const entries = [];
   try {
+    await flushDraft();
     for (const file of files) {
       try { entries.push(await readEntry(file)); }
       catch (error) {
@@ -2424,13 +2565,17 @@ async function importFiles(fileList, replace) {
         throw error;
       }
     }
-    // Keep the previous job if selection is cancelled, import fails, or the
-    // server refuses the reset. Only this designer's working state is cleared.
-    if (replace) await api('/api/work/discard', {});
+    // Commit the new draft before replacing the visible job. A failed save or
+    // import keeps the previous draft and layout intact.
+    draftNotice('Saving…');
+    await persistDraft(draftSnapshot(replace ? entries : [...kits, ...entries, ...stickers], replace ? {sets:'1'} : {}, replace ? null : illustratorHandoff));
+  } catch (error) {
+    draftNotice(kits.length ? 'Previous job kept' : '');
+    throw error;
   } finally {
     importing = false;
     renderActions();
-    if (pendingRenest) { pendingRenest = false; requestNest(); }
+    pendingRenest = false;
   }
   if (replace) nextKit();
   kits = replace ? entries : kits.concat(entries);
@@ -2438,7 +2583,9 @@ async function importFiles(fileList, replace) {
   blockReason = '';
   leaving = false;
   renderFiles();
-  requestNest();
+  requestNest(false);
+  draftError = null;
+  draftNotice('Saved · You can come back later');
   status('File ready. Click Start nesting.');
 }
 
@@ -2478,16 +2625,18 @@ async function chooseCut(operation) {
   const output = operation === 'kiss' ? $('kiss-name').value.trim() : $('thru-name').value.trim();
   const entries = [...kits, ...stickers];
   if (entries.some(entry => entry.data?.format === 'pdf')) {
-    if (entries.some(entry => !entry.file)) {
-      showBlocked('Add the original files again to choose their cut type. Your saved layout is unchanged.');
-      return;
-    }
     $('generic-cut').value = operation;
     importing = true; renderActions();
     let changed = false;
     try {
       const loaded = new Map(), replacements = [];
       for (const entry of entries) {
+        if (!entry.data.parts.some(part => (part.cutRefs || []).length)) { replacements.push(entry); continue; }
+        if (!entry.file) {
+          const response = await fetch('/api/document/source/' + encodeURIComponent(entry.data.documentId), {headers:withToken({})});
+          if (!response.ok) throw Error('Saved artwork is unavailable. Try again on the shop network.');
+          entry.file = new File([await response.blob()], entry.sourceFile || entry.name, {type:'application/pdf'});
+        }
         if (!loaded.has(entry.file)) loaded.set(entry.file, await readEntry(entry.file));
         const fresh = loaded.get(entry.file);
         let data = fresh.data;
@@ -2705,7 +2854,7 @@ async function boot() {
   hostComputer = session.localPC === true;
   $('settings-backup').hidden = !hostComputer;
   token = session.token || '';
-  localSave = session.localSave === true;
+  localSave = browserSaveAvailable();
   renderOutputLink(session.outputLink, session.localPC);
   renderOutputRequired(session);
   if (session.accessRemoved) status('Your access was removed.', true);
@@ -2737,10 +2886,15 @@ async function boot() {
     applyShop(await fetchJson('/api/shop', 5000));
   } catch { /* Shop network settings stay off when the lookup does not answer. */ }
   const state = await fetchJsonRetry('/api/state');
+  const savedDraft = await fetchJsonRetry('/api/work/draft');
+  draftRevision = savedDraft.revision;
+  const resumeDraft = savedDraft.draft && !(savedDraft.runId === state.id && ['running','ready'].includes(state.status));
   if (['running', 'ready'].includes(state.status)) restoreJob(state);
   if (state.status === 'running') { busy = true; showScreen('nest'); renderActions(); setTimeout(poll, 300); }
   else if (state.status === 'ready' && state.manifest) showResult(state);
   else { showScreen('drop'); status(''); }
+  if (resumeDraft) restoreDraft(savedDraft);
+  draftEnabled = true;
   renderActions();
   refreshUpdate().catch(() => {});
   const handoffId = new URLSearchParams(location.search).get('illustrator');
@@ -3621,6 +3775,14 @@ document.addEventListener('DOMContentLoaded', () => {
   $('feedback-dismiss').addEventListener('click', dismissWelcome);
   $('in-house').addEventListener('click', () => { selectOutputMode('in-house'); $('nesting-effort').focus(); });
   $('start-nesting').addEventListener('click', () => { dismissWelcome(); nest(); });
+  for (const id of ['generic-cut', 'thru-name', 'kiss-name', 'cut-preset', 'draw-marks']) {
+    $(id).addEventListener('change', queueDraftSave);
+  }
+  $('draft-retry').addEventListener('click', () => { draftError = null; queueDraftSave(); });
+  window.addEventListener('beforeunload', event => {
+    if (draftPending || draftDirty || draftError || importing) { event.preventDefault(); event.returnValue = ''; }
+  });
+  window.addEventListener('online', () => { if (draftError?.code !== 'draft_conflict' && !current?.result) { draftError = null; queueDraftSave(); } });
   $('feedback-open').addEventListener('click', () => {
     dismissWelcome();
     $('feedback-numbers').checked = false;
@@ -3646,6 +3808,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('nesting-effort').addEventListener('change', () => {
     setNestingEffort($('nesting-effort').value);
     savePrefs({nestingSeconds: Number($('nesting-effort').value)});
+    queueDraftSave();
     // Changing effort affects the next search. It never discards a reviewed fit.
   });
   $('undo').addEventListener('click', async () => {

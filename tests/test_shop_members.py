@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 import material_inventory
 import server
@@ -75,6 +75,18 @@ class MembershipTests(unittest.TestCase):
         for flag in ('HttpOnly', 'SameSite=Strict', 'Secure', 'Path=/'): self.assertIn(flag, cookie)
         members.logout(self.root, result['token'])
         self.assertIsNone(members.member(self.root, result['token']))
+
+    def test_remembered_browser_renews_legacy_session_without_changing_member(self):
+        result = members.join(self.root, members.invite(self.root, now=100)['code'], 'Alex', 'one', now=101)
+        legacy_end = 101 + 30 * 86400
+        with members.database(self.root) as db:
+            db.execute('UPDATE sessions SET expires=?', (legacy_end,))
+        restored = members.member(self.root, result['token'], now=legacy_end - 1, renew=True)
+        self.assertEqual(restored['id'], result['member']['id'])
+        self.assertEqual(members.member(self.root, result['token'], now=legacy_end + 60), restored)
+        self.assertIsNone(members.member(self.root, result['token'], now=legacy_end - 1 + members.SESSION_SECONDS, renew=True))
+        members.revoke(self.root, result['member']['id'])
+        self.assertIsNone(members.member(self.root, result['token'], now=legacy_end, renew=True))
 
     def test_invalid_names_and_cross_shop_invitation_fail(self):
         for name in ('', '\u202ehidden', 'a' * 81, None):
@@ -166,6 +178,48 @@ class MembershipHTTPTests(unittest.TestCase):
             self.assertEqual(self.post('join', {'name': 'Alex', 'code': code})[0], 403)
         with patch.object(server, 'LAN', False):
             self.assertEqual(self.post('invite', {}, local=True)[0], 409)
+
+    def test_page_open_refreshes_persistent_cookie_but_not_removed_access(self):
+        cookie = self.join('Alex')
+        handler = self.handler('/api/session', headers={'Cookie': cookie})
+        handler.do_GET()
+        response = handler.sent[0]
+        self.assertTrue(response[1]['authenticated'])
+        self.assertNotIn('token', response[1])
+        self.assertIn('Max-Age=' + str(members.SESSION_SECONDS), response[2][0][1])
+        self.assertTrue(response[2][0][1].startswith(cookie + ';'))
+        members.logout(self.root, cookie.split('=', 1)[1])
+        handler = self.handler('/api/session', headers={'Cookie': cookie})
+        handler.do_GET()
+        self.assertFalse(handler.sent[0][1]['authenticated'])
+        self.assertIsNone(handler.sent[0][2])
+
+    def test_host_using_lan_link_goes_to_loopback_without_widening_api_access(self):
+        handler = self.handler('/?view=simple', ip='192.168.1.212', host='192.168.1.212:8765')
+        handler.connection = Mock()
+        handler.connection.getsockname.return_value = ('192.168.1.212', 8765)
+        handler.do_GET()
+        self.assertEqual(handler.sent[0][0], 307)
+        self.assertEqual(dict(handler.sent[0][2])['Location'], 'http://127.0.0.1:8765/?view=simple')
+        self.assertFalse(handler.loopback_client())
+        handler.path = '/api/materials'; handler.sent = []
+        handler.do_GET()
+        self.assertEqual(handler.sent[0][0], 403)
+        # A different PC cannot become the host by spoofing forwarded headers.
+        handler.client_address = ('192.168.1.50', 41000)
+        handler.headers['X-Forwarded-For'] = '192.168.1.212'
+        self.assertFalse(handler.host_browser_on_lan())
+
+    def test_joined_host_browser_keeps_its_member_workspace(self):
+        cookie = self.join('Alex')
+        handler = self.handler('/web', ip='192.168.1.212', headers={'Cookie': cookie})
+        handler.connection = Mock()
+        handler.connection.getsockname.return_value = ('192.168.1.212', 8765)
+        owner = handler.workspace_owner()
+        handler.do_GET()
+        self.assertEqual(dict(handler.sent[0][2])['Location'], '/')
+        self.assertEqual(handler.workspace_owner(), owner)
+        self.assertTrue(owner.startswith('member-'))
 
     def test_legacy_pin_cannot_bypass_removed_member(self):
         shop_auth.set_pin(self.root, '12345678')
