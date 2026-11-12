@@ -6,6 +6,7 @@ if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hoste
 $root = Split-Path -Parent $PSScriptRoot
 $app = Join-Path $env:ProgramFiles 'eznest'
 $data = Join-Path $env:ProgramData 'eznest'
+$startup = Join-Path ([Environment]::GetFolderPath('CommonStartup')) 'Ez Nest.lnk'
 if ((Test-Path -LiteralPath $app) -or (Test-Path -LiteralPath $data) -or
     (Get-LocalUser -Name 'eznest-svc' -ErrorAction SilentlyContinue) -or
     (Get-ScheduledTask -TaskName eznest -ErrorAction SilentlyContinue)) {
@@ -21,6 +22,10 @@ function Invoke-SystemCommand([string]$Command) {
   $stderr = Join-Path $work 'stderr.txt'
   $code = @"
 `$ErrorActionPreference = 'Stop'
+# Scheduled tasks do not inherit the Actions runner's process environment.
+# The outer script has already required these exact disposable-runner values.
+`$env:GITHUB_ACTIONS = 'true'
+`$env:RUNNER_ENVIRONMENT = 'github-hosted'
 try {
   & {
 $Command
@@ -108,10 +113,11 @@ function Assert-LockedShopAcl([string]$Text, [string]$ServiceSid) {
 }
 $setup = Join-Path $root 'installer\Output\eznest-setup.exe'
 $setupLog = Join-Path $env:RUNNER_TEMP 'eznest-acceptance-install.log'
-$install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/TASKS="startatboot"',('/LOG="' + $setupLog + '"') -WindowStyle Hidden -PassThru
+$install = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/TASKS="startatboot,startatlogin"',('/LOG="' + $setupLog + '"') -WindowStyle Hidden -PassThru
 if (-not $install.WaitForExit(180000)) { throw 'Fresh installation timed out.' }
 Get-Content -LiteralPath $setupLog -Tail 55
 Assert ($install.ExitCode -eq 0) 'Fresh installer failed.'
+Assert (-not (Test-Path -LiteralPath $startup)) 'Service host received a duplicate sign-in launcher.'
 $shopFile = Join-Path $data 'shop.json'
 Assert (Test-Path -LiteralPath $shopFile) 'Fresh install did not write shop.json.'
 $serviceSid = (Get-LocalUser -Name 'eznest-svc').SID.Value
@@ -138,6 +144,10 @@ try {
   $beforeTask = Export-ScheduledTask -TaskName eznest
   Invoke-LocalApi '/api/shutdown' @{} | Out-Null
   Stop-ShopTask
+  $fixture = Join-Path $PSScriptRoot 'installed_shop_fixture.py'
+  $python = (Get-Command python).Source
+  $evidence = Join-Path $data 'acceptance-fixture.json'
+  Invoke-SystemCommand "& '$python' '$fixture' seed '$data' '$evidence'; if (`$LASTEXITCODE -ne 0) { throw 'Could not seed synthetic shop' }" | Out-Null
   $reinstallLog = Join-Path $env:RUNNER_TEMP 'eznest-acceptance-reinstall.log'
   # Same-build maintenance install tests the existing-install path, not signed
   # version upgrade/rollback. Different task options must not reset the shop.
@@ -145,11 +155,16 @@ try {
   if (-not $reinstall.WaitForExit(180000)) { throw 'Maintenance installation timed out.' }
   Get-Content -LiteralPath $reinstallLog -Tail 15
   Assert ($reinstall.ExitCode -eq 0) 'Existing-install detection failed.'
+  Assert (-not (Test-Path -LiteralPath $startup)) 'Host update created a second startup method.'
   Assert ((Get-LockedHash $shopFile) -eq $beforeShop) 'Maintenance install reset shop settings.'
   Enable-ScheduledTask -TaskName eznest | Out-Null
   Assert ((Export-ScheduledTask -TaskName eznest) -eq $beforeTask) 'Maintenance install changed the limited startup task.'
   Start-ScheduledTask -TaskName eznest
   Assert (Wait-ShopHealthy $version (Join-Path $app 'eznest.exe') 120) 'Maintenance installation did not restart.'
+  Invoke-SystemCommand "& '$python' '$fixture' check '$data' '$evidence'; if (`$LASTEXITCODE -ne 0) { throw 'Shop identity, membership, stock or draft changed during update' }" | Out-Null
+  $remembered = Read-LockedFile $evidence | ConvertFrom-Json
+  $response = Invoke-WebRequest 'http://127.0.0.1:8765/api/session' -Headers @{Cookie=('eznest_member=' + $remembered.token)} -TimeoutSec 5
+  Assert (($response.Headers['Set-Cookie'] -join ';').Contains('eznest_member=' + $remembered.token)) 'Updated host did not accept the original browser sign-in.'
   $uninstall = Start-Process -FilePath (Join-Path $app 'unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -WindowStyle Hidden -PassThru
   if (-not $uninstall.WaitForExit(120000)) { throw 'Uninstall timed out.' }
   Assert ($uninstall.ExitCode -eq 0) 'Uninstall failed.'
@@ -157,6 +172,7 @@ try {
   $account = Get-LocalUser -Name eznest-svc -ErrorAction SilentlyContinue
   Assert ($null -eq $account -or -not $account.Enabled) 'Uninstall left an enabled service account.'
   Assert ((Read-LockedFile $marker).Trim() -eq 'synthetic retained shop data') 'Uninstall removed shop data.'
+  Invoke-SystemCommand "& '$python' '$fixture' check '$data' '$evidence'; if (`$LASTEXITCODE -ne 0) { throw 'Uninstall removed saved shop data' }" | Out-Null
   Write-Output 'Actual fresh install, limited service startup, loopback UI, maintenance reinstall/settings retention, and uninstall/data retention passed.'
 } finally {
   # The hosted runner is destroyed after this job. Never recursively delete app/data here.
