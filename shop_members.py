@@ -21,6 +21,8 @@ SESSION_SECONDS = 365 * 24 * 60 * 60
 SOURCE_ATTEMPTS = 10
 SHARED_ATTEMPTS = 200
 COOKIE = 'eznest_member'
+RECOVERY_COOKIE = 'eznest_reconnect'
+RECOVERY_SECONDS = 15 * 60
 
 
 @contextmanager
@@ -36,6 +38,8 @@ def database(directory):
             CREATE TABLE IF NOT EXISTS invites (hash TEXT PRIMARY KEY, expires REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, member TEXT NOT NULL, expires REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS attempts (source TEXT PRIMARY KEY, count INTEGER NOT NULL, expires REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS recovery (id TEXT PRIMARY KEY, hash TEXT UNIQUE NOT NULL, name TEXT NOT NULL, source TEXT NOT NULL, expires REAL NOT NULL, state TEXT NOT NULL, member TEXT);
+            CREATE TABLE IF NOT EXISTS recovery_attempts (source TEXT PRIMARY KEY, count INTEGER NOT NULL, expires REAL NOT NULL);
         ''')
         conn.execute('BEGIN IMMEDIATE')
         yield conn
@@ -70,6 +74,8 @@ def status(directory, admin=False, include_members=False):
         result = {'created': True, **dict(row)}
         if admin:
             result['members'] = [dict(item) for item in db.execute('SELECT id,name,joined FROM members ORDER BY joined')]
+            result['accessRequests'] = [dict(item) for item in db.execute(
+                "SELECT id,name,source FROM recovery WHERE state='pending' AND expires>? ORDER BY expires", (time.time(),))]
         elif include_members:
             result['members'] = [dict(item) for item in db.execute('SELECT name FROM members ORDER BY joined')]
         return result
@@ -154,6 +160,7 @@ def revoke(directory, member_id):
         raise ValueError('Choose a shop member.')
     with database(directory) as db:
         db.execute('DELETE FROM sessions WHERE member=?', (member_id,))
+        db.execute('DELETE FROM recovery WHERE member=?', (member_id,))
         db.execute('DELETE FROM members WHERE id=?', (member_id,))
     return status(directory, admin=True)
 
@@ -174,3 +181,89 @@ def logout(directory, token):
 def cookie(token, secure=False):
     age = SESSION_SECONDS if token else 0
     return f'{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={age}' + ('; Secure' if secure else '')
+
+
+def recovery_cookie(token, secure=False):
+    age = RECOVERY_SECONDS if token else 0
+    return f'{RECOVERY_COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={age}' + ('; Secure' if secure else '')
+
+
+def cancel_recovery(directory, proof):
+    if isinstance(proof, str) and re.fullmatch(r'[A-Za-z0-9_-]{43}', proof) and (Path(directory) / DB).exists():
+        with database(directory) as db:
+            db.execute('DELETE FROM recovery WHERE hash=?', (digest(proof),))
+
+
+def recovery_state(directory, proof, now=None):
+    if not isinstance(proof, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', proof) or not (Path(directory) / DB).exists():
+        return None
+    now = time.time() if now is None else now
+    with database(directory) as db:
+        row = db.execute('SELECT state FROM recovery WHERE hash=? AND expires>?', (digest(proof), now)).fetchone()
+        return row['state'] if row else None
+
+
+def request_recovery(directory, name, source, proof=None, now=None):
+    """Request host approval, without disclosing whether the claimed name exists.
+
+    The browser proof is HttpOnly and only its digest is stored. A name or IP
+    never authenticates a person; the host explicitly selects an existing member.
+    """
+    now = time.time() if now is None else now
+    name = clean_name(name)
+    with database(directory) as db:
+        if not db.execute('SELECT 1 FROM shop').fetchone():
+            raise ValueError('Create the shop first.')
+        db.execute('DELETE FROM recovery WHERE expires<=?', (now,))
+        db.execute('DELETE FROM recovery_attempts WHERE expires<=?', (now,))
+        if isinstance(proof, str) and re.fullmatch(r'[A-Za-z0-9_-]{43}', proof):
+            row = db.execute('SELECT state FROM recovery WHERE hash=?', (digest(proof),)).fetchone()
+            if row and row['state'] in ('pending', 'approved'):
+                return {'proof': proof, 'state': row['state']}
+        source = str(source)
+        key = digest(source)
+        attempt = db.execute('SELECT count FROM recovery_attempts WHERE source=?', (key,)).fetchone()
+        if (attempt and attempt['count'] >= 3) or db.execute('SELECT COUNT(*) FROM recovery').fetchone()[0] >= 20:
+            return {'error': 'Too many access requests. Wait 15 minutes and try again.', 'status': 429}
+        db.execute('INSERT INTO recovery_attempts VALUES (?,1,?) ON CONFLICT(source) DO UPDATE SET count=count+1', (key, now + RECOVERY_SECONDS))
+        proof = secrets.token_urlsafe(32)
+        db.execute('INSERT INTO recovery VALUES (?,?,?,?,?,?,NULL)',
+                   (uuid.uuid4().hex, digest(proof), name, source, now + RECOVERY_SECONDS, 'pending'))
+        return {'proof': proof, 'state': 'pending'}
+
+
+def decide_recovery(directory, request_id, member_id=None, now=None):
+    """Only the host HTTP route may call this. None denies the request."""
+    now = time.time() if now is None else now
+    if not isinstance(request_id, str) or not re.fullmatch('[0-9a-f]{32}', request_id):
+        raise ValueError('Choose an access request.')
+    if member_id is not None and (not isinstance(member_id, str) or not re.fullmatch('[0-9a-f]{32}', member_id)):
+        raise ValueError('Choose an existing shop member.')
+    with database(directory) as db:
+        row = db.execute("SELECT id FROM recovery WHERE id=? AND expires>? AND state='pending'", (request_id, now)).fetchone()
+        if not row:
+            raise ValueError('This access request has expired or was already handled.')
+        if member_id is not None and not db.execute('SELECT 1 FROM members WHERE id=?', (member_id,)).fetchone():
+            raise ValueError('Choose an existing shop member.')
+        db.execute('UPDATE recovery SET state=?, member=? WHERE id=?',
+                   ('approved' if member_id is not None else 'denied', member_id, request_id))
+    return {'ok': True}
+
+
+def finish_recovery(directory, proof, now=None):
+    now = time.time() if now is None else now
+    if not isinstance(proof, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', proof):
+        return {'state': 'expired'}
+    with database(directory) as db:
+        row = db.execute('SELECT * FROM recovery WHERE hash=? AND expires>?', (digest(proof), now)).fetchone()
+        if not row:
+            return {'state': 'expired'}
+        if row['state'] != 'approved':
+            return {'state': row['state']}
+        person = db.execute('SELECT id,name FROM members WHERE id=?', (row['member'],)).fetchone()
+        db.execute('DELETE FROM recovery WHERE id=?', (row['id'],))
+        if not person:
+            return {'state': 'expired'}
+        token = secrets.token_urlsafe(32)
+        db.execute('INSERT INTO sessions VALUES (?,?,?)', (digest(token), person['id'], now + SESSION_SECONDS))
+        return {'state': 'restored', 'token': token, 'member': dict(person)}

@@ -4,13 +4,16 @@
 #shop-team-dialog #shop-team-close { position:absolute; top:12px; right:12px; width:44px; height:44px; min-height:44px; padding:0; margin:0; border:0; background:transparent; font-size:26px; color:var(--muted); }
 #shop-team-dialog p { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 0 0 16px; }
 #shop-team-dialog label { display: grid; gap: 6px; margin: 16px 0; font-weight: 600; }
-#shop-team-dialog input { width: 100%; min-width:0; min-height:44px; box-sizing: border-box; padding: 10px 12px; border: 1px solid #b8bcb4; border-radius: 8px; font: inherit; }
+#shop-team-dialog :is(input,select) { width: 100%; min-width:0; min-height:44px; box-sizing: border-box; padding: 10px 12px; border: 1px solid #b8bcb4; border-radius: 8px; font: inherit; }
 #shop-team-dialog button { min-height:44px; margin: 6px 8px 6px 0; padding: 10px 14px; border-radius: 8px; border: 1px solid #b8bcb4; background: #fff; color: var(--ink); }
 #shop-team-dialog button.primary { background: #111; color: #fff; border-color: #111; }
-#shop-team-dialog :is(button,input,a):focus-visible { outline:3px solid var(--workbench-accent); outline-offset:3px; }
+#shop-team-dialog :is(button,input,select,a):focus-visible { outline:3px solid var(--workbench-accent); outline-offset:3px; }
 #shop-team-dialog button.primary:disabled { color:var(--muted); background:#e5e7e2; border-color:#e5e7e2; opacity:1; }
 #shop-team-dialog code { display: block; padding: 12px; background: #eff5fc; overflow-wrap: anywhere; }
 #shop-team-dialog .team-person { display: flex; align-items: center; flex-wrap:wrap; justify-content: space-between; gap: 8px 12px; padding:8px 0; border-bottom:1px solid var(--workbench-line); overflow-wrap:anywhere; }
+#shop-team-dialog .team-recovery { border-bottom:1px solid var(--workbench-line); padding:12px 0; overflow-wrap:anywhere; }
+#shop-team-dialog .team-recovery-actions { display:flex; flex-wrap:wrap; gap:8px; }
+#shop-team-dialog .team-recovery-actions button { margin-right:0; }
 #shop-team-dialog [role=status] { color: #a32c26; }
 #team-invitation { font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
 #shop-team-open { display: block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
