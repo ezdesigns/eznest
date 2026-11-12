@@ -14,6 +14,9 @@ parser.add_argument('--bundle',type=Path,required=True)
 parser.add_argument('--out',type=Path,required=True)
 args=parser.parse_args()
 from test_mixed_cuts import mixed_fixture
+from cut_mapping import defaults
+from pdf_io import read_document
+from pypdf import PdfReader
 from playwright.sync_api import sync_playwright
 
 
@@ -113,7 +116,18 @@ try:
                 with ZipFile(io.BytesIO(first)) as archive:
                     assert archive.testzip() is None
                     artwork=archive.read('artwork.'+kind)
-                    assert b'CutContour_Kiss-cut' in artwork
+                    if kind == 'svg':
+                        assert b'CutContour_Kiss-cut' in artwork
+                    else:
+                        # mixed_fixture uses CutContour for both operations; the
+                        # PDF exporter must preserve it rather than rename it.
+                        pdf = PdfReader(io.BytesIO(artwork))
+                        assert {str(color[1]) for page in pdf.pages
+                                for color in page['/Resources']['/ColorSpace'].values()} == {'/CutContour'}
+                        _, metadata = read_document(artwork, cut_mapping=defaults())
+                        assert len(metadata['pieces']) == 2
+                        assert all(piece['cutCounts'] == {'thru':1, 'kiss':2, 'contour':0}
+                                   for piece in metadata['pieces'])
                 page.screenshot(path=str(folder/'saved.png'),full_page=True)
                 stop();start(folder/'data')
                 restored=request('/api/state');assert restored['id']==state['id'] and restored['released']
