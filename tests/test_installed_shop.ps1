@@ -22,6 +22,10 @@ function Invoke-SystemCommand([string]$Command) {
   $stderr = Join-Path $work 'stderr.txt'
   $code = @"
 `$ErrorActionPreference = 'Stop'
+# Scheduled tasks do not inherit the Actions runner's process environment.
+# The outer script has already required these exact disposable-runner values.
+`$env:GITHUB_ACTIONS = 'true'
+`$env:RUNNER_ENVIRONMENT = 'github-hosted'
 try {
   & {
 $Command
