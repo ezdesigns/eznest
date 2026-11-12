@@ -14,6 +14,7 @@ from io import BytesIO
 from pathlib import Path
 
 import installer_update
+import installed_shop_fixture
 
 OK = textwrap.dedent('''
 import json, os, sys, time
@@ -91,6 +92,7 @@ class InstallerUpdateTests(unittest.TestCase):
             install, data = root / 'app', root / 'data'
             self.install(install, '1.0.0-rc.1', 'raise SystemExit(0)\n')
             shop, folder = self.settings(data)
+            saved_shop = installed_shop_fixture.seed(data)
             payload = b'MZ-new'
             self.stage(data, '1.0.0-rc.2', payload, 'eznest-setup.exe')
 
@@ -103,6 +105,7 @@ class InstallerUpdateTests(unittest.TestCase):
 
             result = installer_update.apply_and_confirm(install, data, timeout=5, runner=runner)
             self.assertTrue(result['ok'])
+            installed_shop_fixture.check(data, saved_shop)
             self.assertEqual(json.loads((install / 'version.json').read_text(encoding='utf-8'))['version'], '1.0.0-rc.2')
             self.assertEqual(json.loads((data / 'shop.json').read_text(encoding='utf-8')), shop)
             self.assertEqual(json.loads((data / 'output-folder.json').read_text(encoding='utf-8')), folder)
@@ -115,6 +118,7 @@ class InstallerUpdateTests(unittest.TestCase):
             self.install(install, '1.0.0-rc.1', 'raise SystemExit(0)\n')
             shop, folder = self.settings(data)
             self.stage(data, '1.0.0-rc.2', b'MZ-bad', 'eznest-setup.exe')
+            saved_shop = installed_shop_fixture.seed(data)
 
             def runner(setup, install_root, data_dir):
                 (data_dir / 'shop.json').write_text('{"onyxPc": false, "lan": false}', encoding='utf-8')
@@ -124,6 +128,7 @@ class InstallerUpdateTests(unittest.TestCase):
 
             result = installer_update.apply_and_confirm(install, data, timeout=3, runner=runner)
             self.assertFalse(result['ok'])
+            installed_shop_fixture.check(data, saved_shop)
             self.assertEqual(result['restored'], '1.0.0-rc.1')
             self.assertEqual(json.loads((install / 'version.json').read_text(encoding='utf-8'))['version'], '1.0.0-rc.1')
             self.assertEqual((install / 'eznest.py').read_text(encoding='utf-8'), 'raise SystemExit(0)\n')

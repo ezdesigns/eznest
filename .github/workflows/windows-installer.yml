@@ -182,6 +182,10 @@ jobs:
         with:
           name: eznest-setup
           path: installer/Output
+      - name: Set up Python for synthetic shop acceptance data
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
       - name: Test local installation on a separate clean Windows runner
         shell: pwsh
         run: pwsh -NoProfile -File tests/test_installed_local.ps1

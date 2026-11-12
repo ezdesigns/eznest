@@ -39,9 +39,11 @@ PrivilegesRequired=admin
 UninstallDisplayIcon={app}\eznest.exe
 CloseApplications=yes
 RestartApplications=no
+UsePreviousTasks=yes
 
 [Tasks]
 Name: "desktopicon"; Description: "Desktop shortcut"; GroupDescription: "Shortcuts:"
+Name: "startatlogin"; Description: "Start Ez Nest when I sign in to Windows"; GroupDescription: "Automatic startup:"; Check: IsFreshInstall
 Name: "startatboot"; Description: "Start eznest when Windows starts (shared shop host)"; GroupDescription: "Optional shop server; leave off for local use:"; Flags: unchecked
 Name: "lan"; Description: "Shop network (other PCs on this network)"; GroupDescription: "Shop server:"; Flags: unchecked
 Name: "onyxpc"; Description: "This PC runs ONYX"; GroupDescription: "Shop server:"; Flags: unchecked
@@ -58,6 +60,9 @@ Name: "{commondesktop}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "{code
 Name: "{group}\eznest"; Filename: "{app}\eznest.exe"; Parameters: "{code:LaunchArguments}"
 Name: "{group}\Stop eznest"; Filename: "{app}\Stop EZ Nest.cmd"
 Name: "{group}\Update eznest"; Filename: "{app}\eznest.exe"; Parameters: "--request-shop-update"; Check: ServiceMode
+; Common startup runs as the signed-in user, never the elevated installer account.
+; Service hosts already have their own startup task and must not get a second host.
+Name: "{commonstartup}\Ez Nest"; Filename: "{app}\eznest.exe"; Parameters: "--no-browser {code:LaunchArguments}"; WorkingDir: "{app}"; Check: StartAtLogin
 
 [Registry]
 Root: HKLM; Subkey: "Software\Classes\eznest-update"; ValueType: string; ValueData: "URL:eznest update"; Flags: uninsdeletekey
@@ -77,6 +82,7 @@ var
   ShopSetupFailed: Boolean;
   RetryShopSetup: Boolean;
   InstalledLocalMode: Boolean;
+  InstalledStartAtLogin: Boolean;
 
 function OnyxFlag(Param: String): String;
 begin
@@ -127,6 +133,16 @@ begin
   Result := not LocalMode;
 end;
 
+function StartAtLogin: Boolean;
+begin
+  if IsFreshInstall then
+    Result := LocalMode and WizardIsTaskSelected('startatlogin')
+  else
+    { An update is not a new setup. Preserve an existing opt-out, including
+      older releases which did not yet offer sign-in startup. }
+    Result := InstalledLocalMode and InstalledStartAtLogin;
+end;
+
 function UninstallService: Boolean;
 var
   Mode: Cardinal;
@@ -164,6 +180,7 @@ var
 begin
   { Capture before Setup writes its own uninstall registration. }
   ExistingInstall := IsUpgrade;
+  InstalledStartAtLogin := FileExists(ExpandConstant('{commonstartup}\Ez Nest.lnk'));
   InstalledLocalMode := RegQueryDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'LocalDataMode', LocalDataMode) and (LocalDataMode = 1);
   RetryShopSetup := RegQueryDWordValue(HKLM, ExpandConstant('Software\Microsoft\Windows\CurrentVersion\Uninstall\{#SetupSetting("AppId")}_is1'), 'ShopSetupComplete', SetupComplete) and (SetupComplete = 0);
   Log('Existing installation at start: ' + IntToStr(Ord(ExistingInstall)));
