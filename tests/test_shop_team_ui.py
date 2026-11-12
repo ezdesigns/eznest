@@ -377,7 +377,13 @@ class ShopTeamBrowserTests(unittest.TestCase):
         shop_members.create(server.WORK, 'Lan Shop')
         code = shop_members.invite(server.WORK)['code']
         self.fixture.stop()
-        service = server.ThreadingHTTPServer(('0.0.0.0', 0), server.Handler)
+        class RemoteHandler(server.Handler):
+            # The browser still runs on this runner, so connecting to its LAN
+            # address now correctly redirects to host access. Simulate the TCP
+            # peer of another PC while keeping real insecure HTTP transport.
+            # Separate membership tests cover peer-based host detection.
+            def client_ip(self): return '192.0.2.44'
+        service = server.ThreadingHTTPServer(('0.0.0.0', 0), RemoteHandler)
         service.daemon_threads = False
         port = service.server_port
         thread = threading.Thread(target=service.serve_forever, daemon=True)
