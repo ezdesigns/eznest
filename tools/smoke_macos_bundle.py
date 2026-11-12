@@ -14,7 +14,7 @@ parser.add_argument('--bundle',type=Path,required=True)
 parser.add_argument('--out',type=Path,required=True)
 args=parser.parse_args()
 from test_mixed_cuts import mixed_fixture
-from cut_mapping import defaults
+from cut_mapping import output_mapping
 from pdf_io import read_document
 from pypdf import PdfReader
 from playwright.sync_api import sync_playwright
@@ -124,7 +124,13 @@ try:
                         pdf = PdfReader(io.BytesIO(artwork))
                         assert {str(color[1]) for page in pdf.pages
                                 for color in page['/Resources']['/ColorSpace'].values()} == {'/CutContour'}
-                        _, metadata = read_document(artwork, cut_mapping=defaults())
+                        # Re-import using the exported job's layer labels. Shops
+                        # may configure these differently from the import defaults.
+                        mapping = output_mapping(state['job']['outputProfile'])
+                        mapping['rules'] += [dict(source='layer', match='exact',
+                                                name=output['layer'], operation=operation)
+                                             for operation, output in mapping['outputs'].items()]
+                        _, metadata = read_document(artwork, cut_mapping=mapping)
                         assert len(metadata['pieces']) == 2
                         assert all(piece['cutCounts'] == {'thru':1, 'kiss':2, 'contour':0}
                                    for piece in metadata['pieces'])
