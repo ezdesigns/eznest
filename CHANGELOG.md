@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.0.0-rc.9
+
+- Windows remains an unsigned testing preview for manual installation. Windows may show an unknown-publisher warning. Protected one-click updates are not enabled by this release; future versions still require trusted signing unless separately approved.
+- New local Windows installs start Ez Nest quietly after Windows sign-in by default. Updates preserve the existing startup choice and data location; shared hosts keep their existing startup task.
+- Keep each designer's uploaded job private and saved before nesting. Updates retain shop identity, designer sign-ins, stock, reservations and unfinished jobs. A host can approve restoring an existing member's access if their browser has lost its sign-in, without creating another person or losing the saved job.
+- Improve Save to My Computer and download retry handling. Preserve ordinary printed artwork on mixed cut layers, with review for matching unnamed cut outlines.
+- Add clean-Windows installer checks for default startup, duplicate launch, update, opt-out and uninstall, including retained designer sign-in, shared stock and saved uploads. Portable update and failed-update rollback tests verify the same data preservation.
+
 - First run shows the welcome introduction, then create-a-shop or join-with-an-invite. The home screen no longer leads with Connect to OUTPUT. Pairing stays optional in Settings and the status dot, and it does not block nesting, inventory, or shop setup.
 - After a shop exists, Invite is on the home screen. The invite code is shown above Done.
 - A second computer on a plain network address can open Join. HTTPS is unchanged and is not required for that.

@@ -64,6 +64,20 @@ class FakeGitHub:
                             ('0' * 64 if self.corrupt_upload else release.digest(path))})
 
 
+class WindowsPreviewPolicyTests(unittest.TestCase):
+    def test_only_the_exact_owner_approved_preview_can_be_unsigned(self):
+        self.assertFalse(release.plan(FakeGitHub(), event(), '1.0.0-rc.9')['windows_require_signed'])
+        for version in ('1.0.0-rc.8', '1.0.0-rc.10', '1.0.0', '1.0.1', '2.0.0-beta.1'):
+            with self.subTest(version=version):
+                self.assertTrue(release.plan(FakeGitHub(), event(), version)['windows_require_signed'])
+
+    def test_missing_policy_output_cannot_disable_release_signing(self):
+        workflow = (release.ROOT / '.github/workflows/auto-release.yml').read_text(encoding='utf-8')
+        self.assertIn("require_signed: ${{ needs.plan.outputs.windows_require_signed != 'false' }}", workflow)
+        windows = (release.ROOT / '.github/workflows/windows-installer.yml').read_text(encoding='utf-8')
+        self.assertIn("inputs.require_signed == true || startsWith(github.ref, 'refs/tags/v')", windows)
+
+
 def artifacts(root):
     win, apple = root / 'windows', root / 'macos'
     win.mkdir(); apple.mkdir()

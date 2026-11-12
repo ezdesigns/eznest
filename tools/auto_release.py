@@ -73,7 +73,10 @@ def plan(github, event, version):
     version_key(version)
     tag = 'v' + version
     tip = github.request('GET', f'repos/{REPO}/git/ref/heads/main')['object']['sha']
-    result = {'should_release': False, 'sha': commit, 'version': version, 'tag': tag}
+    # Owner approved this exact manual-install Windows preview on 2026-11-12.
+    # All other versions, including future release candidates, require signing.
+    result = {'should_release': False, 'sha': commit, 'version': version, 'tag': tag,
+              'windows_require_signed': version != '1.0.0-rc.9'}
     if tip != commit:
         return {**result, 'reason': 'A newer main commit supersedes this CI run.'}
     existing = None
@@ -153,8 +156,13 @@ def publish(github, event, version, directory, *, upload=None):
     tag = state['tag']
     release = next((r for r in github.releases() if r['tag_name'] == tag), None)
     if release is None:
+        windows_note = ('Windows x64: signed installer; installed acceptance checks passed.\n'
+                        if state['windows_require_signed'] else
+                        'Windows x64: unsigned testing preview, approved for manual installation only. '
+                        'Windows may show an unknown-publisher warning. Protected one-click updates remain unavailable. '
+                        'Fresh install, startup, update and uninstall checks passed on clean Windows runners.\n')
         notes = (f'EZNest {version}\n\nSource: `{state["sha"]}`.\n\n'
-                 'Windows x64: unsigned preview; fresh-install checks passed.\n'
+                 + windows_note + '\n'
                  'Mac: Apple Silicon/macOS 26 experimental preview, new test installations only. '
                  'Developer ID signed, notarized and stapled; local SVG/PDF export, restart persistence '
                  'and owned VM cleanup checked. Keep updates off. Closing the browser leaves the service running.\n\n'
@@ -218,7 +226,7 @@ def main():
     state = plan(api, event, version) if args.phase == 'plan' else publish(api, event, version, args.assets)
     if args.phase == 'plan':
         with open(os.environ['GITHUB_OUTPUT'], 'a') as handle:
-            for key in ('should_release', 'sha', 'version', 'tag'):
+            for key in ('should_release', 'sha', 'version', 'tag', 'windows_require_signed'):
                 value = str(state[key]).lower() if isinstance(state[key], bool) else state[key]
                 handle.write(f'{key}={value}\n')
     print(state['reason'])
