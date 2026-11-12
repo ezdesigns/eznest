@@ -145,7 +145,7 @@ window.EZNShop = (() => {
   function join() {
     reset('Join ' + (session.shopIdentity?.name || 'your shop'));
     if (session.accessRemoved) node('p', 'Your access was removed. Ask for a new invite.', content);
-    node('p', 'Enter your name and the invite from your shop.', content);
+    node('p', 'Join once with your invite. This browser will remember your shop.', content);
     const name = input('Your name'); name.id = 'team-member-name'; name.autocomplete = 'name';
     const code = input('Invite code', 'XXXXX-XXXXX-XXXXX-XXXXX'); code.id = 'team-code'; code.spellcheck = false;
     button('Join shop', async () => {

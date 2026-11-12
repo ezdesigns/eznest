@@ -442,6 +442,20 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return self.client_ip() in ('127.0.0.1', '::1')
 
+    def host_browser_on_lan(self):
+        """Recognize the host's own LAN connection, never a forwarded header.
+
+        Only used to redirect its welcome page to loopback. API authorization
+        stays loopback-only and joined members keep their existing workspace.
+        """
+        if not LAN or TLS or self.loopback_client():
+            return False
+        try:
+            local = shop_auth.normalize_ip(self.connection.getsockname()[0])
+            return local not in ('0.0.0.0', '::', '127.0.0.1', '::1') and self.client_ip() == local
+        except (AttributeError, OSError, ValueError):
+            return False
+
     def route_path(self):
         path = urlparse(self.path).path or '/'
         if path == '/web/':
@@ -591,6 +605,11 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.send(403, {'error': 'Invalid host'})
         path = self.route_path()
+        if path in ('/', '/web') and self.host_browser_on_lan() and not self.cookie_ok():
+            query = urlparse(self.path).query
+            target = f'http://127.0.0.1:{PORT}/' + ('?' + query if query else '')
+            return self.send(307, b'', 'text/plain; charset=utf-8',
+                             extra_headers=(('Location', target),))
         if path == '/web':
             # Older installers and Illustrator links keep working at the one app entry.
             query = urlparse(self.path).query
@@ -600,7 +619,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/session':
             if not self.browser_site_ok('GET'):
                 return self.send(403, {'error': 'Invalid session'})
-            return self.send(200, self.session_body())
+            token = shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.COOKIE)
+            remembered = shop_members.member(WORK, token, renew=True)
+            headers = [('Set-Cookie', shop_members.cookie(token, secure=TLS))] if remembered else None
+            return self.send(200, self.session_body(), extra_headers=headers)
         if path.startswith('/api/'):
             if path == '/api/health':
                 if not self.loopback_client():

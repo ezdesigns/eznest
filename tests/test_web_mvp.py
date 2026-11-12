@@ -1893,6 +1893,10 @@ class WebMvpTests(unittest.TestCase):
                     # Each format starts with an empty shop, not the material
                     # persisted by the preceding browser session.
                     (Path(self.tmp.name) / 'materials.sqlite3').unlink(missing_ok=True)
+                    # Uploaded jobs now persist before nesting. Each format is
+                    # a new test job, so clear its saved draft and ready result too.
+                    for filename in ('draft.json', 'session.json'):
+                        (Path(self.tmp.name) / filename).unlink(missing_ok=True)
                     server.STATE.clear()
                     server.STATE.update(status='idle')
                     browser, page = self.open_page(playwright)
