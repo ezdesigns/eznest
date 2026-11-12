@@ -264,12 +264,25 @@ def guide_review(raw, mapping, cut_spot, pages):
             'lines':[{'id':p['id'],'page':p['page']+1,'lengthMm':LineString(p['pdfPoints']).length*MM} for p in candidates]}
 
 
-def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, unnamed_operation=None, image_bounds=None):
+def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, unnamed_operation=None, image_bounds=None,
+                 allow_mixed_artwork=False, approved_outline_ids=None, preparation=None):
     """Extract all mapped operations; flatten static layer visibility in print art."""
     from shapely.geometry import LineString
     from cut_mapping import classify
     paths_found=[]; budget=[0]; removed=[0]; mask_bounds={}
     source_colors={}; source_keys={}
+
+    def process_stroke_style(state):
+        space=state['strokeSpace']
+        if not isinstance(space,NameObject) or str(space) not in ('/DeviceRGB','/DeviceCMYK','/DeviceGray'):
+            return None
+        return json.dumps([str(space),state['strokeValues']],separators=(',',':'))
+
+    def ordinary_ink(spot):
+        return allow_mixed_artwork and classify(mapping,spot,[],cut_spot) is None
+
+    def kept_artwork():
+        if preparation is not None:preparation['mixedLayerArtwork']=preparation.get('mixedLayerArtwork',0)+1
 
     def remember_color(state):
         space=state['strokeSpace']
@@ -405,6 +418,8 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                 fills=op in (b'f',b'F',b'f*',b'B',b'B*',b'b',b'b*')
                 stroke_type=classify(mapping,state['stroke'],layers,cut_spot) if strokes else None
                 fill_type=classify(mapping,state['fill'],layers,cut_spot) if fills else None
+                if fill_type in ('thru','kiss','contour') and ordinary_ink(state['fill']):
+                    fill_type=None;kept_artwork()
                 from_unlabeled=False
                 if (candidates is not None and strokes and not fills and not stroke_type and
                         not state['dashed'] and not pending_clip and paths and all(p[2] for p in paths)):
@@ -416,11 +431,11 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                         if not geom.is_valid or geom.area*MM*MM<.01: break
                         if any(not c.buffer(.001).covers(line) for c in state['clips']): break
                         proposed.append({'id':f'p{page_index+1}-outline{len(candidates)+len(proposed)+1}',
-                                         'page':page_index,'pdfPoints':pts})
+                                         'page':page_index,'pdfPoints':pts,'strokeStyle':process_stroke_style(state)})
                     if len(proposed)==len(paths):
                         candidates.extend(proposed)
                         if len(candidates)>5000: raise ValueError('Review no more than 5000 unnamed cut outlines per file.')
-                        if unnamed_operation in ('kiss','thru'):
+                        if unnamed_operation in ('kiss','thru') and (approved_outline_ids is None or all(p['id'] in approved_outline_ids for p in proposed)):
                             stroke_type=unnamed_operation;from_unlabeled=True
                 if 'regmark' in (stroke_type,fill_type):
                     if (stroke_type not in (None,'regmark') or fill_type not in (None,'regmark')) or pending_clip:
@@ -447,6 +462,7 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                             if any(not c.buffer(.001).covers(line) for c in state['clips']):raise ValueError('A cut path is clipped. Correct its source clipping structure.')
                             paths_found.append({'id':f'p{page_index+1}-cut{len(paths_found)+1}','page':page_index,'commands':cmd,'pdfPoints':pts,'closed':closed,'boundary':boundary,'operation':stroke_type,'sourceSpot':state['stroke'],'sourceLayers':list(layers)})
                             paths_found[-1]['sourceColor']=remember_color(state)
+                            if not fills and not state['dashed']:paths_found[-1]['strokeStyle']=process_stroke_style(state)
                             if from_unlabeled: paths_found[-1]['fromUnlabeled']=True
                             if state['dashed']:paths_found[-1]['possibleGuide']=True
                             if len(paths_found)>2000:raise ValueError('Use no more than 2000 cut paths per page.')
@@ -480,7 +496,9 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                         clone.set_data(body);clone[NameObject('/Resources')]=nested
                         key=NameObject('/EZNForm'+str(budget[0]));xobjects[key]=writer._add_object(clone);operands=[key]
                     else:
-                        if layer_type:raise ValueError('A cut layer contains an image instead of vector paths.')
+                        if layer_type:
+                            if not allow_mixed_artwork:raise ValueError('A cut layer contains an image instead of vector paths.')
+                            kept_artwork()
                         if image_bounds is not None and obj.get('/Subtype')=='/Image':
                             def rect(values):
                                 x0,y0,x1,y1=values
@@ -503,7 +521,11 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                         # Invisible text preserves text positioning for subsequent art.
                         output.extend([([NumberObject(3)],b'Tr'),(operands,op),([NumberObject(state['textMode'])],b'Tr')])
                     continue
-                if layer_type:raise ValueError('Cut layers/colors contain text or non-vector paint. Outline the cut geometry first.')
+                if layer_type:
+                    ink=ordinary_ink(state['fill'])
+                    if op in (b'Tj',b'TJ',b"'",b'"') and state['textMode'] in (1,2,5,6):ink=ink and ordinary_ink(state['stroke'])
+                    if not ink:raise ValueError('Cut layers/colors contain text or non-vector paint. Outline the cut geometry first.')
+                    kept_artwork()
             output.append((operands,op))
         if stack or marks:raise ValueError('PDF graphics or marked-content state is unbalanced.')
         return output.get_data(),resources
@@ -619,7 +641,8 @@ def group_paths(paths):
 
 
 @print_pdf_context
-def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guide_approval=None, cut_approval=None, prepare=False):
+def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guide_approval=None, cut_approval=None, prepare=False,
+                  _approved_outline_ids=None):
     from cut_mapping import import_mapping,counts,classify
     if not raw[:1024].lstrip().startswith(b'%PDF-'):raise ValueError('Use PDF, or save AI with Create PDF Compatible File enabled.')
     if not isinstance(cut_spot,str) or not cut_spot or len(cut_spot)>80 or any(ord(c)<32 for c in cut_spot):raise ValueError('Enter a valid generic cut spot name.')
@@ -643,6 +666,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
     blank_pages = set()
     rotated_pages = {}
     known_cuts = False
+    preparation={}
     unnamed_operation = None
     approved_pages = None
     approval_error = 'The cut review does not match this file. Add it again and review its outlines.'
@@ -674,11 +698,18 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
             rotated_pages[i] = (rotation, visible_page_bounds(page))
         first_candidate = len(candidates)
         operation = unnamed_operation if approved_pages is None or i + 1 in approved_pages else None
-        paths, removed, blank = extract_page(page, writer, cut_spot, i, extraction_mapping, candidates, operation, image_bounds)
+        paths, removed, blank = extract_page(page, writer, cut_spot, i, extraction_mapping, candidates,
+                                             operation if _approved_outline_ids is not None else None, image_bounds,
+                                             allow_mixed_artwork=prepare,approved_outline_ids=_approved_outline_ids,preparation=preparation)
         if any(not path.get('fromUnlabeled') for path in paths):
             known_cuts = True
-            # Ordinary closed ink on pages with mapped cuts is not a fallback cut candidate.
-            del candidates[first_candidate:]
+            # Only offer separate outlines with the same process stroke style as
+            # an established cut. Interior decoration remains printed artwork.
+            mapped=[p for p in paths if not p.get('fromUnlabeled')]
+            styles={p['strokeStyle'] for p in mapped if p.get('strokeStyle') and p.get('boundary')}
+            boundaries=[Polygon(p['pdfPoints']) for p in mapped if p.get('boundary')]
+            candidates[first_candidate:]=[c for c in candidates[first_candidate:] if prepare and c.get('strokeStyle') in styles
+                and not any(Polygon(c['pdfPoints']).intersects(b) for b in boundaries)]
         registration_removed += removed
         path_count += len(paths)
         if path_count>5000:raise ValueError('Use no more than 5000 cut paths per file.')
@@ -700,6 +731,9 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
         scope_matches = not known_cuts if approved_pages is None else approved_pages == review_pages
         if cut_approval['id'] != review['id'] or cut_approval['sourceHash'] != review['sourceHash'] or not scope_matches:
             raise ValueError(approval_error)
+        if _approved_outline_ids is None:
+            return read_document(raw,bleed_mm,cut_spot,cut_mapping,guide_approval,cut_approval,prepare,
+                                 _approved_outline_ids={c['id'] for c in candidates})
     elif cut_approval is not None:
         raise ValueError('This file has no matching unnamed cut review. Add the original file again.')
     review=guide_review(raw,mapping,cut_spot,page_paths)
@@ -761,6 +795,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
     if registration_removed:warnings.append(f'{registration_removed} registration paint object(s) removed. Let the RIP generate new sheet registration marks.')
     if excluded:warnings.append(f'{len(excluded)} dashed guide line(s) excluded after operator review. Original artwork and remaining cuts are unchanged.')
     if duplicate_cuts:warnings.append(f'{duplicate_cuts} identical duplicate cut outline(s) removed from the working copy. Original artwork and retained cuts are unchanged.')
+    if preparation.get('mixedLayerArtwork'):warnings.append('Printed artwork found on cut layers was preserved as artwork; existing vector cuts were kept separately.')
     return buf.getvalue(),{'modelVersion':2,'pieces':pieces,'bleedMm':bleed_mm,'cutSpot':cut_spot,'cutMapping':mapping,
                           'registrationPaintRemoved':registration_removed,'preparedDuplicateCuts':duplicate_cuts,'excludedGuideIds':excluded,'reviewedCutOutlines':cut_approval,'imagePaintBounds':image_bounds,'warnings':warnings,'pages':len(reader.pages)}
 
