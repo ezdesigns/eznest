@@ -573,6 +573,7 @@ class Handler(BaseHTTPRequestHandler):
             'outputConnection': output_gate.public_status(WORK, local),
             'outputLink': output_gate.link_status(WORK, local),
             'accessRemoved': (not local) and self.access_removed(),
+            'recoveryState': shop_members.recovery_state(WORK, shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.RECOVERY_COOKIE)) if not local else None,
         }
         if local:
             body['localDataId'] = os.environ.get('EZ_NEST_LOCAL_ID')
@@ -917,7 +918,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {'error': 'Invalid session'})
         path = self.route_path()
         access_data = None
-        if path in ('/api/login', '/api/shop-members/join'):
+        if path in ('/api/login', '/api/shop-members/join', '/api/shop-members/recover', '/api/shop-members/recovery-status'):
             if UPDATE_QUEUE.stopping or macos_service_runtime.maintenance():
                 return self.send(503, {'error': 'Installing an update. Wait for eznest to restart.'})
             if path == '/api/login' and shop_members.configured(WORK):
@@ -960,22 +961,42 @@ class Handler(BaseHTTPRequestHandler):
 
     def _logout(self):
         shop_members.logout(WORK, shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.COOKIE))
+        shop_members.cancel_recovery(WORK, shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.RECOVERY_COOKIE))
         shop_auth.revoke_session(shop_auth.read_cookie(self.headers.get('Cookie') if self.headers else None))
-        return self.send(200, {'ok': True}, extra_headers=[('Set-Cookie', shop_auth.clear_cookie_header(secure=TLS)), ('Set-Cookie', shop_members.cookie('', secure=TLS))])
+        return self.send(200, {'ok': True}, extra_headers=[('Set-Cookie', shop_auth.clear_cookie_header(secure=TLS)), ('Set-Cookie', shop_members.cookie('', secure=TLS)), ('Set-Cookie', shop_members.recovery_cookie('', secure=TLS))])
 
     def _membership(self, path, access_data):
         joining = path == '/api/shop-members/join'
-        if not joining and not (self.loopback_client() and self.token_ok()):
+        recovering = path in ('/api/shop-members/recover', '/api/shop-members/recovery-status')
+        if not joining and not recovering and not (self.loopback_client() and self.token_ok()):
             return self.send(403, {'error': 'Manage the shop and invitations on the host PC.'})
         try:
-            data = access_data if joining else self._read_shop_request()
+            data = access_data if joining or recovering else self._read_shop_request()
             if not isinstance(data, dict):
                 raise ValueError('Supply a shop request.')
+            if recovering:
+                if not LAN or not shop_members.configured(WORK):
+                    return self.send(409, {'error': 'Open the existing shop on its shop-network address.'})
+                if self.cookie_ok():
+                    return self.send(200, {'state': 'restored'})
+                proof = shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.RECOVERY_COOKIE)
+                if path.endswith('/recover'):
+                    result = shop_members.request_recovery(WORK, data.get('name'), self.client_ip(), proof)
+                    if 'error' in result:
+                        return self.send(result['status'], {'error': result['error']})
+                    return self.send(200, {'state': result['state']}, extra_headers=[('Set-Cookie', shop_members.recovery_cookie(result['proof'], secure=TLS))])
+                result = shop_members.finish_recovery(WORK, proof)
+                headers = None
+                if result['state'] == 'restored':
+                    headers = [('Set-Cookie', shop_members.cookie(result['token'], secure=TLS)),
+                               ('Set-Cookie', shop_members.recovery_cookie('', secure=TLS))]
+                return self.send(200, {'state': result['state']}, extra_headers=headers)
             if joining:
                 result = shop_members.join(WORK, data.get('code'), data.get('name'), self.client_ip())
                 if 'error' in result:
                     return self.send(result['status'], {'error': result['error']})
-                return self.send(200, {'ok': True, 'member': result['member']}, extra_headers=[('Set-Cookie', shop_members.cookie(result['token'], secure=TLS))])
+                shop_members.cancel_recovery(WORK, shop_auth.read_cookie(self.headers.get('Cookie'), shop_members.RECOVERY_COOKIE))
+                return self.send(200, {'ok': True, 'member': result['member']}, extra_headers=[('Set-Cookie', shop_members.cookie(result['token'], secure=TLS)), ('Set-Cookie', shop_members.recovery_cookie('', secure=TLS))])
             if path == '/api/shop-members/create':
                 return self.send(200, shop_members.create(WORK, data.get('name')))
             if path == '/api/shop-members/invite':
@@ -986,6 +1007,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, shop_members.revoke(WORK, data.get('id')))
             if path == '/api/shop-members/cancel-invites':
                 return self.send(200, shop_members.cancel_invites(WORK))
+            if path == '/api/shop-members/approve-recovery':
+                if not isinstance(data.get('member'), str) or not data['member']:
+                    raise ValueError('Choose the existing member.')
+                return self.send(200, shop_members.decide_recovery(WORK, data.get('id'), data['member']))
+            if path == '/api/shop-members/deny-recovery':
+                return self.send(200, shop_members.decide_recovery(WORK, data.get('id')))
             return self.send(404, {'error': 'Shop action not found.'})
         except (ValueError, TypeError):
             return self.send(400, {'error': 'Check the shop name, teammate name, or invitation and try again.'})

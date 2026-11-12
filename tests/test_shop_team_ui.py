@@ -355,7 +355,7 @@ class ShopTeamBrowserTests(unittest.TestCase):
                 self.assertEqual(removed['status'], 403)
                 self.assertEqual(removed['body']['error'], 'Your access was removed.')
                 page.reload()
-                expect(page.get_by_text('Your access was removed. Ask for a new invite.')).to_be_visible()
+                expect(page.get_by_text('This browser’s saved sign-in is no longer valid. You can ask the shop PC to restore access.')).to_be_visible()
             finally:
                 browser.close()
 

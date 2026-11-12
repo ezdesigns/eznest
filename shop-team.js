@@ -3,6 +3,7 @@
 window.EZNShop = (() => {
   let session, dialog, heading, content, message, done, closeButton;
   let touring = false;
+  let recoveryTimer = null, recoveryScreen = 0;
   const node = (tag, text, parent) => {
     const item = document.createElement(tag);
     if (text) item.textContent = text;
@@ -41,6 +42,7 @@ window.EZNShop = (() => {
     return field;
   }
   function reset(title) {
+    clearTimeout(recoveryTimer); recoveryScreen++;
     touring = false; dialog.classList.remove('team-walkthrough');
     closeButton.setAttribute('aria-label', 'Close shop');
     heading.textContent = title; content.replaceChildren(); message.textContent = '';
@@ -144,14 +146,52 @@ window.EZNShop = (() => {
   }
   function join() {
     reset('Join ' + (session.shopIdentity?.name || 'your shop'));
-    if (session.accessRemoved) node('p', 'Your access was removed. Ask for a new invite.', content);
+    if (session.accessRemoved) node('p', 'This browser’s saved sign-in is no longer valid. You can ask the shop PC to restore access.', content);
     node('p', 'Join once with your invite. This browser will remember your shop.', content);
     const name = input('Your name'); name.id = 'team-member-name'; name.autocomplete = 'name';
     const code = input('Invite code', 'XXXXX-XXXXX-XXXXX-XXXXX'); code.id = 'team-code'; code.spellcheck = false;
     button('Join shop', async () => {
       await request('/api/shop-members/join', {name: name.value, code: code.value}); code.value = '';
-      await updateSession(); finish();
+      await updateSession();
+      if (!session.authenticated) throw Error('Your invite was accepted, but this browser did not keep your sign-in. Allow cookies for this shop, then choose Restore access.');
+      finish();
     }, content, true).id = 'team-join';
+    button('Already joined? Restore access', recover).id = 'team-recover';
+  }
+  function recover() {
+    reset('Restore your access');
+    node('p', 'Ask the shop PC to reconnect you to your existing name and saved job. No new invite needed.', content);
+    const name = input('Your name in the shop'); name.id = 'team-recovery-name'; name.autocomplete = 'name';
+    button('Request access', async () => {
+      const result = await request('/api/shop-members/recover', {name:name.value});
+      if (result.state === 'restored') { location.reload(); return; }
+      await updateSession();
+      if (!session.recoveryState) throw Error('This browser is not keeping your sign-in. Allow cookies for this shop and try again in a regular browser window.');
+      waitForRecovery();
+    }, content, true).id = 'team-recovery-request';
+    button('Back', join);
+  }
+  function waitForRecovery() {
+    reset('Waiting for the shop PC');
+    node('p', 'On the shop PC, open ' + (session.shopIdentity?.name || 'Your shop') + ' and restore access under Access requests.', content);
+    node('p', 'Keep this tab open. Your saved job will return after approval.', content);
+    const generation = recoveryScreen;
+    const poll = async () => {
+      if (generation !== recoveryScreen) return;
+      try {
+        const result = await request('/api/shop-members/recovery-status', {});
+        if (generation !== recoveryScreen) return;
+        if (result.state === 'restored') { location.reload(); return; }
+        if (result.state === 'expired' || result.state === 'denied') {
+          message.textContent = result.state === 'denied' ? 'The shop PC declined this request.' : 'This request expired after 15 minutes.';
+          button('Ask again', recover); return;
+        }
+        message.textContent = '';
+      } catch (error) { if (generation === recoveryScreen) message.textContent = error.message; }
+      if (generation === recoveryScreen) recoveryTimer = setTimeout(poll, 3000);
+    };
+    poll();
+    button('Back', join);
   }
   async function manage() {
     reset(session.shopIdentity?.name || 'Your shop');
@@ -165,6 +205,25 @@ window.EZNShop = (() => {
       if (session.localPC) button('Remove access', async () => { await request('/api/shop-members/revoke', {id: member.id}); await manage(); }, row);
     }
     if (session.localPC) {
+      node('h3', 'Access requests', content);
+      if (!shop.accessRequests?.length) node('p', 'No requests waiting.', content);
+      else node('p', 'Confirm the request with the designer, then choose their existing name to restore their saved job.', content);
+      for (const access of shop.accessRequests || []) {
+        const row = node('section', '', content); row.className = 'team-recovery';
+        node('p', access.name + ' · Computer ' + access.source, row);
+        const label = node('label', 'Existing shop member', row);
+        const choice = node('select', '', label);
+        node('option', 'Choose their existing name', choice).value = '';
+        for (const person of shop.members || []) node('option', person.name, choice).value = person.id;
+        const actions = node('div', '', row); actions.className = 'team-recovery-actions';
+        button('Restore access', async () => {
+          if (!choice.value) throw Error('Choose their existing name first.');
+          await request('/api/shop-members/approve-recovery', {id:access.id, member:choice.value});
+          await manage(); message.textContent = 'Approved. Their browser will reconnect automatically.';
+        }, actions, true);
+        button('Decline', async () => { await request('/api/shop-members/deny-recovery', {id:access.id}); await manage(); }, actions);
+      }
+      button('Refresh requests', manage).id = 'team-refresh-requests';
       let inviteSlot = null;
       if (session.shopAddress) {
         node('p', 'People open this address:', content);
@@ -194,7 +253,9 @@ window.EZNShop = (() => {
   }
   async function open() {
     await updateSession();
-    if (!session.localPC && session.shopIdentity?.created && !session.authenticated) join();
+    if (!session.localPC && session.shopIdentity?.created && !session.authenticated) {
+      if (['pending', 'approved'].includes(session.recoveryState)) waitForRecovery(); else join();
+    }
     else if (!session.shopIdentity?.created && session.localPC) welcome();
     else if (!session.shopIdentity?.created) {
       reset('Your shop'); node('p', 'Ask the host to create the shop and send you an invitation.', content);
