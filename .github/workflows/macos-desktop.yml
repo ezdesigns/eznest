@@ -7,6 +7,7 @@ on:
       - 'build_macos*.py'
       - 'macos_service_config.py'
       - 'tests/*macos*'
+      - 'tools/smoke_macos_bundle.py'
       - '.github/workflows/macos-desktop.yml'
 
 permissions:
