@@ -9,6 +9,7 @@ from shapely.strtree import STRtree
 
 from artwork_bounds import MM, PAD, compact_enclosure
 from pdf_piece_objects import analyze_objects
+from pdf_cut_geometry import nesting_boundary
 
 
 def clipping_scopes(operations):
@@ -79,7 +80,7 @@ def prepare_groups(page, reader, paths):
     from cut_mapping import counts
     if not paths or len(paths) > 200:
         return None
-    closed = {i:Polygon(p['pdfPoints']) for i,p in enumerate(paths) if p.get('boundary',p['closed'])}
+    closed = {i:nesting_boundary(p) for i,p in enumerate(paths) if p.get('boundary',p['closed'])}
     # Exact safe duplicates have already been removed by the importer. Any
     # remaining coincident paths carry conflicting identity/style or are open
     # tool strokes; source grouping must not bypass their rejection.
@@ -202,13 +203,13 @@ def prepare_groups(page, reader, paths):
     for n,g in enumerate(groups):
         # Disconnected decoration stays intact with its proven owner. Reserve
         # extra blank space if needed; never crop or enlarge the printed object.
-        footprint = unary_union(enclosures[n] + [Polygon(p['pdfPoints']) for p in owned_cuts[n] if p['closed']]).buffer(PAD)
+        footprint = unary_union(enclosures[n] + [nesting_boundary(p) for p in owned_cuts[n] if p.get('boundary',p['closed'])]).buffer(PAD)
         if footprint.geom_type != 'Polygon':
             footprint = footprint.convex_hull
         envelope = compact_enclosure(Polygon(footprint.exterior))
         x0,y0,x1,y1 = envelope.bounds
         piece = dict(paths[min(g)]) if g else {'page':paths[0]['page'], 'printOnly':True}
-        cut_shapes = [Polygon(p['pdfPoints']) for p in owned_cuts[n] if p.get('boundary',p['closed'])]
+        cut_shapes = [nesting_boundary(p) for p in owned_cuts[n] if p.get('boundary',p['closed'])]
         crossing = sum(a.intersection(b).area > .001 and not a.covers(b) and not b.covers(a)
                        for index,a in enumerate(cut_shapes) for b in cut_shapes[index+1:])
         piece.update(cutPaths=owned_cuts[n], sourceObjectIds=ids[n],

@@ -22,6 +22,7 @@ from pypdf.generic import (ArrayObject, ContentStream, DecodedStreamObject,
 from shapely.geometry import Polygon, LineString, box, MultiPoint
 from shapely.affinity import rotate, translate
 from shapely.strtree import STRtree
+from pdf_cut_geometry import nesting_boundary
 
 MM = 25.4 / 72
 IDENTITY = (1, 0, 0, 1, 0, 0)
@@ -456,11 +457,20 @@ def extract_page(page, writer, cut_spot, page_index, mapping, candidates=None, u
                             # group_paths still requires a unique outer owner.
                             boundary=closed and line.convex_hull.geom_type=='Polygon'
                             geom=Polygon(pts) if boundary else line
-                            if not geom.is_valid or geom.is_empty or (boundary and geom.area*MM*MM<.01) or (not boundary and geom.length*MM<.01):raise ValueError('A cut path is self-intersecting or too small.')
+                            irregular = not geom.is_valid or geom.is_empty or (boundary and geom.area*MM*MM<.01) or (not boundary and geom.length*MM<.01)
+                            if irregular and not allow_mixed_artwork:
+                                raise ValueError('A cut path is self-intersecting or too small.')
                             # Only the stroke must be visible, not the enclosed
                             # interior (which can legitimately surround a hole).
                             if any(not c.buffer(.001).covers(line) for c in state['clips']):raise ValueError('A cut path is clipped. Correct its source clipping structure.')
                             paths_found.append({'id':f'p{page_index+1}-cut{len(paths_found)+1}','page':page_index,'commands':cmd,'pdfPoints':pts,'closed':closed,'boundary':boundary,'operation':stroke_type,'sourceSpot':state['stroke'],'sourceLayers':list(layers)})
+                            if irregular:
+                                # Placement only: retain the exact cutter commands.
+                                hull = MultiPoint(pts).convex_hull
+                                if hull.geom_type != 'Polygon':
+                                    hull = hull.buffer(.01)
+                                paths_found[-1].update(placementBoundary=list(hull.exterior.coords),
+                                                       boundary=True, irregularCut=True)
                             paths_found[-1]['sourceColor']=remember_color(state)
                             if not fills and not state['dashed']:paths_found[-1]['strokeStyle']=process_stroke_style(state)
                             if from_unlabeled: paths_found[-1]['fromUnlabeled']=True
@@ -707,7 +717,7 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
             # an established cut. Interior decoration remains printed artwork.
             mapped=[p for p in paths if not p.get('fromUnlabeled')]
             styles={p['strokeStyle'] for p in mapped if p.get('strokeStyle') and p.get('boundary')}
-            boundaries=[Polygon(p['pdfPoints']) for p in mapped if p.get('boundary')]
+            boundaries=[nesting_boundary(p) for p in mapped if p.get('boundary')]
             candidates[first_candidate:]=[c for c in candidates[first_candidate:] if prepare and c.get('strokeStyle') in styles
                 and not any(Polygon(c['pdfPoints']).intersects(b) for b in boundaries)]
         registration_removed += removed
@@ -761,15 +771,21 @@ def read_document(raw, bleed_mm=0, cut_spot='CutContour', cut_mapping=None, guid
                 if path['operation'] == 'contour' and not path.get('fromUnlabeled'):
                     classify(mapping, path.get('sourceSpot'), path.get('sourceLayers', []), cut_spot)
         prepared = None
-        if prepare and len(paths) <= 200:
+        irregular = any(p.get('irregularCut') for p in paths)
+        if prepare and (len(paths) <= 200 or irregular):
             from pdf_source_groups import prepare_groups
             crop = box(*map(float,page.cropbox))
             if any(not crop.buffer(.001).covers(LineString(p['pdfPoints'])) for p in paths):
                 raise ValueError('A cut path extends outside its PDF page. Nothing was removed.')
             prepared = prepare_groups(page, writer, paths)
+            if not prepared and irregular:
+                from pdf_cut_geometry import preserve_page_group
+                prepared = preserve_page_group(page, paths)
         if prepared:
             for piece_number,piece in enumerate(prepared,1):
                 name = f'Page {i+1} · print-only artwork {piece_number} (no cuts)' if piece.get('printOnly') else f'Page {i+1} · piece {piece_number}'
+                if piece.get('preservedPageGroup'):
+                    name = f'Page {i+1} · kept together'
                 piece.update(id='pdf-'+str(len(pieces)+1),name=name)
                 pieces.append(piece)
             continue
@@ -1016,7 +1032,10 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
                 source_page=readers[ident].pages[piece['page']]
                 clip=clip_bounds(piece['clipCommands'])
                 selected = None
-                if 'sourceObjectIds' in piece:
+                if piece.get('preservedPageGroup'):
+                    # Keep the whole page, with no inferred object selection.
+                    selected = None
+                elif 'sourceObjectIds' in piece:
                     from pdf_piece_objects import select_object_ids
                     owned = object_pages.get((ident,piece['page']))
                     if owned is None or len(owned[1]) != piece['sourceObjectCount']:
@@ -1026,7 +1045,8 @@ def export_pdf(job, result, documents, cut_spot='CutContour', cut_layer='CutCont
                     from pdf_piece_objects import select_objects
                     envelope=Polygon([values for op,values in piece['clipCommands'] if op in ('m','l')])
                     selected=select_objects(object_pages[(ident,piece['page'])],envelope)
-                ref=(piece_form(source_page,writer,analyzed[(ident,piece['page'])],clip,selected=selected[0])
+                ref=(form_from_page(source_page,writer) if piece.get('preservedPageGroup') else
+                     piece_form(source_page,writer,analyzed[(ident,piece['page'])],clip,selected=selected[0])
                      if selected is not None and clip is not None else
                      piece_form(source_page,writer,analyzed[(ident,piece['page'])],clip)
                      if clip is not None else form_from_page(source_page,writer))
@@ -1071,6 +1091,8 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
     identity=[2,bleed_mm,cut_spot,meta['cutMapping']]
     if preserve:identity=['preserve-artwork-v2',cut_spot,meta['cutMapping']]
     identity.append('source-cut-colors-v1-duplicate-preparation-v1')
+    if any(c.get('irregularCut') for p in meta['pieces'] for c in p['cutPaths']):
+        identity.append('irregular-cut-placement-v1')
     if meta['excludedGuideIds']:identity.append({'excludedGuideIds':meta['excludedGuideIds']})
     if cut_approval:
         # The review ID already binds the candidate pages. Keep existing document IDs stable.
@@ -1131,6 +1153,8 @@ def import_to_store(raw, folder, bleed_mm=0, cut_spot='CutContour', cut_mapping=
         preview_parts.append({'id':piece['id'],'name':piece['name'],'points':piece['points'],'quantity':1,
                               'documentId':ident,'pdfPieceId':piece['id'],'sourcePieceCount':piece.get('sourcePieceCount',1),'cutCounts':piece['cutCounts'],'cutRefs':unknown,'previewCuts':preview_cuts,'preview':'data:image/png;base64,'+base64.b64encode(buffer.getvalue()).decode(), 'previewWidth':w,'previewHeight':h,
                               'preparationNotes':(['Print-only artwork: no cut lines'] if piece.get('printOnly') else [])+
+                              (['Kept together to preserve artwork; may use more material'] if piece.get('preservedPageGroup') else [])+
+                              (['Small or crossing cut retained unchanged; check before cutting'] if any(c.get('irregularCut') for c in piece['cutPaths']) else [])+
                               (['Check automatically matched artwork'] if piece.get('automaticArtworkMatches') else [])+
                               (['Check crossing source cuts: both outlines retained'] if piece.get('retainedCrossingCuts') else [])})
     # Keep the source only while an operator still needs to choose a cut type.

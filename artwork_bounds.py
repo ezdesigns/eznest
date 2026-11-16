@@ -216,7 +216,7 @@ def preserve_artwork(clean, meta):
             page = document[page_index]
             try:
                 source = [p for p in meta['pieces'] if p['page'] == page_index]
-                if source and all('sourceObjectIds' in p for p in source):
+                if source and all('sourceObjectIds' in p or p.get('preservedPageGroup') for p in source):
                     pieces.extend(source)
                     continue
                 cuts = [Polygon(p['pdfPoints']) for p in source]
@@ -309,5 +309,10 @@ def preserve_artwork(clean, meta):
         if crossing:
             warnings.append(f'{crossing} crossing cut pair(s) belong to the same source graphic. Both original outlines are retained. Check these cuts before production.')
     warnings.append('Original artwork and existing bleed retained without resizing. Connected artwork stays together. Review artwork, scale and cuts before printing.')
+    irregular = sum(bool(c.get('irregularCut')) for p in pieces for c in p['cutPaths'])
+    if irregular:
+        warnings.append(f'{irregular} small or self-crossing cut path(s) retained unchanged. Placement uses protective outlines; check the original cuts before cutting.')
+    if any(p.get('preservedPageGroup') for p in pieces):
+        warnings.append('Uncertain pieces were kept together with their full page artwork and bleed. This can use more material.')
     meta.update(pieces=pieces, artworkPreserved=True, sourcePieceCount=original_count, warnings=warnings)
     return meta
