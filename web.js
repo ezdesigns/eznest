@@ -721,6 +721,7 @@ function showSheetId(state) {
 }
 
 function showScreen(name) {
+  if (name !== 'check') $('nest-complete').hidden = true;
   document.body.dataset.step = name;
   const idle = name === 'drop';
   const configuring = name === 'configure';
@@ -1463,7 +1464,13 @@ async function poll() {
       requestNest();
       return;
     }
-    if (state.status === 'ready' && state.manifest) showResult(state);
+    if (state.status === 'ready' && state.manifest) {
+      showResult(state);
+      // Announce a newly finished run, never a restored result or blocked layout.
+      if (document.body.dataset.step === 'check' && state.manifest.complete !== false) {
+        $('nest-complete').hidden = false;
+      }
+    }
     else showBlocked(state.error || state.note || 'That file does not fit this roll.');
   } catch (error) {
     if (error && error.name === 'AbortError' && busy && !leaving) { setTimeout(poll, 300); return; }
@@ -3744,6 +3751,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $('allow-undo').addEventListener('change', () => { savePrefs({undo: $('allow-undo').checked}); renderActions(); });
   $('allow-hold').addEventListener('change', () => savePrefs({hold: $('allow-hold').checked}));
   $('export').addEventListener('click', () => openConfirm());
+  $('nest-complete-close').addEventListener('click', () => {
+    $('nest-complete').hidden = true;
+    $('export').focus({preventScroll: true});
+  });
   $('confirm-send').addEventListener('click', () => exportFile());
   $('confirm-back').addEventListener('click', closeConfirm);
   $('choose-thru').addEventListener('click', () => selectCut('thru'));
@@ -3827,7 +3838,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === ' ' && event.target.id === 'export') { event.preventDefault(); return; }
     if (event.key !== 'Enter') return;
-    if (document.querySelector('dialog[open]') || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #mode-switch, #top-actions, #stock, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #upload-new-job, #stop, #improve, #update, #setup, #edit-material')) return;
+    if (document.querySelector('dialog[open]') || importing || $('guide-review').open || $('feedback-dialog').open || $('folder-picker').open || presetEditor || event.target.closest('input, select, textarea, summary, .help-label, #settings, #settings-open, #mode-switch, #top-actions, #stock, #in-house, #max-output, #nest-savings, #feedback-open, #feedback-dismiss, #nest-complete, #start-nesting, #choose-thru, #choose-kiss, #choose-confirm, #confirm-send, #confirm-back, #materials, #sets-dec, #sets-inc, #sheet-tabs, #files, #add-files, #upload-new-job, #stop, #improve, #update, #setup, #edit-material')) return;
     if (document.body.dataset.step === 'blocked' || $('gate').classList.contains('problem')) { event.preventDefault(); return; }
     if (busy || saving) return;
     if (document.body.dataset.step === 'sent') { event.preventDefault(); startOver(); return; }

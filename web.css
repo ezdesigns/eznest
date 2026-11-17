@@ -962,3 +962,17 @@ body:is([data-step="confirm"], [data-step="sent"]) #sticker-fill { display: none
   body[data-step="check"] .material-area { gap: 4px; padding-top: 8px; }
   body[data-step="check"] .layout-options { padding-top: 8px; }
 }
+
+/* A completed run is noticeable without blocking review or stealing focus. */
+#nest-complete { position: fixed; z-index: 7; top: 88px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; width: min(460px, calc(100vw - 32px)); padding: 18px 42px 18px 18px; border: 1px solid #c7dfd0; border-radius: 14px; background: #fff; box-shadow: 0 8px 32px #173b2426; animation: nest-complete-enter .3s ease-out; }
+#nest-complete strong { display: block; font-size: 18px; line-height: 1.3; }
+#nest-complete p { margin-top: 5px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.nest-complete-check { flex: none; }
+.nest-complete-check circle { fill: #e7f5ec; }
+.nest-complete-check path { fill: none; stroke: #237a48; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 0; animation: nest-complete-check .45s ease-out; }
+#nest-complete-close { position: absolute; top: 4px; right: 4px; width: 36px; min-height: 36px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 24px; }
+#nest-complete-close:focus-visible { outline: 2px solid var(--workbench-accent); outline-offset: 2px; }
+@keyframes nest-complete-enter { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@keyframes nest-complete-check { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
+@media (max-width: 720px) { #nest-complete { top: 144px; gap: 10px; padding-left: 14px; } #nest-complete strong { font-size: 16px; } }
+@media (prefers-reduced-motion: reduce) { #nest-complete, .nest-complete-check path { animation: none; } }
