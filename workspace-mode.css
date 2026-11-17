@@ -37,7 +37,7 @@ html { overflow-y: scroll; }
   .workspace-identity { width: 100%; gap: 16px; }
   .workspace-header .workspace-tools { width: 100%; justify-content: flex-end; margin-left: 0; }
   .workspace-header .workspace-tools #shop-team-open { flex: 1; width: auto; max-width: none; }
-  .corner-actions { position: static; justify-content: flex-end; margin: 16px; }
+  .corner-actions { left: 16px; margin: 0; }
   body:not(.full-workspace) main { padding-bottom: 24px; }
   #settings-support .help-card { position: fixed; left: 16px; right: 16px; bottom: 80px; width: auto; }
 }
