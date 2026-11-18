@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.0.0-rc.10
+
+- Show a dismissible completion popup after a successful nest. Restoring a saved layout and failed attempts do not show a false completion message. Respect reduced-motion preferences.
+- Keep Help and Feedback at the bottom-left of the screen on desktop and mobile, with space so they do not cover the last controls.
+- Preserve irregular source cut paths while using separate safe placement geometry for nesting. Original cut geometry, colors, names and existing bleed remain intact; ambiguous pieces stay together rather than losing artwork.
+- Include the existing startup and update protections for shop identity, designer access, saved jobs and shared inventory. This release does not change the shop data location or OUTPUT settings.
+- Print production checks in ONYX and physical cutting remain outstanding; review saved results before production.
+
 ## 1.0.0-rc.9
 
 - Windows remains an unsigned testing preview for manual installation. Windows may show an unknown-publisher warning. Protected one-click updates are not enabled by this release; future versions still require trusted signing unless separately approved.
