@@ -20,9 +20,9 @@ A subsequent version-bump PR activates the build path; existing versions remain 
 
 - Windows reuses `windows-installer.yml`, including pinned Inno Setup, checksums,
   source/version pin and an actual fresh install on the disposable Windows VM.
-  The owner approved **rc.9 only** as an unsigned Windows testing preview on
-  2026-11-12. It supports manual installation; Windows may show an unknown-publisher
-  warning. The planner explicitly identifies that version, and missing output or
+  The owner approved **rc.9** on 2026-11-12 and **rc.10** on 2026-11-18 as
+  unsigned Windows testing previews. Both support manual installation; Windows may show an unknown-publisher
+  warning. The planner explicitly identifies those two versions, and missing output or
   any other version requires trusted Authenticode signing. Future release candidates
   do not inherit this exception. The installed one-click updater's signature and
   signed-manifest protections are unchanged. The old tag-only publisher

@@ -4,6 +4,8 @@
 
 ## 1.0.0-rc.10
 
+- Owner-approved unsigned Windows testing preview for manual installation. Windows may show an unknown-publisher warning; protected one-click updates remain unavailable. Future releases still require trusted signing unless separately approved.
+
 - Show a dismissible completion popup after a successful nest. Restoring a saved layout and failed attempts do not show a false completion message. Respect reduced-motion preferences.
 - Keep Help and Feedback at the bottom-left of the screen on desktop and mobile, with space so they do not cover the last controls.
 - Preserve irregular source cut paths while using separate safe placement geometry for nesting. Original cut geometry, colors, names and existing bleed remain intact; ambiguous pieces stay together rather than losing artwork.

@@ -73,10 +73,10 @@ def plan(github, event, version):
     version_key(version)
     tag = 'v' + version
     tip = github.request('GET', f'repos/{REPO}/git/ref/heads/main')['object']['sha']
-    # Owner approved this exact manual-install Windows preview on 2026-11-12.
+    # Owner approved rc.9 on 2026-11-12 and rc.10 on 2026-11-18 for manual installation.
     # All other versions, including future release candidates, require signing.
     result = {'should_release': False, 'sha': commit, 'version': version, 'tag': tag,
-              'windows_require_signed': version != '1.0.0-rc.9'}
+              'windows_require_signed': version not in ('1.0.0-rc.9', '1.0.0-rc.10')}
     if tip != commit:
         return {**result, 'reason': 'A newer main commit supersedes this CI run.'}
     existing = None
