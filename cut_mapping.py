@@ -64,7 +64,10 @@ def classify(mapping, spot, layers, generic_spot='CutContour'):
     if len(operations)>1:
         raise ValueError('Conflicting cut types for spot '+str(spot or '(none)')+' on layer '+str(' / '.join(layers) or '(none)')+'. Correct the shop mapping or source file.')
     if operations:return next(iter(operations))
-    if spot==generic_spot:
+    # A generic cut layer with process-color strokes has the same unresolved
+    # meaning as the generic spot. Do not guess from its display color, and do
+    # not turn an unrelated named ink into a cut through this fallback.
+    if spot==generic_spot or (not spot and generic_spot in layers):
         if mapping['genericOperation']:return mapping['genericOperation']
         raise ValueError('Unspecified cut type for '+generic_spot+'. Choose Thru-cut, Kiss-cut or Generic cut at import, or map its source layer in the shop profile.')
     if any(name.startswith(prefix) for name in ([spot] if spot else [])+layers for prefix in mapping['suspectPrefixes']):
