@@ -73,10 +73,8 @@ def plan(github, event, version):
     version_key(version)
     tag = 'v' + version
     tip = github.request('GET', f'repos/{REPO}/git/ref/heads/main')['object']['sha']
-    # Owner approved rc.9 on 2026-11-12 and rc.10 on 2026-11-18 for manual installation.
-    # All other versions, including future release candidates, require signing.
     result = {'should_release': False, 'sha': commit, 'version': version, 'tag': tag,
-              'windows_require_signed': version not in ('1.0.0-rc.9', '1.0.0-rc.10')}
+              'windows_require_signed': True}
     if tip != commit:
         return {**result, 'reason': 'A newer main commit supersedes this CI run.'}
     existing = None
@@ -156,11 +154,7 @@ def publish(github, event, version, directory, *, upload=None):
     tag = state['tag']
     release = next((r for r in github.releases() if r['tag_name'] == tag), None)
     if release is None:
-        windows_note = ('Windows x64: signed installer; installed acceptance checks passed.\n'
-                        if state['windows_require_signed'] else
-                        'Windows x64: unsigned testing preview, approved for manual installation only. '
-                        'Windows may show an unknown-publisher warning. Protected one-click updates remain unavailable. '
-                        'Fresh install, startup, update and uninstall checks passed on clean Windows runners.\n')
+        windows_note = 'Windows x64: signed installer; installed acceptance checks passed.\n'
         notes = (f'EZNest {version}\n\nSource: `{state["sha"]}`.\n\n'
                  + windows_note + '\n'
                  'Mac: Apple Silicon/macOS 26 experimental preview, new test installations only. '
