@@ -65,11 +65,9 @@ class FakeGitHub:
 
 
 class WindowsPreviewPolicyTests(unittest.TestCase):
-    def test_only_the_exact_owner_approved_preview_can_be_unsigned(self):
-        for version in ('1.0.0-rc.9', '1.0.0-rc.10'):
-            with self.subTest(version=version):
-                self.assertFalse(release.plan(FakeGitHub(), event(), version)['windows_require_signed'])
-        for version in ('1.0.0-rc.8', '1.0.0-rc.11', '1.0.0-rc.100', '1.0.0', '1.0.1', '2.0.0-beta.1'):
+    def test_every_version_requires_windows_signing(self):
+        for version in ('1.0.0-rc.8', '1.0.0-rc.9', '1.0.0-rc.10', '1.0.0-rc.11',
+                        '1.0.0-rc.100', '1.0.0', '1.0.1', '2.0.0-beta.1'):
             with self.subTest(version=version):
                 self.assertTrue(release.plan(FakeGitHub(), event(), version)['windows_require_signed'])
 
